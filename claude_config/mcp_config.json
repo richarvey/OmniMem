@@ -1,1 +1,9 @@
-{}
+{
+  "mcpServers": {
+    "omnimem": {
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
+      "description": "Persistent semantic memory with lifecycle management and experience scoring"
+    }
+  }
+}
