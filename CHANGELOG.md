@@ -21,5 +21,5 @@ Format: [version] - date - description
 - Audit tools: memory_audit, why_did_you_mention, explain_memory
 - Backup tools: dump_to_file, restore_from_file, list_backups
 - RSS ingestion worker with dedup, scheduling, and Claude-powered summarisation
-- Alpine-based Docker images for minimal footprint
+- Slim Debian-based Docker images (torch CPU-only for embedding support)
 - CLAUDE.md integration file for drop-in project wiring
