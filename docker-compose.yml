@@ -1,0 +1,42 @@
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    command: >
+      valkey-server
+      --loadmodule /usr/lib/valkey/valkey-search.so
+      --requirepass ${VALKEY_PASSWORD}
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "-a", "${VALKEY_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mcp_server:
+    build: ./mcp_server
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "${MCP_PORT:-8765}:${MCP_PORT:-8765}"
+    volumes:
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  rss_worker:
+    build: ./rss_worker
+    depends_on:
+      valkey:
+        condition: service_healthy
+    volumes:
+      - ./rss_worker/feeds.yml:/app/feeds.yml:ro
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  valkey_data:
