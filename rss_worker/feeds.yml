@@ -1,2 +1,29 @@
-# Configurable feed list
-feeds: []
+feeds:
+  # Rust & systems programming
+  - url: https://blog.rust-lang.org/feed.xml
+    name: Rust Official Blog
+    topics: [rust, systems, language]
+
+  - url: https://this-week-in-rust.org/rss.xml
+    name: This Week in Rust
+    topics: [rust, community, crates]
+
+  # Self-hosting & open source
+  - url: https://selfhosted.show/rss
+    name: Self-Hosted Show
+    topics: [selfhosted, homelab, docker]
+
+  # n8n / automation
+  - url: https://blog.n8n.io/rss/
+    name: n8n Blog
+    topics: [automation, workflow, n8n]
+
+  # AI / LLM
+  - url: https://www.anthropic.com/rss.xml
+    name: Anthropic Blog
+    topics: [ai, llm, claude]
+
+  # DevOps / infra
+  - url: https://www.docker.com/blog/feed/
+    name: Docker Blog
+    topics: [docker, containers, devops]
