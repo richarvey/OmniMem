@@ -170,6 +170,8 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
 | `forget(key_or_query, confirm=True)` | Hard delete, requires explicit confirmation |
 | `suppress_topic(topic)` | Filter a topic from all future recalls |
+| `unsuppress_topic(topic)` | Remove a topic from the suppression list |
+| `list_suppressions()` | Show all currently suppressed topics |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Scan for clusters of near-identical memories |
 | `check_contradictions(query?, namespace?, use_api?)` | Detect memories that contradict each other |
 | `briefing(project?, include_knowledge?)` | Single-call session start with full context |
@@ -214,6 +216,8 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `VALKEY_PASSWORD` | `changeme` | Please change this |
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
+| `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
+| `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local sentence-transformers model |
 | `RSS_SCHEDULE_HOURS` | `6` | How often feeds are ingested |
 | `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per cycle |
