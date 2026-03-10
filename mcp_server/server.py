@@ -68,6 +68,7 @@ def _register_tools() -> None:
     )
     from tools.backup import dump_to_file, restore_from_file, list_backups
     from tools.contradiction import check_contradictions
+    from tools.briefing import briefing
 
     # Core tools
     mcp.tool()(remember)
@@ -101,6 +102,9 @@ def _register_tools() -> None:
 
     # Contradiction tools
     mcp.tool()(check_contradictions)
+
+    # Briefing tool
+    mcp.tool()(briefing)
 
     # Backup tools
     mcp.tool()(dump_to_file)

@@ -4,10 +4,8 @@ You have access to a persistent memory system via the `omnimem` MCP server.
 
 ### Session Start
 At the beginning of every session:
-1. Call `get_project_context("<project_name>")` where project_name matches this project
-2. Call `experience_summary(project="<project_name>")` — review the graveyard of abandoned approaches alongside what worked
-3. Call `recall("<brief description of what we're working on>", project_filter="<project_name>")`
-4. Briefly summarise what you found: current state, recent decisions, any abandoned approaches to avoid, relevant knowledge articles
+1. Call `briefing(project="<project_name>")` — this single call aggregates project context, experience summary, stale memories, new knowledge articles, contradiction warnings, and reinstate candidates
+2. Briefly summarise what you found: current state, recent decisions, any abandoned approaches to avoid, stale memories to review, and any contradictions that need resolution
 
 ### During a Session
 - Before attempting to solve a non-trivial problem, call `recall("<problem description>")` — you may find a prior solution or a relevant article
