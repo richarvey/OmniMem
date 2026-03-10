@@ -9,6 +9,7 @@ from typing import Any
 
 import ulid
 
+from ..memory.dedup import check_duplicate, find_all_duplicates
 from ..memory.embedder import Embedder
 from ..memory.lifecycle import MemoryLifecycle, MemoryState
 from ..memory.recall import RecallPipeline
@@ -85,17 +86,24 @@ def remember(
     project: str | None = None,
     tags: list[str] | None = None,
     namespace: str = "episodic",
+    force: bool = False,
 ) -> dict[str, Any]:
     """Store a new memory. Use this to remember decisions, solutions, patterns, or project context.
+
+    Automatically checks for semantic duplicates before storing. If a near-identical
+    memory already exists, returns the duplicate details instead of storing. Use force=True
+    to store anyway (e.g. when intentionally updating with new context).
 
     Args:
         content: The text to remember — be specific and descriptive.
         project: Optional project name to associate this memory with.
         tags: Optional list of tags for categorisation.
         namespace: Memory namespace — 'episodic' (default), 'project', or 'knowledge'.
+        force: If True, skip duplicate checking and store regardless.
 
     Returns:
         Dict with key, status, and namespace of the stored memory.
+        If a duplicate is found (and force=False), returns status='duplicate_found' with match details.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -107,6 +115,27 @@ def remember(
     key = f"mem:{namespace}:{ulid.new().str}"
     now = str(time.time())
     vector = embedder.embed(content)
+
+    # Check for semantic duplicates (reuses the embedding we just computed)
+    if not force:
+        dup = check_duplicate(
+            store, namespace, vector, content, project_filter=project
+        )
+        if dup is not None:
+            logger.info(
+                "Duplicate detected for new memory (similarity=%.3f, existing=%s)",
+                dup.similarity, dup.key,
+            )
+            return {
+                "status": "duplicate_found",
+                "message": (
+                    f"A near-identical memory already exists (similarity: {dup.similarity:.2%}). "
+                    "Call remember() with force=True to store anyway."
+                ),
+                "existing_key": dup.key,
+                "existing_content": dup.content[:200],
+                "similarity": round(dup.similarity, 4),
+            }
 
     fields: dict[str, Any] = {
         "content": content,
@@ -370,3 +399,42 @@ def list_suppressions() -> dict[str, Any]:
     _, _, lifecycle, _ = _get_deps()
     topics = lifecycle.get_suppressed_topics()
     return {"suppressed_topics": topics, "count": len(topics)}
+
+
+def find_duplicates(
+    namespace: str = "episodic",
+    threshold: float | None = None,
+    project_filter: str | None = None,
+) -> dict[str, Any]:
+    """Scan all memories in a namespace and return clusters of near-identical content.
+
+    Useful for periodic cleanup — identifies memories that say essentially the same thing.
+    Each cluster is a group of memories with pairwise similarity above the threshold.
+
+    Args:
+        namespace: Namespace to scan — 'episodic' (default), 'project', or 'knowledge'.
+        threshold: Similarity threshold (0.0-1.0). Default from DEDUP_SIMILARITY_THRESHOLD env (0.92).
+        project_filter: Optional project name to restrict the scan.
+
+    Returns:
+        Dict with clusters of duplicate memories and summary stats.
+    """
+    store, embedder, _, _ = _get_deps()
+
+    _validate_namespace(namespace)
+    if project_filter:
+        _validate_project_name(project_filter)
+
+    clusters = find_all_duplicates(
+        store, embedder, namespace,
+        threshold=threshold,
+        project_filter=project_filter,
+    )
+
+    return {
+        "status": "complete",
+        "namespace": namespace,
+        "cluster_count": len(clusters),
+        "total_duplicates": sum(len(c) for c in clusters),
+        "clusters": clusters,
+    }
