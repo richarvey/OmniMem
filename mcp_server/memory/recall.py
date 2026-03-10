@@ -83,6 +83,8 @@ class RecallPipeline:
         """Full recall pipeline: abandoned fast-path, search, score, rank."""
         if top_k is None:
             top_k = int(os.getenv("MEMORY_RECALL_TOP_K", "5"))
+        # Clamp top_k to a sane range
+        top_k = max(1, min(top_k, 50))
         if namespaces is None:
             namespaces = NAMESPACES
 
@@ -113,6 +115,9 @@ class RecallPipeline:
         recency_decay_days = int(os.getenv("RECENCY_DECAY_DAYS", "90"))
         now = time.time()
 
+        # Pre-fetch suppressed topics once for the entire recall, not per-doc
+        suppressed_topics = self.lifecycle.get_suppressed_topics()
+
         for ns in namespaces:
             raw_results = self.store.search(ns, query_vector, top_k=20)
 
@@ -125,9 +130,11 @@ class RecallPipeline:
 
                 content = doc.get("content", "")
 
-                # Step 5: Filter suppressed topics
-                if self.lifecycle.is_topic_suppressed(content):
-                    continue
+                # Step 5: Filter suppressed topics (using pre-fetched list)
+                if suppressed_topics:
+                    content_lower = content.lower()
+                    if any(topic in content_lower for topic in suppressed_topics):
+                        continue
 
                 # Project filter
                 doc_project = doc.get("project") or doc.get("project_name")
@@ -169,10 +176,10 @@ class RecallPipeline:
                         pass
 
                 reinstate_candidate = False
-                # Step 9: Check reinstate eligibility
+                # Step 9: Check reinstate eligibility — pass doc data to avoid redundant GET
                 if state_str == MemoryState.DEPRIORITISED.value:
                     key = doc.get("key", "")
-                    if self.lifecycle.check_reinstate_eligibility(key, query):
+                    if self.lifecycle.check_reinstate_eligibility(key, query, doc_data=doc):
                         reinstate_candidate = True
                         adjusted_score = 0.6
 
@@ -212,17 +219,30 @@ class RecallPipeline:
     def warn_if_abandoned(self, query: str) -> list[dict[str, Any]]:
         """Keyword scan for abandoned approaches matching the query.
 
-        Runs before embedding — cheap keyword check. Also does semantic search
-        for richer matching against stored abandoned_approaches reasons.
+        Runs before embedding -- cheap keyword check. Uses pipelined batch
+        fetch instead of N+1 individual GET calls. Caps at 5000 keys to
+        prevent excessive memory/CPU usage on large datasets.
         """
         matches: list[dict[str, Any]] = []
         seen_keys: set[str] = set()
         query_lower = query.lower()
 
-        # Scan all episodic memories for abandoned_approaches
+        # Scan episodic memory keys, capped to prevent DoS on huge datasets
+        _MAX_ABANDONED_SCAN_KEYS = 5000
         keys = self.store.scan_prefix("mem:episodic:")
-        for key in keys:
-            data = self.store.get(key)
+        if not keys:
+            return matches
+        if len(keys) > _MAX_ABANDONED_SCAN_KEYS:
+            logger.warning(
+                "Abandoned scan capped at %d keys (total: %d)",
+                _MAX_ABANDONED_SCAN_KEYS, len(keys),
+            )
+            keys = keys[:_MAX_ABANDONED_SCAN_KEYS]
+
+        # Batch-fetch all episodic memories in one pipeline round-trip
+        all_data = self.store.get_multi(keys)
+
+        for key, data in zip(keys, all_data):
             if data is None:
                 continue
 
@@ -239,7 +259,6 @@ class RecallPipeline:
                 if not isinstance(approach, dict):
                     continue
                 name = approach.get("name", "").lower()
-                reason = approach.get("reason", "").lower()
                 if name and (name in query_lower or query_lower in name):
                     match_key = f"{key}:{name}"
                     if match_key not in seen_keys:
@@ -269,14 +288,17 @@ class RecallPipeline:
         top_scores = [str(r.adjusted_score) for r in results[:10]]
 
         log_data = {
-            "query": query,
+            "query": query[:2000],  # Truncate to prevent storing huge queries
             "timestamp": timestamp,
             "result_keys": json.dumps(top_keys),
             "result_scores": json.dumps(top_scores),
         }
 
         try:
-            self.store.client.hset(log_key, mapping=log_data)
-            self.store.client.expire(log_key, 30 * 86400)  # 30-day TTL
+            # Single pipeline round-trip instead of two separate commands
+            pipe = self.store.client.pipeline(transaction=False)
+            pipe.hset(log_key, mapping=log_data)
+            pipe.expire(log_key, 30 * 86400)  # 30-day TTL
+            pipe.execute()
         except Exception as exc:
             logger.warning("Failed to log recall event: %s", exc)

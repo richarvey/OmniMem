@@ -39,6 +39,9 @@ class MemoryLifecycle:
 
     def __init__(self, store: ValkeyStore) -> None:
         self.store = store
+        # Cache suppressed topics to avoid hitting Valkey on every recall result.
+        # Invalidated on suppress/unsuppress calls.
+        self._suppressed_cache: list[str] | None = None
 
     def transition(
         self, key: str, new_state: MemoryState, reason: str | None = None
@@ -65,8 +68,8 @@ class MemoryLifecycle:
         if new_state == MemoryState.DEPRIORITISED and reason:
             updates["deprioritised_reason"] = reason
 
-        for field, value in updates.items():
-            self.store.set_field(key, field, value)
+        # Single round-trip instead of N individual set_field calls
+        self.store.set_fields(key, updates)
 
         result: dict[str, Any] = {
             "key": key,
@@ -102,21 +105,31 @@ class MemoryLifecycle:
     def suppress_topic(self, topic: str) -> None:
         """Add a topic to the suppression set."""
         self.store.client.sadd("topics:suppressed", topic.lower())
+        self._suppressed_cache = None  # invalidate cache
         logger.info("Suppressed topic: %s", topic)
 
     def unsuppress_topic(self, topic: str) -> None:
         """Remove a topic from the suppression set."""
         self.store.client.srem("topics:suppressed", topic.lower())
+        self._suppressed_cache = None  # invalidate cache
         logger.info("Unsuppressed topic: %s", topic)
 
     def get_suppressed_topics(self) -> list[str]:
-        """Return all currently suppressed topics."""
-        members = self.store.client.smembers("topics:suppressed")
-        return sorted(members)
+        """Return all currently suppressed topics (cached)."""
+        if self._suppressed_cache is None:
+            members = self.store.client.smembers("topics:suppressed")
+            self._suppressed_cache = sorted(members)
+        return self._suppressed_cache
+
+    def invalidate_suppression_cache(self) -> None:
+        """Force refresh of the suppressed topics cache."""
+        self._suppressed_cache = None
 
     def is_topic_suppressed(self, text: str) -> bool:
         """Check if any suppressed topic appears in text (case-insensitive substring)."""
         suppressed = self.get_suppressed_topics()
+        if not suppressed:
+            return False
         text_lower = text.lower()
         return any(topic in text_lower for topic in suppressed)
 
@@ -135,9 +148,17 @@ class MemoryLifecycle:
         existing.extend(hints)
         self.store.set_field(key, "reinstate_hints", json.dumps(existing))
 
-    def check_reinstate_eligibility(self, key: str, query: str) -> bool:
-        """Return True if query matches any reinstate hint and memory is deprioritised."""
-        data = self.store.get(key)
+    def check_reinstate_eligibility(
+        self, key: str, query: str, doc_data: dict[str, Any] | None = None
+    ) -> bool:
+        """Return True if query matches any reinstate hint and memory is deprioritised.
+
+        Args:
+            key: Memory key (used for fallback lookup if doc_data not provided).
+            query: The recall query string.
+            doc_data: Optional pre-fetched document data to avoid an extra GET.
+        """
+        data = doc_data if doc_data is not None else self.store.get(key)
         if data is None:
             return False
 

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from dataclasses import asdict
 from typing import Any
@@ -14,6 +15,63 @@ from ..memory.recall import RecallPipeline
 from ..memory.store import ValkeyStore
 
 logger = logging.getLogger(__name__)
+
+VALID_NAMESPACES = {"episodic", "project", "knowledge"}
+MAX_CONTENT_LENGTH = 50_000
+MAX_TOP_K = 50
+MAX_TAG_LENGTH = 100
+MAX_TAGS = 20
+# Allowed characters for project names and tags: alphanumeric, hyphens, underscores, dots, spaces
+_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
+
+
+def _validate_namespace(namespace: str) -> None:
+    """Validate namespace is one of the allowed values."""
+    if namespace not in VALID_NAMESPACES:
+        raise ValueError(
+            f"Invalid namespace '{namespace}'. Must be one of: {', '.join(sorted(VALID_NAMESPACES))}"
+        )
+
+
+def _validate_project_name(project: str | None) -> None:
+    """Validate project name contains only safe characters."""
+    if project is None:
+        return
+    if not project or len(project) > 200:
+        raise ValueError("Project name must be 1-200 characters")
+    if not _SAFE_NAME_RE.match(project):
+        raise ValueError(
+            "Project name contains invalid characters. "
+            "Only alphanumeric, hyphens, underscores, dots, and spaces are allowed."
+        )
+
+
+def _validate_content(content: str) -> None:
+    """Validate content is not empty and within size limits."""
+    if not content or not content.strip():
+        raise ValueError("Content cannot be empty")
+    if len(content) > MAX_CONTENT_LENGTH:
+        raise ValueError(f"Content too long ({len(content)} chars). Maximum is {MAX_CONTENT_LENGTH}.")
+
+
+def _validate_tags(tags: list[str] | None) -> None:
+    """Validate tags list."""
+    if tags is None:
+        return
+    if len(tags) > MAX_TAGS:
+        raise ValueError(f"Too many tags ({len(tags)}). Maximum is {MAX_TAGS}.")
+    for tag in tags:
+        if not isinstance(tag, str) or len(tag) > MAX_TAG_LENGTH:
+            raise ValueError(f"Each tag must be a string of at most {MAX_TAG_LENGTH} characters")
+
+
+def _validate_top_k(top_k: int) -> int:
+    """Clamp top_k to a safe range."""
+    if top_k < 1:
+        return 1
+    if top_k > MAX_TOP_K:
+        return MAX_TOP_K
+    return top_k
 
 
 def _get_deps() -> tuple[ValkeyStore, Embedder, MemoryLifecycle, RecallPipeline]:
@@ -40,6 +98,11 @@ def remember(
         Dict with key, status, and namespace of the stored memory.
     """
     store, embedder, _, _ = _get_deps()
+
+    _validate_namespace(namespace)
+    _validate_content(content)
+    _validate_project_name(project)
+    _validate_tags(tags)
 
     key = f"mem:{namespace}:{ulid.new().str}"
     now = str(time.time())
@@ -82,6 +145,13 @@ def recall(
         Reinstate candidates are flagged with a note.
     """
     _, _, _, pipeline = _get_deps()
+
+    top_k = _validate_top_k(top_k)
+    if namespaces:
+        for ns in namespaces:
+            _validate_namespace(ns)
+    if project_filter:
+        _validate_project_name(project_filter)
 
     results = pipeline.recall(
         query=query,
@@ -189,8 +259,8 @@ def reinstate(key_or_query: str) -> dict[str, Any]:
     affected = []
     if key_or_query.startswith("mem:"):
         result = lifecycle.transition(key_or_query, MemoryState.ACTIVE)
-        store.set_field(key_or_query, "deprioritised_reason", "")
-        store.set_field(key_or_query, "surface_score", "1.0")
+        # Single round-trip instead of two set_field calls
+        store.set_fields(key_or_query, {"deprioritised_reason": "", "surface_score": "1.0"})
         affected.append(result)
     else:
         results = pipeline.recall(key_or_query, top_k=3)
@@ -198,8 +268,7 @@ def reinstate(key_or_query: str) -> dict[str, Any]:
             if r.state in (MemoryState.DEPRIORITISED.value, MemoryState.ARCHIVED.value):
                 try:
                     result = lifecycle.transition(r.key, MemoryState.ACTIVE)
-                    store.set_field(r.key, "deprioritised_reason", "")
-                    store.set_field(r.key, "surface_score", "1.0")
+                    store.set_fields(r.key, {"deprioritised_reason": "", "surface_score": "1.0"})
                     affected.append(result)
                 except ValueError as exc:
                     logger.warning("Cannot reinstate %s: %s", r.key, exc)
@@ -269,6 +338,10 @@ def suppress_topic(
     Returns:
         Dict with topic and status.
     """
+    if not topic or not topic.strip():
+        raise ValueError("Topic cannot be empty")
+    if len(topic) > 200:
+        raise ValueError("Topic too long (max 200 characters)")
     _, _, lifecycle, _ = _get_deps()
     lifecycle.suppress_topic(topic)
     return {"topic": topic, "status": "suppressed", "reason": reason}

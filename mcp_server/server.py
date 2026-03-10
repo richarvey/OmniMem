@@ -133,8 +133,8 @@ def health() -> dict:
                     result["indexes"][idx_name] = info.get("num_docs", 0)
                 except Exception:
                     result["indexes"][idx_name] = "unavailable"
-    except Exception as exc:
-        result["valkey_error"] = str(exc)
+    except Exception:
+        result["valkey_error"] = "connection_failed"
 
     try:
         embedder = tools_pkg._embedder
@@ -160,5 +160,6 @@ if __name__ == "__main__":
     _register_tools()
 
     port = int(os.getenv("MCP_PORT", "8765"))
-    logger.info("Starting OmniMem MCP server on 0.0.0.0:%d (SSE)", port)
-    mcp.run(transport="sse", host="0.0.0.0", port=port)
+    host = os.getenv("MCP_HOST", "127.0.0.1")
+    logger.info("Starting OmniMem MCP server on %s:%d (SSE)", host, port)
+    mcp.run(transport="sse", host=host, port=port)

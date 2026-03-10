@@ -30,6 +30,12 @@ def _get_deps():
     return _store, _lifecycle, _pipeline
 
 
+def _validate_memory_key(key: str) -> None:
+    """Ensure key starts with a valid memory prefix."""
+    if not key.startswith("mem:"):
+        raise ValueError("Key must start with 'mem:' prefix")
+
+
 def record_experience(
     key: str,
     effort_score: int,
@@ -65,6 +71,8 @@ def record_experience(
     """
     store, lifecycle, _ = _get_deps()
 
+    _validate_memory_key(key)
+
     if not 1 <= effort_score <= 5:
         raise ValueError(
             f"effort_score must be 1-5, got {effort_score}. {EFFORT_SCORE_GUIDE}"
@@ -82,11 +90,14 @@ def record_experience(
     experience_weight = compute_experience_weight(effort_score, outcome)
     now = str(time.time())
 
-    store.set_field(key, "effort_score", str(effort_score))
-    store.set_field(key, "outcome", outcome)
-    store.set_field(key, "iterations", str(iterations))
-    store.set_field(key, "experience_weight", str(experience_weight))
-    store.set_field(key, "updated_at", now)
+    # Batch all field updates into a single round-trip
+    updates: dict[str, str] = {
+        "effort_score": str(effort_score),
+        "outcome": outcome,
+        "iterations": str(iterations),
+        "experience_weight": str(experience_weight),
+        "updated_at": now,
+    }
 
     if abandoned_approaches:
         existing_raw = data.get("abandoned_approaches", "[]")
@@ -95,13 +106,15 @@ def record_experience(
         except (json.JSONDecodeError, TypeError):
             existing = []
         existing.extend(abandoned_approaches)
-        store.set_field(key, "abandoned_approaches", json.dumps(existing))
+        updates["abandoned_approaches"] = json.dumps(existing)
 
     if breakthrough:
-        store.set_field(key, "breakthrough", breakthrough)
+        updates["breakthrough"] = breakthrough
 
     if gotchas:
-        store.set_field(key, "gotchas", gotchas)
+        updates["gotchas"] = gotchas
+
+    store.set_fields(key, updates)
 
     # Auto-suppress abandoned approach names if high effort and abandoned
     auto_suppressed: list[str] = []
@@ -154,6 +167,8 @@ def log_abandoned(
     """
     store, _, _ = _get_deps()
 
+    _validate_memory_key(key)
+
     if type not in VALID_APPROACH_TYPES:
         raise ValueError(
             f"type must be one of {VALID_APPROACH_TYPES}, got '{type}'"
@@ -177,8 +192,11 @@ def log_abandoned(
     }
     existing.append(new_entry)
 
-    store.set_field(key, "abandoned_approaches", json.dumps(existing))
-    store.set_field(key, "updated_at", str(time.time()))
+    # Single round-trip instead of two set_field calls
+    store.set_fields(key, {
+        "abandoned_approaches": json.dumps(existing),
+        "updated_at": str(time.time()),
+    })
 
     return {
         "key": key,
@@ -204,6 +222,8 @@ def get_experience(key: str) -> dict[str, Any]:
         All experience fields with a human-readable summary, or not_found status.
     """
     store, _, _ = _get_deps()
+
+    _validate_memory_key(key)
 
     data = store.get(key)
     if data is None:
@@ -295,8 +315,10 @@ def experience_summary(project: str | None = None) -> dict[str, Any]:
     all_abandoned: list[dict[str, Any]] = []
     breakthroughs: list[dict[str, Any]] = []
 
-    for key in keys:
-        data = store.get(key)
+    # Batch fetch all episodic memories in one pipeline round-trip
+    all_data = store.get_multi(keys)
+
+    for key, data in zip(keys, all_data):
         if data is None:
             continue
 

@@ -7,8 +7,10 @@ services:
       --requirepass ${VALKEY_PASSWORD}
     volumes:
       - valkey_data:/data
+    environment:
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD}
     healthcheck:
-      test: ["CMD", "valkey-cli", "-a", "${VALKEY_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,11 +22,13 @@ services:
       valkey:
         condition: service_healthy
     ports:
-      - "${MCP_PORT:-8765}:${MCP_PORT:-8765}"
+      - "127.0.0.1:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
     volumes:
       - ./backups:/app/backups
     env_file:
       - .env
+    environment:
+      - MCP_HOST=0.0.0.0
     restart: unless-stopped
 
   rss_worker:

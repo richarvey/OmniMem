@@ -19,6 +19,7 @@ from summariser import summarise
 logger = logging.getLogger(__name__)
 
 _embedder: SentenceTransformer | None = None
+_valkey_client: valkey.Valkey | None = None
 
 
 def _get_embedder() -> SentenceTransformer:
@@ -32,13 +33,18 @@ def _get_embedder() -> SentenceTransformer:
 
 
 def _get_valkey() -> valkey.Valkey:
-    """Connect to Valkey."""
-    return valkey.Valkey(
-        host=os.getenv("VALKEY_HOST", "valkey"),
-        port=int(os.getenv("VALKEY_PORT", "6379")),
-        password=os.getenv("VALKEY_PASSWORD", ""),
-        decode_responses=True,
-    )
+    """Get a reusable pooled Valkey connection instead of creating a new one each call."""
+    global _valkey_client
+    if _valkey_client is None:
+        pool = valkey.ConnectionPool(
+            host=os.getenv("VALKEY_HOST", "valkey"),
+            port=int(os.getenv("VALKEY_PORT", "6379")),
+            password=os.getenv("VALKEY_PASSWORD", ""),
+            decode_responses=True,
+            max_connections=10,
+        )
+        _valkey_client = valkey.Valkey(connection_pool=pool)
+    return _valkey_client
 
 
 def _strip_html(text: str) -> str:
@@ -55,6 +61,8 @@ def _url_hash(url: str) -> str:
 
 def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     """Fetch and ingest a single RSS feed.
+
+    Uses batch dedup checks and batch embedding for efficiency.
 
     Args:
         feed_config: Dict with url, name, and topics.
@@ -83,19 +91,34 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     client = _get_valkey()
     embedder = _get_embedder()
 
-    for entry in feed.entries[:max_articles]:
+    entries = feed.entries[:max_articles]
+
+    # Phase 1: Extract URLs and keys for all entries
+    entry_keys: list[tuple[Any, str, str]] = []  # (feed_entry, article_url, valkey_key)
+    for entry in entries:
+        article_url = entry.get("link", "")
+        if not article_url:
+            continue
+        key = f"mem:knowledge:{_url_hash(article_url)}"
+        entry_keys.append((entry, article_url, key))
+
+    if not entry_keys:
+        return stats
+
+    # Phase 2: Batch dedup check using a pipeline (one round-trip instead of N)
+    pipe = client.pipeline(transaction=False)
+    for _, _, key in entry_keys:
+        pipe.exists(key)
+    exists_results = pipe.execute()
+
+    # Phase 3: Summarise new articles (this is the API-bound step)
+    new_articles: list[dict[str, Any]] = []
+    for (entry, article_url, key), exists in zip(entry_keys, exists_results):
+        if exists:
+            stats["skipped"] += 1
+            continue
+
         try:
-            article_url = entry.get("link", "")
-            if not article_url:
-                continue
-
-            key = f"mem:knowledge:{_url_hash(article_url)}"
-
-            # Dedup check
-            if client.exists(key):
-                stats["skipped"] += 1
-                continue
-
             title = entry.get("title", "Untitled")
             content_raw = (
                 entry.get("content", [{}])[0].get("value", "")
@@ -104,42 +127,68 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
             )
             content_text = _strip_html(content_raw)[:2000]
 
-            # Summarise
             summary = summarise(title, article_url, content_text)
 
-            # Embed
-            vector = embedder.encode(summary, normalize_embeddings=True)
-            vector_bytes = np.array(vector, dtype=np.float32).tobytes()
-
-            # Published date
             published_at = ""
             if entry.get("published_parsed"):
                 published_at = str(time.mktime(entry.published_parsed))
 
-            now = str(time.time())
-
-            # Store
-            fields = {
-                "content": summary,
+            new_articles.append({
+                "key": key,
                 "title": title,
-                "source_url": article_url,
-                "feed_name": name,
+                "summary": summary,
+                "article_url": article_url,
                 "published_at": published_at,
-                "topics": json.dumps(topics),
-                "state": "active",
-                "surface_score": "1.0",
-                "experience_weight": "1.0",
-                "created_at": now,
-                "updated_at": now,
-                "vector": vector_bytes,
-            }
-            client.hset(key, mapping=fields)
-            stats["added"] += 1
-            logger.debug("Stored article: %s", title)
-
+            })
         except Exception as exc:
             logger.error("Error processing entry from %s: %s", name, exc)
             stats["errors"] += 1
+
+    if not new_articles:
+        logger.info(
+            "Feed %s: added=%d, skipped=%d, errors=%d",
+            name, stats["added"], stats["skipped"], stats["errors"],
+        )
+        return stats
+
+    # Phase 4: Batch embed all summaries at once instead of one-at-a-time
+    summaries = [a["summary"] for a in new_articles]
+    try:
+        vectors = embedder.encode(summaries, normalize_embeddings=True, batch_size=32)
+    except Exception as exc:
+        logger.error("Batch embedding failed for feed %s: %s", name, exc)
+        stats["errors"] += len(new_articles)
+        return stats
+
+    # Phase 5: Batch store all articles using a pipeline
+    now = str(time.time())
+    topics_json = json.dumps(topics)
+
+    store_pipe = client.pipeline(transaction=False)
+    for article, vector in zip(new_articles, vectors):
+        vector_bytes = np.array(vector, dtype=np.float32).tobytes()
+        fields = {
+            "content": article["summary"],
+            "title": article["title"],
+            "source_url": article["article_url"],
+            "feed_name": name,
+            "published_at": article["published_at"],
+            "topics": topics_json,
+            "state": "active",
+            "surface_score": "1.0",
+            "experience_weight": "1.0",
+            "created_at": now,
+            "updated_at": now,
+            "vector": vector_bytes,
+        }
+        store_pipe.hset(article["key"], mapping=fields)
+
+    try:
+        store_pipe.execute()
+        stats["added"] += len(new_articles)
+    except Exception as exc:
+        logger.error("Batch store failed for feed %s: %s", name, exc)
+        stats["errors"] += len(new_articles)
 
     logger.info(
         "Feed %s: added=%d, skipped=%d, errors=%d",
@@ -162,7 +211,7 @@ def ingest_all_feeds(feeds_config_path: str = "/app/feeds.yml") -> dict[str, Any
             config = yaml.safe_load(f)
     except (OSError, yaml.YAMLError) as exc:
         logger.error("Failed to load feeds config: %s", exc)
-        return {"status": "error", "message": str(exc)}
+        return {"status": "error", "message": "Failed to load feeds configuration"}
 
     feeds = config.get("feeds", [])
     if not feeds:

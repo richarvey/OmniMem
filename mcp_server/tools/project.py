@@ -2,12 +2,27 @@
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
 from ..memory.lifecycle import MemoryState
 
 logger = logging.getLogger(__name__)
+
+# Allowed characters for project names: alphanumeric, hyphens, underscores, dots
+_SAFE_PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
+
+
+def _validate_project_name(project_name: str) -> None:
+    """Validate project name is safe for use in Valkey keys."""
+    if not project_name or len(project_name) > 200:
+        raise ValueError("Project name must be 1-200 characters")
+    if not _SAFE_PROJECT_NAME_RE.match(project_name):
+        raise ValueError(
+            "Project name contains invalid characters. "
+            "Only alphanumeric, hyphens, underscores, dots, and spaces are allowed."
+        )
 
 
 def _get_deps():
@@ -37,6 +52,8 @@ def set_project_context(
         Dict with project_name and status.
     """
     store, embedder = _get_deps()
+
+    _validate_project_name(project_name)
 
     key = f"mem:project:{project_name}"
     now = str(time.time())
@@ -75,6 +92,8 @@ def get_project_context(project_name: str) -> dict[str, Any]:
     """
     store, _ = _get_deps()
 
+    _validate_project_name(project_name)
+
     key = f"mem:project:{project_name}"
     data = store.get(key)
 
@@ -107,10 +126,12 @@ def list_projects() -> dict[str, Any]:
     store, _ = _get_deps()
 
     keys = store.scan_prefix("mem:project:")
+
+    # Batch fetch all project data in one pipeline round-trip
+    all_data = store.get_multi(keys)
     projects: list[dict[str, Any]] = []
 
-    for key in keys:
-        data = store.get(key)
+    for key, data in zip(keys, all_data):
         if data:
             projects.append({
                 "project_name": data.get("project_name", key.split(":")[-1]),
@@ -139,6 +160,8 @@ def update_project_state(
     """
     store, _ = _get_deps()
 
+    _validate_project_name(project_name)
+
     key = f"mem:project:{project_name}"
     data = store.get(key)
 
@@ -149,10 +172,14 @@ def update_project_state(
         }
 
     now = str(time.time())
-    store.set_field(key, "current_state", current_state)
-    store.set_field(key, "updated_at", now)
+    # Single round-trip instead of 2-3 individual set_field calls
+    updates: dict[str, str] = {
+        "current_state": current_state,
+        "updated_at": now,
+    }
     if notes is not None:
-        store.set_field(key, "notes", notes)
+        updates["notes"] = notes
+    store.set_fields(key, updates)
 
     logger.info("Updated project state: %s", project_name)
     return {"project_name": project_name, "status": "updated"}
