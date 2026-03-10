@@ -9,6 +9,7 @@ from typing import Any
 
 import ulid
 
+from ..memory.contradiction import check_contradiction_heuristic
 from ..memory.dedup import check_duplicate, find_all_duplicates
 from ..memory.embedder import Embedder
 from ..memory.lifecycle import MemoryLifecycle, MemoryState
@@ -137,6 +138,19 @@ def remember(
                 "similarity": round(dup.similarity, 4),
             }
 
+    # Tier 1 contradiction check (fast heuristic)
+    contradiction_warning = None
+    contradiction = check_contradiction_heuristic(
+        store, namespace, vector, content, project_filter=project
+    )
+    if contradiction is not None:
+        contradiction_warning = {
+            "existing_key": contradiction.key_b,
+            "existing_content": contradiction.content_b,
+            "similarity": round(contradiction.similarity, 4),
+            "explanation": contradiction.explanation,
+        }
+
     fields: dict[str, Any] = {
         "content": content,
         "state": MemoryState.ACTIVE.value,
@@ -151,7 +165,15 @@ def remember(
 
     store.upsert(namespace, key, fields, vector)
     logger.info("Stored memory %s in %s", key, namespace)
-    return {"key": key, "status": "stored", "namespace": namespace}
+
+    result: dict[str, Any] = {"key": key, "status": "stored", "namespace": namespace}
+    if contradiction_warning:
+        result["contradiction_warning"] = contradiction_warning
+        result["note"] = (
+            "This memory may contradict an existing one. "
+            "Use check_contradictions() to investigate further."
+        )
+    return result
 
 
 def recall(
@@ -201,6 +223,11 @@ def recall(
             entry["note"] = (
                 f"[This memory was deprioritised but may be relevant again: "
                 f"{r.deprioritised_reason}]"
+            )
+        if r.contradictions:
+            entry["contradiction_note"] = (
+                f"This memory has {len(r.contradictions)} known contradiction(s). "
+                "Use check_contradictions() or explain_memory() to review."
             )
         output.append(entry)
 

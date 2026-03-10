@@ -230,6 +230,7 @@ def explain_memory(key: str) -> dict[str, Any]:
         "abandoned_approaches": _safe_json_loads(data.get("abandoned_approaches", "[]")),
         "breakthrough": data.get("breakthrough"),
         "gotchas": data.get("gotchas"),
+        "contradictions": _safe_json_loads(data.get("contradictions", "[]")),
     }
 
     # Additional context fields for knowledge namespace

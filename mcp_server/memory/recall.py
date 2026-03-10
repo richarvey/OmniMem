@@ -58,6 +58,7 @@ class RecallResult:
     experience_weight: float = 1.0
     result_type: str = "memory"
     breakthrough: str | None = None
+    contradictions: list[dict] = field(default_factory=list)
 
 
 class RecallPipeline:
@@ -185,6 +186,13 @@ class RecallPipeline:
 
                 result_type = "knowledge" if ns == "knowledge" else "memory"
 
+                # Parse contradictions
+                contradictions_raw = doc.get("contradictions", "[]")
+                try:
+                    contradictions = json.loads(contradictions_raw) if contradictions_raw else []
+                except (json.JSONDecodeError, TypeError):
+                    contradictions = []
+
                 results.append(RecallResult(
                     key=doc.get("key", ""),
                     namespace=ns,
@@ -203,6 +211,7 @@ class RecallPipeline:
                     experience_weight=exp_weight,
                     result_type=result_type,
                     breakthrough=doc.get("breakthrough"),
+                    contradictions=contradictions,
                 ))
 
         # Step 10: Sort by adjusted_score descending

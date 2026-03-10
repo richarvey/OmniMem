@@ -67,6 +67,7 @@ def _register_tools() -> None:
         experience_summary, warn_if_abandoned,
     )
     from tools.backup import dump_to_file, restore_from_file, list_backups
+    from tools.contradiction import check_contradictions
 
     # Core tools
     mcp.tool()(remember)
@@ -97,6 +98,9 @@ def _register_tools() -> None:
     mcp.tool()(get_experience)
     mcp.tool()(experience_summary)
     mcp.tool()(warn_if_abandoned)
+
+    # Contradiction tools
+    mcp.tool()(check_contradictions)
 
     # Backup tools
     mcp.tool()(dump_to_file)
