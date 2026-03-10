@@ -77,6 +77,43 @@ score = similarity x surface_score x recency x experience_weight
 
 A score-5 success is worth nearly twice as much in recall ranking as something trivial. Knowledge earns its rank.
 
+### Semantic deduplication
+
+Over time memory systems accumulate near-identical entries. OmniMem catches this at two points.
+
+At write time, `remember()` embeds the new content and checks for existing memories above a cosine similarity threshold (default 0.92, configurable via `DEDUP_SIMILARITY_THRESHOLD`). If a near-identical memory already exists it returns the duplicate instead of storing a redundant copy. Pass `force=True` when you genuinely want both versions.
+
+For bulk cleanup, `find_duplicates()` scans an entire namespace, batch-embeds everything, computes pairwise similarity, and returns clusters of duplicates grouped by union-find. Point it at your episodic namespace once a month and archive the extras.
+
+### Contradiction detection
+
+The graveyard warns you about things that failed. Contradiction detection warns you about things that disagree with each other.
+
+When `remember()` stores a new memory it runs a fast heuristic check — finding semantically similar memories and scanning for negation pattern mismatches (e.g. one says "use X" while the other says "avoid X"). If a potential contradiction is detected it stores the memory but returns a warning so you can investigate.
+
+For deeper analysis, `check_contradictions()` can optionally call Claude Haiku (Tier 2) to evaluate candidate pairs. Confirmed contradictions are cross-linked on both memories and flagged whenever either one surfaces in a `recall()`.
+
+```
+contradiction_warning:
+  existing_key: mem:episodic:01ARZ3NDEK...
+  existing_content: "Always use connection pooling for Valkey..."
+  explanation: "These memories discuss the same topic but contain opposing language"
+```
+
+### Session briefing
+
+Instead of making three separate calls at session start, a single `briefing(project="myproject")` returns everything Claude needs to get up to speed:
+
+- **Project context** — current state, stack, last update
+- **Experience summary** — effort stats, graveyard, breakthroughs
+- **Stale memories** — active memories not updated in 30+ days (configurable via `STALE_MEMORY_DAYS`)
+- **New knowledge** — RSS articles ingested in the last 7 days
+- **Contradiction warnings** — memories with unresolved contradictions
+- **Reinstate candidates** — deprioritised memories whose reinstate hints match current work
+- **Suppressed topics** — what is currently filtered out
+
+One tool call, one response, full context.
+
 ---
 
 ## Self-hosted, open source, yours
@@ -126,13 +163,16 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 
 | Tool | What it does |
 |---|---|
-| `remember(content, project?, tags?)` | Store a memory |
+| `remember(content, project?, tags?, force?)` | Store a memory (auto-checks for duplicates and contradictions) |
 | `recall(query, top_k?, project_filter?)` | Semantic search across all namespaces |
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Soft-suppress without deleting |
 | `archive(key_or_query)` | Remove from recall but keep for history |
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
 | `forget(key_or_query, confirm=True)` | Hard delete, requires explicit confirmation |
 | `suppress_topic(topic)` | Filter a topic from all future recalls |
+| `find_duplicates(namespace?, threshold?, project_filter?)` | Scan for clusters of near-identical memories |
+| `check_contradictions(query?, namespace?, use_api?)` | Detect memories that contradict each other |
+| `briefing(project?, include_knowledge?)` | Single-call session start with full context |
 
 ### Project context
 
@@ -180,6 +220,9 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |
 | `DEPRIORITISED_WEIGHT` | `0.2` | Surface score for deprioritised memories |
 | `RECENCY_DECAY_DAYS` | `90` | Days before the age penalty kicks in |
+| `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
+| `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
+| `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written |
 
 ---
@@ -254,11 +297,12 @@ Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication m
          v
   +-----------------------------------------+
   |         OmniMem MCP Server              |
-  |    Python  fastmcp  Alpine              |
+  |    Python  fastmcp  Debian slim          |
   |                                         |
   |  remember  recall  deprioritise         |
   |  record_experience  warn_if_abandoned   |
-  |  dump_to_file  health                   |
+  |  find_duplicates  check_contradictions  |
+  |  briefing  dump_to_file  health         |
   +-------------------+---------------------+
                       |
           +-----------+-----------+
@@ -284,6 +328,7 @@ Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication m
       -> apply recency decay (age penalty after 90 days)
       -> apply experience_weight (effort x outcome multiplier)
       -> check reinstate eligibility
+      -> surface contradiction warnings
       -> merge, re-rank, return top_k
 ```
 
