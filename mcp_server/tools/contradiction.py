@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from ..memory.contradiction import (
+from memory.contradiction import (
     check_contradiction_api,
     check_contradiction_heuristic,
     link_contradiction,
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_deps():
-    from ..tools import _store, _embedder, _pipeline
+    from tools import _store, _embedder, _pipeline
     return _store, _embedder, _pipeline
 
 
@@ -95,7 +95,7 @@ def check_contradictions(
             seen_pairs.add(pair_key)
 
             # Tier 1: Heuristic check
-            from ..memory.contradiction import _has_negation_pair
+            from memory.contradiction import _has_negation_pair
             if not _has_negation_pair(content_a, content_b):
                 continue
 

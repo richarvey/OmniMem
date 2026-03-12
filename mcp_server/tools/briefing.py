@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_deps():
-    from ..tools import _store, _embedder, _lifecycle, _pipeline
+    from tools import _store, _embedder, _lifecycle, _pipeline
     return _store, _embedder, _lifecycle, _pipeline
 
 

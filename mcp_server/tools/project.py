@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any
 
-from ..memory.lifecycle import MemoryState
+from memory.lifecycle import MemoryState
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def _validate_project_name(project_name: str) -> None:
 
 
 def _get_deps():
-    from ..tools import _store, _embedder
+    from tools import _store, _embedder
     return _store, _embedder
 
 

@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any
 
-from ..memory.recall import compute_experience_weight
+from memory.recall import compute_experience_weight
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ EFFORT_SCORE_GUIDE = """Effort score guide:
 
 
 def _get_deps():
-    from ..tools import _store, _lifecycle, _pipeline
+    from tools import _store, _lifecycle, _pipeline
     return _store, _lifecycle, _pipeline
 
 

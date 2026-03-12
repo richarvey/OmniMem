@@ -11,7 +11,7 @@ _VALID_NAMESPACES = {"episodic", "project", "knowledge"}
 
 
 def _get_deps():
-    from ..tools import _store, _embedder
+    from tools import _store, _embedder
     return _store, _embedder
 
 

@@ -18,7 +18,7 @@ _SAFE_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
 
 
 def _get_deps():
-    from ..tools import _store
+    from tools import _store
     return _store
 
 

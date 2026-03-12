@@ -9,12 +9,12 @@ from typing import Any
 
 import ulid
 
-from ..memory.contradiction import check_contradiction_heuristic
-from ..memory.dedup import check_duplicate, find_all_duplicates
-from ..memory.embedder import Embedder
-from ..memory.lifecycle import MemoryLifecycle, MemoryState
-from ..memory.recall import RecallPipeline
-from ..memory.store import ValkeyStore
+from memory.contradiction import check_contradiction_heuristic
+from memory.dedup import check_duplicate, find_all_duplicates
+from memory.embedder import Embedder
+from memory.lifecycle import MemoryLifecycle, MemoryState
+from memory.recall import RecallPipeline
+from memory.store import ValkeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def _validate_top_k(top_k: int) -> int:
 
 def _get_deps() -> tuple[ValkeyStore, Embedder, MemoryLifecycle, RecallPipeline]:
     """Get shared dependencies. Set by server.py at startup."""
-    from ..tools import _store, _embedder, _lifecycle, _pipeline
+    from tools import _store, _embedder, _lifecycle, _pipeline
     return _store, _embedder, _lifecycle, _pipeline
 
 
