@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniMem &mdash; Persistent Memory for Claude Code</title>
-  <meta name="description" content="Self-hosted semantic memory MCP server that gives Claude Code persistent memory across sessions, projects, and machines. Open source. Free forever.">
+  <title>OmniMem - Persistent Memory for Claude Code</title>
+  <meta name="description" content="A self-hosted memory server that helps Claude Code remember what you've already figured out. Open source. Free forever.">
   <style>
     :root {
       --bg: #0b0e14;
@@ -768,11 +768,11 @@
 <!-- ── Hero ── -->
 <section class="hero">
   <div class="container">
-    <div class="hero-badge">Open source &middot; Self-hosted &middot; Free forever</div>
+    <div class="hero-badge">Open source &#183; Self-hosted &#183; Free forever</div>
     <h1>Stop living the<br>same session <em>twice</em></h1>
     <p class="hero-subtitle">
-      OmniMem is a self-hosted MCP server that gives Claude Code persistent memory
-      across sessions, projects, and machines. Your knowledge stays on your hardware.
+      A self-hosted MCP server that gives Claude Code persistent memory
+      across sessions, projects, and machines. Everything runs on your hardware, and it's free.
     </p>
     <div class="hero-cta">
       <a href="#quickstart" class="btn btn-primary">Get started</a>
@@ -786,14 +786,14 @@
   <div class="container fade-in">
     <h2>The problem</h2>
     <p class="problem-text" style="margin: 1.5rem auto 0;">
-      Every Claude Code session starts from zero. No memory of your project.
-      No memory of what failed last week. No memory that you spent three hours
-      last Tuesday discovering why <code>onnxruntime</code> explodes on Alpine before
-      finding something that actually works.
+      Every Claude Code session starts from zero. It doesn't know your project.
+      It doesn't remember what failed last week. It has no idea you spent three hours
+      last Tuesday figuring out why <code>onnxruntime</code> crashes on Alpine, only to
+      find something that actually works.
     </p>
     <p class="problem-text" style="margin: 1.5rem auto 0;">
-      So you explain the project again. Claude suggests the same broken library again.
-      <strong>Same alarm. Same song. You are Bill Murray and Claude is Punxsutawney.</strong>
+      So you explain everything again. Claude suggests the same broken library again.
+      <strong>Same alarm, same song. You're Bill Murray and Claude is Punxsutawney.</strong>
     </p>
     <div class="terminal">
       <div class="terminal-header">
@@ -816,7 +816,7 @@
         <span class="prompt">claude&gt;</span> <span class="cmd">use onnxruntime for the embeddings</span><br>
         <br>
         <span class="warn">WARNING: previously abandoned approach</span><br>
-        <span class="accent">  onnxruntime &mdash; SIGILL crash on Alpine musl libc (effort: 4/5)</span><br>
+        <span class="accent">  onnxruntime - SIGILL crash on Alpine musl libc (effort: 4/5)</span><br>
         <span class="accent">  Switched to sentence-transformers instead.</span><br>
       </div>
     </div>
@@ -828,30 +828,30 @@
   <div class="container fade-in">
     <h2>See it in action</h2>
     <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 650px;">
-      A single <code>recall()</code> query pulls relevant context from every source OmniMem knows about
-      &mdash; personal preferences, ingested articles, past conversations, and project context &mdash;
-      all ranked and merged into one response.
+      A single <code>recall()</code> query pulls relevant context from everywhere OmniMem knows about.
+      Personal preferences, ingested articles, past conversations, project context. It's all
+      ranked together and merged into one useful response.
     </p>
     <div class="screenshot-wrapper" onclick="document.getElementById('lightbox').classList.add('open')">
       <img src="omnimem-recall.png" alt="OmniMem recall in action showing multi-source memory retrieval in Claude Code" loading="lazy">
     </div>
-    <p class="screenshot-caption">Real output from a recall query about markdown editors &mdash; annotated to show where each piece of knowledge came from.</p>
+    <p class="screenshot-caption">Real output from a recall query about markdown editors, annotated to show where each piece of knowledge came from.</p>
     <div class="source-callouts">
       <div class="source-callout">
         <h4>Episodic memory</h4>
-        <p>Learnt from conversations &mdash; your preferences, decisions, and things you mentioned in passing.</p>
+        <p>Picked up from your conversations. Your preferences, decisions, and things you mentioned in passing.</p>
       </div>
       <div class="source-callout">
         <h4>Knowledge base</h4>
-        <p>Learnt from RSS articles &mdash; auto-summarised and embedded, surfaced when relevant to your query.</p>
+        <p>Pulled from RSS articles that were auto-summarised and embedded. They surface when they're relevant to what you're asking.</p>
       </div>
       <div class="source-callout">
         <h4>External references</h4>
-        <p>Learnt from links and posts you shared &mdash; GitHub threads, blog posts, anything worth remembering.</p>
+        <p>Gathered from links and posts you've shared. GitHub threads, blog posts, anything worth holding onto.</p>
       </div>
       <div class="source-callout">
         <h4>Project context</h4>
-        <p>Pulls in extra context it knows matters to you &mdash; like your preferred tools and platforms.</p>
+        <p>Brings in extra context it knows matters to you, like your preferred tools and platforms.</p>
       </div>
     </div>
   </div>
@@ -868,9 +868,9 @@
     <div class="fade-in" style="text-align:center;">
       <h2>What makes OmniMem different</h2>
       <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
-        This isn't another key-value store with an MCP wrapper.
-        OmniMem models how memory actually works &mdash; things fade, contradict,
-        and earn their relevance through experience.
+        This isn't just another key-value store with an MCP wrapper.
+        OmniMem tries to model how memory actually works. Things fade over time,
+        they sometimes contradict each other, and the hard-won stuff earns its place.
       </p>
     </div>
     <div class="features-grid">
@@ -879,9 +879,9 @@
         <div class="feature-icon">&#9760;</div>
         <h3>The Graveyard</h3>
         <p>
-          Every abandoned approach is logged with its name, type, reason for failure, and effort score.
-          Before Claude suggests a library or pattern, the graveyard is checked first.
-          Dead ends don't get a second chance to waste your afternoon.
+          Every dead-end gets logged: what you tried, what type it was, why it failed, and how much
+          time you burned on it. Before Claude suggests a library or pattern, it checks the graveyard first.
+          You won't waste another afternoon on something you've already ruled out.
         </p>
       </div>
 
@@ -889,9 +889,9 @@
         <div class="feature-icon">&#9878;</div>
         <h3>Experience scoring</h3>
         <p>
-          Something that worked first time is useful. Something that took four attempts,
-          two abandoned libraries, and a platform-specific workaround is <em>gold</em>.
-          Hard-won knowledge surfaces 1.8x more readily than the trivial stuff.
+          Something that worked first time is handy. But something that took four attempts,
+          two abandoned libraries, and a weird platform workaround to crack? That's <em>gold</em>.
+          The harder it was to figure out, the more prominently it surfaces next time.
         </p>
       </div>
 
@@ -899,9 +899,9 @@
         <div class="feature-icon">&#8644;</div>
         <h3>Contradiction detection</h3>
         <p>
-          When new memories conflict with existing ones, OmniMem warns you.
-          Two-tier system: fast heuristic on every write, optional Claude-powered
-          deep analysis on demand. Contradictions are cross-linked and flagged at recall.
+          If a new memory disagrees with something already stored, OmniMem catches it and warns you.
+          There's a fast check on every write, and an optional deeper analysis powered by Claude
+          that you can run on demand. Conflicting memories get linked together so you can sort them out.
         </p>
       </div>
 
@@ -909,9 +909,9 @@
         <div class="feature-icon">&#10697;</div>
         <h3>Semantic deduplication</h3>
         <p>
-          At write time, new content is checked against existing memories at 0.92 cosine
-          similarity. Over time, <code>find_duplicates</code> scans entire namespaces
-          and clusters near-identical entries for cleanup.
+          When you store something new, it gets compared against what's already there. If it's
+          too similar to an existing memory, you'll get a heads-up instead of a duplicate. You can also
+          run <code>find_duplicates</code> to scan everything and clean up in bulk.
         </p>
       </div>
 
@@ -919,10 +919,10 @@
         <div class="feature-icon">&#9881;</div>
         <h3>Three memory namespaces</h3>
         <p>
-          <strong>Episodic</strong> &mdash; decisions, bugs, patterns.
-          <strong>Project</strong> &mdash; stack, goals, current state.
-          <strong>Knowledge</strong> &mdash; RSS articles auto-summarised by Claude Haiku.
-          All searched together at recall time.
+          <strong>Episodic</strong> for your decisions, bugs, and patterns.
+          <strong>Project</strong> for your stack, goals, and current state.
+          <strong>Knowledge</strong> for RSS articles auto-summarised by Claude Haiku.
+          All three get searched together whenever you recall something.
         </p>
       </div>
 
@@ -930,9 +930,9 @@
         <div class="feature-icon">&#9889;</div>
         <h3>One-call briefing</h3>
         <p>
-          A single <code>briefing()</code> call returns project context, experience stats,
-          stale memories, new knowledge, contradictions, reinstate candidates, and
-          suppressed topics. One call, full context.
+          One call to <code>briefing()</code> and Claude gets everything it needs: project context,
+          experience stats, stale memories, new articles, contradictions, and anything
+          that might need reinstating. No more three-step warm-up at the start of every session.
         </p>
       </div>
 
@@ -945,8 +945,8 @@
   <div class="container fade-in">
     <h2>Memory is not binary</h2>
     <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
-      Most systems remember or forget. OmniMem has a lifecycle.
-      When you say "forget about X" you usually mean <em>stop surfacing it</em>, not destroy it.
+      Most memory systems either remember something or delete it. OmniMem has a proper lifecycle.
+      When you say "forget about X" you usually mean <em>stop bringing it up</em>, not wipe it from existence.
     </p>
     <div class="lifecycle-diagram">
       <div class="lifecycle-node active">
@@ -970,16 +970,16 @@
       </div>
     </div>
     <p class="lifecycle-description">
-      Deprioritised memories can earn their way back via <strong>reinstate hints</strong>.
-      If a future query matches the hint, the memory resurfaces with context about
-      why it was originally suppressed. You can also suppress entire topics across all sessions.
+      Deprioritised memories aren't gone for good. You can attach <strong>reinstate hints</strong>,
+      and if a future query matches one, the memory comes back with a note explaining
+      why it was pushed down in the first place. You can also mute entire topics across all your sessions.
     </p>
 
     <div class="formula" style="margin-top: 3rem;">
       <div class="formula-text">score = similarity &times; surface_score &times; recency &times; experience_weight</div>
       <p>
-        Four factors determine what surfaces. Semantic relevance alone is not enough &mdash;
-        lifecycle state, age, and hard-won experience all contribute to the final ranking.
+        Four factors decide what comes back. Semantic similarity on its own isn't enough.
+        Lifecycle state, age, and how hard it was to figure out all play a role in the final ranking.
       </p>
     </div>
 
@@ -1034,8 +1034,8 @@
     <div style="text-align:center;">
       <h2>How it compares</h2>
       <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
-        Claude Code's built-in memory is file-based with no semantic search.
-        Third-party MCP memory servers store and retrieve. OmniMem does significantly more.
+        Claude Code's built-in memory uses flat files with no semantic search.
+        Most third-party MCP memory servers just store and retrieve. OmniMem goes quite a bit further.
       </p>
     </div>
     <div style="overflow-x: auto;">
@@ -1059,31 +1059,31 @@
             <td>Memory lifecycle states</td>
             <td class="no">No</td>
             <td class="no">No</td>
-            <td class="omnimem-col yes">Yes &mdash; 4 states</td>
+            <td class="omnimem-col yes">Yes, 4 states</td>
           </tr>
           <tr>
             <td>Abandoned approach warnings</td>
             <td class="no">No</td>
             <td class="no">No</td>
-            <td class="omnimem-col yes">Yes &mdash; graveyard</td>
+            <td class="omnimem-col yes">Yes, graveyard</td>
           </tr>
           <tr>
             <td>Experience scoring</td>
             <td class="no">No</td>
             <td class="no">No</td>
-            <td class="omnimem-col yes">Yes &mdash; effort 1-5</td>
+            <td class="omnimem-col yes">Yes, effort 1-5</td>
           </tr>
           <tr>
             <td>Contradiction detection</td>
             <td class="no">No</td>
             <td class="no">No</td>
-            <td class="omnimem-col yes">Yes &mdash; 2-tier</td>
+            <td class="omnimem-col yes">Yes, 2-tier</td>
           </tr>
           <tr>
             <td>Semantic deduplication</td>
             <td class="no">No</td>
             <td class="partial">Partial</td>
-            <td class="omnimem-col yes">Yes &mdash; write + batch</td>
+            <td class="omnimem-col yes">Yes, write + batch</td>
           </tr>
           <tr>
             <td>Topic suppression</td>
@@ -1095,7 +1095,7 @@
             <td>RSS knowledge ingestion</td>
             <td class="no">No</td>
             <td class="no">No</td>
-            <td class="omnimem-col yes">Yes &mdash; auto-summarised</td>
+            <td class="omnimem-col yes">Yes, auto-summarised</td>
           </tr>
           <tr>
             <td>Reinstate hints</td>
@@ -1107,13 +1107,13 @@
             <td>Self-hosted / no SaaS</td>
             <td class="partial">Local files</td>
             <td class="partial">Varies</td>
-            <td class="omnimem-col yes">Yes &mdash; Docker</td>
+            <td class="omnimem-col yes">Yes, Docker</td>
           </tr>
           <tr>
             <td>Multi-machine sync</td>
             <td class="no">No</td>
             <td class="partial">Varies</td>
-            <td class="omnimem-col yes">Yes &mdash; via proxy</td>
+            <td class="omnimem-col yes">Yes, via proxy</td>
           </tr>
         </tbody>
       </table>
@@ -1127,7 +1127,7 @@
     <div style="text-align:center;">
       <h2>Architecture</h2>
       <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
-        Three Docker containers. Embeddings run locally. All data stays on your machine.
+        Three Docker containers, local embeddings, and nothing leaves your machine.
       </p>
     </div>
     <div class="architecture-diagram">  <span class="highlight">Claude Code</span> (any machine)
@@ -1136,7 +1136,7 @@
          v
   +-------------------------------------------+
   |          <span class="highlight">OmniMem MCP Server</span>              |
-  |     Python &middot; FastMCP &middot; Debian slim         |
+  |     Python &#183; FastMCP &#183; Debian slim         |
   |                                           |
   |   remember   recall   deprioritise        |
   |   record_experience   warn_if_abandoned   |
@@ -1174,7 +1174,7 @@
       <div class="step fade-in">
         <div class="step-number">Step 1</div>
         <h3>Clone and configure</h3>
-        <p>Set a strong Valkey password. Optionally add your Anthropic API key for RSS summaries and richer contradiction detection.</p>
+        <p>Pick a strong Valkey password. If you want RSS summaries and smarter contradiction detection, add your Anthropic API key too.</p>
         <pre>git clone https://codeberg.org/ric_harvey/omnimem.git
 cd omnimem
 cp .env.example .env
@@ -1184,14 +1184,14 @@ cp .env.example .env
       <div class="step fade-in">
         <div class="step-number">Step 2</div>
         <h3>Start the containers</h3>
-        <p>Three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
+        <p>This spins up three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
         <pre>docker compose up -d</pre>
       </div>
 
       <div class="step fade-in">
         <div class="step-number">Step 3</div>
         <h3>Connect Claude Code</h3>
-        <p>Add OmniMem to your Claude Code MCP config and drop in the CLAUDE.md integration file.</p>
+        <p>Point Claude Code at OmniMem in your MCP config, then drop the included CLAUDE.md into your project.</p>
         <pre><span class="comment">// ~/.claude.json or .mcp.json</span>
 {
   "mcpServers": {
@@ -1223,7 +1223,7 @@ cp .env.example .env
     </div>
     <p>
       MIT Licensed. Built by <a href="https://squarecows.com" target="_blank" rel="noopener">Ric Harvey @ SquareCows</a>
-      &mdash; an AI and automation consultancy for people who would rather own their tools.
+      . An AI and automation consultancy for people who'd rather own their tools.
     </p>
   </div>
 </footer>
