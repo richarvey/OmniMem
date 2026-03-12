@@ -630,6 +630,93 @@
       transform: translateY(0);
     }
 
+    /* ── Screenshot showcase ── */
+    .showcase {
+      text-align: center;
+    }
+
+    .screenshot-wrapper {
+      margin: 3rem auto;
+      max-width: 960px;
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+    }
+
+    .screenshot-wrapper img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: transform 0.3s;
+    }
+
+    .screenshot-wrapper:hover img {
+      transform: scale(1.02);
+    }
+
+    .screenshot-caption {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 1.25rem;
+      font-style: italic;
+    }
+
+    .source-callouts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin: 2.5rem auto 0;
+      max-width: 800px;
+      text-align: left;
+    }
+
+    .source-callout {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      border-left: 3px solid var(--accent);
+    }
+
+    .source-callout h4 {
+      font-size: 0.85rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .source-callout p {
+      color: var(--text-muted);
+      font-size: 0.825rem;
+      line-height: 1.5;
+    }
+
+    /* ── Lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+      padding: 2rem;
+    }
+
+    .lightbox.open {
+      display: flex;
+    }
+
+    .lightbox img {
+      max-width: 100%;
+      max-height: 90vh;
+      border-radius: 8px;
+      box-shadow: 0 0 60px rgba(123, 110, 246, 0.2);
+    }
+
     /* ── Recall formula ── */
     .formula {
       background: var(--bg-card);
@@ -665,6 +752,7 @@
     <a href="#" class="nav-logo">&lt;<span>Omni</span>Mem&gt;</a>
     <ul class="nav-links" id="navLinks">
       <li><a href="#problem">Why</a></li>
+      <li><a href="#in-action">In action</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="#lifecycle">Lifecycle</a></li>
       <li><a href="#comparison">Compare</a></li>
@@ -734,6 +822,45 @@
     </div>
   </div>
 </section>
+
+<!-- ── See it in action ── -->
+<section id="in-action" class="showcase">
+  <div class="container fade-in">
+    <h2>See it in action</h2>
+    <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 650px;">
+      A single <code>recall()</code> query pulls relevant context from every source OmniMem knows about
+      &mdash; personal preferences, ingested articles, past conversations, and project context &mdash;
+      all ranked and merged into one response.
+    </p>
+    <div class="screenshot-wrapper" onclick="document.getElementById('lightbox').classList.add('open')">
+      <img src="omnimem-recall.png" alt="OmniMem recall in action showing multi-source memory retrieval in Claude Code" loading="lazy">
+    </div>
+    <p class="screenshot-caption">Real output from a recall query about markdown editors &mdash; annotated to show where each piece of knowledge came from.</p>
+    <div class="source-callouts">
+      <div class="source-callout">
+        <h4>Episodic memory</h4>
+        <p>Learnt from conversations &mdash; your preferences, decisions, and things you mentioned in passing.</p>
+      </div>
+      <div class="source-callout">
+        <h4>Knowledge base</h4>
+        <p>Learnt from RSS articles &mdash; auto-summarised and embedded, surfaced when relevant to your query.</p>
+      </div>
+      <div class="source-callout">
+        <h4>External references</h4>
+        <p>Learnt from links and posts you shared &mdash; GitHub threads, blog posts, anything worth remembering.</p>
+      </div>
+      <div class="source-callout">
+        <h4>Project context</h4>
+        <p>Pulls in extra context it knows matters to you &mdash; like your preferred tools and platforms.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
+  <img src="omnimem-recall.png" alt="OmniMem recall in action (full size)">
+</div>
 
 <!-- ── Features ── -->
 <section id="features">
