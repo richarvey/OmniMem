@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 import valkey
-from valkey.commands.search.field import NumericField, TagField, TextField, VectorField
+from valkey.commands.search.field import NumericField, TagField, VectorField
 from valkey.commands.search.indexDefinition import IndexDefinition, IndexType
 from valkey.commands.search.query import Query
 
@@ -53,21 +53,15 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
                 VECTOR_ALGORITHM,
                 {"TYPE": "FLOAT32", "DIM": VECTOR_DIM, "DISTANCE_METRIC": DISTANCE_METRIC},
             ),
-            TextField("content"),
             TagField("project"),
             TagField("state"),
             NumericField("surface_score"),
             NumericField("created_at"),
             NumericField("updated_at"),
             TagField("tags"),
-            TextField("deprioritised_reason"),
-            TextField("reinstate_hints"),
             NumericField("effort_score"),
             TagField("outcome"),
             NumericField("iterations"),
-            TextField("abandoned_approaches"),
-            TextField("breakthrough"),
-            TextField("gotchas"),
             NumericField("experience_weight"),
         ],
     },
@@ -79,9 +73,8 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
                 VECTOR_ALGORITHM,
                 {"TYPE": "FLOAT32", "DIM": VECTOR_DIM, "DISTANCE_METRIC": DISTANCE_METRIC},
             ),
-            TextField("content"),
             TagField("project_name"),
-            TextField("stack"),
+            TagField("stack"),
             TagField("state"),
             NumericField("surface_score"),
             NumericField("created_at"),
@@ -96,8 +89,6 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
                 VECTOR_ALGORITHM,
                 {"TYPE": "FLOAT32", "DIM": VECTOR_DIM, "DISTANCE_METRIC": DISTANCE_METRIC},
             ),
-            TextField("content"),
-            TextField("source_url"),
             TagField("feed_name"),
             NumericField("published_at"),
             TagField("topics"),
