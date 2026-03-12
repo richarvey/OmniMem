@@ -212,7 +212,6 @@ class ValkeyStore:
 
         q = (
             Query(query_str)
-            .sort_by("similarity_score")
             .return_fields(*return_fields)
             .paging(0, top_k)
             .dialect(2)
@@ -238,12 +237,15 @@ class ValkeyStore:
         return output
 
     def get(self, key: str) -> dict[str, Any] | None:
-        """Retrieve all fields for a key."""
-        data = self.client.hgetall(key)
-        if not data:
+        """Retrieve all text fields for a key (excludes binary vector)."""
+        fields = self.client.hkeys(key)
+        if not fields:
             return None
-        data.pop("vector", None)
-        return data
+        text_fields = [f for f in fields if f != "vector"]
+        if not text_fields:
+            return None
+        values = self.client.hmget(key, text_fields)
+        return {f: v for f, v in zip(text_fields, values) if v is not None}
 
     def set_field(self, key: str, field: str, value: Any) -> None:
         """Update a single field without re-embedding."""
@@ -257,20 +259,34 @@ class ValkeyStore:
             self.client.hset(key, mapping=mapping)
 
     def get_multi(self, keys: list[str]) -> list[dict[str, Any] | None]:
-        """Retrieve all fields for multiple keys using a pipeline (one round-trip)."""
+        """Retrieve all text fields for multiple keys (excludes binary vectors)."""
         if not keys:
             return []
+        # Phase 1: get field names for all keys
         pipe = self.client.pipeline(transaction=False)
         for key in keys:
-            pipe.hgetall(key)
-        raw_results = pipe.execute()
-        results: list[dict[str, Any] | None] = []
-        for data in raw_results:
-            if not data:
-                results.append(None)
-            else:
-                data.pop("vector", None)
-                results.append(data)
+            pipe.hkeys(key)
+        all_fields = pipe.execute()
+
+        # Phase 2: fetch values for text fields only (skip binary vector)
+        pipe = self.client.pipeline(transaction=False)
+        fetch_indices: list[int] = []
+        text_field_lists: list[list[str]] = []
+        for i, fields in enumerate(all_fields):
+            text_fields = [f for f in (fields or []) if f != "vector"]
+            text_field_lists.append(text_fields)
+            if text_fields:
+                pipe.hmget(keys[i], text_fields)
+                fetch_indices.append(i)
+
+        fetched = pipe.execute() if fetch_indices else []
+
+        results: list[dict[str, Any] | None] = [None] * len(keys)
+        for fetch_pos, key_idx in enumerate(fetch_indices):
+            values = fetched[fetch_pos]
+            text_fields = text_field_lists[key_idx]
+            data = {f: v for f, v in zip(text_fields, values) if v is not None}
+            results[key_idx] = data if data else None
         return results
 
     def delete(self, key: str) -> None:
@@ -314,16 +330,32 @@ class ValkeyStore:
                 elif key_type == "set":
                     set_keys.append(key)
 
-            # Fetch all hashes in one pipeline
+            # Fetch all hashes in two pipeline phases (skip binary vector field)
             if hash_keys:
+                # Phase 1: get field names
                 pipe = self.client.pipeline(transaction=False)
                 for key in hash_keys:
-                    pipe.hgetall(key)
-                hash_results = pipe.execute()
-                for key, data in zip(hash_keys, hash_results):
+                    pipe.hkeys(key)
+                all_fields = pipe.execute()
+
+                # Phase 2: fetch text field values only
+                pipe = self.client.pipeline(transaction=False)
+                fetch_indices: list[int] = []
+                text_field_lists: list[list[str]] = []
+                for i, fields in enumerate(all_fields):
+                    text_fields = [f for f in (fields or []) if f != "vector"]
+                    text_field_lists.append(text_fields)
+                    if text_fields:
+                        pipe.hmget(hash_keys[i], text_fields)
+                        fetch_indices.append(i)
+
+                fetched = pipe.execute() if fetch_indices else []
+                for fetch_pos, key_idx in enumerate(fetch_indices):
+                    values = fetched[fetch_pos]
+                    text_fields = text_field_lists[key_idx]
+                    data = {f: v for f, v in zip(text_fields, values) if v is not None}
                     if data:
-                        data.pop("vector", None)
-                        result[key] = data
+                        result[hash_keys[key_idx]] = data
 
             # Fetch all sets in one pipeline
             if set_keys:
@@ -366,20 +398,21 @@ class ValkeyStore:
             pipe.execute()
             restored += len(set_items)
 
-        # Batch-fetch existing hashes to check updated_at timestamps
+        # Batch-fetch existing updated_at timestamps to decide merge
         if hash_items:
             hash_keys = [k for k, _ in hash_items]
             pipe = self.client.pipeline(transaction=False)
             for key in hash_keys:
-                pipe.hgetall(key)
-            existing_list = pipe.execute()
+                pipe.hmget(key, "updated_at")
+            existing_timestamps = pipe.execute()
 
             # Write all qualifying hashes in a pipeline
             write_pipe = self.client.pipeline(transaction=False)
             write_count = 0
-            for (key, fields), existing in zip(hash_items, existing_list):
-                if existing:
-                    existing_updated = float(existing.get("updated_at", "0"))
+            for (key, fields), ts_list in zip(hash_items, existing_timestamps):
+                existing_updated_raw = ts_list[0] if ts_list else None
+                if existing_updated_raw is not None:
+                    existing_updated = float(existing_updated_raw)
                     backup_updated = float(fields.get("updated_at", "0"))
                     if existing_updated >= backup_updated:
                         skipped += 1
