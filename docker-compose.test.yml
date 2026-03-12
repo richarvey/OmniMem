@@ -1,0 +1,10 @@
+services:
+  test:
+    build:
+      context: ./mcp_server
+      dockerfile: Dockerfile.test
+    environment:
+      - DEPRIORITISED_WEIGHT=0.2
+      - DEDUP_SIMILARITY_THRESHOLD=0.92
+      - MEMORY_RECALL_TOP_K=5
+      - RECENCY_DECAY_DAYS=90
