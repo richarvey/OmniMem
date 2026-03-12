@@ -611,6 +611,8 @@
       }
       .hamburger { display: flex; }
       .features-grid { grid-template-columns: 1fr; }
+      .source-callouts { grid-template-columns: 1fr; }
+      .source-callout:last-child { grid-column: auto; }
       .lifecycle-diagram { flex-direction: column; gap: 0; }
       .lifecycle-arrow { transform: rotate(90deg); }
       .comparison-table { font-size: 0.8rem; }
@@ -667,11 +669,15 @@
 
     .source-callouts {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 1rem;
       margin: 2.5rem auto 0;
       max-width: 800px;
       text-align: left;
+    }
+
+    .source-callout:last-child {
+      grid-column: 2;
     }
 
     .source-callout {
