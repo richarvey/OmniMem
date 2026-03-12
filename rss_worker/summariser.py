@@ -42,7 +42,7 @@ def summarise(title: str, url: str, content_text: str) -> str:
 
     try:
         message = client.messages.create(
-            model="claude-haiku-4-5-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=256,
             messages=[
                 {
