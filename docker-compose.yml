@@ -1,6 +1,6 @@
 services:
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey-search:latest
     command: >
       valkey-server
       --loadmodule /usr/lib/valkey/valkey-search.so
