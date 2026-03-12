@@ -3,8 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniMem - Persistent Memory for Claude Code</title>
-  <meta name="description" content="A self-hosted memory server that helps Claude Code remember what you've already figured out. Open source. Free forever.">
+  <title>OmniMem - Persistent Semantic Memory for Claude Code | Self-Hosted MCP Server</title>
+  <meta name="description" content="OmniMem is a self-hosted MCP server that gives Claude Code persistent semantic memory across sessions, projects, and machines. Features memory lifecycle, abandoned approach warnings, experience scoring, contradiction detection, and RSS knowledge ingestion. Open source, MIT licensed, free forever.">
+
+  <!-- SEO -->
+  <meta name="keywords" content="Claude Code, MCP server, semantic memory, persistent memory, self-hosted, AI memory, vector search, Claude AI, Model Context Protocol, developer tools, open source, Valkey, embeddings, RSS ingestion">
+  <meta name="author" content="Ric Harvey, SquareCows Ltd">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://omnimem.org/">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://omnimem.org/">
+  <meta property="og:title" content="OmniMem - Persistent Semantic Memory for Claude Code">
+  <meta property="og:description" content="Stop living the same session twice. A self-hosted MCP server that gives Claude Code persistent memory across sessions, projects, and machines. Tracks what worked, what failed, and what contradicts. Open source, free forever.">
+  <meta property="og:image" content="https://omnimem.org/omnimem-recall.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="OmniMem">
+  <meta property="og:locale" content="en_GB">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://omnimem.org/">
+  <meta name="twitter:title" content="OmniMem - Persistent Semantic Memory for Claude Code">
+  <meta name="twitter:description" content="Stop living the same session twice. Self-hosted MCP server with memory lifecycle, abandoned approach graveyard, experience scoring, and contradiction detection. Open source, MIT licensed.">
+  <meta name="twitter:image" content="https://omnimem.org/omnimem-recall.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "OmniMem",
+    "description": "A self-hosted MCP server that gives Claude Code persistent semantic memory across sessions, projects, and machines. Features memory lifecycle management, abandoned approach tracking, experience scoring, semantic deduplication, contradiction detection, and RSS knowledge ingestion.",
+    "url": "https://omnimem.org/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows (Docker)",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "GBP"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "SquareCows Ltd",
+      "url": "https://squarecows.com"
+    },
+    "codeRepository": "https://codeberg.org/ric_harvey/omnimem",
+    "programmingLanguage": "Python",
+    "runtimePlatform": "Docker",
+    "softwareRequirements": "Docker, Docker Compose",
+    "keywords": "Claude Code, MCP server, semantic memory, vector search, self-hosted, AI tools, Valkey, sentence-transformers"
+  }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
