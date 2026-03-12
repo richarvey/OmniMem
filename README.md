@@ -138,6 +138,8 @@ cp .env.example .env
 docker compose up -d
 ```
 
+Edit the `.env` file to set at least `VALKEY_PASSWORD` to a secure value. You can also set `ANTHROPIC_API_KEY` if you want AI-powered RSS article summaries and richer contradiction detection. If you leave `ANTHROPIC_API_KEY` unset (or blank), OmniMem still works — the RSS worker will fall back to simple truncation for summaries, and contradiction checks will use embedding similarity only.
+
 Three containers start: Valkey with vector search, the OmniMem MCP server, and the RSS worker. The MCP server listens on port `8765` by default.
 
 Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.json`):
