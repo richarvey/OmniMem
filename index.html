@@ -487,53 +487,73 @@
     }
 
     .quickstart-steps {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-      margin: 3rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      margin: 3rem auto;
+      max-width: 700px;
       text-align: left;
     }
 
     .step {
+      display: grid;
+      grid-template-columns: 4rem 1fr;
+      grid-template-rows: auto auto;
+      column-gap: 1.5rem;
+      row-gap: 0.75rem;
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 1.75rem;
+      padding: 2rem;
     }
 
     .step-number {
+      grid-row: 1 / -1;
       font-family: var(--font-mono);
-      font-size: 0.75rem;
+      font-size: 2rem;
       font-weight: 700;
       color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.75rem;
+      line-height: 1;
+      align-self: start;
+      padding-top: 0.15rem;
     }
 
-    .step h3 {
-      margin-bottom: 0.75rem;
+    .step-text h3 {
+      margin-bottom: 0.5rem;
     }
 
-    .step p {
+    .step-text p {
       color: var(--text-muted);
       font-size: 0.9rem;
-      margin-bottom: 1rem;
+      max-width: none;
     }
 
     .step pre {
+      grid-column: 1 / -1;
       background: var(--code-bg);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 1rem 1.25rem;
       font-family: var(--font-mono);
-      font-size: 0.78rem;
-      line-height: 1.6;
-      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.7;
       color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-all;
     }
 
     .step pre .comment { color: var(--text-muted); }
+
+    @media (max-width: 768px) {
+      .step {
+        grid-template-columns: 1fr;
+      }
+      .step-number {
+        grid-row: auto;
+        font-size: 1.5rem;
+        margin-bottom: 0.25rem;
+      }
+    }
 
     /* ── Scoring explainer ── */
     .scoring-table {
@@ -1183,9 +1203,11 @@
     <div class="quickstart-steps">
 
       <div class="step fade-in">
-        <div class="step-number">Step 1</div>
-        <h3>Clone and configure</h3>
-        <p>Pick a strong Valkey password. If you want RSS summaries and smarter contradiction detection, add your Anthropic API key too.</p>
+        <div class="step-number">01</div>
+        <div class="step-text">
+          <h3>Clone and configure</h3>
+          <p>Pick a strong Valkey password. If you want RSS summaries and smarter contradiction detection, add your Anthropic API key too.</p>
+        </div>
         <pre>git clone https://codeberg.org/ric_harvey/omnimem.git
 cd omnimem
 cp .env.example .env
@@ -1193,16 +1215,20 @@ cp .env.example .env
       </div>
 
       <div class="step fade-in">
-        <div class="step-number">Step 2</div>
-        <h3>Start the containers</h3>
-        <p>This spins up three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
+        <div class="step-number">02</div>
+        <div class="step-text">
+          <h3>Start the containers</h3>
+          <p>This spins up three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
+        </div>
         <pre>docker compose up -d</pre>
       </div>
 
       <div class="step fade-in">
-        <div class="step-number">Step 3</div>
-        <h3>Connect Claude Code</h3>
-        <p>Point Claude Code at OmniMem in your MCP config, then drop the included CLAUDE.md into your project.</p>
+        <div class="step-number">03</div>
+        <div class="step-text">
+          <h3>Connect Claude Code</h3>
+          <p>Point Claude Code at OmniMem in your MCP config, then drop the included CLAUDE.md into your project.</p>
+        </div>
         <pre><span class="comment">// ~/.claude.json or .mcp.json</span>
 {
   "mcpServers": {
