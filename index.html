@@ -719,6 +719,49 @@
 
     .step pre .comment { color: var(--text-muted); }
 
+    .pro-tip {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 14px;
+      padding: 2rem;
+      margin-top: 0.5rem;
+      text-align: left;
+    }
+
+    .pro-tip-label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+
+    .pro-tip p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      max-width: none;
+      line-height: 1.7;
+      margin-bottom: 1rem;
+    }
+
+    .pro-tip pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .pro-tip pre .comment { color: var(--text-muted); }
+
     @media (max-width: 768px) {
       .step {
         grid-template-columns: 1fr;
@@ -1462,6 +1505,19 @@ cp .env.example .env
     }
   }
 }</pre>
+      </div>
+
+      <div class="pro-tip fade-in">
+        <div class="pro-tip-label">Pro tip</div>
+        <p>Add this to your <code>~/.claude/CLAUDE.md</code> to tell Claude Code to use OmniMem for all memory instead of its built-in file-based system. This works globally across every project.</p>
+        <pre><span class="comment">## Memory</span>
+Always use the omnimem MCP tools (remember, recall, briefing,
+etc.) for all memory storage instead of the file-based memory
+system. Check the memory before returning an answer to see if
+we have anything relevant that may help. When brainstorming
+new projects or ideas check the memory for ingested news
+stories that may be of interest for us to investigate.</pre>
+        <p style="margin-top: 1rem; margin-bottom: 0;">The repo also includes a more detailed <code>claude_config/CLAUDE.md</code> you can drop into individual projects. It teaches Claude when to call <code>briefing()</code>, how to record experience scores, when to check the graveyard, and how to handle deprioritisation.</p>
       </div>
 
     </div>
