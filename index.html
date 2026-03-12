@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniMem &mdash; Persistent Memory for Claude Code</title>
+  <meta name="description" content="Self-hosted semantic memory MCP server that gives Claude Code persistent memory across sessions, projects, and machines. Open source. Free forever.">
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --bg-card: #111722;
+      --bg-card-hover: #161d2b;
+      --border: #1e2738;
+      --text: #c8cdd5;
+      --text-muted: #6b7a90;
+      --heading: #e8ecf1;
+      --accent: #7b6ef6;
+      --accent-glow: rgba(123, 110, 246, 0.15);
+      --accent-secondary: #4fc1e9;
+      --danger: #e06c75;
+      --success: #98c379;
+      --warning: #e5c07b;
+      --code-bg: #0d1117;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ── Typography ── */
+    h1, h2, h3, h4 { color: var(--heading); font-weight: 700; line-height: 1.2; }
+    h1 { font-size: clamp(2.5rem, 5vw, 4rem); letter-spacing: -0.03em; }
+    h2 { font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.02em; }
+    h3 { font-size: 1.25rem; }
+    p { max-width: 65ch; }
+
+    a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--accent-secondary); }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    section {
+      padding: 6rem 0;
+      position: relative;
+    }
+
+    section + section {
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(11, 14, 20, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      transition: box-shadow 0.3s;
+    }
+
+    nav.scrolled {
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .nav-logo {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--heading);
+    }
+
+    .nav-logo span { color: var(--accent); }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--heading); }
+
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+
+    .hamburger span {
+      width: 24px;
+      height: 2px;
+      background: var(--text-muted);
+      transition: all 0.3s;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 10rem 0 6rem;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(123, 110, 246, 0.3);
+      padding: 0.4em 1em;
+      border-radius: 999px;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 {
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.1rem, 2vw, 1.3rem);
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto 2.5rem;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+      font-family: var(--font-sans);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #6a5ce6;
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(123, 110, 246, 0.3);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--heading);
+      transform: translateY(-1px);
+    }
+
+    /* ── Problem statement ── */
+    .problem {
+      text-align: center;
+    }
+
+    .problem-text {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .problem-text strong {
+      color: var(--heading);
+    }
+
+    .terminal {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin: 3rem auto;
+      max-width: 640px;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 16px;
+      background: rgba(30, 39, 56, 0.5);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red { background: var(--danger); }
+    .terminal-dot.yellow { background: var(--warning); }
+    .terminal-dot.green { background: var(--success); }
+
+    .terminal-body {
+      padding: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.8;
+      color: var(--text-muted);
+    }
+
+    .terminal-body .prompt { color: var(--success); }
+    .terminal-body .cmd { color: var(--heading); }
+    .terminal-body .warn { color: var(--warning); }
+    .terminal-body .accent { color: var(--accent); }
+    .terminal-body .dim { color: #3e4a5c; }
+
+    /* ── Features grid ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      transition: all 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(123, 110, 246, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 1.25rem;
+      background: var(--accent-glow);
+      border: 1px solid rgba(123, 110, 246, 0.2);
+    }
+
+    .feature-card h3 {
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.925rem;
+    }
+
+    /* ── Lifecycle diagram ── */
+    .lifecycle {
+      text-align: center;
+    }
+
+    .lifecycle-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin: 3rem auto;
+      max-width: 800px;
+      flex-wrap: wrap;
+    }
+
+    .lifecycle-node {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+      min-width: 140px;
+      transition: all 0.3s;
+    }
+
+    .lifecycle-node:hover {
+      border-color: var(--accent);
+      transform: scale(1.05);
+    }
+
+    .lifecycle-node.active { border-color: var(--success); }
+    .lifecycle-node.deprioritised { border-color: var(--warning); }
+    .lifecycle-node.archived { border-color: var(--text-muted); }
+    .lifecycle-node.deleted { border-color: var(--danger); }
+
+    .lifecycle-node .state {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .lifecycle-node.active .state { color: var(--success); }
+    .lifecycle-node.deprioritised .state { color: var(--warning); }
+    .lifecycle-node.archived .state { color: var(--text-muted); }
+    .lifecycle-node.deleted .state { color: var(--danger); }
+
+    .lifecycle-node .weight {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .lifecycle-arrow {
+      font-size: 1.5rem;
+      color: var(--text-muted);
+      padding: 0 0.5rem;
+    }
+
+    .lifecycle-description {
+      color: var(--text-muted);
+      max-width: 650px;
+      margin: 0 auto;
+      font-size: 0.95rem;
+    }
+
+    /* ── Comparison ── */
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 3rem;
+      font-size: 0.925rem;
+    }
+
+    .comparison-table th,
+    .comparison-table td {
+      padding: 1rem 1.25rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-table thead th {
+      font-weight: 700;
+      color: var(--heading);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--bg-card);
+    }
+
+    .comparison-table thead th:first-child {
+      border-radius: 8px 0 0 0;
+    }
+
+    .comparison-table thead th:last-child {
+      border-radius: 0 8px 0 0;
+    }
+
+    .comparison-table tbody td:first-child {
+      color: var(--heading);
+      font-weight: 600;
+    }
+
+    .comparison-table .yes {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .comparison-table .no {
+      color: var(--text-muted);
+    }
+
+    .comparison-table .partial {
+      color: var(--warning);
+    }
+
+    .comparison-table .omnimem-col {
+      background: rgba(123, 110, 246, 0.05);
+    }
+
+    /* ── Architecture ── */
+    .architecture-diagram {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 3rem auto;
+      max-width: 700px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      line-height: 1.6;
+      color: var(--text-muted);
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .architecture-diagram .highlight { color: var(--accent); }
+    .architecture-diagram .secondary { color: var(--accent-secondary); }
+    .architecture-diagram .muted { color: #3e4a5c; }
+
+    /* ── Quick start ── */
+    .quickstart {
+      text-align: center;
+    }
+
+    .quickstart-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin: 3rem 0;
+      text-align: left;
+    }
+
+    .step {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+    }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.75rem;
+    }
+
+    .step h3 {
+      margin-bottom: 0.75rem;
+    }
+
+    .step p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+
+    .step pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      color: var(--text);
+    }
+
+    .step pre .comment { color: var(--text-muted); }
+
+    /* ── Scoring explainer ── */
+    .scoring-table {
+      width: 100%;
+      max-width: 560px;
+      margin: 2rem auto;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .scoring-table th,
+    .scoring-table td {
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .scoring-table thead th {
+      color: var(--heading);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .scoring-table .bar-cell {
+      width: 120px;
+    }
+
+    .score-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--accent);
+      transition: width 0.5s ease;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    footer a {
+      color: var(--text);
+    }
+
+    footer .footer-links {
+      display: flex;
+      gap: 2rem;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      section { padding: 4rem 0; }
+      .hero { padding: 7rem 0 4rem; }
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 64px;
+        left: 0;
+        right: 0;
+        background: rgba(11, 14, 20, 0.95);
+        backdrop-filter: blur(12px);
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--border);
+        gap: 1rem;
+      }
+      .hamburger { display: flex; }
+      .features-grid { grid-template-columns: 1fr; }
+      .lifecycle-diagram { flex-direction: column; gap: 0; }
+      .lifecycle-arrow { transform: rotate(90deg); }
+      .comparison-table { font-size: 0.8rem; }
+      .comparison-table th,
+      .comparison-table td { padding: 0.75rem; }
+    }
+
+    /* ── Animations ── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Recall formula ── */
+    .formula {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 2rem auto;
+      max-width: 600px;
+      text-align: center;
+    }
+
+    .formula-text {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      word-break: break-word;
+    }
+
+    .formula p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      max-width: none;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav id="nav">
+  <div class="container">
+    <a href="#" class="nav-logo">&lt;<span>Omni</span>Mem&gt;</a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#problem">Why</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#lifecycle">Lifecycle</a></li>
+      <li><a href="#comparison">Compare</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#quickstart">Get started</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">Open source &middot; Self-hosted &middot; Free forever</div>
+    <h1>Stop living the<br>same session <em>twice</em></h1>
+    <p class="hero-subtitle">
+      OmniMem is a self-hosted MCP server that gives Claude Code persistent memory
+      across sessions, projects, and machines. Your knowledge stays on your hardware.
+    </p>
+    <div class="hero-cta">
+      <a href="#quickstart" class="btn btn-primary">Get started</a>
+      <a href="https://codeberg.org/ric_harvey/omnimem" class="btn btn-secondary" target="_blank" rel="noopener">View source</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Problem ── -->
+<section id="problem" class="problem">
+  <div class="container fade-in">
+    <h2>The problem</h2>
+    <p class="problem-text" style="margin: 1.5rem auto 0;">
+      Every Claude Code session starts from zero. No memory of your project.
+      No memory of what failed last week. No memory that you spent three hours
+      last Tuesday discovering why <code>onnxruntime</code> explodes on Alpine before
+      finding something that actually works.
+    </p>
+    <p class="problem-text" style="margin: 1.5rem auto 0;">
+      So you explain the project again. Claude suggests the same broken library again.
+      <strong>Same alarm. Same song. You are Bill Murray and Claude is Punxsutawney.</strong>
+    </p>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot red"></div>
+        <div class="terminal-dot yellow"></div>
+        <div class="terminal-dot green"></div>
+      </div>
+      <div class="terminal-body">
+        <span class="dim">$ claude</span><br>
+        <span class="prompt">claude&gt;</span> <span class="cmd">use onnxruntime for the embeddings</span><br>
+        <br>
+        <span class="dim">  ... 45 minutes of debugging later ...</span><br>
+        <br>
+        <span class="warn">SIGILL: illegal instruction (Alpine musl libc)</span><br>
+        <br>
+        <span class="dim">  You fixed this exact problem last Tuesday.</span><br>
+        <span class="dim">  Claude doesn't know that.</span><br>
+        <br>
+        <span class="dim">$ claude</span> <span class="accent"># with OmniMem</span><br>
+        <span class="prompt">claude&gt;</span> <span class="cmd">use onnxruntime for the embeddings</span><br>
+        <br>
+        <span class="warn">WARNING: previously abandoned approach</span><br>
+        <span class="accent">  onnxruntime &mdash; SIGILL crash on Alpine musl libc (effort: 4/5)</span><br>
+        <span class="accent">  Switched to sentence-transformers instead.</span><br>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section id="features">
+  <div class="container">
+    <div class="fade-in" style="text-align:center;">
+      <h2>What makes OmniMem different</h2>
+      <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
+        This isn't another key-value store with an MCP wrapper.
+        OmniMem models how memory actually works &mdash; things fade, contradict,
+        and earn their relevance through experience.
+      </p>
+    </div>
+    <div class="features-grid">
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9760;</div>
+        <h3>The Graveyard</h3>
+        <p>
+          Every abandoned approach is logged with its name, type, reason for failure, and effort score.
+          Before Claude suggests a library or pattern, the graveyard is checked first.
+          Dead ends don't get a second chance to waste your afternoon.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9878;</div>
+        <h3>Experience scoring</h3>
+        <p>
+          Something that worked first time is useful. Something that took four attempts,
+          two abandoned libraries, and a platform-specific workaround is <em>gold</em>.
+          Hard-won knowledge surfaces 1.8x more readily than the trivial stuff.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#8644;</div>
+        <h3>Contradiction detection</h3>
+        <p>
+          When new memories conflict with existing ones, OmniMem warns you.
+          Two-tier system: fast heuristic on every write, optional Claude-powered
+          deep analysis on demand. Contradictions are cross-linked and flagged at recall.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#10697;</div>
+        <h3>Semantic deduplication</h3>
+        <p>
+          At write time, new content is checked against existing memories at 0.92 cosine
+          similarity. Over time, <code>find_duplicates</code> scans entire namespaces
+          and clusters near-identical entries for cleanup.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9881;</div>
+        <h3>Three memory namespaces</h3>
+        <p>
+          <strong>Episodic</strong> &mdash; decisions, bugs, patterns.
+          <strong>Project</strong> &mdash; stack, goals, current state.
+          <strong>Knowledge</strong> &mdash; RSS articles auto-summarised by Claude Haiku.
+          All searched together at recall time.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon">&#9889;</div>
+        <h3>One-call briefing</h3>
+        <p>
+          A single <code>briefing()</code> call returns project context, experience stats,
+          stale memories, new knowledge, contradictions, reinstate candidates, and
+          suppressed topics. One call, full context.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Memory lifecycle ── -->
+<section id="lifecycle" class="lifecycle">
+  <div class="container fade-in">
+    <h2>Memory is not binary</h2>
+    <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
+      Most systems remember or forget. OmniMem has a lifecycle.
+      When you say "forget about X" you usually mean <em>stop surfacing it</em>, not destroy it.
+    </p>
+    <div class="lifecycle-diagram">
+      <div class="lifecycle-node active">
+        <div class="state">ACTIVE</div>
+        <div class="weight">1.0x weight</div>
+      </div>
+      <div class="lifecycle-arrow">&rarr;</div>
+      <div class="lifecycle-node deprioritised">
+        <div class="state">DEPRIORITISED</div>
+        <div class="weight">0.2x weight</div>
+      </div>
+      <div class="lifecycle-arrow">&rarr;</div>
+      <div class="lifecycle-node archived">
+        <div class="state">ARCHIVED</div>
+        <div class="weight">0.0x weight</div>
+      </div>
+      <div class="lifecycle-arrow">&rarr;</div>
+      <div class="lifecycle-node deleted">
+        <div class="state">DELETED</div>
+        <div class="weight">gone</div>
+      </div>
+    </div>
+    <p class="lifecycle-description">
+      Deprioritised memories can earn their way back via <strong>reinstate hints</strong>.
+      If a future query matches the hint, the memory resurfaces with context about
+      why it was originally suppressed. You can also suppress entire topics across all sessions.
+    </p>
+
+    <div class="formula" style="margin-top: 3rem;">
+      <div class="formula-text">score = similarity &times; surface_score &times; recency &times; experience_weight</div>
+      <p>
+        Four factors determine what surfaces. Semantic relevance alone is not enough &mdash;
+        lifecycle state, age, and hard-won experience all contribute to the final ranking.
+      </p>
+    </div>
+
+    <table class="scoring-table fade-in">
+      <thead>
+        <tr>
+          <th>Effort</th>
+          <th>Meaning</th>
+          <th>Weight</th>
+          <th class="bar-cell">Boost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>Worked first time</td>
+          <td>1.0x</td>
+          <td class="bar-cell"><div class="score-bar" style="width:56%"></div></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Minor friction</td>
+          <td>1.1x</td>
+          <td class="bar-cell"><div class="score-bar" style="width:61%"></div></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Multiple iterations</td>
+          <td>1.25x</td>
+          <td class="bar-cell"><div class="score-bar" style="width:70%"></div></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Significant struggle</td>
+          <td>1.5x</td>
+          <td class="bar-cell"><div class="score-bar" style="width:83%"></div></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>Battle-hardened</td>
+          <td>1.8x</td>
+          <td class="bar-cell"><div class="score-bar" style="width:100%"></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── Comparison ── -->
+<section id="comparison">
+  <div class="container fade-in">
+    <div style="text-align:center;">
+      <h2>How it compares</h2>
+      <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
+        Claude Code's built-in memory is file-based with no semantic search.
+        Third-party MCP memory servers store and retrieve. OmniMem does significantly more.
+      </p>
+    </div>
+    <div style="overflow-x: auto;">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Claude built-in</th>
+            <th>Typical MCP memory</th>
+            <th class="omnimem-col">OmniMem</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Semantic vector search</td>
+            <td class="no">No</td>
+            <td class="yes">Yes</td>
+            <td class="omnimem-col yes">Yes</td>
+          </tr>
+          <tr>
+            <td>Memory lifecycle states</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes &mdash; 4 states</td>
+          </tr>
+          <tr>
+            <td>Abandoned approach warnings</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes &mdash; graveyard</td>
+          </tr>
+          <tr>
+            <td>Experience scoring</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes &mdash; effort 1-5</td>
+          </tr>
+          <tr>
+            <td>Contradiction detection</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes &mdash; 2-tier</td>
+          </tr>
+          <tr>
+            <td>Semantic deduplication</td>
+            <td class="no">No</td>
+            <td class="partial">Partial</td>
+            <td class="omnimem-col yes">Yes &mdash; write + batch</td>
+          </tr>
+          <tr>
+            <td>Topic suppression</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes</td>
+          </tr>
+          <tr>
+            <td>RSS knowledge ingestion</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes &mdash; auto-summarised</td>
+          </tr>
+          <tr>
+            <td>Reinstate hints</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes</td>
+          </tr>
+          <tr>
+            <td>Self-hosted / no SaaS</td>
+            <td class="partial">Local files</td>
+            <td class="partial">Varies</td>
+            <td class="omnimem-col yes">Yes &mdash; Docker</td>
+          </tr>
+          <tr>
+            <td>Multi-machine sync</td>
+            <td class="no">No</td>
+            <td class="partial">Varies</td>
+            <td class="omnimem-col yes">Yes &mdash; via proxy</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ── Architecture ── -->
+<section id="architecture">
+  <div class="container fade-in">
+    <div style="text-align:center;">
+      <h2>Architecture</h2>
+      <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
+        Three Docker containers. Embeddings run locally. All data stays on your machine.
+      </p>
+    </div>
+    <div class="architecture-diagram">  <span class="highlight">Claude Code</span> (any machine)
+         |
+         |  SSE / MCP protocol
+         v
+  +-------------------------------------------+
+  |          <span class="highlight">OmniMem MCP Server</span>              |
+  |     Python &middot; FastMCP &middot; Debian slim         |
+  |                                           |
+  |   remember   recall   deprioritise        |
+  |   record_experience   warn_if_abandoned   |
+  |   find_duplicates   check_contradictions  |
+  |   briefing   dump_to_file   health        |
+  +---------+-----------------+---------------+
+            |                 |
+            v                 v
+  +-----------------+   +------------------+
+  |   <span class="secondary">Valkey</span>        |   |   <span class="secondary">RSS Worker</span>     |
+  |   + search      |&lt;--|                  |
+  |                 |   |  feedparser      |
+  |  idx:episodic   |   |  APScheduler     |
+  |  idx:project    |   |  Claude Haiku    |
+  |  idx:knowledge  |   +------------------+
+  +-----------------+
+
+  <span class="muted">Recall pipeline:</span>
+    query &rarr; abandoned fast-path &rarr; embed &rarr; vector search
+      &rarr; filter archived/deleted &rarr; filter suppressed topics
+      &rarr; apply surface_score &rarr; apply recency decay
+      &rarr; apply experience_weight &rarr; check reinstate eligibility
+      &rarr; surface contradictions &rarr; merge, re-rank, return top_k</div>
+  </div>
+</section>
+
+<!-- ── Quick start ── -->
+<section id="quickstart" class="quickstart">
+  <div class="container">
+    <div class="fade-in">
+      <h2>Up and running in two minutes</h2>
+    </div>
+    <div class="quickstart-steps">
+
+      <div class="step fade-in">
+        <div class="step-number">Step 1</div>
+        <h3>Clone and configure</h3>
+        <p>Set a strong Valkey password. Optionally add your Anthropic API key for RSS summaries and richer contradiction detection.</p>
+        <pre>git clone https://codeberg.org/ric_harvey/omnimem.git
+cd omnimem
+cp .env.example .env
+<span class="comment"># edit .env: set VALKEY_PASSWORD and ANTHROPIC_API_KEY</span></pre>
+      </div>
+
+      <div class="step fade-in">
+        <div class="step-number">Step 2</div>
+        <h3>Start the containers</h3>
+        <p>Three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
+        <pre>docker compose up -d</pre>
+      </div>
+
+      <div class="step fade-in">
+        <div class="step-number">Step 3</div>
+        <h3>Connect Claude Code</h3>
+        <p>Add OmniMem to your Claude Code MCP config and drop in the CLAUDE.md integration file.</p>
+        <pre><span class="comment">// ~/.claude.json or .mcp.json</span>
+{
+  "mcpServers": {
+    "omnimem": {
+      "type": "sse",
+      "url": "http://localhost:8765/sse"
+    }
+  }
+}</pre>
+      </div>
+
+    </div>
+
+    <div class="fade-in" style="text-align:center; margin-top: 2rem;">
+      <a href="https://codeberg.org/ric_harvey/omnimem" class="btn btn-primary" target="_blank" rel="noopener">
+        View on Codeberg
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="container">
+    <div class="footer-links">
+      <a href="https://codeberg.org/ric_harvey/omnimem" target="_blank" rel="noopener">Source</a>
+      <a href="https://codeberg.org/ric_harvey/omnimem/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://squarecows.com" target="_blank" rel="noopener">SquareCows Ltd</a>
+    </div>
+    <p>
+      MIT Licensed. Built by <a href="https://squarecows.com" target="_blank" rel="noopener">Ric Harvey @ SquareCows</a>
+      &mdash; an AI and automation consultancy for people who would rather own their tools.
+    </p>
+  </div>
+</footer>
+
+<script>
+  // ── Scroll-triggered fade-ins ──
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // ── Nav shadow on scroll ──
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 10);
+  });
+
+  // ── Mobile nav toggle ──
+  const hamburger = document.getElementById('hamburger');
+  const navLinks = document.getElementById('navLinks');
+
+  hamburger.addEventListener('click', () => {
+    navLinks.classList.toggle('open');
+  });
+
+  // Close mobile nav on link click
+  navLinks.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinks.classList.remove('open');
+    });
+  });
+</script>
+
+</body>
+</html>
