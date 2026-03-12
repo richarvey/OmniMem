@@ -3,6 +3,7 @@ services:
     image: valkey/valkey-extension:latest
     command: >
       valkey-server
+      --loadmodule /usr/lib/valkey/libsearch.so
       --requirepass ${VALKEY_PASSWORD}
     volumes:
       - valkey_data:/data
