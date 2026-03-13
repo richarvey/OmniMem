@@ -1,4 +1,4 @@
-# <OmniMem>
+# \<OmniMem\>
 
 **Stop living the same session twice.**
 
