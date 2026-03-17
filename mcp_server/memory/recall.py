@@ -19,17 +19,7 @@ NAMESPACES = ["episodic", "project", "knowledge"]
 
 
 def compute_experience_weight(effort_score: int, outcome: str) -> float:
-    """Compute experience weight from effort score and outcome.
-
-    Effort score guide:
-        1 — First attempt succeeded, no meaningful obstacles
-        2 — Minor friction: one wrong turn, quick fix
-        3 — Moderate effort: multiple iterations, some debugging
-        4 — Significant struggle: hours of effort, approach changes required
-        5 — Battle-hardened: near-abandonment, fundamental rethink required
-
-    Outcomes: succeeded, pivoted, abandoned
-    """
+    """Compute experience weight from effort score (1-5) and outcome."""
     base = {"succeeded": 1.0, "pivoted": 0.7, "abandoned": 0.1}.get(outcome, 1.0)
     effort_multiplier = {1: 1.0, 2: 1.1, 3: 1.25, 4: 1.5, 5: 1.8}.get(effort_score, 1.0)
     if outcome == "abandoned":

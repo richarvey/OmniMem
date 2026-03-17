@@ -116,11 +116,7 @@ def _register_tools() -> None:
 
 @mcp.tool()
 def health() -> dict:
-    """Check OmniMem server health. Returns Valkey ping status, index counts, model loaded state, and uptime.
-
-    Returns:
-        Dict with valkey_connected, indexes, model_loaded, uptime_seconds.
-    """
+    """Server health: Valkey connection, index counts, model status, uptime."""
     import tools as tools_pkg
 
     result = {

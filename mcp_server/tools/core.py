@@ -4,7 +4,6 @@ import json
 import logging
 import re
 import time
-from dataclasses import asdict
 from typing import Any
 
 import ulid
@@ -15,6 +14,8 @@ from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
+
+from . import _compact
 
 logger = logging.getLogger(__name__)
 
@@ -89,22 +90,14 @@ def remember(
     namespace: str = "episodic",
     force: bool = False,
 ) -> dict[str, Any]:
-    """Store a new memory. Use this to remember decisions, solutions, patterns, or project context.
-
-    Automatically checks for semantic duplicates before storing. If a near-identical
-    memory already exists, returns the duplicate details instead of storing. Use force=True
-    to store anyway (e.g. when intentionally updating with new context).
+    """Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
 
     Args:
-        content: The text to remember — be specific and descriptive.
-        project: Optional project name to associate this memory with.
-        tags: Optional list of tags for categorisation.
-        namespace: Memory namespace — 'episodic' (default), 'project', or 'knowledge'.
-        force: If True, skip duplicate checking and store regardless.
-
-    Returns:
-        Dict with key, status, and namespace of the stored memory.
-        If a duplicate is found (and force=False), returns status='duplicate_found' with match details.
+        content: Text to remember.
+        project: Project to scope this memory to.
+        tags: Categorisation tags.
+        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        force: Skip duplicate check.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -129,10 +122,6 @@ def remember(
             )
             return {
                 "status": "duplicate_found",
-                "message": (
-                    f"A near-identical memory already exists (similarity: {dup.similarity:.2%}). "
-                    "Call remember() with force=True to store anyway."
-                ),
                 "existing_key": dup.key,
                 "existing_content": dup.content[:200],
                 "similarity": round(dup.similarity, 4),
@@ -169,10 +158,6 @@ def remember(
     result: dict[str, Any] = {"key": key, "status": "stored", "namespace": namespace}
     if contradiction_warning:
         result["contradiction_warning"] = contradiction_warning
-        result["note"] = (
-            "This memory may contradict an existing one. "
-            "Use check_contradictions() to investigate further."
-        )
     return result
 
 
@@ -182,18 +167,13 @@ def recall(
     namespaces: list[str] | None = None,
     project_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Search memories by semantic similarity. Returns the most relevant memories, knowledge articles, and any warnings about previously abandoned approaches.
+    """Search memories by semantic similarity. Returns ranked results; abandoned-approach warnings appear first.
 
     Args:
-        query: Natural language description of what you're looking for.
-        top_k: Maximum number of results to return (default 5).
-        namespaces: List of namespaces to search — 'episodic', 'project', 'knowledge'. Searches all by default.
-        project_filter: Optional project name to restrict results to.
-
-    Returns:
-        List of results, each with content, score, state, namespace, and result_type.
-        Abandoned warnings appear first with result_type='abandoned_warning'.
-        Reinstate candidates are flagged with a note.
+        query: What you're looking for.
+        top_k: Max results (default 5).
+        namespaces: Namespaces to search ('episodic', 'project', 'knowledge'). All by default.
+        project_filter: Restrict to a project.
     """
     _, _, _, pipeline = _get_deps()
 
@@ -213,22 +193,34 @@ def recall(
 
     output: list[dict[str, Any]] = []
     for r in results:
-        entry = asdict(r)
-        if r.result_type == "abandoned_warning":
-            entry["note"] = (
-                "WARNING: The following approach was previously tried and abandoned: "
-                f"{r.content}"
-            )
-        elif r.reinstate_candidate:
-            entry["note"] = (
-                f"[This memory was deprioritised but may be relevant again: "
-                f"{r.deprioritised_reason}]"
-            )
+        # Build compact result — only include non-empty/non-default fields
+        entry: dict[str, Any] = {
+            "key": r.key,
+            "namespace": r.namespace,
+            "content": r.content,
+            "score": r.adjusted_score,
+            "state": r.state,
+        }
+        if r.project:
+            entry["project"] = r.project
+        if r.result_type != "memory":
+            entry["result_type"] = r.result_type
+        if r.tags:
+            entry["tags"] = r.tags
+        if r.reinstate_candidate:
+            entry["reinstate_candidate"] = True
+            if r.deprioritised_reason:
+                entry["deprioritised_reason"] = r.deprioritised_reason
+        if r.effort_score is not None:
+            entry["effort_score"] = r.effort_score
+        if r.outcome:
+            entry["outcome"] = r.outcome
+        if r.breakthrough:
+            entry["breakthrough"] = r.breakthrough
         if r.contradictions:
-            entry["contradiction_note"] = (
-                f"This memory has {len(r.contradictions)} known contradiction(s). "
-                "Use check_contradictions() or explain_memory() to review."
-            )
+            entry["contradictions"] = len(r.contradictions)
+        if r.source_url:
+            entry["source_url"] = r.source_url
         output.append(entry)
 
     return output
@@ -239,15 +231,12 @@ def deprioritise(
     reason: str,
     reinstate_hints: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Reduce a memory's visibility without deleting it. Use when something should stop surfacing but shouldn't be destroyed.
+    """Reduce a memory's visibility without deleting. Accepts a key or natural language query.
 
     Args:
-        key_or_query: Either a memory key (e.g. 'mem:episodic:...') or a natural language query to find the memory.
-        reason: Why this memory is being deprioritised — stored for future reference.
-        reinstate_hints: Optional keywords that, if matched in a future query, will flag this memory as a reinstate candidate.
-
-    Returns:
-        Dict with affected keys, their previous states, and any high-effort warnings.
+        key_or_query: Memory key (e.g. 'mem:episodic:...') or search query.
+        reason: Why this is being deprioritised.
+        reinstate_hints: Keywords that flag this as a reinstate candidate in future queries.
     """
     store, embedder, lifecycle, pipeline = _get_deps()
 
@@ -273,14 +262,11 @@ def archive(
     key_or_query: str,
     reason: str | None = None,
 ) -> dict[str, Any]:
-    """Archive a memory — it will no longer appear in recall results but remains stored.
+    """Archive a memory — excluded from recall but still stored.
 
     Args:
-        key_or_query: Either a memory key or a natural language query.
-        reason: Optional reason for archiving.
-
-    Returns:
-        Dict with affected keys.
+        key_or_query: Memory key or search query.
+        reason: Why this is being archived.
     """
     _, _, lifecycle, pipeline = _get_deps()
 
@@ -302,13 +288,10 @@ def archive(
 
 
 def reinstate(key_or_query: str) -> dict[str, Any]:
-    """Reinstate a deprioritised or archived memory back to active state.
+    """Reinstate a deprioritised/archived memory to active state.
 
     Args:
-        key_or_query: Either a memory key or a natural language query.
-
-    Returns:
-        Dict with affected keys.
+        key_or_query: Memory key or search query.
     """
     store, _, lifecycle, pipeline = _get_deps()
 
@@ -336,15 +319,11 @@ def forget(
     key_or_query: str,
     confirm: bool = False,
 ) -> dict[str, Any]:
-    """Permanently delete a memory. Requires confirm=True to execute.
+    """Permanently delete a memory. Requires confirm=True; returns preview otherwise.
 
     Args:
-        key_or_query: Either a memory key or a natural language query.
-        confirm: Must be True to actually delete. If False, returns a preview of what would be deleted.
-
-    Returns:
-        If confirm=False: preview list of keys that would be deleted.
-        If confirm=True: list of deleted keys.
+        key_or_query: Memory key or search query.
+        confirm: Must be True to delete.
     """
     store, _, lifecycle, pipeline = _get_deps()
 
@@ -360,14 +339,10 @@ def forget(
                 targets.append({"key": r.key, "content": r.content[:100]})
 
     if not targets:
-        return {"status": "not_found", "message": "No matching memories found"}
+        return {"status": "not_found"}
 
     if not confirm:
-        return {
-            "status": "preview",
-            "message": "These memories would be deleted. Call again with confirm=True to proceed.",
-            "targets": targets,
-        }
+        return {"status": "preview", "targets": targets}
 
     deleted = []
     for target in targets:
@@ -385,14 +360,11 @@ def suppress_topic(
     topic: str,
     reason: str | None = None,
 ) -> dict[str, Any]:
-    """Suppress a topic — memories containing this topic will be filtered from recall results.
+    """Suppress a topic — matching memories filtered from recall.
 
     Args:
-        topic: The topic string to suppress (case-insensitive matching).
-        reason: Optional reason for suppression.
-
-    Returns:
-        Dict with topic and status.
+        topic: Topic string to suppress (case-insensitive).
+        reason: Why.
     """
     if not topic or not topic.strip():
         raise ValueError("Topic cannot be empty")
@@ -400,17 +372,14 @@ def suppress_topic(
         raise ValueError("Topic too long (max 200 characters)")
     _, _, lifecycle, _ = _get_deps()
     lifecycle.suppress_topic(topic)
-    return {"topic": topic, "status": "suppressed", "reason": reason}
+    return _compact({"topic": topic, "status": "suppressed", "reason": reason})
 
 
 def unsuppress_topic(topic: str) -> dict[str, Any]:
-    """Remove a topic from the suppression list, allowing related memories to surface again.
+    """Remove a topic from the suppression list.
 
     Args:
-        topic: The topic string to unsuppress.
-
-    Returns:
-        Dict with topic and status.
+        topic: Topic to unsuppress.
     """
     _, _, lifecycle, _ = _get_deps()
     lifecycle.unsuppress_topic(topic)
@@ -418,11 +387,7 @@ def unsuppress_topic(topic: str) -> dict[str, Any]:
 
 
 def list_suppressions() -> dict[str, Any]:
-    """List all currently suppressed topics.
-
-    Returns:
-        Dict with list of suppressed topics.
-    """
+    """List all suppressed topics."""
     _, _, lifecycle, _ = _get_deps()
     topics = lifecycle.get_suppressed_topics()
     return {"suppressed_topics": topics, "count": len(topics)}
@@ -433,18 +398,12 @@ def find_duplicates(
     threshold: float | None = None,
     project_filter: str | None = None,
 ) -> dict[str, Any]:
-    """Scan all memories in a namespace and return clusters of near-identical content.
-
-    Useful for periodic cleanup — identifies memories that say essentially the same thing.
-    Each cluster is a group of memories with pairwise similarity above the threshold.
+    """Scan a namespace for clusters of near-identical memories.
 
     Args:
-        namespace: Namespace to scan — 'episodic' (default), 'project', or 'knowledge'.
-        threshold: Similarity threshold (0.0-1.0). Default from DEDUP_SIMILARITY_THRESHOLD env (0.92).
-        project_filter: Optional project name to restrict the scan.
-
-    Returns:
-        Dict with clusters of duplicate memories and summary stats.
+        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        threshold: Similarity threshold (0.0-1.0). Default 0.92.
+        project_filter: Restrict to a project.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -459,7 +418,6 @@ def find_duplicates(
     )
 
     return {
-        "status": "complete",
         "namespace": namespace,
         "cluster_count": len(clusters),
         "total_duplicates": sum(len(c) for c in clusters),

@@ -182,13 +182,12 @@ class TestGetExperience:
         assert exp["effort_score"] == 4
         assert exp["outcome"] == "succeeded"
         assert exp["iterations"] == 3
-        assert "battle" not in exp["summary"]  # effort 4 = "significant struggle"
-        assert "significant struggle" in exp["summary"]
+        assert exp["breakthrough"] == "Used async batching"
 
     def test_get_experience_not_found(self, fake_store):
         result = remember("Memory without experience")
         exp = get_experience(result["key"])
-        assert exp["status"] == "not_found"
+        assert exp["status"] == "no_experience"
 
     def test_get_experience_missing_key(self, fake_store):
         exp = get_experience("mem:episodic:nonexistent")

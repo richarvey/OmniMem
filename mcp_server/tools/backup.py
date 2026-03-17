@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import __version__
+
 logger = logging.getLogger(__name__)
 
 # Maximum backup file size to load (100 MB)
@@ -59,13 +61,10 @@ def _safe_filepath(filename: str) -> tuple[Path | None, str | None]:
 
 
 def dump_to_file(filename: str | None = None) -> dict[str, Any]:
-    """Export all memories, suppression lists, and recall logs to a JSON backup file. One tool call backs up everything.
+    """Export all memories to a JSON backup file.
 
     Args:
-        filename: Optional filename. Auto-generates one like 'memory_backup_20250309_143200.json' if not provided.
-
-    Returns:
-        Dict with filename, path, total_keys, and status.
+        filename: Auto-generated if not provided.
     """
     store = _get_deps()
 
@@ -101,7 +100,7 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
             "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "total_keys": len(all_data),
             "namespaces": ns_counts,
-            "version": "1.0",
+            "version": __version__,
         },
         "data": all_data,
     }
@@ -126,16 +125,11 @@ def restore_from_file(
     filename: str,
     dry_run: bool = True,
 ) -> dict[str, Any]:
-    """Restore memories from a backup file. Default is dry_run mode which previews without writing.
-
-    Restoring MERGES with existing data — existing keys are only overwritten if the backup version is newer.
+    """Restore memories from backup. Default dry_run=True previews without writing. Merges with existing data.
 
     Args:
-        filename: The backup filename to restore from (must be in BACKUP_DIR).
-        dry_run: If True (default), previews what would be restored without writing. Set to False to actually restore.
-
-    Returns:
-        Dict with restored_keys count, skipped_keys count, and status.
+        filename: Backup filename (must be in BACKUP_DIR).
+        dry_run: Preview only (default True). Set False to restore.
     """
     store = _get_deps()
 
@@ -159,7 +153,7 @@ def restore_from_file(
         with open(filepath, "r", encoding="utf-8") as f:
             backup = json.load(f)
     except json.JSONDecodeError:
-        return {"status": "error", "message": "Backup file contains invalid JSON"}
+        return {"status": "error", "message": "Invalid JSON"}
     except OSError:
         return {"status": "error", "message": "Failed to read backup file"}
 
@@ -184,7 +178,6 @@ def restore_from_file(
     if dry_run:
         return {
             "status": "dry_run",
-            "message": "Preview — no data was written. Call with dry_run=False to restore.",
             "total_keys_in_backup": len(data),
             "metadata": metadata,
         }
@@ -205,11 +198,7 @@ def restore_from_file(
 
 
 def list_backups() -> dict[str, Any]:
-    """List all available backup files in the backup directory, sorted newest first.
-
-    Returns:
-        List of backups with filename, size_kb, and created_at.
-    """
+    """List available backup files, newest first."""
     backup_path = _backup_dir()
     if not backup_path.exists():
         return {"backups": [], "count": 0}

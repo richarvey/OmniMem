@@ -108,7 +108,6 @@ class TestRecall:
         remember("Kubernetes pod scheduling")
         results = recall("Kubernetes scheduling")
         if results:
-            assert "adjusted_score" in results[0]
             assert "score" in results[0]
 
     def test_recall_empty_returns_empty(self):
@@ -141,22 +140,22 @@ class TestDeprioritise:
         assert affected["surface_score"] == 0.2
 
     def test_deprioritise_reduces_recall_score(self, fake_store, fake_embedder):
-        """After deprioritising, the memory should score lower."""
+        """After deprioritising, the score magnitude should decrease (surface_score 0.2x)."""
         result = remember("Specific deployment procedure for staging environment")
         key = result["key"]
 
         # Recall before deprioritise
         before = recall("deployment procedure staging")
-        before_scores = {r["key"]: r["adjusted_score"] for r in before}
+        before_scores = {r["key"]: r["score"] for r in before}
 
         deprioritise(key, reason="outdated")
 
         # Recall after deprioritise
         after = recall("deployment procedure staging")
-        after_scores = {r["key"]: r["adjusted_score"] for r in after}
+        after_scores = {r["key"]: r["score"] for r in after}
 
         if key in before_scores and key in after_scores:
-            assert after_scores[key] < before_scores[key]
+            assert abs(after_scores[key]) < abs(before_scores[key])
 
     def test_deprioritise_with_reinstate_hints(self, fake_store, fake_embedder):
         result = remember("Redis sentinel setup for HA")
@@ -281,18 +280,18 @@ class TestDeprioritisationIntegration:
         results = recall("PostgreSQL connection pooling")
         found = [r for r in results if r["key"] == key]
         assert len(found) >= 1
-        original_score = found[0]["adjusted_score"]
+        original_score = found[0]["score"]
 
         # 3. Deprioritise (no reinstate hints matching query, so score drops cleanly)
         dep = deprioritise(key, reason="Switching to Supabase",
                            reinstate_hints=["supabase-revert"])
         assert dep["count"] == 1
 
-        # 4. Recall again — score should be lower (surface_score 0.2x)
+        # 4. Recall again — score magnitude should decrease (surface_score 0.2x)
         results = recall("PostgreSQL connection pooling")
         found = [r for r in results if r["key"] == key]
         if found:
-            assert found[0]["adjusted_score"] < original_score
+            assert abs(found[0]["score"]) < abs(original_score)
 
         # 5. Reinstate
         rein = reinstate(key)

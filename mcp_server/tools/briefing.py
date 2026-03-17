@@ -6,6 +6,8 @@ import os
 import time
 from typing import Any
 
+from . import _compact
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,11 +47,10 @@ def _get_stale_memories(
             stale.append({
                 "key": key,
                 "content": data.get("content", "")[:100],
-                "days_since_update": age_days,
-                "project": data.get("project"),
+                "days_stale": age_days,
             })
 
-    stale.sort(key=lambda x: x["days_since_update"], reverse=True)
+    stale.sort(key=lambda x: x["days_stale"], reverse=True)
     return stale[:10]
 
 
@@ -72,12 +73,12 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
 
         created_at = float(data.get("created_at", "0"))
         if created_at >= cutoff:
-            new_articles.append({
+            new_articles.append(_compact({
                 "key": key,
                 "content": data.get("content", "")[:150],
                 "source_url": data.get("source_url"),
                 "feed_name": data.get("feed_name"),
-            })
+            }))
 
     return new_articles[:10]
 
@@ -117,7 +118,6 @@ def _get_reinstate_candidates(
                 "content": data.get("content", "")[:100],
                 "reason": data.get("deprioritised_reason", ""),
                 "reinstate_hints": hints,
-                "project": data.get("project"),
             })
 
     return candidates[:5]
@@ -155,7 +155,6 @@ def _get_contradiction_warnings(
             warnings.append({
                 "key": key,
                 "content": data.get("content", "")[:100],
-                "contradiction_count": len(contradictions),
                 "contradicts": [c.get("key", "") for c in contradictions if isinstance(c, dict)],
             })
 
@@ -166,17 +165,11 @@ def briefing(
     project: str | None = None,
     include_knowledge: bool = True,
 ) -> dict[str, Any]:
-    """Start-of-session briefing. Aggregates project context, experience summary, stale memories, new knowledge, contradictions, and reinstate candidates into a single call.
-
-    Call this at the start of every session instead of making multiple separate calls.
-    It replaces the previous 3-step session start (get_project_context + experience_summary + recall).
+    """Session-start briefing: project context, experience summary, stale memories, knowledge, contradictions, reinstate candidates.
 
     Args:
-        project: Project name to focus the briefing on. Highly recommended.
-        include_knowledge: Whether to include recent knowledge articles (default True).
-
-    Returns:
-        Comprehensive briefing with all session-start context in one response.
+        project: Project name to focus on.
+        include_knowledge: Include recent knowledge articles (default True).
     """
     store, embedder, lifecycle, pipeline = _get_deps()
 
@@ -188,58 +181,47 @@ def briefing(
         project_key = f"mem:project:{project}"
         project_data = store.get(project_key)
         if project_data:
-            result["project_context"] = {
+            result["project_context"] = _compact({
                 "name": project,
                 "current_state": project_data.get("content", ""),
                 "stack": project_data.get("stack"),
                 "updated_at": project_data.get("updated_at"),
-            }
+            })
         else:
-            result["project_context"] = {
-                "name": project,
-                "note": "No project context found. Use set_project_context() to create one.",
-            }
+            result["project_context"] = {"name": project, "note": "not_found"}
 
     # 2. Experience summary
     from .experience import experience_summary as _experience_summary
-    result["experience_summary"] = _experience_summary(project=project)
+    exp = _experience_summary(project=project)
+    # Only include if there's actual experience data
+    if exp.get("memories_with_experience", 0) > 0:
+        result["experience_summary"] = exp
+    else:
+        result["experience_summary"] = {
+            "memories_with_experience": 0,
+            "outcome_breakdown": exp.get("outcome_breakdown", {}),
+        }
 
     # 3. Stale memories
     stale = _get_stale_memories(store, stale_days, project_filter=project)
     if stale:
-        result["stale_memories"] = {
-            "count": len(stale),
-            "note": f"These memories haven't been updated in {stale_days}+ days. Consider reviewing or archiving.",
-            "entries": stale,
-        }
+        result["stale_memories"] = {"count": len(stale), "entries": stale}
 
     # 4. New knowledge articles
     if include_knowledge:
         new_knowledge = _get_new_knowledge(store)
         if new_knowledge:
-            result["new_knowledge"] = {
-                "count": len(new_knowledge),
-                "note": "Knowledge articles ingested in the last 7 days.",
-                "entries": new_knowledge,
-            }
+            result["new_knowledge"] = {"count": len(new_knowledge), "entries": new_knowledge}
 
     # 5. Contradiction warnings
     contradiction_warnings = _get_contradiction_warnings(store, project_filter=project)
     if contradiction_warnings:
-        result["contradiction_warnings"] = {
-            "count": len(contradiction_warnings),
-            "note": "These memories have known contradictions that may need resolution.",
-            "entries": contradiction_warnings,
-        }
+        result["contradiction_warnings"] = {"count": len(contradiction_warnings), "entries": contradiction_warnings}
 
     # 6. Reinstate candidates
     reinstate_candidates = _get_reinstate_candidates(store, lifecycle, project_filter=project)
     if reinstate_candidates:
-        result["reinstate_candidates"] = {
-            "count": len(reinstate_candidates),
-            "note": "These deprioritised memories have reinstate hints — consider if they're relevant again.",
-            "entries": reinstate_candidates,
-        }
+        result["reinstate_candidates"] = {"count": len(reinstate_candidates), "entries": reinstate_candidates}
 
     # 7. Suppressed topics
     suppressed = lifecycle.get_suppressed_topics()

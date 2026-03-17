@@ -8,6 +8,8 @@ from typing import Any
 
 from memory.lifecycle import MemoryState
 
+from . import _compact
+
 logger = logging.getLogger(__name__)
 
 # Allowed characters for project names: alphanumeric, hyphens, underscores, dots
@@ -38,18 +40,15 @@ def set_project_context(
     current_state: str,
     notes: str | None = None,
 ) -> dict[str, Any]:
-    """Create or update a project context memory. Stores project metadata and embeds a semantic summary for recall.
+    """Create or update a project's context (description, stack, goals, state).
 
     Args:
-        project_name: Unique project identifier (e.g. 'omnimem', 'my-api').
-        description: What the project is and does.
-        stack: Technology stack (e.g. 'Python, Valkey, Docker').
-        goals: Current goals or objectives.
-        current_state: What state the project is in right now.
-        notes: Optional freeform notes for the next session.
-
-    Returns:
-        Dict with project_name and status.
+        project_name: Unique project identifier.
+        description: What the project does.
+        stack: Technology stack.
+        goals: Current objectives.
+        current_state: Current project state.
+        notes: Freeform notes for next session.
     """
     store, embedder = _get_deps()
 
@@ -82,13 +81,10 @@ def set_project_context(
 
 
 def get_project_context(project_name: str) -> dict[str, Any]:
-    """Retrieve the full context for a project by name.
+    """Retrieve full context for a project by name.
 
     Args:
-        project_name: The project name to look up.
-
-    Returns:
-        All project fields as a structured dict, or a not_found status with a suggestion.
+        project_name: Project to look up.
     """
     store, _ = _get_deps()
 
@@ -98,12 +94,9 @@ def get_project_context(project_name: str) -> dict[str, Any]:
     data = store.get(key)
 
     if data is None:
-        return {
-            "status": "not_found",
-            "suggestion": "Use set_project_context to create one",
-        }
+        return {"status": "not_found"}
 
-    return {
+    return _compact({
         "status": "found",
         "project_name": data.get("project_name", project_name),
         "description": data.get("description", ""),
@@ -112,17 +105,12 @@ def get_project_context(project_name: str) -> dict[str, Any]:
         "current_state": data.get("current_state", ""),
         "notes": data.get("notes"),
         "state": data.get("state", "active"),
-        "created_at": data.get("created_at"),
         "updated_at": data.get("updated_at"),
-    }
+    })
 
 
 def list_projects() -> dict[str, Any]:
-    """List all stored project contexts.
-
-    Returns:
-        List of projects with name, description, updated_at, and state.
-    """
+    """List all stored project contexts."""
     store, _ = _get_deps()
 
     keys = store.scan_prefix("mem:project:")
@@ -136,7 +124,6 @@ def list_projects() -> dict[str, Any]:
             projects.append({
                 "project_name": data.get("project_name", key.split(":")[-1]),
                 "description": data.get("description", "")[:100],
-                "updated_at": data.get("updated_at"),
                 "state": data.get("state", "active"),
             })
 
@@ -148,15 +135,12 @@ def update_project_state(
     current_state: str,
     notes: str | None = None,
 ) -> dict[str, Any]:
-    """Update only the current state and notes of a project without re-embedding.
+    """Update a project's current state and notes without re-embedding.
 
     Args:
-        project_name: The project name to update.
-        current_state: New current state description.
-        notes: Optional notes for the next session.
-
-    Returns:
-        Dict with project_name and status.
+        project_name: Project to update.
+        current_state: New state description.
+        notes: Notes for next session.
     """
     store, _ = _get_deps()
 
@@ -166,10 +150,7 @@ def update_project_state(
     data = store.get(key)
 
     if data is None:
-        return {
-            "status": "not_found",
-            "suggestion": "Use set_project_context to create one first",
-        }
+        return {"status": "not_found"}
 
     now = str(time.time())
     # Single round-trip instead of 2-3 individual set_field calls

@@ -23,21 +23,13 @@ def check_contradictions(
     project_filter: str | None = None,
     use_api: bool = False,
 ) -> dict[str, Any]:
-    """Scan for contradictions among memories. Finds memories that say opposing things about the same topic.
-
-    Tier 1 (default): Fast keyword heuristic — detects negation patterns in semantically similar memories.
-    Tier 2 (use_api=True): Uses Claude API for deeper analysis of candidate pairs. More accurate but slower.
-
-    When contradictions are found, they are cross-linked on both memories for future reference.
+    """Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification.
 
     Args:
-        query: Optional query to focus the search. If None, scans top memories by recency.
-        namespace: Namespace to scan — 'episodic' (default), 'project', or 'knowledge'.
-        project_filter: Optional project name to restrict the scan.
-        use_api: If True, use Claude API (Tier 2) for deeper contradiction analysis on candidates.
-
-    Returns:
-        Dict with contradictions found, each with content snippets and explanation.
+        query: Focus the search. If None, scans recent memories.
+        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        project_filter: Restrict to a project.
+        use_api: Use Claude API for deeper analysis.
     """
     store, embedder, pipeline = _get_deps()
 
@@ -52,7 +44,7 @@ def check_contradictions(
         prefix = f"mem:{namespace}:"
         keys = store.scan_prefix(prefix)
         if not keys:
-            return {"status": "complete", "contradictions": [], "count": 0}
+            return {"contradictions": [], "count": 0}
         # Limit scan size
         keys = keys[:200]
         all_data = store.get_multi(keys)
@@ -70,7 +62,7 @@ def check_contradictions(
             results.append(data)
 
     if not results:
-        return {"status": "complete", "contradictions": [], "count": 0}
+        return {"contradictions": [], "count": 0}
 
     # Pairwise comparison of results
     seen_pairs: set[str] = set()
@@ -99,20 +91,19 @@ def check_contradictions(
             if not _has_negation_pair(content_a, content_b):
                 continue
 
-            entry = {
+            entry: dict[str, Any] = {
                 "key_a": key_a,
                 "key_b": key_b,
                 "content_a": content_a[:200],
                 "content_b": content_b[:200],
-                "detection_method": "heuristic",
-                "explanation": "Opposing language patterns detected in semantically related memories.",
+                "method": "heuristic",
             }
 
             # Tier 2: API verification if requested
             if use_api:
                 api_result = check_contradiction_api(content_a, content_b)
                 if api_result.get("is_contradiction"):
-                    entry["detection_method"] = "api_confirmed"
+                    entry["method"] = "api_confirmed"
                     entry["confidence"] = api_result.get("confidence", 0.0)
                     entry["explanation"] = api_result.get("explanation", "")
                 else:
@@ -121,12 +112,9 @@ def check_contradictions(
 
             # Cross-link the contradiction
             if key_a and key_b:
-                link_contradiction(store, key_a, key_b, entry["explanation"])
+                explanation = entry.get("explanation", "Opposing language patterns detected.")
+                link_contradiction(store, key_a, key_b, explanation)
 
             contradictions.append(entry)
 
-    return {
-        "status": "complete",
-        "contradictions": contradictions,
-        "count": len(contradictions),
-    }
+    return {"contradictions": contradictions, "count": len(contradictions)}

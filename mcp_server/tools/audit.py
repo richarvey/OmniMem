@@ -5,6 +5,8 @@ import logging
 import time
 from typing import Any
 
+from . import _compact
+
 logger = logging.getLogger(__name__)
 
 _VALID_NAMESPACES = {"episodic", "project", "knowledge"}
@@ -20,15 +22,12 @@ def memory_audit(
     namespace: str | None = None,
     include_archived: bool = False,
 ) -> dict[str, Any]:
-    """Return a summary of all memories grouped by state. Useful for understanding what's stored and its lifecycle status.
+    """Summary of all memories grouped by state. Useful for cleanup.
 
     Args:
-        project: Optional project name to filter by.
-        namespace: Optional namespace to filter ('episodic', 'project', 'knowledge').
-        include_archived: Whether to include archived memories (default False).
-
-    Returns:
-        Summary with counts by state and a list of memory entries.
+        project: Filter to a project.
+        namespace: Filter to 'episodic', 'project', or 'knowledge'.
+        include_archived: Include archived memories (default False).
     """
     store, _ = _get_deps()
 
@@ -84,17 +83,14 @@ def memory_audit(
                 except (ValueError, TypeError):
                     pass
 
-            entries.append({
+            entries.append(_compact({
                 "key": key,
                 "content": data.get("content", "")[:100],
                 "state": state,
-                "surface_score": data.get("surface_score"),
                 "effort_score": effort,
                 "outcome": data.get("outcome"),
-                "created_at": data.get("created_at"),
-                "updated_at": data.get("updated_at"),
                 "project": data.get("project") or data.get("project_name"),
-            })
+            }))
 
     return {
         "summary": state_counts,
@@ -104,13 +100,10 @@ def memory_audit(
 
 
 def why_did_you_mention(query: str) -> dict[str, Any]:
-    """Explain why a particular topic was surfaced by searching recent recall logs. Helps humans understand why Claude mentioned something.
+    """Explain why a topic surfaced by searching recall logs.
 
     Args:
-        query: The topic or phrase you want to understand why it was mentioned.
-
-    Returns:
-        The most recent matching recall log entry with query text, timestamp, and results returned at the time.
+        query: Topic or phrase to investigate.
     """
     store, embedder = _get_deps()
 
@@ -119,10 +112,7 @@ def why_did_you_mention(query: str) -> dict[str, Any]:
     log_keys = log_keys[:50]
 
     if not log_keys:
-        return {
-            "status": "not_found",
-            "message": "No recent recall log matches this query. The topic may have been mentioned for other reasons.",
-        }
+        return {"status": "not_found"}
 
     # Batch fetch all log entries in one pipeline round-trip
     all_data = store.get_multi(log_keys)
@@ -137,22 +127,18 @@ def why_did_you_mention(query: str) -> dict[str, Any]:
 
         log_query = data.get("query", "")
         if query_lower in log_query.lower() or log_query.lower() in query_lower:
-            return {
+            return _compact({
                 "status": "found",
                 "match_type": "keyword",
                 "log_query": log_query,
                 "timestamp": data.get("timestamp"),
                 "result_keys": _safe_json_loads(data.get("result_keys", "[]")),
-                "result_scores": _safe_json_loads(data.get("result_scores", "[]")),
-            }
+            })
         non_keyword_entries.append((log_key, data))
 
     # Second pass: batch embed all log queries for semantic matching
     if not non_keyword_entries:
-        return {
-            "status": "not_found",
-            "message": "No recent recall log matches this query. The topic may have been mentioned for other reasons.",
-        }
+        return {"status": "not_found"}
 
     query_vector = embedder.embed(query)
     log_queries = [data.get("query", "") for _, data in non_keyword_entries]
@@ -165,33 +151,26 @@ def why_did_you_mention(query: str) -> dict[str, Any]:
         similarity = float(query_vector @ log_vector)
         if similarity > best_similarity:
             best_similarity = similarity
-            best_match = {
+            best_match = _compact({
                 "status": "found",
                 "match_type": "semantic",
                 "similarity": round(similarity, 4),
                 "log_query": data.get("query", ""),
                 "timestamp": data.get("timestamp"),
                 "result_keys": _safe_json_loads(data.get("result_keys", "[]")),
-                "result_scores": _safe_json_loads(data.get("result_scores", "[]")),
-            }
+            })
 
     if best_match and best_similarity > 0.5:
         return best_match
 
-    return {
-        "status": "not_found",
-        "message": "No recent recall log matches this query. The topic may have been mentioned for other reasons.",
-    }
+    return {"status": "not_found"}
 
 
 def explain_memory(key: str) -> dict[str, Any]:
-    """Return full metadata for a single memory key. Shows all fields, state, experience data, and lifecycle details.
+    """Return full metadata for a memory key.
 
     Args:
-        key: The full memory key (e.g. 'mem:episodic:01ARZ3NDEKTSV4RRFFQ69G5FAV').
-
-    Returns:
-        Complete memory data including all experience fields, or not_found status.
+        key: Full memory key (e.g. 'mem:episodic:01ARZ3...').
     """
     store, _ = _get_deps()
 
@@ -216,20 +195,18 @@ def explain_memory(key: str) -> dict[str, Any]:
         "key": key,
         "content": data.get("content"),
         "state": data.get("state", "active"),
-        "surface_score": data.get("surface_score"),
-        "created_at": data.get("created_at"),
-        "updated_at": data.get("updated_at"),
         "project": data.get("project") or data.get("project_name"),
         "tags": _safe_json_loads(data.get("tags", "[]")),
-        "deprioritised_reason": data.get("deprioritised_reason") or None,
-        "reinstate_hints": _safe_json_loads(data.get("reinstate_hints", "[]")),
+        "created_at": data.get("created_at"),
+        "updated_at": data.get("updated_at"),
         "effort_score": effort,
         "outcome": data.get("outcome"),
-        "iterations": data.get("iterations"),
         "experience_weight": data.get("experience_weight"),
         "abandoned_approaches": _safe_json_loads(data.get("abandoned_approaches", "[]")),
         "breakthrough": data.get("breakthrough"),
         "gotchas": data.get("gotchas"),
+        "deprioritised_reason": data.get("deprioritised_reason") or None,
+        "reinstate_hints": _safe_json_loads(data.get("reinstate_hints", "[]")),
         "contradictions": _safe_json_loads(data.get("contradictions", "[]")),
     }
 
@@ -238,10 +215,8 @@ def explain_memory(key: str) -> dict[str, Any]:
         result["source_url"] = data["source_url"]
     if data.get("feed_name"):
         result["feed_name"] = data["feed_name"]
-    if data.get("published_at"):
-        result["published_at"] = data["published_at"]
 
-    return result
+    return _compact(result)
 
 
 def _safe_json_loads(raw: str | None) -> Any:
