@@ -65,7 +65,13 @@ def main() -> None:
     logger.info("Scheduling RSS ingestion every %d hours", schedule_hours)
 
     scheduler = BlockingScheduler()
-    scheduler.add_job(run_ingestion, "interval", hours=schedule_hours)
+    scheduler.add_job(
+        run_ingestion,
+        "interval",
+        hours=schedule_hours,
+        misfire_grace_time=schedule_hours * 3600,
+        coalesce=True,
+    )
 
     try:
         scheduler.start()
