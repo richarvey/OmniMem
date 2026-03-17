@@ -4,6 +4,17 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-03-17
+### Added
+- **Progressive disclosure for recall**: New `recall_index` tool returns compact summaries (key, snippet, score, estimated token count) instead of full content. Defaults to 10 results. New `recall_detail` tool fetches full content for selected keys only. Together they let the agent decide which memories are worth the context budget before committing tokens to full content.
+- Token estimates in `recall_index` response: `token_estimate.index` vs `token_estimate.full` shows tokens saved by using the two-step flow.
+
+## [2.0.0] - 2026-03-17
+### Changed
+- **Tool descriptions cut by 53%**: All docstrings rewritten for conciseness. These ship with every API call.
+- **Response payloads compacted**: New `_compact()` helper strips None/empty values. Recall results return only populated fields. Redundant narrative messages removed.
+- **217 lines removed** across the tool layer (17% code reduction).
+
 ## [0.2.2] - 2026-03-17
 ### Fixed
 - **RSS summariser retry on transient errors**: Haiku API calls now retry up to 2 times on timeouts, rate limits, server errors, and connection errors with backoff, instead of immediately falling back to truncation.

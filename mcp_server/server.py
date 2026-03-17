@@ -54,7 +54,8 @@ def _init() -> None:
 def _register_tools() -> None:
     """Register all MCP tools from tool modules."""
     from tools.core import (
-        remember, recall, deprioritise, archive, reinstate, forget,
+        remember, recall, recall_index, recall_detail,
+        deprioritise, archive, reinstate, forget,
         suppress_topic, unsuppress_topic, list_suppressions, find_duplicates,
     )
     from tools.project import (
@@ -73,6 +74,8 @@ def _register_tools() -> None:
     # Core tools
     mcp.tool()(remember)
     mcp.tool()(recall)
+    mcp.tool()(recall_index)
+    mcp.tool()(recall_detail)
     mcp.tool()(deprioritise)
     mcp.tool()(archive)
     mcp.tool()(reinstate)

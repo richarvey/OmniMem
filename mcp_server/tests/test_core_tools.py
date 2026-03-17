@@ -32,6 +32,8 @@ from tools.core import (
     forget,
     list_suppressions,
     recall,
+    recall_detail,
+    recall_index,
     reinstate,
     remember,
     suppress_topic,
@@ -127,6 +129,125 @@ class TestRecall:
         results = recall("logging", namespaces=["episodic"])
         for r in results:
             assert r["namespace"] == "episodic"
+
+
+class TestRecallIndex:
+    def test_returns_snippets_not_full_content(self):
+        long_content = "A" * 500
+        remember(long_content)
+        result = recall_index("A" * 50)
+        assert result["count"] >= 1
+        entry = result["results"][0]
+        assert "snippet" in entry
+        assert "content" not in entry
+        assert entry["snippet"].endswith("...")
+        assert len(entry["snippet"]) <= 154  # 150 + "..."
+
+    def test_returns_token_estimates(self):
+        long_content = "Docker compose patterns for microservices " * 20
+        remember(long_content)
+        result = recall_index("Docker compose")
+        assert "token_estimate" in result
+        assert "index" in result["token_estimate"]
+        assert "full" in result["token_estimate"]
+        assert result["token_estimate"]["index"] < result["token_estimate"]["full"]
+
+    def test_returns_key_and_score(self):
+        remember("Valkey search indexing strategies")
+        result = recall_index("Valkey search")
+        assert result["count"] >= 1
+        entry = result["results"][0]
+        assert "key" in entry
+        assert "score" in entry
+        assert "namespace" in entry
+        assert "estimated_tokens" in entry
+
+    def test_respects_project_filter(self):
+        remember("API design for alpha project", project="alpha")
+        remember("API design for beta project", project="beta")
+        result = recall_index("API design", project_filter="alpha")
+        for entry in result["results"]:
+            if entry.get("project"):
+                assert entry["project"] == "alpha"
+
+    def test_short_content_no_ellipsis(self):
+        remember("Short note")
+        result = recall_index("Short note")
+        if result["count"] >= 1:
+            entry = result["results"][0]
+            assert not entry["snippet"].endswith("...")
+
+    def test_snippet_length_parameter(self):
+        remember("B" * 400)
+        result = recall_index("B" * 50, snippet_length=80)
+        if result["count"] >= 1:
+            snippet = result["results"][0]["snippet"]
+            # snippet should be ~80 chars + "..."
+            assert len(snippet) <= 84
+
+    def test_higher_default_top_k(self):
+        """recall_index defaults to 10 results (vs recall's 5)."""
+        for i in range(12):
+            remember(f"Memory number {i} about unique topic zxcvbn")
+        result = recall_index("unique topic zxcvbn")
+        assert result["count"] <= 10
+
+
+class TestRecallDetail:
+    def test_fetches_full_content(self):
+        full_content = "Full detailed content about PostgreSQL connection pooling strategies"
+        stored = remember(full_content)
+        key = stored["key"]
+        results = recall_detail([key])
+        assert len(results) == 1
+        assert results[0]["content"] == full_content
+        assert results[0]["key"] == key
+
+    def test_multiple_keys(self):
+        r1 = remember("First memory about auth tokens")
+        r2 = remember("Second memory about cache invalidation")
+        results = recall_detail([r1["key"], r2["key"]])
+        assert len(results) == 2
+        keys = {r["key"] for r in results}
+        assert r1["key"] in keys
+        assert r2["key"] in keys
+
+    def test_missing_key_returns_not_found(self):
+        results = recall_detail(["mem:episodic:nonexistent"])
+        assert len(results) == 1
+        assert results[0]["status"] == "not_found"
+
+    def test_empty_keys_returns_empty(self):
+        results = recall_detail([])
+        assert results == []
+
+    def test_invalid_key_format_skipped(self):
+        results = recall_detail(["not-a-valid-key"])
+        assert results == []
+
+    def test_includes_metadata(self):
+        stored = remember("Memory with tags and project", project="omnimem", tags=["test", "meta"])
+        results = recall_detail([stored["key"]])
+        assert len(results) == 1
+        assert results[0]["state"] == "active"
+        assert results[0]["namespace"] == "episodic"
+
+    def test_index_then_detail_workflow(self):
+        """End-to-end: recall_index to find, recall_detail to expand."""
+        remember("Progressive disclosure is a UX pattern for managing complexity")
+        remember("Token budgeting reduces API costs by limiting context size")
+
+        # Step 1: index search
+        index = recall_index("reducing complexity and costs")
+        assert index["count"] >= 1
+
+        # Step 2: pick keys and fetch detail
+        keys = [r["key"] for r in index["results"]]
+        details = recall_detail(keys)
+        assert len(details) >= 1
+        for d in details:
+            assert "content" in d
+            assert len(d["content"]) > 0
 
 
 class TestDeprioritise:

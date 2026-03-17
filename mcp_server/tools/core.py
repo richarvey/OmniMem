@@ -226,6 +226,134 @@ def recall(
     return output
 
 
+def recall_index(
+    query: str,
+    top_k: int = 10,
+    namespaces: list[str] | None = None,
+    project_filter: str | None = None,
+    snippet_length: int = 150,
+) -> dict[str, Any]:
+    """Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
+
+    Args:
+        query: What you're looking for.
+        top_k: Max results (default 10).
+        namespaces: Namespaces to search. All by default.
+        project_filter: Restrict to a project.
+        snippet_length: Content preview length in chars (default 150).
+    """
+    _, _, _, pipeline = _get_deps()
+
+    top_k = _validate_top_k(top_k)
+    if namespaces:
+        for ns in namespaces:
+            _validate_namespace(ns)
+    if project_filter:
+        _validate_project_name(project_filter)
+
+    snippet_length = max(50, min(snippet_length, 500))
+
+    results = pipeline.recall(
+        query=query,
+        namespaces=namespaces,
+        top_k=top_k,
+        project_filter=project_filter,
+    )
+
+    output: list[dict[str, Any]] = []
+    total_full_tokens = 0
+    total_index_tokens = 0
+    for r in results:
+        content_len = len(r.content)
+        est_tokens = content_len // 4
+        total_full_tokens += est_tokens
+
+        snippet = r.content[:snippet_length]
+        if content_len > snippet_length:
+            snippet += "..."
+
+        entry: dict[str, Any] = {
+            "key": r.key,
+            "namespace": r.namespace,
+            "snippet": snippet,
+            "score": r.adjusted_score,
+            "estimated_tokens": est_tokens,
+        }
+        if r.project:
+            entry["project"] = r.project
+        if r.result_type != "memory":
+            entry["result_type"] = r.result_type
+        if r.tags:
+            entry["tags"] = r.tags
+        if r.reinstate_candidate:
+            entry["reinstate_candidate"] = True
+
+        index_tokens = len(snippet) // 4 + 10  # snippet + metadata overhead
+        total_index_tokens += index_tokens
+        output.append(entry)
+
+    return {
+        "results": output,
+        "count": len(output),
+        "token_estimate": {"index": total_index_tokens, "full": total_full_tokens},
+    }
+
+
+def recall_detail(
+    keys: list[str],
+) -> list[dict[str, Any]]:
+    """Fetch full content for specific memory keys. Use after recall_index() to expand only the entries you need.
+
+    Args:
+        keys: List of memory keys to retrieve (e.g. from recall_index results).
+    """
+    store, _, _, _ = _get_deps()
+
+    if not keys:
+        return []
+    if len(keys) > MAX_TOP_K:
+        keys = keys[:MAX_TOP_K]
+
+    output: list[dict[str, Any]] = []
+    for key in keys:
+        if not isinstance(key, str) or not key.startswith("mem:"):
+            continue
+        data = store.get(key)
+        if data is None:
+            output.append({"key": key, "status": "not_found"})
+            continue
+
+        entry: dict[str, Any] = {
+            "key": key,
+            "content": data.get("content", ""),
+            "namespace": key.split(":")[1] if ":" in key else "unknown",
+            "state": data.get("state", "active"),
+        }
+        if data.get("project"):
+            entry["project"] = data["project"]
+        if data.get("tags"):
+            try:
+                tags = json.loads(data["tags"])
+                if tags:
+                    entry["tags"] = tags
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if data.get("source_url"):
+            entry["source_url"] = data["source_url"]
+        if data.get("breakthrough"):
+            entry["breakthrough"] = data["breakthrough"]
+        if data.get("effort_score"):
+            try:
+                entry["effort_score"] = int(float(data["effort_score"]))
+            except (ValueError, TypeError):
+                pass
+        if data.get("outcome"):
+            entry["outcome"] = data["outcome"]
+        output.append(entry)
+
+    return output
+
+
 def deprioritise(
     key_or_query: str,
     reason: str,
