@@ -97,21 +97,22 @@ class TestRecallPipelineScoring:
         """Memories older than RECENCY_DECAY_DAYS should have reduced scores."""
         now = time.time()
         old_time = str(now - 200 * 86400)  # 200 days ago
+        content = "Fresh insight about testing patterns"
 
         store_memory(fake_store, fake_embedder, "mem:episodic:r008",
-                     "Fresh insight about testing")
+                     content)
         # Manually adjust created_at to be old
         fake_store.set_field("mem:episodic:r008", "created_at", old_time)
 
         store_memory(fake_store, fake_embedder, "mem:episodic:r009",
-                     "Fresh insight about testing patterns")
+                     content)
 
-        results = pipeline.recall("testing")
+        results = pipeline.recall("testing patterns")
         if len(results) >= 2:
             old = [r for r in results if r.key == "mem:episodic:r008"]
             new = [r for r in results if r.key == "mem:episodic:r009"]
             if old and new:
-                # Old memory should have lower adjusted score
+                # Same content, so raw scores match — old memory should rank lower
                 assert old[0].adjusted_score < new[0].adjusted_score
 
     def test_project_filter(self, fake_store, fake_embedder, pipeline):

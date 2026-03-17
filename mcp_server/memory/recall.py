@@ -132,7 +132,7 @@ class RecallPipeline:
                 if project_filter and doc_project != project_filter:
                     continue
 
-                raw_score = 1.0 - float(doc.get("similarity_score", "1.0"))
+                raw_score = max(0.0, 1.0 - float(doc.get("similarity_score", "1.0")))
 
                 # Step 6: Surface score
                 surface_score = float(doc.get("surface_score", "1.0"))

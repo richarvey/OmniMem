@@ -176,7 +176,7 @@ class FakeSearchIndex:
 
 
 class FakeEmbedder:
-    """Deterministic embedder that hashes text into a 384-dim normalised vector."""
+    """Deterministic embedder using additive word vectors so similar text has similar embeddings."""
 
     def __init__(self):
         self._model = True
@@ -186,9 +186,13 @@ class FakeEmbedder:
         return True
 
     def embed(self, text: str) -> np.ndarray:
-        rng = np.random.RandomState(hash(text) % (2**31))
-        vec = rng.randn(384).astype(np.float32)
-        vec /= np.linalg.norm(vec)
+        vec = np.zeros(384, dtype=np.float32)
+        for word in text.lower().split():
+            rng = np.random.RandomState(hash(word) % (2**31))
+            vec += rng.randn(384).astype(np.float32)
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec /= norm
         return vec
 
     def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
