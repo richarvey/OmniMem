@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-17
+### Fixed
+- **RSS summariser retry on transient errors**: Haiku API calls now retry up to 2 times on timeouts, rate limits, server errors, and connection errors with backoff, instead of immediately falling back to truncation.
+- **Better fallback summaries**: Fallback truncation limit increased from 300 to 800 characters so articles that miss summarisation are still useful.
+- **Summariser error logging**: Log the full error message on API failures, not just the exception type.
+
 ## [0.2.1] - 2026-03-17
 ### Fixed
 - **RSS scheduler misses on sleeping machines**: APScheduler's default `misfire_grace_time` of 1 second meant every scheduled ingestion was silently skipped when the host machine was asleep at fire time. Set `misfire_grace_time` to the full interval window and `coalesce=True` so missed jobs execute on wake (once, not per missed cycle).

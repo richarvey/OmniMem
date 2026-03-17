@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 
 import anthropic
 
@@ -10,6 +11,17 @@ logger = logging.getLogger(__name__)
 # Reuse a single Anthropic client across all summarise() calls to avoid
 # re-creating the HTTP client (and its connection pool) per article.
 _anthropic_client: anthropic.Anthropic | None = None
+
+# Transient errors worth retrying
+_RETRYABLE = (
+    anthropic.APITimeoutError,
+    anthropic.RateLimitError,
+    anthropic.InternalServerError,
+    anthropic.APIConnectionError,
+)
+
+_MAX_RETRIES = 2
+_RETRY_DELAY = 3
 
 
 def _get_client() -> anthropic.Anthropic | None:
@@ -40,36 +52,53 @@ def summarise(title: str, url: str, content_text: str) -> str:
         logger.warning("No valid ANTHROPIC_API_KEY set, falling back to truncation")
         return _fallback_summary(title, content_text)
 
-    try:
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=256,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Summarise the following article in 2-3 sentences, "
-                        "focusing on what a developer might find actionable or useful. "
-                        "Include the main technology or concept. Be concise.\n\n"
-                        f"Title: {title}\n"
-                        f"URL: {url}\n\n"
-                        f"{content_text[:3000]}"
-                    ),
-                }
-            ],
-        )
-        summary = message.content[0].text.strip()
-        logger.debug("Summarised: %s", title)
-        return summary
-    except Exception as exc:
-        # Log only the exception type, not the full message which may contain the API key
-        logger.error("Summarisation API error for '%s': %s", title, type(exc).__name__)
-        return _fallback_summary(title, content_text)
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            message = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=256,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Summarise the following article in 2-3 sentences, "
+                            "focusing on what a developer might find actionable or useful. "
+                            "Include the main technology or concept. Be concise.\n\n"
+                            f"Title: {title}\n"
+                            f"URL: {url}\n\n"
+                            f"{content_text[:3000]}"
+                        ),
+                    }
+                ],
+            )
+            summary = message.content[0].text.strip()
+            logger.debug("Summarised: %s", title)
+            return summary
+        except _RETRYABLE as exc:
+            last_exc = exc
+            logger.warning(
+                "Summarisation attempt %d/%d for '%s' failed: %s: %s",
+                attempt, _MAX_RETRIES, title, type(exc).__name__, exc,
+            )
+            if attempt < _MAX_RETRIES:
+                time.sleep(_RETRY_DELAY * attempt)
+        except Exception as exc:
+            logger.error(
+                "Summarisation failed for '%s': %s: %s", title, type(exc).__name__, exc,
+            )
+            return _fallback_summary(title, content_text)
+
+    logger.error(
+        "Summarisation failed after %d retries for '%s': %s: %s",
+        _MAX_RETRIES, title, type(last_exc).__name__, last_exc,
+    )
+    return _fallback_summary(title, content_text)
 
 
 def _fallback_summary(title: str, content_text: str) -> str:
     """Truncation fallback when API is unavailable."""
-    preview = content_text[:300].strip()
-    if len(content_text) > 300:
+    preview = content_text[:800].strip()
+    if len(content_text) > 800:
         preview += "..."
     return f"{title}. {preview}"
