@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.4] - 2026-03-18
+### Added
+- **Lifecycle management**: POST endpoints for deprioritise, archive, reinstate, and delete
+- Confirmation modal for delete actions
+- Flash/redirect flow after lifecycle transitions
+
 ## [3.1.3] - 2026-03-18
 ### Added
 - **Memory detail view**: `/memory/{key}` shows full content, metadata, tags, experience data, contradictions, abandoned approaches
