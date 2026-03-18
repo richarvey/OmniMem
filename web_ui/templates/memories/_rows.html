@@ -1,5 +1,5 @@
 {% if memories %}
-<table class="data-table">
+<table class="data-table memories-table">
   <thead>
     <tr>
       <th>Namespace</th>
@@ -15,8 +15,11 @@
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
       <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
-      <td>{{ mem.project or "—" }}</td>
-      <td class="mono">{{ mem.updated_at_fmt }}</td>
+      <td class="content-cell">{{ mem.project or "—" }}</td>
+      <td class="date-cell">
+        <span class="date-main">{{ mem.updated_date }}</span>
+        <span class="date-time">{{ mem.updated_time }}</span>
+      </td>
     </tr>
     {% endfor %}
   </tbody>

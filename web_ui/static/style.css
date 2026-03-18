@@ -323,6 +323,27 @@ body {
 .projects-table th:nth-child(4),
 .projects-table td:nth-child(4) { width: 16%; }
 
+/* Memories table */
+.memories-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.memories-table th:nth-child(1),
+.memories-table td:nth-child(1) { width: 10%; }
+
+.memories-table th:nth-child(2),
+.memories-table td:nth-child(2) { width: 44%; }
+
+.memories-table th:nth-child(3),
+.memories-table td:nth-child(3) { width: 12%; }
+
+.memories-table th:nth-child(4),
+.memories-table td:nth-child(4) { width: 16%; }
+
+.memories-table th:nth-child(5),
+.memories-table td:nth-child(5) { width: 18%; }
+
 .name-cell {
   white-space: nowrap;
 }
@@ -695,6 +716,18 @@ span.project-name {
   .nav-list { display: flex; flex-wrap: wrap; gap: 0; padding: 0.5rem 1rem; }
   .nav-link { padding: 0.35rem 0.75rem; }
   .nav-divider { display: none; }
+
+  .memories-table { table-layout: auto; }
+  .memories-table th:nth-child(1),
+  .memories-table td:nth-child(1),
+  .memories-table th:nth-child(2),
+  .memories-table td:nth-child(2),
+  .memories-table th:nth-child(3),
+  .memories-table td:nth-child(3),
+  .memories-table th:nth-child(4),
+  .memories-table td:nth-child(4),
+  .memories-table th:nth-child(5),
+  .memories-table td:nth-child(5) { width: auto; }
 
   .projects-table { table-layout: auto; }
   .projects-table th:nth-child(1),

@@ -82,7 +82,13 @@ async def memories_list(request: Request) -> HTMLResponse:
     # Format timestamps
     for mem in memories:
         ts = mem["updated_at"]
-        mem["updated_at_fmt"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
+        if ts > 0:
+            lt = time.localtime(ts)
+            mem["updated_date"] = time.strftime("%-d %b %Y", lt)
+            mem["updated_time"] = time.strftime("%H:%M", lt)
+        else:
+            mem["updated_date"] = "—"
+            mem["updated_time"] = ""
 
     # Paginate
     total = len(memories)

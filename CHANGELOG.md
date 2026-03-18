@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.3] - 2026-03-18
+### Changed
+- **Responsive memories table**: Fixed-width table layout with proportional columns (10/44/12/16/18%) and ellipsis truncation on content and project columns, matching the projects page pattern
+- **Split date display**: Updated column shows human-readable date ("18 Mar 2026") with time underneath in smaller mono font, replacing the single-line ISO-style timestamp
+
 ## [3.3.2] - 2026-03-18
 ### Fixed
 - **Duplicate detection page rendered twice on scan**: The htmx scan endpoint returned the full page template (header, nav, form, and results) instead of just the results partial, causing a page-within-a-page effect. Extracted results into `partials/dup_results.html` and the scan endpoint now returns only the partial
