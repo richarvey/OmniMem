@@ -14,6 +14,7 @@ from starlette.staticfiles import StaticFiles
 from . import deps
 from .routes.dashboard import routes as dashboard_routes
 from .routes.memories import routes as memories_routes
+from .routes.search import routes as search_routes
 
 load_dotenv()
 
@@ -40,6 +41,7 @@ app = Starlette(
         Mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static"),
         *dashboard_routes,
         *memories_routes,
+        *search_routes,
     ],
     lifespan=lifespan,
 )

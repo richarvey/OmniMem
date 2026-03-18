@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-03-18
+### Added
+- **Semantic search page**: `/search` with full recall pipeline integration
+- Search form with namespace, project filter, and top_k controls
+- Results show scores, abandoned warnings highlighted, reinstate candidates flagged
+
 ## [3.1.1] - 2026-03-18
 ### Added
 - **Browse memories**: `/memories` page with namespace, state, and project filters

@@ -1,0 +1,37 @@
+{% if results %}
+<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">{{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"</p>
+
+{% for r in results %}
+<div class="search-result{% if r.result_type == 'abandoned_warning' %}" style="border-color:var(--orange){% endif %}">
+  <div class="search-result-header">
+    <span class="badge ns-{{ r.namespace }}">{{ r.namespace }}</span>
+    <span class="badge {{ r.state }}">{{ r.state }}</span>
+    <span class="score">{{ r.score }}</span>
+    {% if r.result_type == 'abandoned_warning' %}
+    <span class="badge" style="background:rgba(251,146,60,0.15);color:var(--orange)">abandoned</span>
+    {% endif %}
+    {% if r.reinstate_candidate %}
+    <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent)">reinstate candidate</span>
+    {% endif %}
+    {% if r.project %}
+    <span style="color:var(--text-dim);font-size:0.75rem">{{ r.project }}</span>
+    {% endif %}
+  </div>
+  <div class="search-result-content">
+    <a href="/memory/{{ r.key }}" style="color:var(--text);text-decoration:none">{{ r.content }}</a>
+  </div>
+  {% if r.tags %}
+  <div style="margin-top:0.5rem">
+    {% for tag in r.tags %}
+    <span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ tag }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if r.breakthrough %}
+  <div style="margin-top:0.35rem;font-size:0.8rem;color:var(--green)">Breakthrough: {{ r.breakthrough }}</div>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="empty-state">No results found.</p>
+{% endif %}
