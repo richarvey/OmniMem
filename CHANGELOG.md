@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.9] - 2026-03-18
+### Added
+- **Sidebar footer**: Links to Codeberg repo, omnimem.org, and Mastodon with `rel="me"` verification
+### Changed
+- **Dynamic version badge**: Sidebar now shows full version number (e.g. v3.2.9) instead of hardcoded "v3"
+- **Version single source of truth**: Moved `__version__` to `memory/version.py`, imported by both MCP server and web UI
+
 ## [3.2.8] - 2026-03-18
 ### Improved
 - **CLAUDE.md experience recording**: Bug fixes must now always be recorded with structured symptom/cause/fix descriptions, improving recall of prior fixes when similar issues appear in future sessions

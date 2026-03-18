@@ -12,6 +12,7 @@ from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
 from . import deps
+from memory.version import __version__
 from .routes.dashboard import routes as dashboard_routes
 from .routes.memories import routes as memories_routes
 from .routes.search import routes as search_routes
@@ -69,3 +70,4 @@ app.state.templates = Environment(
     loader=FileSystemLoader(str(BASE_DIR / "templates")),
     autoescape=True,
 )
+app.state.templates.globals["version"] = __version__

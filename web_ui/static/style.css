@@ -46,6 +46,8 @@ body {
   left: 0;
   bottom: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-header {
@@ -102,6 +104,27 @@ body {
   height: 1px;
   background: var(--border);
   margin: 0.5rem 1.25rem;
+}
+
+.sidebar-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.footer-link {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.footer-link:hover {
+  color: var(--accent);
 }
 
 .content {
