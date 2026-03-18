@@ -38,7 +38,6 @@ class TestRecordExperience:
         result = remember("Solved the flaky test issue")
         key = result["key"]
         exp = record_experience(key, effort_score=3, outcome="succeeded")
-        assert exp["status"] == "recorded"
         assert exp["effort_score"] == 3
         assert exp["outcome"] == "succeeded"
         assert exp["experience_weight"] == 1.25  # effort 3, succeeded
@@ -73,7 +72,7 @@ class TestRecordExperience:
             iterations=5, abandoned_approaches=approaches,
             breakthrough="Used libvips via pyvips",
         )
-        assert exp["status"] == "recorded"
+        assert exp["key"] == key
         data = fake_store.get(key)
         abandoned = json.loads(data["abandoned_approaches"])
         assert len(abandoned) == 2

@@ -117,7 +117,6 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
         "filename": filename,
         "path": str(filepath),
         "total_keys": len(all_data),
-        "status": "success",
     }
 
 
@@ -201,7 +200,7 @@ def list_backups() -> dict[str, Any]:
     """List available backup files, newest first."""
     backup_path = _backup_dir()
     if not backup_path.exists():
-        return {"backups": [], "count": 0}
+        return {"backups": []}
 
     backups: list[dict[str, Any]] = []
     for f in backup_path.glob("*.json"):
@@ -215,4 +214,4 @@ def list_backups() -> dict[str, Any]:
         })
 
     backups.sort(key=lambda x: x["created_at"], reverse=True)
-    return {"backups": backups, "count": len(backups)}
+    return {"backups": backups}

@@ -109,7 +109,6 @@ def record_experience(
         "effort_score": effort_score,
         "outcome": outcome,
         "experience_weight": experience_weight,
-        "status": "recorded",
     }
 
     if auto_suppressed:
@@ -265,7 +264,7 @@ def experience_summary(project: str | None = None) -> dict[str, Any]:
         if outcome in outcome_counts:
             outcome_counts[outcome] += 1
 
-        content = data.get("content", "")[:80]
+        content = data.get("content", "")[:80]  # standardised snippet length
         effortful.append({
             "key": key,
             "content": content,

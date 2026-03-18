@@ -44,17 +44,16 @@ from tools.core import (
 class TestRemember:
     def test_basic_remember(self):
         result = remember("Python async/await patterns are powerful")
-        assert result["status"] == "stored"
         assert result["key"].startswith("mem:episodic:")
         assert result["namespace"] == "episodic"
 
     def test_remember_with_project(self):
         result = remember("Use FastAPI for the new service", project="omnimem")
-        assert result["status"] == "stored"
+        assert result["key"].startswith("mem:episodic:")
 
     def test_remember_with_tags(self):
         result = remember("Valkey connection pooling", tags=["valkey", "performance"])
-        assert result["status"] == "stored"
+        assert result["key"].startswith("mem:episodic:")
 
     def test_remember_knowledge_namespace(self):
         result = remember("Article about WASM", namespace="knowledge")
@@ -71,7 +70,7 @@ class TestRemember:
         content = "Prefer composition over inheritance"
         remember(content)
         result = remember(content, force=True)
-        assert result["status"] == "stored"
+        assert result["key"].startswith("mem:episodic:")
 
     def test_empty_content_raises(self):
         with pytest.raises(ValueError, match="empty"):
@@ -136,7 +135,7 @@ class TestRecallIndex:
         long_content = "A" * 500
         remember(long_content)
         result = recall_index("A" * 50)
-        assert result["count"] >= 1
+        assert len(result["results"]) >= 1
         entry = result["results"][0]
         assert "snippet" in entry
         assert "content" not in entry
@@ -155,7 +154,7 @@ class TestRecallIndex:
     def test_returns_key_and_score(self):
         remember("Valkey search indexing strategies")
         result = recall_index("Valkey search")
-        assert result["count"] >= 1
+        assert len(result["results"]) >= 1
         entry = result["results"][0]
         assert "key" in entry
         assert "score" in entry
@@ -173,14 +172,14 @@ class TestRecallIndex:
     def test_short_content_no_ellipsis(self):
         remember("Short note")
         result = recall_index("Short note")
-        if result["count"] >= 1:
+        if len(result["results"]) >= 1:
             entry = result["results"][0]
             assert not entry["snippet"].endswith("...")
 
     def test_snippet_length_parameter(self):
         remember("B" * 400)
         result = recall_index("B" * 50, snippet_length=80)
-        if result["count"] >= 1:
+        if len(result["results"]) >= 1:
             snippet = result["results"][0]["snippet"]
             # snippet should be ~80 chars + "..."
             assert len(snippet) <= 84
@@ -190,7 +189,7 @@ class TestRecallIndex:
         for i in range(12):
             remember(f"Memory number {i} about unique topic zxcvbn")
         result = recall_index("unique topic zxcvbn")
-        assert result["count"] <= 10
+        assert len(result["results"]) <= 10
 
 
 class TestRecallDetail:
@@ -239,7 +238,7 @@ class TestRecallDetail:
 
         # Step 1: index search
         index = recall_index("reducing complexity and costs")
-        assert index["count"] >= 1
+        assert len(index["results"]) >= 1
 
         # Step 2: pick keys and fetch detail
         keys = [r["key"] for r in index["results"]]
@@ -255,7 +254,7 @@ class TestDeprioritise:
         result = remember("Old caching approach with Redis")
         key = result["key"]
         dep_result = deprioritise(key, reason="Switched to Valkey")
-        assert dep_result["count"] >= 1
+        assert len(dep_result["affected"]) >= 1
         affected = dep_result["affected"][0]
         assert affected["new_state"] == "deprioritised"
         assert affected["surface_score"] == 0.2
@@ -303,7 +302,7 @@ class TestArchive:
         result = remember("Legacy migration notes")
         key = result["key"]
         arch_result = archive(key)
-        assert arch_result["count"] >= 1
+        assert len(arch_result["affected"]) >= 1
         assert arch_result["affected"][0]["new_state"] == "archived"
 
     def test_archived_excluded_from_recall(self, fake_store, fake_embedder):
@@ -321,7 +320,7 @@ class TestReinstate:
         key = result["key"]
         deprioritise(key, reason="temporary")
         rein_result = reinstate(key)
-        assert rein_result["count"] >= 1
+        assert len(rein_result["affected"]) >= 1
         assert rein_result["affected"][0]["new_state"] == "active"
 
     def test_reinstate_archived(self, fake_store, fake_embedder):
@@ -329,7 +328,7 @@ class TestReinstate:
         key = result["key"]
         archive(key)
         rein_result = reinstate(key)
-        assert rein_result["count"] >= 1
+        assert len(rein_result["affected"]) >= 1
         assert rein_result["affected"][0]["new_state"] == "active"
 
     def test_reinstate_restores_surface_score(self, fake_store, fake_embedder):
@@ -406,7 +405,7 @@ class TestDeprioritisationIntegration:
         # 3. Deprioritise (no reinstate hints matching query, so score drops cleanly)
         dep = deprioritise(key, reason="Switching to Supabase",
                            reinstate_hints=["supabase-revert"])
-        assert dep["count"] == 1
+        assert len(dep["affected"]) == 1
 
         # 4. Recall again — score magnitude should decrease (surface_score 0.2x)
         results = recall("PostgreSQL connection pooling")
@@ -416,7 +415,7 @@ class TestDeprioritisationIntegration:
 
         # 5. Reinstate
         rein = reinstate(key)
-        assert rein["count"] == 1
+        assert len(rein["affected"]) == 1
 
         # 6. Recall — score should be restored
         results = recall("PostgreSQL connection pooling")

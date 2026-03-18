@@ -44,7 +44,7 @@ def check_contradictions(
         prefix = f"mem:{namespace}:"
         keys = store.scan_prefix(prefix)
         if not keys:
-            return {"contradictions": [], "count": 0}
+            return {"contradictions": []}
         # Limit scan size
         keys = keys[:200]
         all_data = store.get_multi(keys)
@@ -62,7 +62,7 @@ def check_contradictions(
             results.append(data)
 
     if not results:
-        return {"contradictions": [], "count": 0}
+        return {"contradictions": []}
 
     # Pairwise comparison of results
     seen_pairs: set[str] = set()
@@ -94,8 +94,8 @@ def check_contradictions(
             entry: dict[str, Any] = {
                 "key_a": key_a,
                 "key_b": key_b,
-                "content_a": content_a[:200],
-                "content_b": content_b[:200],
+                "content_a": content_a[:80],
+                "content_b": content_b[:80],
                 "method": "heuristic",
             }
 
@@ -117,4 +117,4 @@ def check_contradictions(
 
             contradictions.append(entry)
 
-    return {"contradictions": contradictions, "count": len(contradictions)}
+    return {"contradictions": contradictions}

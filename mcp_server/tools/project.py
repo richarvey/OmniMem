@@ -77,7 +77,7 @@ def set_project_context(
 
     store.upsert("project", key, fields, vector)
     logger.info("Saved project context: %s", project_name)
-    return {"project_name": project_name, "status": "saved"}
+    return {"project_name": project_name}
 
 
 def get_project_context(project_name: str) -> dict[str, Any]:
@@ -123,11 +123,11 @@ def list_projects() -> dict[str, Any]:
         if data:
             projects.append({
                 "project_name": data.get("project_name", key.split(":")[-1]),
-                "description": data.get("description", "")[:100],
+                "description": data.get("description", "")[:80],
                 "state": data.get("state", "active"),
             })
 
-    return {"projects": projects, "count": len(projects)}
+    return {"projects": projects}
 
 
 def update_project_state(
@@ -163,4 +163,4 @@ def update_project_state(
     store.set_fields(key, updates)
 
     logger.info("Updated project state: %s", project_name)
-    return {"project_name": project_name, "status": "updated"}
+    return {"project_name": project_name}

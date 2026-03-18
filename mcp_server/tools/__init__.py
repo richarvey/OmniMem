@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from memory.recall import RecallPipeline
     from memory.store import ValkeyStore
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 
 _store: ValkeyStore = None  # type: ignore[assignment]
 _embedder: Embedder = None  # type: ignore[assignment]

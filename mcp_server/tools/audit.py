@@ -85,7 +85,7 @@ def memory_audit(
 
             entries.append(_compact({
                 "key": key,
-                "content": data.get("content", "")[:100],
+                "content": data.get("content", "")[:80],
                 "state": state,
                 "effort_score": effort,
                 "outcome": data.get("outcome"),

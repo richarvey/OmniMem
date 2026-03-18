@@ -123,7 +123,7 @@ def remember(
             return {
                 "status": "duplicate_found",
                 "existing_key": dup.key,
-                "existing_content": dup.content[:200],
+                "existing_content": dup.content[:80],
                 "similarity": round(dup.similarity, 4),
             }
 
@@ -155,7 +155,7 @@ def remember(
     store.upsert(namespace, key, fields, vector)
     logger.info("Stored memory %s in %s", key, namespace)
 
-    result: dict[str, Any] = {"key": key, "status": "stored", "namespace": namespace}
+    result: dict[str, Any] = {"key": key, "namespace": namespace}
     if contradiction_warning:
         result["contradiction_warning"] = contradiction_warning
     return result
@@ -294,7 +294,6 @@ def recall_index(
 
     return {
         "results": output,
-        "count": len(output),
         "token_estimate": {"index": total_index_tokens, "full": total_full_tokens},
     }
 
@@ -383,7 +382,7 @@ def deprioritise(
                     lifecycle.add_reinstate_hints(r.key, reinstate_hints)
                 affected.append(result)
 
-    return {"affected": affected, "count": len(affected)}
+    return {"affected": affected}
 
 
 def archive(
@@ -412,7 +411,7 @@ def archive(
                 except ValueError as exc:
                     logger.warning("Cannot archive %s: %s", r.key, exc)
 
-    return {"affected": affected, "count": len(affected)}
+    return {"affected": affected}
 
 
 def reinstate(key_or_query: str) -> dict[str, Any]:
@@ -440,7 +439,7 @@ def reinstate(key_or_query: str) -> dict[str, Any]:
                 except ValueError as exc:
                     logger.warning("Cannot reinstate %s: %s", r.key, exc)
 
-    return {"affected": affected, "count": len(affected)}
+    return {"affected": affected}
 
 
 def forget(
@@ -459,12 +458,12 @@ def forget(
     if key_or_query.startswith("mem:"):
         data = store.get(key_or_query)
         if data:
-            targets.append({"key": key_or_query, "content": data.get("content", "")[:100]})
+            targets.append({"key": key_or_query, "content": data.get("content", "")[:80]})
     else:
         results = pipeline.recall(key_or_query, top_k=3)
         for r in results:
             if r.adjusted_score > 0.85:
-                targets.append({"key": r.key, "content": r.content[:100]})
+                targets.append({"key": r.key, "content": r.content[:80]})
 
     if not targets:
         return {"status": "not_found"}
@@ -481,7 +480,7 @@ def forget(
             store.delete(target["key"])
             deleted.append(target["key"])
 
-    return {"status": "deleted", "deleted_keys": deleted, "count": len(deleted)}
+    return {"status": "deleted", "deleted_keys": deleted}
 
 
 def suppress_topic(
@@ -500,7 +499,7 @@ def suppress_topic(
         raise ValueError("Topic too long (max 200 characters)")
     _, _, lifecycle, _ = _get_deps()
     lifecycle.suppress_topic(topic)
-    return _compact({"topic": topic, "status": "suppressed", "reason": reason})
+    return _compact({"topic": topic, "reason": reason})
 
 
 def unsuppress_topic(topic: str) -> dict[str, Any]:
@@ -511,14 +510,14 @@ def unsuppress_topic(topic: str) -> dict[str, Any]:
     """
     _, _, lifecycle, _ = _get_deps()
     lifecycle.unsuppress_topic(topic)
-    return {"topic": topic, "status": "active"}
+    return {"topic": topic}
 
 
 def list_suppressions() -> dict[str, Any]:
     """List all suppressed topics."""
     _, _, lifecycle, _ = _get_deps()
     topics = lifecycle.get_suppressed_topics()
-    return {"suppressed_topics": topics, "count": len(topics)}
+    return {"suppressed_topics": topics}
 
 
 def find_duplicates(
@@ -547,7 +546,5 @@ def find_duplicates(
 
     return {
         "namespace": namespace,
-        "cluster_count": len(clusters),
-        "total_duplicates": sum(len(c) for c in clusters),
         "clusters": clusters,
     }

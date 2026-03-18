@@ -46,7 +46,7 @@ def _get_stale_memories(
             age_days = int((now - updated_at) / 86400)
             stale.append({
                 "key": key,
-                "content": data.get("content", "")[:100],
+                "content": data.get("content", "")[:80],
                 "days_stale": age_days,
             })
 
@@ -75,7 +75,7 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
         if created_at >= cutoff:
             new_articles.append(_compact({
                 "key": key,
-                "content": data.get("content", "")[:150],
+                "content": data.get("content", "")[:80],
                 "source_url": data.get("source_url"),
                 "feed_name": data.get("feed_name"),
             }))
@@ -115,7 +115,7 @@ def _get_reinstate_candidates(
         if hints:
             candidates.append({
                 "key": key,
-                "content": data.get("content", "")[:100],
+                "content": data.get("content", "")[:80],
                 "reason": data.get("deprioritised_reason", ""),
                 "reinstate_hints": hints,
             })
@@ -154,7 +154,7 @@ def _get_contradiction_warnings(
         if contradictions:
             warnings.append({
                 "key": key,
-                "content": data.get("content", "")[:100],
+                "content": data.get("content", "")[:80],
                 "contradicts": [c.get("key", "") for c in contradictions if isinstance(c, dict)],
             })
 
@@ -174,7 +174,7 @@ def briefing(
     store, embedder, lifecycle, pipeline = _get_deps()
 
     stale_days = int(os.getenv("STALE_MEMORY_DAYS", "30"))
-    result: dict[str, Any] = {"status": "complete"}
+    result: dict[str, Any] = {}
 
     # 1. Project context
     if project:
@@ -184,7 +184,6 @@ def briefing(
             result["project_context"] = _compact({
                 "name": project,
                 "current_state": project_data.get("content", ""),
-                "stack": project_data.get("stack"),
                 "updated_at": project_data.get("updated_at"),
             })
         else:
@@ -196,32 +195,27 @@ def briefing(
     # Only include if there's actual experience data
     if exp.get("memories_with_experience", 0) > 0:
         result["experience_summary"] = exp
-    else:
-        result["experience_summary"] = {
-            "memories_with_experience": 0,
-            "outcome_breakdown": exp.get("outcome_breakdown", {}),
-        }
 
     # 3. Stale memories
     stale = _get_stale_memories(store, stale_days, project_filter=project)
     if stale:
-        result["stale_memories"] = {"count": len(stale), "entries": stale}
+        result["stale_memories"] = stale
 
     # 4. New knowledge articles
     if include_knowledge:
         new_knowledge = _get_new_knowledge(store)
         if new_knowledge:
-            result["new_knowledge"] = {"count": len(new_knowledge), "entries": new_knowledge}
+            result["new_knowledge"] = new_knowledge
 
     # 5. Contradiction warnings
     contradiction_warnings = _get_contradiction_warnings(store, project_filter=project)
     if contradiction_warnings:
-        result["contradiction_warnings"] = {"count": len(contradiction_warnings), "entries": contradiction_warnings}
+        result["contradiction_warnings"] = contradiction_warnings
 
     # 6. Reinstate candidates
     reinstate_candidates = _get_reinstate_candidates(store, lifecycle, project_filter=project)
     if reinstate_candidates:
-        result["reinstate_candidates"] = {"count": len(reinstate_candidates), "entries": reinstate_candidates}
+        result["reinstate_candidates"] = reinstate_candidates
 
     # 7. Suppressed topics
     suppressed = lifecycle.get_suppressed_topics()
