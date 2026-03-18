@@ -65,7 +65,7 @@ async def create_backup(request: Request) -> RedirectResponse:
             elif key.startswith("mem:knowledge:"):
                 ns_counts["knowledge"] += 1
 
-        from tools import __version__
+        from memory.version import __version__
         backup = {
             "metadata": {
                 "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

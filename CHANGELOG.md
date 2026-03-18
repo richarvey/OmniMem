@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.10] - 2026-03-18
+### Fixed
+- **Web UI backup creation failed with "No module named 'tools'"**: The `create_backup` route imported `__version__` from the `tools` package which is not available in the web UI container. Changed to import from `memory.version` (the shared single source of truth added in v3.2.9)
+
 ## [3.2.9] - 2026-03-18
 ### Added
 - **Sidebar footer**: Links to Codeberg repo, omnimem.org, and Mastodon with `rel="me"` verification
