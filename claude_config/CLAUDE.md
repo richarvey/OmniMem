@@ -31,6 +31,13 @@ record_experience(
 )
 ```
 
+**Bug fixes must always be recorded.** After fixing any bug, call `remember()` with a structured description covering:
+- **Symptom**: What the user saw (error message, HTTP status, unexpected behaviour)
+- **Cause**: What was actually wrong (missing dependency, wrong logic, etc.)
+- **Fix**: What was changed to resolve it
+
+This ensures future sessions can recall prior fixes when similar symptoms appear.
+
 For dead ends discovered mid-session, use `log_abandoned(key, name, type, reason)` to record them incrementally as they happen.
 
 If `effort_score >= 4` and `outcome == "abandoned"`, the system will automatically suppress the abandoned approach names — dead ends don't need to keep resurfacing.

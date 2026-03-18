@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.8] - 2026-03-18
+### Improved
+- **CLAUDE.md experience recording**: Bug fixes must now always be recorded with structured symptom/cause/fix descriptions, improving recall of prior fixes when similar issues appear in future sessions
+
 ## [3.2.7] - 2026-03-18
 ### Fixed
 - **Web UI form parsing broken**: Deprioritise (and other lifecycle POST actions) returned 500 because `python-multipart` was not listed in `web_ui/requirements.txt`. Starlette requires it for `request.form()` parsing
