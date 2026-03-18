@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-03-18
+### Added
+- **Browse memories**: `/memories` page with namespace, state, and project filters
+- htmx-powered filter dropdowns update results without full page reload
+- Paginated results (25 per page) with sort by newest/oldest
+
 ## [3.1.0] - 2026-03-18
 ### Added
 - **Web UI service**: Browser-based management dashboard for OmniMem (Starlette + htmx + Jinja2)
