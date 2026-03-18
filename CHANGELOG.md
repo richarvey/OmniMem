@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-03-18
+### Added
+- Start of v3.x branch: browser-based management UI for OmniMem
+
 ## [2.2.0] - 2026-03-18
 ### Changed
 - **Removed redundant `count` fields**: 15+ responses that returned both an array and a count of that array now return only the array. Affects deprioritise, archive, reinstate, forget, list_suppressions, recall_index, find_duplicates, list_projects, list_backups, check_contradictions, and all briefing subsections.
