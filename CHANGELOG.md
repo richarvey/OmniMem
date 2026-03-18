@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.5] - 2026-03-18
+### Added
+- **Create memory form**: `/create` with content, namespace, project, tags, and force-save option
+- Inline duplicate detection shows near-match with similarity score before saving
+
 ## [3.1.4] - 2026-03-18
 ### Added
 - **Lifecycle management**: POST endpoints for deprioritise, archive, reinstate, and delete

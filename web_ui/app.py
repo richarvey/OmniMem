@@ -17,6 +17,7 @@ from .routes.memories import routes as memories_routes
 from .routes.search import routes as search_routes
 from .routes.detail import routes as detail_routes
 from .routes.lifecycle import routes as lifecycle_routes
+from .routes.create import routes as create_routes
 
 load_dotenv()
 
@@ -46,6 +47,7 @@ app = Starlette(
         *search_routes,
         *detail_routes,
         *lifecycle_routes,
+        *create_routes,
     ],
     lifespan=lifespan,
 )
