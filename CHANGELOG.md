@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.6] - 2026-03-18
+### Fixed
+- **Web UI missing `ulid-py` dependency**: The create memory route imports `ulid` but the package was not listed in `web_ui/requirements.txt`, causing an `ImportError` on startup
+
 ## [3.2.5] - 2026-03-18
 ### Added
 - **Backup management**: `/backups` with list, create, preview restore, and confirm restore
