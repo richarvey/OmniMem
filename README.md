@@ -157,6 +157,20 @@ Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.j
 }
 ```
 
+To stop Claude Code asking for permission every time it calls an OmniMem tool, add a wildcard allow rule to your global settings (`~/.claude/settings.json`):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__omnimem__*"
+    ]
+  }
+}
+```
+
+This allows all OmniMem MCP tools (`remember`, `recall`, `briefing`, etc.) to run without prompts across every project. If you already have other entries in the `allow` array, just add `"mcp__omnimem__*"` to it.
+
 Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will load project context at session start, check the graveyard before suggesting approaches, and store what it learns as you go.
 
 ---
