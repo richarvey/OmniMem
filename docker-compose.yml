@@ -37,7 +37,7 @@ services:
       valkey:
         condition: service_healthy
     volumes:
-      - ./rss_worker/feeds.yml:/app/feeds.yml:ro
+      - ./rss_worker/feeds.yml:/app/feeds.yml
     env_file:
       - .env
     restart: unless-stopped
@@ -53,6 +53,7 @@ services:
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
     volumes:
       - ./backups:/app/backups
+      - ./rss_worker/feeds.yml:/app/feeds.yml
     env_file:
       - .env
     restart: unless-stopped

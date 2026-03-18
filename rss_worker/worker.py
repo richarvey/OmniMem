@@ -1,8 +1,9 @@
-"""RSS ingestion scheduler entry point."""
+"""RSS ingestion scheduler entry point with feeds.yml file watcher."""
 
 import logging
 import os
 import sys
+import threading
 import time
 
 import valkey
@@ -18,6 +19,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("rss_worker")
+
+FEEDS_PATH = os.getenv("FEEDS_CONFIG_PATH", "/app/feeds.yml")
+WATCH_INTERVAL = int(os.getenv("FEEDS_WATCH_INTERVAL", "10"))
 
 
 def _wait_for_valkey(max_retries: int = 5) -> None:
@@ -47,10 +51,36 @@ def _wait_for_valkey(max_retries: int = 5) -> None:
 
 def run_ingestion() -> None:
     """Run a single ingestion cycle."""
-    feeds_path = os.getenv("FEEDS_CONFIG_PATH", "/app/feeds.yml")
     logger.info("Starting RSS ingestion cycle...")
-    result = ingest_all_feeds(feeds_path)
+    result = ingest_all_feeds(FEEDS_PATH)
     logger.info("Ingestion result: %s", result)
+
+
+def _get_mtime(path: str) -> float:
+    """Get file modification time, returning 0 if file doesn't exist."""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
+def _watch_feeds_file(scheduler: BlockingScheduler) -> None:
+    """Poll feeds.yml for changes and trigger re-ingestion when modified."""
+    last_mtime = _get_mtime(FEEDS_PATH)
+    logger.info("Watching %s for changes (polling every %ds)", FEEDS_PATH, WATCH_INTERVAL)
+
+    while True:
+        time.sleep(WATCH_INTERVAL)
+        current_mtime = _get_mtime(FEEDS_PATH)
+
+        if current_mtime > last_mtime:
+            logger.info("feeds.yml changed (mtime %s → %s), triggering re-ingestion",
+                        last_mtime, current_mtime)
+            last_mtime = current_mtime
+            try:
+                scheduler.add_job(run_ingestion, id="file_change_trigger", replace_existing=True)
+            except Exception:
+                logger.exception("Failed to schedule re-ingestion after file change")
 
 
 def main() -> None:
@@ -72,6 +102,10 @@ def main() -> None:
         misfire_grace_time=schedule_hours * 3600,
         coalesce=True,
     )
+
+    # Start file watcher in a background daemon thread
+    watcher = threading.Thread(target=_watch_feeds_file, args=(scheduler,), daemon=True)
+    watcher.start()
 
     try:
         scheduler.start()

@@ -4,6 +4,15 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-03-18
+### Added
+- **RSS Feeds management in web UI**: New `/feeds` page to view, add, edit, and delete RSS feed subscriptions directly from the browser — changes are written to `feeds.yml` in real time
+- **feeds.yml file watcher in RSS worker**: Background thread polls `feeds.yml` for changes (default every 10s, configurable via `FEEDS_WATCH_INTERVAL`) and triggers re-ingestion when the file is modified by the web UI or externally
+- **Sidebar nav link**: "RSS Feeds" added to the navigation between Suppressions and Backups
+### Changed
+- **docker-compose**: `feeds.yml` is now mounted read-write in both `rss_worker` and `web_ui` containers (was read-only in rss_worker, unmounted in web_ui)
+- **web_ui requirements**: Added `pyyaml` dependency for YAML read/write
+
 ## [3.2.13] - 2026-03-18
 ### Changed
 - **Projects table responsive layout**: Fixed-width table with proportional columns (20/32/32/16%) so Description and Current State shrink gracefully with ellipsis truncation

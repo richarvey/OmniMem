@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}RSS Feeds — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>RSS Feeds</h2>
+  <a href="/feeds/new" class="btn btn-primary btn-sm">Add Feed</a>
+</header>
+
+{% if feeds %}
+<table class="data-table feeds-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>URL</th>
+      <th>Topics</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in feeds %}
+    <tr>
+      <td class="name-cell" style="font-weight:600">{{ f.name }}</td>
+      <td class="content-cell"><a href="{{ f.url }}" target="_blank" rel="noopener" style="color:var(--accent)">{{ f.url }}</a></td>
+      <td>
+        {% for topic in f.topics.split(', ') %}
+          {% if topic %}
+          <span class="badge ns-knowledge">{{ topic }}</span>
+          {% endif %}
+        {% endfor %}
+      </td>
+      <td class="actions-cell">
+        <a href="/feeds/{{ f.index }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+        <form method="POST" action="/feeds/{{ f.index }}/delete" style="display:inline" onsubmit="return confirm('Delete feed &quot;{{ f.name }}&quot;?')">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No RSS feeds configured. Add one to start ingesting articles.</p>
+{% endif %}
+{% endblock %}

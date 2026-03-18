@@ -366,6 +366,23 @@ span.project-name {
   font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
 }
 
+/* Feeds table */
+.feeds-table { table-layout: fixed; }
+.feeds-table th:nth-child(1),
+.feeds-table td:nth-child(1) { width: 20%; }
+.feeds-table th:nth-child(2),
+.feeds-table td:nth-child(2) { width: 38%; }
+.feeds-table th:nth-child(3),
+.feeds-table td:nth-child(3) { width: 22%; }
+.feeds-table th:nth-child(4),
+.feeds-table td:nth-child(4) { width: 20%; white-space: nowrap; }
+
+.actions-cell {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
 /* Section */
 .recent-section h3 {
   font-size: 0.95rem;

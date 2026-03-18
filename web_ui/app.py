@@ -25,6 +25,7 @@ from .routes.duplicates import routes as duplicate_routes
 from .routes.contradictions import routes as contradiction_routes
 from .routes.suppressions import routes as suppression_routes
 from .routes.backups import routes as backup_routes
+from .routes.feeds import routes as feed_routes
 
 load_dotenv()
 
@@ -61,6 +62,7 @@ app = Starlette(
         *contradiction_routes,
         *suppression_routes,
         *backup_routes,
+        *feed_routes,
     ],
     lifespan=lifespan,
 )
