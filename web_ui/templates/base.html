@@ -28,11 +28,6 @@
         <li><a href="/suppressions" class="nav-link{% if current_page == 'suppressions' %} active{% endif %}">Suppressions</a></li>
         <li><a href="/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}">Backups</a></li>
       </ul>
-      <div class="sidebar-footer">
-        <a href="https://codeberg.org/ric_harvey/omnimem" class="footer-link" target="_blank" rel="noopener">Codeberg</a>
-        <a href="https://omnimem.org" class="footer-link" target="_blank" rel="noopener">omnimem.org</a>
-        <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
-      </div>
     </nav>
     <main class="content">
       <div id="flash-area">
@@ -41,5 +36,14 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a href="https://codeberg.org/ric_harvey/omnimem" class="footer-link" target="_blank" rel="noopener">Codeberg</a>
+      <span class="footer-sep"></span>
+      <a href="https://omnimem.org" class="footer-link" target="_blank" rel="noopener">omnimem.org</a>
+      <span class="footer-sep"></span>
+      <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
+    </div>
+  </footer>
 </body>
 </html>

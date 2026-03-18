@@ -40,14 +40,12 @@ body {
   width: var(--sidebar-width);
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
-  padding: 1.25rem 0;
+  padding: 1.25rem 0 2.5rem;
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
 }
 
 .sidebar-header {
@@ -106,13 +104,30 @@ body {
   margin: 0.5rem 1.25rem;
 }
 
-.sidebar-footer {
-  padding: 1rem 1.25rem;
+/* Site footer */
+.site-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-sidebar);
   border-top: 1px solid var(--border);
-  margin-top: auto;
+  z-index: 10;
+}
+
+.footer-inner {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+}
+
+.footer-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--border);
 }
 
 .footer-link {
@@ -130,7 +145,7 @@ body {
 .content {
   flex: 1;
   margin-left: var(--sidebar-width);
-  padding: 1.5rem 2rem;
+  padding: 1.5rem 2rem 3rem;
   max-width: 1100px;
 }
 
@@ -598,7 +613,7 @@ body {
   }
 
   .layout { flex-direction: column; }
-  .content { margin-left: 0; padding: 1rem; }
+  .content { margin-left: 0; padding: 1rem 1rem 3rem; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .nav-list { display: flex; flex-wrap: wrap; gap: 0; padding: 0.5rem 1rem; }
   .nav-link { padding: 0.35rem 0.75rem; }
