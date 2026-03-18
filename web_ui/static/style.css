@@ -286,7 +286,6 @@ body {
 }
 
 .content-cell {
-  max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -304,6 +303,67 @@ body {
 .mono {
   font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
   font-size: 0.8rem;
+}
+
+/* Projects table */
+.projects-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.projects-table th:nth-child(1),
+.projects-table td:nth-child(1) { width: 20%; }
+
+.projects-table th:nth-child(2),
+.projects-table td:nth-child(2) { width: 32%; }
+
+.projects-table th:nth-child(3),
+.projects-table td:nth-child(3) { width: 32%; }
+
+.projects-table th:nth-child(4),
+.projects-table td:nth-child(4) { width: 16%; }
+
+.name-cell {
+  white-space: nowrap;
+}
+
+.project-name {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+span.project-name {
+  color: var(--text-bright);
+}
+
+.memory-count-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  background: var(--accent);
+  color: white;
+  border-radius: 9999px;
+  padding: 0.1rem 0.45rem;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.date-cell {
+  white-space: nowrap;
+}
+
+.date-main {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-bright);
+}
+
+.date-time {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
 }
 
 /* Section */
@@ -618,4 +678,14 @@ body {
   .nav-list { display: flex; flex-wrap: wrap; gap: 0; padding: 0.5rem 1rem; }
   .nav-link { padding: 0.35rem 0.75rem; }
   .nav-divider { display: none; }
+
+  .projects-table { table-layout: auto; }
+  .projects-table th:nth-child(1),
+  .projects-table td:nth-child(1) { width: auto; }
+  .projects-table th:nth-child(2),
+  .projects-table td:nth-child(2) { width: auto; }
+  .projects-table th:nth-child(3),
+  .projects-table td:nth-child(3) { width: auto; }
+  .projects-table th:nth-child(4),
+  .projects-table td:nth-child(4) { width: auto; }
 }

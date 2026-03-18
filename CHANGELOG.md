@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.13] - 2026-03-18
+### Changed
+- **Projects table responsive layout**: Fixed-width table with proportional columns (20/32/32/16%) so Description and Current State shrink gracefully with ellipsis truncation
+- **Name + badge inline**: Project name and memory count badge now always stay on one line, even for long project names
+- **Clearer date display**: Updated column shows human-readable date ("18 Mar 2026") with time underneath in smaller mono font, replacing the raw ISO-style timestamp
+- **Moved inline styles to CSS classes**: Project name, memory count badge, and date cells use proper CSS classes instead of inline styles
+
 ## [3.2.12] - 2026-03-18
 ### Fixed
 - **UID-only project names in web UI**: Projects created via `remember(namespace="project")` appeared as raw ULIDs (e.g. `01KKHC8WYX7R1SQQT5DGA7619S`) instead of their actual project name. Root cause: `list_projects()` fell back to the key suffix when `project_name` field was missing

@@ -53,7 +53,13 @@ async def project_list(request: Request) -> HTMLResponse:
     projects = sorted(project_map.values(), key=lambda x: x["updated_at"], reverse=True)
     for p in projects:
         ts = p["updated_at"]
-        p["updated_at_fmt"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
+        if ts > 0:
+            lt = time.localtime(ts)
+            p["updated_date"] = time.strftime("%-d %b %Y", lt)
+            p["updated_time"] = time.strftime("%H:%M", lt)
+        else:
+            p["updated_date"] = "—"
+            p["updated_time"] = ""
 
     template = request.app.state.templates.get_template("projects/list.html")
     content = template.render(request=request, projects=projects, current_page="projects")
