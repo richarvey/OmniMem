@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-18
+### Added
+- **Project management**: `/projects` with list, detail, edit, and create views
+- Full project context editing with re-embedding on save
+
 ## [3.1.5] - 2026-03-18
 ### Added
 - **Create memory form**: `/create` with content, namespace, project, tags, and force-save option

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}New Project{% else %}Edit {{ project.name }}{% endif %} — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>{% if is_new %}New Project{% else %}Edit {{ project.name }}{% endif %}</h2>
+</header>
+
+<form method="POST" action="{% if is_new %}/projects/new{% else %}/projects/{{ project.name }}/edit{% endif %}" style="max-width:700px">
+  {% if is_new %}
+  <div class="form-group">
+    <label>Project Name</label>
+    <input type="text" name="name" class="form-input" value="{{ project.name }}" placeholder="my-project" required autofocus>
+  </div>
+  {% endif %}
+
+  <div class="form-group">
+    <label>Description</label>
+    <textarea name="description" class="form-textarea" rows="3" placeholder="What the project does">{{ project.description }}</textarea>
+  </div>
+
+  <div class="form-group">
+    <label>Stack</label>
+    <input type="text" name="stack" class="form-input" value="{{ project.stack }}" placeholder="Python, Docker, Valkey, etc.">
+  </div>
+
+  <div class="form-group">
+    <label>Goals</label>
+    <textarea name="goals" class="form-textarea" rows="3" placeholder="Current objectives">{{ project.goals }}</textarea>
+  </div>
+
+  <div class="form-group">
+    <label>Current State</label>
+    <textarea name="current_state" class="form-textarea" rows="3" placeholder="What's happening now">{{ project.current_state }}</textarea>
+  </div>
+
+  <div class="form-group">
+    <label>Notes</label>
+    <textarea name="notes" class="form-textarea" rows="3" placeholder="Freeform notes for next session">{{ project.notes }}</textarea>
+  </div>
+
+  <div style="display:flex;gap:0.5rem">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{% if is_new %}/projects{% else %}/projects/{{ project.name }}{% endif %}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

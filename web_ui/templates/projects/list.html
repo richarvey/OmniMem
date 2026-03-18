@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Projects — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Projects</h2>
+  <a href="/projects/new" class="btn btn-primary btn-sm">New Project</a>
+</header>
+
+{% if projects %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+      <th>Current State</th>
+      <th>Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in projects %}
+    <tr>
+      <td><a href="/projects/{{ p.name }}" style="color:var(--accent);text-decoration:none;font-weight:600">{{ p.name }}</a></td>
+      <td class="content-cell">{{ p.description }}</td>
+      <td class="content-cell">{{ p.current_state }}</td>
+      <td class="mono">{{ p.updated_at_fmt }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No projects configured yet.</p>
+{% endif %}
+{% endblock %}
