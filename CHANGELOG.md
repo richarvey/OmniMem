@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.7] - 2026-03-18
+### Fixed
+- **Web UI form parsing broken**: Deprioritise (and other lifecycle POST actions) returned 500 because `python-multipart` was not listed in `web_ui/requirements.txt`. Starlette requires it for `request.form()` parsing
+
 ## [3.2.6] - 2026-03-18
 ### Fixed
 - **Web UI missing `ulid-py` dependency**: The create memory route imports `ulid` but the package was not listed in `web_ui/requirements.txt`, causing an `ImportError` on startup
