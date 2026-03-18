@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Experience — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Experience Tracking</h2>
+  <a href="/experience/graveyard" class="btn btn-secondary btn-sm">Graveyard</a>
+</header>
+
+<section class="stats-grid">
+  <div class="stat-card">
+    <h3 class="stat-ns">Memories with Experience</h3>
+    <div class="stat-total">{{ count }}</div>
+  </div>
+  <div class="stat-card">
+    <h3 class="stat-ns">Avg Effort Score</h3>
+    <div class="stat-total">{{ avg_effort }}</div>
+  </div>
+  <div class="stat-card">
+    <h3 class="stat-ns">Outcomes</h3>
+    <div class="stat-breakdown" style="margin-top:0.5rem">
+      <span class="badge active">{{ outcomes.succeeded }} succeeded</span>
+      <span class="badge deprioritised">{{ outcomes.pivoted }} pivoted</span>
+      <span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red)">{{ outcomes.abandoned }} abandoned</span>
+    </div>
+  </div>
+</section>
+
+{% if breakthroughs %}
+<section style="margin-bottom:2rem">
+  <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Breakthroughs</h3>
+  {% for b in breakthroughs %}
+  <div class="search-result" style="border-color:var(--green)">
+    <div class="search-result-header">
+      <span class="score">effort {{ b.effort_score }}/5</span>
+      <span class="badge active">{{ b.outcome }}</span>
+    </div>
+    <div style="color:var(--green);font-size:0.9rem;margin-bottom:0.25rem">{{ b.breakthrough }}</div>
+    <div class="search-result-content"><a href="/memory/{{ b.key }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if effortful %}
+<section>
+  <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Most Effortful Memories</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Effort</th>
+        <th>Outcome</th>
+        <th>Content</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in effortful %}
+      <tr>
+        <td><span class="score">{{ m.effort_score }}/5</span></td>
+        <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'archived' }}">{{ m.outcome }}</span></td>
+        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if not count %}
+<p class="empty-state">No experience data recorded yet.</p>
+{% endif %}
+{% endblock %}

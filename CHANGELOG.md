@@ -4,6 +4,28 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.5] - 2026-03-18
+### Added
+- **Backup management**: `/backups` with list, create, preview restore, and confirm restore
+- Shared backups volume between MCP server and web UI
+
+## [3.2.4] - 2026-03-18
+### Added
+- **Topic suppression management**: `/suppressions` with inline add/remove via htmx
+
+## [3.2.3] - 2026-03-18
+### Added
+- **Contradiction viewer**: `/contradictions` with side-by-side comparison and archive actions
+
+## [3.2.2] - 2026-03-18
+### Added
+- **Duplicate detection**: `/duplicates` with scan trigger, cluster display, and archive actions
+
+## [3.2.1] - 2026-03-18
+### Added
+- **Experience tracking dashboard**: `/experience` with summary stats, breakthroughs, most effortful memories
+- **Abandoned approach graveyard**: `/experience/graveyard` listing all dead-end approaches
+
 ## [3.2.0] - 2026-03-18
 ### Added
 - **Project management**: `/projects` with list, detail, edit, and create views

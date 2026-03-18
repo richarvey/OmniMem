@@ -19,6 +19,11 @@ from .routes.detail import routes as detail_routes
 from .routes.lifecycle import routes as lifecycle_routes
 from .routes.create import routes as create_routes
 from .routes.projects import routes as project_routes
+from .routes.experience import routes as experience_routes
+from .routes.duplicates import routes as duplicate_routes
+from .routes.contradictions import routes as contradiction_routes
+from .routes.suppressions import routes as suppression_routes
+from .routes.backups import routes as backup_routes
 
 load_dotenv()
 
@@ -50,6 +55,11 @@ app = Starlette(
         *lifecycle_routes,
         *create_routes,
         *project_routes,
+        *experience_routes,
+        *duplicate_routes,
+        *contradiction_routes,
+        *suppression_routes,
+        *backup_routes,
     ],
     lifespan=lifespan,
 )

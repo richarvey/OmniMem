@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Duplicates — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Duplicate Detection</h2>
+</header>
+
+<div class="filter-bar">
+  <div class="form-group">
+    <label>Namespace</label>
+    <select class="form-select" name="namespace" id="dup-namespace">
+      <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
+      <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
+      <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
+    </select>
+  </div>
+  <div class="form-group" style="align-self:end">
+    <button class="btn btn-primary"
+            hx-get="/duplicates/scan"
+            hx-include="#dup-namespace"
+            hx-target="#dup-results"
+            hx-indicator="#dup-spinner">
+      Scan for Duplicates
+      <span class="htmx-indicator spinner" id="dup-spinner"></span>
+    </button>
+  </div>
+</div>
+
+<div id="dup-results">
+{% if scanned %}
+  {% if clusters %}
+  <p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">Found {{ clusters|length }} cluster{{ 's' if clusters|length != 1 }} of duplicates</p>
+
+  {% for cluster in clusters %}
+  <div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">
+    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem">
+      Cluster — {{ cluster.keys|length }} memories, similarity {{ cluster.max_similarity | round(3) if cluster.max_similarity is defined else '?' }}
+    </div>
+    {% for key in cluster.keys %}
+    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid var(--border)">
+      <a href="/memory/{{ key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none;flex:1">{{ key }}</a>
+      <span style="font-size:0.8rem;color:var(--text-dim)">{{ cluster.contents[loop.index0][:80] if cluster.contents is defined else '' }}</span>
+      <form method="POST" action="/lifecycle/archive" style="display:inline;margin-left:auto">
+        <input type="hidden" name="key" value="{{ key }}">
+        <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty-state">No duplicates found in {{ namespace }}.</p>
+  {% endif %}
+{% endif %}
+</div>
+{% endblock %}
