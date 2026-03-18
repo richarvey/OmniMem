@@ -140,7 +140,9 @@ docker compose up -d
 
 Edit the `.env` file to set at least `VALKEY_PASSWORD` to a secure value. You can also set `ANTHROPIC_API_KEY` if you want AI-powered RSS article summaries and richer contradiction detection. If you leave `ANTHROPIC_API_KEY` unset (or blank), OmniMem still works — the RSS worker will fall back to simple truncation for summaries, and contradiction checks will use embedding similarity only.
 
-Three containers start: Valkey with vector search, the OmniMem MCP server, and the RSS worker. The MCP server listens on port `8765` by default.
+Four containers start: Valkey with vector search, the OmniMem MCP server, the RSS worker, and the web UI. The MCP server listens on port `8765` by default and the web UI on port `8080`.
+
+Open `http://localhost:8080` in a browser to access the management dashboard — browse memories, run semantic searches, manage projects, track experience, and handle backups without needing to use MCP tool calls.
 
 Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.json`):
 
@@ -208,6 +210,7 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `restore_from_file(filename, dry_run?)` | Restore from backup, merges rather than overwrites |
 | `list_backups()` | See available backup files |
 | `health()` | Server, Valkey, index, and model status |
+| `version()` | Return the current OmniMem version |
 
 ---
 
@@ -229,7 +232,8 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
-| `BACKUP_DIR` | `/app/backups` | Where backup files are written |
+| `WEB_PORT` | `8080` | Port the web UI listens on |
+| `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 
 ---
 
@@ -290,38 +294,68 @@ labels:
 
 Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every machine you work from shares the same memory, the same graveyard, and the same project context.
 
-Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication middleware if you are exposing this publicly, and keep the Valkey port off the public internet.
+You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
+
+Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication middleware on both MCP and web UI if you are exposing them publicly, and keep the Valkey port off the public internet.
+
+---
+
+## Web UI
+
+OmniMem includes a browser-based management interface at `http://localhost:8080`. It connects directly to Valkey and does not depend on the MCP server running.
+
+| Page | What it does |
+|---|---|
+| **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity |
+| **Memories** | Browse all memories with namespace, state, and project filters. Paginated, htmx-powered |
+| **Search** | Semantic search using the full recall pipeline. Abandoned warnings highlighted |
+| **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons |
+| **Create** | Store a new memory with duplicate detection shown inline |
+| **Projects** | List, view, edit, and create project contexts |
+| **Experience** | Summary dashboard with effort stats, breakthroughs, and the abandoned approach graveyard |
+| **Duplicates** | Scan a namespace for near-identical memory clusters. Archive extras directly |
+| **Contradictions** | Side-by-side comparison of contradicting memories with resolve actions |
+| **Suppressions** | Add and remove suppressed topics inline |
+| **Backups** | Create backups, preview restore contents, and confirm restore |
+
+The web UI has no built-in authentication. If you expose it on a public network, put it behind a reverse proxy with basic auth. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
 ---
 
 ## Architecture
 
 ```
-  Claude Code (any machine)
-         |
-         |  SSE / MCP
-         v
-  +-----------------------------------------+
-  |         OmniMem MCP Server              |
-  |    Python  fastmcp  Debian slim          |
-  |                                         |
-  |  remember  recall  deprioritise         |
-  |  record_experience  warn_if_abandoned   |
-  |  find_duplicates  check_contradictions  |
-  |  briefing  dump_to_file  health         |
-  +-------------------+---------------------+
-                      |
-          +-----------+-----------+
-          |                       |
-          v                       v
-  +---------------+     +------------------+
-  |    Valkey     |     |   RSS Worker     |
-  |  + search     | <-- |                  |
-  |               |     |  feedparser      |
-  | idx:episodic  |     |  APScheduler     |
-  | idx:project   |     |  Claude Haiku    |
-  | idx:knowledge |     +------------------+
-  +---------------+
+  Claude Code (any machine)           Browser
+         |                               |
+         |  SSE / MCP                    |  HTTP :8080
+         v                               v
+  +-------------------------+   +-------------------------+
+  |   OmniMem MCP Server    |   |    OmniMem Web UI       |
+  |   Python  fastmcp       |   |    Starlette  htmx      |
+  |                         |   |    Jinja2 templates      |
+  |  remember  recall       |   |                         |
+  |  deprioritise  archive  |   |  Dashboard  Search      |
+  |  record_experience      |   |  Browse  Create         |
+  |  warn_if_abandoned      |   |  Projects  Experience   |
+  |  briefing  health       |   |  Duplicates  Backups    |
+  +-----------+-------------+   +-----------+-------------+
+              |                             |
+              +-------------+---------------+
+                            |
+              +-------------+-------------+
+              |                           |
+              v                           v
+      +---------------+         +------------------+
+      |    Valkey     |         |   RSS Worker     |
+      |  + search     |  <---   |                  |
+      |               |         |  feedparser      |
+      | idx:episodic  |         |  APScheduler     |
+      | idx:project   |         |  Claude Haiku    |
+      | idx:knowledge |         +------------------+
+      +---------------+
+
+  Both the MCP server and web UI connect directly to Valkey
+  and share the mcp_server/memory/ package.
 
   Recall pipeline:
     query
