@@ -16,6 +16,7 @@
       <th>Description</th>
       <th>Current State</th>
       <th>Updated</th>
+      <th style="width:5rem"></th>
     </tr>
   </thead>
   <tbody>
@@ -36,6 +37,13 @@
       <td class="date-cell">
         <span class="date-main">{{ p.updated_date }}</span>
         <span class="date-time">{{ p.updated_time }}</span>
+      </td>
+      <td style="text-align:right">
+        {% if p.has_context %}
+        <form method="POST" action="/projects/{{ p.name }}/delete" style="display:inline" onsubmit="return confirm('Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.')">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

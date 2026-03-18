@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from .. import deps
@@ -120,6 +120,25 @@ async def preview_restore(request: Request) -> HTMLResponse:
     return HTMLResponse(content)
 
 
+async def download_backup(request: Request):
+    """GET /backups/{filename}/download — download a backup file."""
+    filename = request.path_params["filename"]
+    filepath = (_backup_dir() / filename).resolve()
+
+    # Path traversal protection
+    if not str(filepath).startswith(str(_backup_dir().resolve())):
+        return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
+
+    if not filepath.exists():
+        return RedirectResponse(url="/backups?error=Backup+file+not+found", status_code=303)
+
+    return FileResponse(
+        filepath,
+        media_type="application/json",
+        filename=filename,
+    )
+
+
 async def delete_backup(request: Request) -> RedirectResponse:
     """POST /backups/{filename}/delete — permanently delete a backup file."""
     filename = request.path_params["filename"]
@@ -169,6 +188,7 @@ routes = [
     Route("/backups", backups_page),
     Route("/backups/create", create_backup, methods=["POST"]),
     Route("/backups/{filename}/preview", preview_restore),
+    Route("/backups/{filename}/download", download_backup),
     Route("/backups/{filename}/restore", restore_backup, methods=["POST"]),
     Route("/backups/{filename}/delete", delete_backup, methods=["POST"]),
 ]

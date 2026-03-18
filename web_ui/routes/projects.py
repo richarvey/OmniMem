@@ -211,10 +211,27 @@ async def project_create(request: Request) -> RedirectResponse:
     return RedirectResponse(url=f"/projects/{name}", status_code=303)
 
 
+async def project_delete(request: Request) -> RedirectResponse:
+    """POST /projects/{name}/delete — delete a project context."""
+    name = request.path_params["name"]
+    key = f"mem:project:{name}"
+    data = deps.store.get(key)
+
+    if data is None:
+        logger.warning("Delete requested for non-existent project %s", name)
+        return RedirectResponse(url="/projects", status_code=303)
+
+    deps.store.delete(key)
+    logger.info("Deleted project %s via web UI", name)
+
+    return RedirectResponse(url="/projects", status_code=303)
+
+
 routes = [
     Route("/projects", project_list),
     Route("/projects/new", project_create_form),
     Route("/projects/new", project_create, methods=["POST"]),
+    Route("/projects/{name:path}/delete", project_delete, methods=["POST"]),
     Route("/projects/{name:path}/edit", project_edit_form),
     Route("/projects/{name:path}/edit", project_save, methods=["POST"]),
     Route("/projects/{name:path}", project_detail),

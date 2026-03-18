@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.4] - 2026-03-18
+### Added
+- **Delete projects from web UI**: Delete button on both the projects list and detail pages with confirmation prompt. Deletes the project context record but preserves memories tagged with the project
+- **Download backups**: New download button on the backups page serves the JSON backup file directly to the browser, with path traversal protection
+### Changed
+- **Backup action buttons redesigned**: Preview button replaced with magnifying glass icon, download uses arrow-down icon, all three action buttons (preview, download, delete) are uniform icon buttons aligned at the same height
+- **README**: Added Claude Code permission tip for auto-allowing OmniMem MCP tools via `mcp__omnimem__*` wildcard
+
 ## [3.3.3] - 2026-03-18
 ### Changed
 - **Responsive memories table**: Fixed-width table layout with proportional columns (10/44/12/16/18%) and ellipsis truncation on content and project columns, matching the projects page pattern

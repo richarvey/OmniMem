@@ -6,7 +6,12 @@
 <header class="detail-header">
   <a href="/projects" class="btn btn-secondary btn-sm">&larr; Back</a>
   <h2 style="font-size:1.2rem">{{ project.name }}</h2>
-  <a href="/projects/{{ project.name }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+  <div style="display:flex;gap:0.5rem">
+    <a href="/projects/{{ project.name }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+    <form method="POST" action="/projects/{{ project.name }}/delete" style="display:inline" onsubmit="return confirm('Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.')">
+      <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+    </form>
+  </div>
 </header>
 
 {% if project.description %}
