@@ -4,6 +4,15 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-03-18
+### Fixed
+- **Duplicate detection page rendered twice on scan**: The htmx scan endpoint returned the full page template (header, nav, form, and results) instead of just the results partial, causing a page-within-a-page effect. Extracted results into `partials/dup_results.html` and the scan endpoint now returns only the partial
+
+## [3.3.1] - 2026-03-18
+### Added
+- **Delete backups from web UI**: Trash bin icon button in the Actions column of the backups table permanently deletes the backup file from disk with a confirmation prompt before deletion
+- Path traversal protection on the delete endpoint
+
 ## [3.3.0] - 2026-03-18
 ### Added
 - **RSS Feeds management in web UI**: New `/feeds` page to view, add, edit, and delete RSS feed subscriptions directly from the browser — changes are written to `feeds.yml` in real time

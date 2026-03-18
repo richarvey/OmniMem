@@ -35,13 +35,11 @@ async def duplicates_scan(request: Request) -> HTMLResponse:
         project_filter=project,
     )
 
-    template = request.app.state.templates.get_template("duplicates.html")
+    template = request.app.state.templates.get_template("partials/dup_results.html")
     content = template.render(
         request=request,
-        current_page="duplicates",
         clusters=clusters,
         namespace=namespace,
-        scanned=True,
     )
     return HTMLResponse(content)
 

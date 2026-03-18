@@ -120,6 +120,27 @@ async def preview_restore(request: Request) -> HTMLResponse:
     return HTMLResponse(content)
 
 
+async def delete_backup(request: Request) -> RedirectResponse:
+    """POST /backups/{filename}/delete — permanently delete a backup file."""
+    filename = request.path_params["filename"]
+    filepath = (_backup_dir() / filename).resolve()
+
+    # Path traversal protection
+    if not str(filepath).startswith(str(_backup_dir().resolve())):
+        return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
+
+    if not filepath.exists():
+        return RedirectResponse(url="/backups?error=Backup+file+not+found", status_code=303)
+
+    try:
+        filepath.unlink()
+        logger.info("Backup deleted via web UI: %s", filename)
+        return RedirectResponse(url=f"/backups?message=Deleted+{filename}", status_code=303)
+    except Exception as exc:
+        logger.error("Backup deletion failed: %s", exc)
+        return RedirectResponse(url=f"/backups?error=Delete+failed:+{exc}", status_code=303)
+
+
 async def restore_backup(request: Request) -> RedirectResponse:
     """POST /backups/{filename}/restore — execute restore from backup."""
     filename = request.path_params["filename"]
@@ -149,4 +170,5 @@ routes = [
     Route("/backups/create", create_backup, methods=["POST"]),
     Route("/backups/{filename}/preview", preview_restore),
     Route("/backups/{filename}/restore", restore_backup, methods=["POST"]),
+    Route("/backups/{filename}/delete", delete_backup, methods=["POST"]),
 ]
