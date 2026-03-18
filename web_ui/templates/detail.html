@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}{{ memory.key }} — OmniMem{% endblock %}
+
+{% block content %}
+<header class="detail-header">
+  <a href="/memories" class="btn btn-secondary btn-sm">&larr; Back</a>
+  <span class="badge ns-{{ memory.namespace }}">{{ memory.namespace }}</span>
+  <span class="badge {{ memory.state }}">{{ memory.state }}</span>
+  <span class="detail-key">{{ memory.key }}</span>
+</header>
+
+<div class="detail-content">{{ memory.content }}</div>
+
+<div class="meta-grid">
+  {% if memory.project %}
+  <div class="meta-item">
+    <div class="meta-label">Project</div>
+    <div class="meta-value">{{ memory.project }}</div>
+  </div>
+  {% endif %}
+
+  <div class="meta-item">
+    <div class="meta-label">Surface Score</div>
+    <div class="meta-value">{{ memory.surface_score }}</div>
+  </div>
+
+  <div class="meta-item">
+    <div class="meta-label">Experience Weight</div>
+    <div class="meta-value">{{ memory.experience_weight }}</div>
+  </div>
+
+  {% if memory.effort_score %}
+  <div class="meta-item">
+    <div class="meta-label">Effort Score</div>
+    <div class="meta-value">{{ memory.effort_score }}/5</div>
+  </div>
+  {% endif %}
+
+  {% if memory.outcome %}
+  <div class="meta-item">
+    <div class="meta-label">Outcome</div>
+    <div class="meta-value">{{ memory.outcome }}</div>
+  </div>
+  {% endif %}
+
+  {% if memory.iterations %}
+  <div class="meta-item">
+    <div class="meta-label">Iterations</div>
+    <div class="meta-value">{{ memory.iterations }}</div>
+  </div>
+  {% endif %}
+
+  <div class="meta-item">
+    <div class="meta-label">Created</div>
+    <div class="meta-value mono">{{ memory.created_at }}</div>
+  </div>
+
+  <div class="meta-item">
+    <div class="meta-label">Updated</div>
+    <div class="meta-value mono">{{ memory.updated_at }}</div>
+  </div>
+
+  {% if memory.source_url %}
+  <div class="meta-item">
+    <div class="meta-label">Source</div>
+    <div class="meta-value"><a href="{{ memory.source_url }}" target="_blank" style="color:var(--accent)">{{ memory.feed_name or memory.source_url }}</a></div>
+  </div>
+  {% endif %}
+</div>
+
+{% if memory.tags %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Tags</h3>
+  {% for tag in memory.tags %}
+  <span class="badge" style="background:var(--bg-input);color:var(--text-dim);margin-right:0.25rem">{{ tag }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if memory.breakthrough %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Breakthrough</h3>
+  <div class="detail-content" style="border-color:var(--green);margin-bottom:0">{{ memory.breakthrough }}</div>
+</div>
+{% endif %}
+
+{% if memory.gotchas %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Gotchas</h3>
+  <div class="detail-content" style="border-color:var(--yellow);margin-bottom:0">{{ memory.gotchas }}</div>
+</div>
+{% endif %}
+
+{% if memory.abandoned_approaches %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Abandoned Approaches</h3>
+  {% for a in memory.abandoned_approaches %}
+  <div class="search-result" style="border-color:var(--orange)">
+    <strong>{{ a.name }}</strong>{% if a.type %} <span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ a.type }}</span>{% endif %}
+    {% if a.reason %}<p style="margin-top:0.25rem;color:var(--text-dim);font-size:0.85rem">{{ a.reason }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if memory.contradictions %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Contradictions</h3>
+  {% for c in memory.contradictions %}
+  <div class="search-result" style="border-color:var(--red)">
+    <span class="mono" style="font-size:0.75rem;color:var(--text-dim)">{{ c.key if c.key is defined else c }}</span>
+    {% if c.explanation is defined %}<p style="margin-top:0.25rem;font-size:0.85rem">{{ c.explanation }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if memory.reinstate_hints %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Reinstate Hints</h3>
+  {% for hint in memory.reinstate_hints %}
+  <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);margin-right:0.25rem">{{ hint }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if memory.deprioritised_reason %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Deprioritised Reason</h3>
+  <p style="color:var(--yellow);font-size:0.9rem">{{ memory.deprioritised_reason }}</p>
+</div>
+{% endif %}
+
+<div class="action-bar">
+  {% if memory.state == 'active' %}
+  <form method="POST" action="/lifecycle/deprioritise" style="display:inline">
+    <input type="hidden" name="key" value="{{ memory.key }}">
+    <input type="hidden" name="reason" value="Deprioritised via web UI">
+    <button type="submit" class="btn btn-secondary btn-sm">Deprioritise</button>
+  </form>
+  <form method="POST" action="/lifecycle/archive" style="display:inline">
+    <input type="hidden" name="key" value="{{ memory.key }}">
+    <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
+  </form>
+  {% elif memory.state == 'deprioritised' %}
+  <form method="POST" action="/lifecycle/reinstate" style="display:inline">
+    <input type="hidden" name="key" value="{{ memory.key }}">
+    <button type="submit" class="btn btn-primary btn-sm">Reinstate</button>
+  </form>
+  <form method="POST" action="/lifecycle/archive" style="display:inline">
+    <input type="hidden" name="key" value="{{ memory.key }}">
+    <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
+  </form>
+  {% elif memory.state == 'archived' %}
+  <form method="POST" action="/lifecycle/reinstate" style="display:inline">
+    <input type="hidden" name="key" value="{{ memory.key }}">
+    <button type="submit" class="btn btn-primary btn-sm">Reinstate</button>
+  </form>
+  {% endif %}
+
+  <button class="btn btn-danger btn-sm"
+          onclick="document.getElementById('delete-modal').style.display='flex'">
+    Delete
+  </button>
+</div>
+
+<div id="delete-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <h3>Delete Memory</h3>
+    <p>Permanently delete <strong>{{ memory.key }}</strong>? This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
+      <form method="POST" action="/lifecycle/delete" style="display:inline">
+        <input type="hidden" name="key" value="{{ memory.key }}">
+        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

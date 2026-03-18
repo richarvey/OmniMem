@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.3] - 2026-03-18
+### Added
+- **Memory detail view**: `/memory/{key}` shows full content, metadata, tags, experience data, contradictions, abandoned approaches
+- Lifecycle action buttons (deprioritise, archive, reinstate, delete with confirmation modal)
+
 ## [3.1.2] - 2026-03-18
 ### Added
 - **Semantic search page**: `/search` with full recall pipeline integration
