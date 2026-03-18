@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-03-18
+### Added
+- `version()` MCP tool returns the current OmniMem version string
+
 ## [3.0.0] - 2026-03-18
 ### Added
 - Start of v3.x branch: browser-based management UI for OmniMem

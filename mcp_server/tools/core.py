@@ -15,9 +15,14 @@ from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
 
-from . import _compact
+from . import __version__, _compact
 
 logger = logging.getLogger(__name__)
+
+
+def version() -> dict[str, str]:
+    """Return the current OmniMem version."""
+    return {"version": __version__}
 
 VALID_NAMESPACES = {"episodic", "project", "knowledge"}
 MAX_CONTENT_LENGTH = 50_000

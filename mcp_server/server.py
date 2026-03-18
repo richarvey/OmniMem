@@ -54,6 +54,7 @@ def _init() -> None:
 def _register_tools() -> None:
     """Register all MCP tools from tool modules."""
     from tools.core import (
+        version,
         remember, recall, recall_index, recall_detail,
         deprioritise, archive, reinstate, forget,
         suppress_topic, unsuppress_topic, list_suppressions, find_duplicates,
@@ -72,6 +73,7 @@ def _register_tools() -> None:
     from tools.briefing import briefing
 
     # Core tools
+    mcp.tool()(version)
     mcp.tool()(remember)
     mcp.tool()(recall)
     mcp.tool()(recall_index)
