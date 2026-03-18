@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-18
+### Added
+- **Web UI service**: Browser-based management dashboard for OmniMem (Starlette + htmx + Jinja2)
+- Dashboard page with namespace stats, state counts, health indicators, and recent activity
+- Docker Compose `web_ui` service with shared `mcp_server/memory/` package
+- Vendored htmx 2.0.4 (no CDN dependency)
+- Reverse proxy authentication docs (Traefik + Caddy)
+
 ## [3.0.1] - 2026-03-18
 ### Added
 - `version()` MCP tool returns the current OmniMem version string

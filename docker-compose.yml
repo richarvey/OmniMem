@@ -42,5 +42,20 @@ services:
       - .env
     restart: unless-stopped
 
+  web_ui:
+    build:
+      context: .
+      dockerfile: web_ui/Dockerfile
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    volumes:
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    restart: unless-stopped
+
 volumes:
   valkey_data:

@@ -47,7 +47,7 @@ class TestVersion:
         result = version()
         assert "version" in result
         assert isinstance(result["version"], str)
-        assert result["version"] == "3.0.1"
+        assert result["version"]  # non-empty version string
 
 
 class TestRemember:
