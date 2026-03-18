@@ -110,23 +110,38 @@ def get_project_context(project_name: str) -> dict[str, Any]:
 
 
 def list_projects() -> dict[str, Any]:
-    """List all stored project contexts."""
+    """List all stored project contexts, deduplicated by project name."""
     store, _ = _get_deps()
 
     keys = store.scan_prefix("mem:project:")
 
     # Batch fetch all project data in one pipeline round-trip
     all_data = store.get_multi(keys)
-    projects: list[dict[str, Any]] = []
 
+    # Group by resolved project name to deduplicate
+    project_map: dict[str, dict[str, Any]] = {}
     for key, data in zip(keys, all_data):
-        if data:
-            projects.append({
-                "project_name": data.get("project_name", key.split(":")[-1]),
-                "description": data.get("description", "")[:80],
-                "state": data.get("state", "active"),
-            })
+        if not data:
+            continue
+        # Resolve name: prefer project_name, fall back to project field, then key suffix
+        name = data.get("project_name") or data.get("project") or key.split(":")[-1]
+        is_context = bool(data.get("goals") or data.get("stack"))
 
+        if name not in project_map:
+            project_map[name] = {
+                "project_name": name,
+                "description": "",
+                "state": "active",
+                "memory_count": 0,
+            }
+
+        if is_context:
+            project_map[name]["description"] = (data.get("description") or "")[:80]
+            project_map[name]["state"] = data.get("state", "active")
+        else:
+            project_map[name]["memory_count"] += 1
+
+    projects = sorted(project_map.values(), key=lambda p: p["project_name"].lower())
     return {"projects": projects}
 
 

@@ -22,6 +22,30 @@ mcp = FastMCP("omnimem")
 _start_time = time.time()
 
 
+def _migrate_project_names(store) -> None:
+    """Set project_name from project field on ULID-keyed project memories missing it."""
+    keys = store.scan_prefix("mem:project:")
+    if not keys:
+        return
+
+    all_data = store.get_multi(keys)
+    fixed = 0
+    for key, data in zip(keys, all_data):
+        if not data:
+            continue
+        # Skip entries that already have project_name set
+        if data.get("project_name"):
+            continue
+        # Use the project field if available
+        project = data.get("project")
+        if project:
+            store.set_field(key, "project_name", project)
+            fixed += 1
+
+    if fixed:
+        logger.info("Migration: set project_name on %d project memories", fixed)
+
+
 def _init() -> None:
     """Initialise shared dependencies: Valkey store, embedder, lifecycle, pipeline."""
     from memory.embedder import Embedder
@@ -47,6 +71,9 @@ def _init() -> None:
     tools_pkg._embedder = embedder
     tools_pkg._lifecycle = lifecycle
     tools_pkg._pipeline = pipeline
+
+    # One-time migration: set project_name on ULID-keyed project memories
+    _migrate_project_names(store)
 
     logger.info("OmniMem initialised successfully")
 

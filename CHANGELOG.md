@@ -4,6 +4,15 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.2.12] - 2026-03-18
+### Fixed
+- **UID-only project names in web UI**: Projects created via `remember(namespace="project")` appeared as raw ULIDs (e.g. `01KKHC8WYX7R1SQQT5DGA7619S`) instead of their actual project name. Root cause: `list_projects()` fell back to the key suffix when `project_name` field was missing
+- **Duplicate project entries**: Multiple memories for the same project each appeared as separate rows in the projects list
+### Added
+- **Startup migration**: Automatically sets `project_name` from `project` field on ULID-keyed project memories missing it
+- **Project deduplication**: `list_projects()` (MCP and web UI) now groups entries by resolved project name, showing one row per project with a memory count badge
+- **Memory count badges**: Projects list template shows how many project-namespace memories exist per project
+
 ## [3.2.11] - 2026-03-18
 ### Fixed
 - **Footer confined to sidebar**: Moved footer links (Codeberg, omnimem.org, Mastodon) out of the sidebar nav into a full-width fixed bar at the bottom of the page with centered layout and dot separators

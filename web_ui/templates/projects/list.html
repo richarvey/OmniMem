@@ -21,7 +21,16 @@
   <tbody>
     {% for p in projects %}
     <tr>
-      <td><a href="/projects/{{ p.name }}" style="color:var(--accent);text-decoration:none;font-weight:600">{{ p.name }}</a></td>
+      <td>
+        {% if p.has_context %}
+        <a href="/projects/{{ p.name }}" style="color:var(--accent);text-decoration:none;font-weight:600">{{ p.name }}</a>
+        {% else %}
+        <span style="font-weight:600">{{ p.name }}</span>
+        {% endif %}
+        {% if p.memory_count > 0 %}
+        <span style="margin-left:0.5rem;font-size:0.7rem;background:var(--accent);color:var(--bg-primary);border-radius:9999px;padding:0.15rem 0.5rem;vertical-align:middle">{{ p.memory_count }}</span>
+        {% endif %}
+      </td>
       <td class="content-cell">{{ p.description }}</td>
       <td class="content-cell">{{ p.current_state }}</td>
       <td class="mono">{{ p.updated_at_fmt }}</td>

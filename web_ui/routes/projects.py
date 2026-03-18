@@ -15,23 +15,42 @@ logger = logging.getLogger(__name__)
 
 
 async def project_list(request: Request) -> HTMLResponse:
-    """GET /projects — list all projects."""
+    """GET /projects — list all projects, deduplicated by name."""
     keys = deps.store.scan_prefix("mem:project:")
     all_data = deps.store.get_multi(keys) if keys else []
 
-    projects = []
+    # Group by resolved project name to deduplicate
+    project_map: dict[str, dict] = {}
     for key, data in zip(keys, all_data):
         if data is None:
             continue
-        projects.append({
-            "name": data.get("project_name", key.split(":")[-1]),
-            "description": (data.get("description") or "")[:120],
-            "current_state": (data.get("current_state") or "")[:120],
-            "state": data.get("state", "active"),
-            "updated_at": float(data.get("updated_at", "0")),
-        })
+        name = data.get("project_name") or data.get("project") or key.split(":")[-1]
+        is_context = bool(data.get("goals") or data.get("stack"))
 
-    projects.sort(key=lambda x: x["updated_at"], reverse=True)
+        if name not in project_map:
+            project_map[name] = {
+                "name": name,
+                "description": "",
+                "current_state": "",
+                "state": "active",
+                "updated_at": 0.0,
+                "memory_count": 0,
+                "has_context": False,
+            }
+
+        updated = float(data.get("updated_at", "0"))
+        if updated > project_map[name]["updated_at"]:
+            project_map[name]["updated_at"] = updated
+
+        if is_context:
+            project_map[name]["description"] = (data.get("description") or "")[:120]
+            project_map[name]["current_state"] = (data.get("current_state") or "")[:120]
+            project_map[name]["state"] = data.get("state", "active")
+            project_map[name]["has_context"] = True
+        else:
+            project_map[name]["memory_count"] += 1
+
+    projects = sorted(project_map.values(), key=lambda x: x["updated_at"], reverse=True)
     for p in projects:
         ts = p["updated_at"]
         p["updated_at_fmt"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
