@@ -346,6 +346,7 @@ body {
 
 .name-cell {
   white-space: nowrap;
+  padding-right: 1rem;
 }
 
 .project-name {

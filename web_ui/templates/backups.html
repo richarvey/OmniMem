@@ -5,9 +5,15 @@
 {% block content %}
 <header class="page-header">
   <h2>Backups</h2>
-  <form method="POST" action="/backups/create" style="display:inline">
-    <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
-  </form>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <form method="POST" action="/backups/create" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
+    </form>
+    <form method="POST" action="/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
+      <input type="file" name="file" accept=".json" required style="display:none" id="backup-file-input" onchange="this.form.submit()">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('backup-file-input').click()">Upload</button>
+    </form>
+  </div>
 </header>
 
 {% if message %}

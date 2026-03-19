@@ -87,6 +87,50 @@ async def create_backup(request: Request) -> RedirectResponse:
         return RedirectResponse(url=f"/backups?error=Backup+failed:+{exc}", status_code=303)
 
 
+async def upload_backup(request: Request) -> RedirectResponse:
+    """POST /backups/upload — upload a JSON backup file."""
+    form = await request.form()
+    upload = form.get("file")
+
+    if upload is None or not upload.filename:
+        return RedirectResponse(url="/backups?error=No+file+selected", status_code=303)
+
+    if not upload.filename.endswith(".json"):
+        return RedirectResponse(url="/backups?error=Only+.json+files+are+allowed", status_code=303)
+
+    # Sanitise filename: keep only safe characters
+    safe_name = "".join(c for c in upload.filename if c.isalnum() or c in "._-")
+    if not safe_name.endswith(".json"):
+        safe_name += ".json"
+
+    backup_path = _backup_dir()
+    backup_path.mkdir(parents=True, exist_ok=True)
+    filepath = (backup_path / safe_name).resolve()
+
+    # Path traversal protection
+    if not str(filepath).startswith(str(backup_path.resolve())):
+        return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
+
+    try:
+        contents = await upload.read()
+        # Validate it's actually JSON
+        json.loads(contents)
+
+        with open(filepath, "wb") as f:
+            f.write(contents)
+
+        logger.info("Backup uploaded via web UI: %s (%d bytes)", safe_name, len(contents))
+        return RedirectResponse(
+            url=f"/backups?message=Uploaded+{safe_name}",
+            status_code=303,
+        )
+    except json.JSONDecodeError:
+        return RedirectResponse(url="/backups?error=File+is+not+valid+JSON", status_code=303)
+    except Exception as exc:
+        logger.error("Backup upload failed: %s", exc)
+        return RedirectResponse(url=f"/backups?error=Upload+failed:+{exc}", status_code=303)
+
+
 async def preview_restore(request: Request) -> HTMLResponse:
     """GET /backups/{filename}/preview — preview a restore operation."""
     filename = request.path_params["filename"]
@@ -187,6 +231,7 @@ async def restore_backup(request: Request) -> RedirectResponse:
 routes = [
     Route("/backups", backups_page),
     Route("/backups/create", create_backup, methods=["POST"]),
+    Route("/backups/upload", upload_backup, methods=["POST"]),
     Route("/backups/{filename}/preview", preview_restore),
     Route("/backups/{filename}/download", download_backup),
     Route("/backups/{filename}/restore", restore_backup, methods=["POST"]),

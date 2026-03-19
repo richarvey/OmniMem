@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.5] - 2026-03-19
+### Added
+- **Upload backups**: New Upload button on the backups page opens a file picker filtered to `.json` files, validates the content is valid JSON, sanitises the filename, and saves to the backup directory. The list refreshes automatically after upload
+### Fixed
+- **Project name badge overlap**: Added right padding to the name cell on the projects table so the memory count badge no longer overlaps the description column
+
 ## [3.3.4] - 2026-03-18
 ### Added
 - **Delete projects from web UI**: Delete button on both the projects list and detail pages with confirmation prompt. Deletes the project context record but preserves memories tagged with the project
