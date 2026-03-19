@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.6.1] - 2026-03-19
+### Added
+- **Last auto-maintenance timestamp in web UI**: Duplicates and Contradictions pages now show when auto-maintenance last ran, which project it ran for, and how many duplicates were archived or contradictions found
+
 ## [3.6.0] - 2026-03-19
 ### Added
 - **Automatic maintenance on briefing interval**: Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server automatically scans for duplicate episodic memories and archives the oldest in each cluster, then runs a heuristic contradiction scan on active project memories. Results appear in the briefing response under `auto_maintenance`. Per-project counter tracked in Valkey at `meta:maintenance:{project}`. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable

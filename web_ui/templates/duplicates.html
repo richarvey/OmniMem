@@ -7,6 +7,13 @@
   <h2>Duplicate Detection</h2>
 </header>
 
+{% if last_maintenance %}
+<div style="margin-bottom:1rem;padding:0.6rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);font-size:0.8rem;color:var(--text-dim)">
+  Last auto-maintenance: <strong style="color:var(--text)">{{ last_maintenance.when }}</strong>
+  (project: {{ last_maintenance.project }}, {{ last_maintenance.duplicates_archived }} duplicate{{ 's' if last_maintenance.duplicates_archived != 1 }} archived)
+</div>
+{% endif %}
+
 <div class="filter-bar">
   <div class="form-group">
     <label>Namespace</label>

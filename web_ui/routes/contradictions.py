@@ -47,11 +47,15 @@ async def contradictions_page(request: Request) -> HTMLResponse:
                 "similarity": c.get("similarity"),
             })
 
+    # Reuse the duplicates route helper for last maintenance info
+    from .duplicates import _get_last_maintenance
+
     template = request.app.state.templates.get_template("contradictions.html")
     content = template.render(
         request=request,
         current_page="contradictions",
         pairs=pairs,
+        last_maintenance=_get_last_maintenance(),
     )
     return HTMLResponse(content)
 
