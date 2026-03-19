@@ -1537,46 +1537,52 @@
         Four Docker containers, local embeddings, and nothing leaves your machine.
       </p>
     </div>
-    <div class="architecture-diagram">  <span class="highlight">Claude Code</span> (any machine)
-         |
-         |  SSE / MCP protocol
-         v
-  +-------------------------------------------+
-  |          <span class="highlight">OmniMem MCP Server</span>              |
-  |     Python &#183; FastMCP &#183; Debian slim         |
-  |                                           |
-  |   remember   recall   deprioritise        |
-  |   record_experience   warn_if_abandoned   |
-  |   find_duplicates   check_contradictions  |
-  |   briefing   dump_to_file   health        |
-  +---------+-----------------+---------------+
-            |                 |
-            v                 v
-  +-----------------+   +------------------+
-  |   <span class="secondary">Valkey</span>        |   |   <span class="secondary">RSS Worker</span>     |
-  |   + search      |&lt;--|                  |
-  |                 |   |  feedparser      |
-  |  idx:episodic   |   |  APScheduler     |
-  |  idx:project    |   |  Claude Haiku    |
-  |  idx:knowledge  |   +------------------+
-  +--------+--------+
-           |
-           v
-  +-------------------------------------------+
-  |          <span class="highlight">Web UI Dashboard</span>                |
-  |     Starlette &#183; Jinja2 &#183; htmx              |
-  |                                           |
-  |   Browse memories   Manage RSS feeds      |
-  |   Search &#183; Telemetry &#183; Backups              |
-  |   Prometheus /metrics endpoint            |
-  +-------------------------------------------+
+    <div class="architecture-diagram">  <span class="highlight">Claude Code</span> (any machine)           Browser
+         |                               |
+         |  SSE / MCP                    |  HTTP :8080
+         v                               v
+  +-------------------------+   +-------------------------+
+  |   <span class="highlight">OmniMem MCP Server</span>    |   |    <span class="highlight">OmniMem Web UI</span>       |
+  |   Python  fastmcp       |   |    Starlette  htmx      |
+  |                         |   |    Jinja2 templates      |
+  |  remember  recall       |   |                         |
+  |  deprioritise  archive  |   |  Dashboard  Search      |
+  |  record_experience      |   |  Browse  Create         |
+  |  warn_if_abandoned      |   |  Projects  Experience   |
+  |  briefing  health       |   |  Duplicates  Backups    |
+  +-----------+-------------+   +-----------+-------------+
+              |                             |
+              +-------------+---------------+
+                            |
+              +-------------+-------------+
+              |                           |
+              v                           v
+      +---------------+         +------------------+
+      |    <span class="secondary">Valkey</span>     |         |   <span class="secondary">RSS Worker</span>     |
+      |  + search     |  &lt;---   |                  |
+      |               |         |  feedparser      |
+      | idx:episodic  |         |  APScheduler     |
+      | idx:project   |         |  Claude Haiku    |
+      | idx:knowledge |         +------------------+
+      +---------------+
+
+  <span class="muted">Both the MCP server and web UI connect directly to Valkey
+  and share the mcp_server/memory/ package.</span>
 
   <span class="muted">Recall pipeline:</span>
-    query &rarr; abandoned fast-path &rarr; embed &rarr; vector search
-      &rarr; filter archived/deleted &rarr; filter suppressed topics
-      &rarr; apply surface_score &rarr; apply recency decay
-      &rarr; apply experience_weight &rarr; check reinstate eligibility
-      &rarr; surface contradictions &rarr; merge, re-rank, return top_k</div>
+    query
+      &rarr; abandoned fast-path (keyword scan, no embedding needed)
+      &rarr; embed query
+      &rarr; vector search, top 20 candidates per namespace
+      &rarr; filter archived and deleted
+      &rarr; filter suppressed topics
+      &rarr; apply surface_score (lifecycle state multiplier)
+      &rarr; apply recency decay (age penalty after 90 days)
+      &rarr; apply experience_weight (effort x outcome multiplier)
+      &rarr; check reinstate eligibility
+      &rarr; surface contradiction warnings
+      &rarr; merge, re-rank, return top_k
+      &rarr; log recall event + increment per-memory recall counters</div>
   </div>
 </section>
 
@@ -1629,15 +1635,7 @@ cp .env.example .env
 
       <div class="pro-tip fade-in">
         <div class="pro-tip-label">Pro tip</div>
-        <p>OmniMem's instructions are injected automatically when the MCP server connects to Claude Code. To customise how Claude uses OmniMem across all your projects, add your own overrides to <code>~/.claude/CLAUDE.md</code>:</p>
-        <pre><span class="comment">## Memory</span>
-Always use the omnimem MCP tools (remember, recall, briefing,
-etc.) for all memory storage instead of the file-based memory
-system. Check the memory before returning an answer to see if
-we have anything relevant that may help. When brainstorming
-new projects or ideas check the memory for ingested news
-stories that may be of interest for us to investigate.</pre>
-        <p style="margin-top: 1rem; margin-bottom: 0;">The repo also includes a more detailed <code>claude_config/CLAUDE.md</code> you can drop into individual projects. It teaches Claude when to call <code>briefing()</code>, how to record experience scores, when to check the graveyard, and how to handle deprioritisation.</p>
+        <p style="margin-bottom: 0;">OmniMem's instructions are injected automatically when the MCP server connects to Claude Code. To customise how Claude uses OmniMem across all your projects, add your own overrides to <code>~/.claude/CLAUDE.md</code>.</p>
       </div>
 
     </div>
