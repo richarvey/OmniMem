@@ -1,0 +1,31 @@
+{% if memories %}
+<table class="data-table memories-table">
+  <thead>
+    <tr>
+      <th>Namespace</th>
+      <th>Content</th>
+      <th>State</th>
+      <th>Project</th>
+      <th>Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for mem in memories %}
+    <tr>
+      <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
+      <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+      <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
+      <td class="content-cell">{{ mem.project or "—" }}</td>
+      <td class="date-cell">
+        <span class="date-main">{{ mem.updated_date }}</span>
+        <span class="date-time">{{ mem.updated_time }}</span>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% include "partials/pagination.html" %}
+{% else %}
+<p class="empty-state">No memories match the current filters.</p>
+{% endif %}

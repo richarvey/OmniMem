@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Dashboard</h2>
+  <div class="health-indicators">
+    <span class="indicator {{ 'ok' if health.valkey else 'err' }}">Valkey</span>
+    <span class="indicator {{ 'ok' if health.model else 'err' }}">Model</span>
+  </div>
+</header>
+
+<section class="stats-grid">
+  {% for ns, stats in ns_stats.items() %}
+  <div class="stat-card">
+    <h3 class="stat-ns">{{ ns }}</h3>
+    <div class="stat-total">{{ stats.total }}</div>
+    <div class="stat-breakdown">
+      <span class="badge active">{{ stats.states.active }} active</span>
+      <span class="badge deprioritised">{{ stats.states.deprioritised }} depri</span>
+      <span class="badge archived">{{ stats.states.archived }} arch</span>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="stat-card stat-card-highlight">
+    <h3 class="stat-ns">Total</h3>
+    <div class="stat-total">{{ total }}</div>
+  </div>
+</section>
+
+<section class="recent-section">
+  <h3>Recent Activity</h3>
+  {% if recent %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Namespace</th>
+        <th>Content</th>
+        <th>State</th>
+        <th>Project</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mem in recent %}
+      <tr>
+        <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
+        <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+        <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
+        <td>{{ mem.project or "—" }}</td>
+        <td class="mono">{{ mem.updated_at_fmt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No memories stored yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

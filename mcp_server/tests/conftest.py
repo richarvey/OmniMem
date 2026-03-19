@@ -67,6 +67,15 @@ class FakeValkeyClient:
     def smembers(self, key):
         return self._sets.get(key, set())
 
+    # --- hash increment ---
+    def hincrby(self, key, field, amount=1):
+        if key not in self._data:
+            self._data[key] = {}
+        current = int(self._data[key].get(field, "0"))
+        new_val = current + amount
+        self._data[key][field] = str(new_val)
+        return new_val
+
     # --- pipeline ---
     def pipeline(self, transaction=False):
         return FakePipeline(self)
@@ -93,6 +102,10 @@ class FakePipeline:
         self._commands.append(("hmget", key, fields))
         return self
 
+    def hincrby(self, key, field, amount=1):
+        self._commands.append(("hincrby", key, field, amount))
+        return self
+
     def expire(self, key, ttl):
         self._commands.append(("expire", key, ttl))
         return self
@@ -108,6 +121,9 @@ class FakePipeline:
                 results.append(self._client.hkeys(cmd[1]))
             elif cmd[0] == "hmget":
                 results.append(self._client.hmget(cmd[1], cmd[2]))
+            elif cmd[0] == "hincrby":
+                _, key, field, amount = cmd
+                results.append(self._client.hincrby(key, field, amount))
             elif cmd[0] == "expire":
                 results.append(True)
         self._commands = []

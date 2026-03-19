@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Create Memory — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Create Memory</h2>
+</header>
+
+{% if error %}
+<div class="flash flash-error">
+  {{ error }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
+
+{% if duplicate %}
+<div class="flash flash-warning" style="flex-direction:column;align-items:start">
+  <div style="display:flex;justify-content:space-between;width:100%">
+    <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
+    <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+  </div>
+  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="/memory/{{ duplicate.key }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
+  <p style="margin:0;font-size:0.85rem;color:var(--text-dim)">{{ duplicate.content }}</p>
+  <p style="margin:0.5rem 0 0;font-size:0.8rem">Check "Force save" below and submit again to store anyway.</p>
+</div>
+{% endif %}
+
+<form method="POST" action="/create" style="max-width:700px">
+  <div class="form-group">
+    <label>Content</label>
+    <textarea name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="form-group">
+      <label>Namespace</label>
+      <select name="namespace" class="form-select">
+        <option value="episodic"{% if values.namespace == 'episodic' %} selected{% endif %}>Episodic</option>
+        <option value="project"{% if values.namespace == 'project' %} selected{% endif %}>Project</option>
+        <option value="knowledge"{% if values.namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Project</label>
+      <input type="text" name="project" class="form-input" placeholder="Optional" value="{{ values.project }}">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Tags (comma-separated)</label>
+    <input type="text" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
+  </div>
+
+  <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
+    <input type="checkbox" name="force" id="force"{% if values.force %} checked{% endif %}>
+    <label for="force" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text)">Force save (skip duplicate check)</label>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Create Memory</button>
+</form>
+{% endblock %}

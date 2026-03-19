@@ -8,3 +8,5 @@ data/
 dist/
 venv/
 .venv/
+clean-docker.sh
+CLAUDE.md

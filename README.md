@@ -114,6 +114,17 @@ Instead of making three separate calls at session start, a single `briefing(proj
 
 One tool call, one response, full context.
 
+### Automatic maintenance
+
+Memory systems accumulate duplicates and contradictions over time. OmniMem handles this automatically.
+
+Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server runs a maintenance pass:
+
+1. **Dedup scan** — finds clusters of near-identical episodic memories and archives the oldest in each cluster, keeping the newest
+2. **Contradiction scan** — runs the heuristic negation-pattern check across all active project memories and flags opposing pairs
+
+The results appear in the briefing response under `auto_maintenance` so you know what was cleaned up. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable. Manual `find_duplicates()` and `check_contradictions()` calls still work as before.
+
 ---
 
 ## Self-hosted, open source, yours
@@ -140,7 +151,9 @@ docker compose up -d
 
 Edit the `.env` file to set at least `VALKEY_PASSWORD` to a secure value. You can also set `ANTHROPIC_API_KEY` if you want AI-powered RSS article summaries and richer contradiction detection. If you leave `ANTHROPIC_API_KEY` unset (or blank), OmniMem still works — the RSS worker will fall back to simple truncation for summaries, and contradiction checks will use embedding similarity only.
 
-Three containers start: Valkey with vector search, the OmniMem MCP server, and the RSS worker. The MCP server listens on port `8765` by default.
+Four containers start: Valkey with vector search, the OmniMem MCP server, the RSS worker, and the web UI. The MCP server listens on port `8765` by default and the web UI on port `8080`.
+
+Open `http://localhost:8080` in a browser to access the management dashboard — browse memories, run semantic searches, manage projects, track experience, and handle backups without needing to use MCP tool calls.
 
 Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.json`):
 
@@ -155,7 +168,23 @@ Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.j
 }
 ```
 
-Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will load project context at session start, check the graveyard before suggesting approaches, and store what it learns as you go.
+To stop Claude Code asking for permission every time it calls an OmniMem tool, add a wildcard allow rule to your global settings (`~/.claude/settings.json`):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__omnimem__*"
+    ]
+  }
+}
+```
+
+This allows all OmniMem MCP tools (`remember`, `recall`, `briefing`, etc.) to run without prompts across every project. If you already have other entries in the `allow` array, just add `"mcp__omnimem__*"` to it.
+
+That is it. The server automatically delivers its usage guide to any connecting agent via the MCP protocol's `instructions` field. Claude Code will load project context at session start, check the graveyard before suggesting approaches, and store what it learns as you go — no manual configuration file needed.
+
+If you want to customise the instructions or use OmniMem with a setup that does not support MCP instructions, a copy of the guide lives at `claude_config/CLAUDE.md` for manual use.
 
 ---
 
@@ -185,6 +214,7 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `set_project_context(name, description, stack, goals, current_state)` | Create or update project memory |
 | `get_project_context(name)` | Retrieve it, called at every session start |
 | `update_project_state(name, current_state, notes?)` | Update state without re-embedding |
+| `compile_project_context(name, auto_save?)` | Auto-produce or refresh a project context from its episodic memories, tags, experience data, and abandoned approaches |
 | `list_projects()` | See all stored projects |
 
 ### Experience scoring
@@ -208,6 +238,7 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `restore_from_file(filename, dry_run?)` | Restore from backup, merges rather than overwrites |
 | `list_backups()` | See available backup files |
 | `health()` | Server, Valkey, index, and model status |
+| `version()` | Return the current OmniMem version |
 
 ---
 
@@ -229,7 +260,10 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
-| `BACKUP_DIR` | `/app/backups` | Where backup files are written |
+| `AUTO_MAINTENANCE_INTERVAL` | `10` | Number of `briefing()` calls per project before auto-maintenance runs (0 to disable) |
+| `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
+| `WEB_PORT` | `8080` | Port the web UI listens on |
+| `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 
 ---
 
@@ -290,38 +324,84 @@ labels:
 
 Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every machine you work from shares the same memory, the same graveyard, and the same project context.
 
-Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication middleware if you are exposing this publicly, and keep the Valkey port off the public internet.
+You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
+
+Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication middleware on both MCP and web UI if you are exposing them publicly, and keep the Valkey port off the public internet.
+
+---
+
+## Web UI
+
+OmniMem includes a browser-based management interface at `http://localhost:8080`. It connects directly to Valkey and does not depend on the MCP server running.
+
+| Page | What it does |
+|---|---|
+| **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity |
+| **Memories** | Browse all memories with namespace, state, and project filters. Paginated, htmx-powered |
+| **Search** | Semantic search using the full recall pipeline. Abandoned warnings highlighted |
+| **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons |
+| **Create** | Store a new memory with duplicate detection shown inline |
+| **Projects** | List, view, edit, and create project contexts |
+| **Experience** | Summary dashboard with effort stats, breakthroughs, and the abandoned approach graveyard |
+| **Duplicates** | Scan a namespace for near-identical memory clusters. Archive extras directly |
+| **Contradictions** | Side-by-side comparison of contradicting memories with resolve actions |
+| **Suppressions** | Add and remove suppressed topics inline |
+| **Telemetry** | Recall counters, most recalled, gone cold, never recalled. Filter by project |
+| **Backups** | Create backups, preview restore contents, and confirm restore |
+
+### Prometheus metrics
+
+The web UI exposes a `/metrics` endpoint in Prometheus text format. Point your Grafana or Prometheus scraper at `http://localhost:8080/metrics` with a 15-60 second scrape interval.
+
+Available gauges:
+
+| Metric | Labels | Description |
+|---|---|---|
+| `omnimem_memories_total` | `namespace`, `state` | Total memories by namespace and lifecycle state |
+| `omnimem_memories_never_recalled` | `namespace` | Active memories with zero recalls |
+| `omnimem_recalls_total` | — | Sum of all recall counts across all memories |
+| `omnimem_memories_gone_cold` | — | Memories recalled before but not within the cold threshold |
+
+The endpoint scans Valkey on each scrape, which is fine for typical intervals.
+
+The web UI has no built-in authentication. If you expose it on a public network, put it behind a reverse proxy with basic auth. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
 ---
 
 ## Architecture
 
 ```
-  Claude Code (any machine)
-         |
-         |  SSE / MCP
-         v
-  +-----------------------------------------+
-  |         OmniMem MCP Server              |
-  |    Python  fastmcp  Debian slim          |
-  |                                         |
-  |  remember  recall  deprioritise         |
-  |  record_experience  warn_if_abandoned   |
-  |  find_duplicates  check_contradictions  |
-  |  briefing  dump_to_file  health         |
-  +-------------------+---------------------+
-                      |
-          +-----------+-----------+
-          |                       |
-          v                       v
-  +---------------+     +------------------+
-  |    Valkey     |     |   RSS Worker     |
-  |  + search     | <-- |                  |
-  |               |     |  feedparser      |
-  | idx:episodic  |     |  APScheduler     |
-  | idx:project   |     |  Claude Haiku    |
-  | idx:knowledge |     +------------------+
-  +---------------+
+  Claude Code (any machine)           Browser
+         |                               |
+         |  SSE / MCP                    |  HTTP :8080
+         v                               v
+  +-------------------------+   +-------------------------+
+  |   OmniMem MCP Server    |   |    OmniMem Web UI       |
+  |   Python  fastmcp       |   |    Starlette  htmx      |
+  |                         |   |    Jinja2 templates      |
+  |  remember  recall       |   |                         |
+  |  deprioritise  archive  |   |  Dashboard  Search      |
+  |  record_experience      |   |  Browse  Create         |
+  |  warn_if_abandoned      |   |  Projects  Experience   |
+  |  briefing  health       |   |  Duplicates  Backups    |
+  +-----------+-------------+   +-----------+-------------+
+              |                             |
+              +-------------+---------------+
+                            |
+              +-------------+-------------+
+              |                           |
+              v                           v
+      +---------------+         +------------------+
+      |    Valkey     |         |   RSS Worker     |
+      |  + search     |  <---   |                  |
+      |               |         |  feedparser      |
+      | idx:episodic  |         |  APScheduler     |
+      | idx:project   |         |  Claude Haiku    |
+      | idx:knowledge |         +------------------+
+      +---------------+
+
+  Both the MCP server and web UI connect directly to Valkey
+  and share the mcp_server/memory/ package.
 
   Recall pipeline:
     query
@@ -336,6 +416,7 @@ Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication m
       -> check reinstate eligibility
       -> surface contradiction warnings
       -> merge, re-rank, return top_k
+      -> log recall event + increment per-memory recall counters
 ```
 
 ---

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Backups — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Backups</h2>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <form method="POST" action="/backups/create" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
+    </form>
+    <form method="POST" action="/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
+      <input type="file" name="file" accept=".json" required style="display:none" id="backup-file-input" onchange="this.form.submit()">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('backup-file-input').click()">Upload</button>
+    </form>
+  </div>
+</header>
+
+{% if message %}
+<div class="flash flash-success">
+  {{ message }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="flash flash-error">
+  {{ error }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
+
+{% if preview is defined and preview %}
+<div style="margin-bottom:1.5rem;padding:1.25rem;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--radius)">
+  <h3 style="font-size:0.95rem;color:var(--text-bright);margin-bottom:0.75rem">Restore Preview: {{ preview.filename }}</h3>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="meta-label">Total Keys</div>
+      <div class="meta-value">{{ preview.total_keys }}</div>
+    </div>
+    {% if preview.metadata.exported_at is defined %}
+    <div class="meta-item">
+      <div class="meta-label">Exported At</div>
+      <div class="meta-value mono">{{ preview.metadata.exported_at }}</div>
+    </div>
+    {% endif %}
+    {% if preview.metadata.version is defined %}
+    <div class="meta-item">
+      <div class="meta-label">Version</div>
+      <div class="meta-value">{{ preview.metadata.version }}</div>
+    </div>
+    {% endif %}
+    {% if preview.metadata.namespaces is defined %}
+    <div class="meta-item">
+      <div class="meta-label">Namespaces</div>
+      <div class="meta-value">
+        {% for ns, count in preview.metadata.namespaces.items() %}
+        <span class="badge ns-{{ ns }}">{{ ns }}: {{ count }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:0.5rem;margin-top:1rem">
+    <form method="POST" action="/backups/{{ preview.filename }}/restore" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">Confirm Restore</button>
+    </form>
+    <a href="/backups" class="btn btn-secondary btn-sm">Cancel</a>
+  </div>
+</div>
+{% endif %}
+
+{% if backups %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Size</th>
+      <th>Modified</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in backups %}
+    <tr>
+      <td class="mono" style="font-size:0.8rem">{{ b.filename }}</td>
+      <td>{{ b.size_kb }} KB</td>
+      <td class="mono">{{ b.modified }}</td>
+      <td>
+        <div style="display:flex;gap:0.35rem;align-items:center">
+          <a href="/backups/{{ b.filename }}/preview" class="btn btn-secondary btn-sm" title="Preview restore" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </a>
+          <a href="/backups/{{ b.filename }}/download" class="btn btn-secondary btn-sm" title="Download backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </a>
+          <form method="POST" action="/backups/{{ b.filename }}/delete" style="display:inline-flex" onsubmit="return confirm('Delete backup &quot;{{ b.filename }}&quot;? This cannot be undone.')">
+            <button type="submit" class="btn btn-danger btn-sm" title="Delete backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% elif not (preview is defined and preview) %}
+<p class="empty-state">No backup files found.</p>
+{% endif %}
+{% endblock %}

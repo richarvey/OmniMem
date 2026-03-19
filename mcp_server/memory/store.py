@@ -16,7 +16,7 @@ from valkey.commands.search.query import Query
 logger = logging.getLogger(__name__)
 
 # Valid key prefixes to prevent writing to arbitrary Valkey keys
-_VALID_KEY_PREFIXES = ("mem:episodic:", "mem:project:", "mem:knowledge:", "topics:", "log:recall:")
+_VALID_KEY_PREFIXES = ("mem:episodic:", "mem:project:", "mem:knowledge:", "topics:", "log:recall:", "meta:")
 
 # Valid namespace names for search index lookups
 _VALID_NAMESPACES = {"episodic", "project", "knowledge"}
@@ -32,15 +32,16 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "created_at", "updated_at", "tags", "deprioritised_reason",
         "reinstate_hints", "effort_score", "outcome", "iterations",
         "abandoned_approaches", "breakthrough", "gotchas", "experience_weight",
-        "contradictions",
+        "contradictions", "recall_count", "last_recalled",
     ),
     "project": (
         "similarity_score", "content", "project_name", "stack", "state",
-        "surface_score", "created_at", "updated_at",
+        "surface_score", "created_at", "updated_at", "recall_count", "last_recalled",
     ),
     "knowledge": (
         "similarity_score", "content", "source_url", "feed_name", "published_at",
         "topics", "state", "surface_score", "created_at", "updated_at",
+        "recall_count", "last_recalled",
     ),
 }
 
@@ -63,6 +64,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             TagField("outcome"),
             NumericField("iterations"),
             NumericField("experience_weight"),
+            NumericField("recall_count"),
         ],
     },
     "idx:project": {
@@ -79,6 +81,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("surface_score"),
             NumericField("created_at"),
             NumericField("updated_at"),
+            NumericField("recall_count"),
         ],
     },
     "idx:knowledge": {
@@ -96,6 +99,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("surface_score"),
             NumericField("created_at"),
             NumericField("updated_at"),
+            NumericField("recall_count"),
         ],
     },
 }
@@ -144,8 +148,30 @@ class ValkeyStore:
             raise RuntimeError("ValkeyStore not connected. Call connect() first.")
         return self._client
 
+    def _migrate_indexes(self) -> None:
+        """Drop indexes whose field count doesn't match the definition.
+
+        This is data-safe — dropindex() only removes the index, not the
+        underlying hashes. _ensure_indexes() then recreates it with the
+        new fields, and RediSearch re-indexes existing hashes automatically.
+        """
+        for idx_name, idx_def in INDEX_DEFINITIONS.items():
+            try:
+                info = self.client.ft(idx_name).info()
+                existing_count = len(info.get("attributes", []))
+                expected_count = len(idx_def["fields"])
+                if existing_count < expected_count:
+                    logger.info(
+                        "Index %s has %d fields, expected %d — dropping for recreation",
+                        idx_name, existing_count, expected_count,
+                    )
+                    self.client.ft(idx_name).dropindex()
+            except valkey.ResponseError:
+                pass  # Index doesn't exist yet — _ensure_indexes will create it
+
     def _ensure_indexes(self) -> None:
         """Create vector indexes if they don't already exist."""
+        self._migrate_indexes()
         for idx_name, idx_def in INDEX_DEFINITIONS.items():
             try:
                 self.client.ft(idx_name).info()
@@ -309,7 +335,7 @@ class ValkeyStore:
     def dump_all(self) -> dict[str, dict[str, Any]]:
         """Export all mem:* and topics:* keys with all fields. Safe for large datasets."""
         result: dict[str, dict[str, Any]] = {}
-        prefixes = ["mem:", "topics:", "log:recall:"]
+        prefixes = ["mem:", "topics:", "log:recall:", "meta:"]
         for prefix in prefixes:
             keys = self.scan_prefix(prefix)
             if not keys:

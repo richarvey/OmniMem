@@ -246,6 +246,43 @@ class TestAbandonedWarnings:
                 assert results[0].result_type == "abandoned_warning"
 
 
+class TestRecallCounters:
+    def test_recall_count_absent_initially(self, fake_store, fake_embedder, pipeline):
+        """recall_count field should not exist before first recall."""
+        store_memory(fake_store, fake_embedder, "mem:episodic:rc001",
+                     "Memory about Python testing")
+        data = fake_store.get("mem:episodic:rc001")
+        assert data.get("recall_count") is None
+
+    def test_recall_increments_recall_count(self, fake_store, fake_embedder, pipeline):
+        """After one recall, recall_count should be '1'."""
+        store_memory(fake_store, fake_embedder, "mem:episodic:rc002",
+                     "Docker container networking patterns")
+        pipeline.recall("Docker container networking")
+        data = fake_store.get("mem:episodic:rc002")
+        assert data.get("recall_count") == "1"
+
+    def test_recall_sets_last_recalled(self, fake_store, fake_embedder, pipeline):
+        """After recall, last_recalled should be a valid timestamp."""
+        store_memory(fake_store, fake_embedder, "mem:episodic:rc003",
+                     "Valkey connection pooling strategy")
+        pipeline.recall("Valkey connection pooling")
+        data = fake_store.get("mem:episodic:rc003")
+        last_recalled = data.get("last_recalled")
+        assert last_recalled is not None
+        ts = float(last_recalled)
+        assert ts > 0
+
+    def test_multiple_recalls_increment(self, fake_store, fake_embedder, pipeline):
+        """Recalling twice should set recall_count to '2'."""
+        store_memory(fake_store, fake_embedder, "mem:episodic:rc004",
+                     "Rust async runtime patterns")
+        pipeline.recall("Rust async runtime")
+        pipeline.recall("Rust async runtime")
+        data = fake_store.get("mem:episodic:rc004")
+        assert data.get("recall_count") == "2"
+
+
 class TestRecallResultDataclass:
     def test_default_values(self):
         r = RecallResult(

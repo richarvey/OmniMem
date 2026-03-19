@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Duplicates — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Duplicate Detection</h2>
+</header>
+
+{% if last_maintenance %}
+<div style="margin-bottom:1rem;padding:0.6rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);font-size:0.8rem;color:var(--text-dim)">
+  Last auto-maintenance: <strong style="color:var(--text)">{{ last_maintenance.when }}</strong>
+  (project: {{ last_maintenance.project }}, {{ last_maintenance.duplicates_archived }} duplicate{{ 's' if last_maintenance.duplicates_archived != 1 }} archived)
+</div>
+{% endif %}
+
+<div class="filter-bar">
+  <div class="form-group">
+    <label>Namespace</label>
+    <select class="form-select" name="namespace" id="dup-namespace">
+      <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
+      <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
+      <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
+    </select>
+  </div>
+  <div class="form-group" style="align-self:end">
+    <button class="btn btn-primary"
+            hx-get="/duplicates/scan"
+            hx-include="#dup-namespace"
+            hx-target="#dup-results"
+            hx-indicator="#dup-spinner">
+      Scan for Duplicates
+      <span class="htmx-indicator spinner" id="dup-spinner"></span>
+    </button>
+  </div>
+</div>
+
+<div id="dup-results">
+{% if scanned %}
+  {% include "partials/dup_results.html" %}
+{% endif %}
+</div>
+{% endblock %}

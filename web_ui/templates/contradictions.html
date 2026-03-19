@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Contradictions — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Contradictions</h2>
+</header>
+
+{% if last_maintenance %}
+<div style="margin-bottom:1rem;padding:0.6rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);font-size:0.8rem;color:var(--text-dim)">
+  Last auto-maintenance: <strong style="color:var(--text)">{{ last_maintenance.when }}</strong>
+  (project: {{ last_maintenance.project }}, {{ last_maintenance.contradictions_found }} contradiction{{ 's' if last_maintenance.contradictions_found != 1 }} found)
+</div>
+{% endif %}
+
+{% if pairs %}
+<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">{{ pairs|length }} contradiction pair{{ 's' if pairs|length != 1 }}</p>
+
+{% for pair in pairs %}
+<div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--red);border-radius:var(--radius)">
+  {% if pair.explanation %}
+  <div style="font-size:0.8rem;color:var(--red);margin-bottom:0.75rem">{{ pair.explanation }}</div>
+  {% endif %}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div>
+      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">
+        <a href="/memory/{{ pair.key_a }}" style="color:var(--accent);text-decoration:none">{{ pair.key_a }}</a>
+      </div>
+      <div style="font-size:0.85rem">{{ pair.content_a }}</div>
+    </div>
+    <div>
+      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">
+        <a href="/memory/{{ pair.key_b }}" style="color:var(--accent);text-decoration:none">{{ pair.key_b }}</a>
+      </div>
+      <div style="font-size:0.85rem">{{ pair.content_b }}</div>
+    </div>
+  </div>
+
+  <div class="action-bar" style="margin-top:0.75rem">
+    <form method="POST" action="/lifecycle/archive" style="display:inline">
+      <input type="hidden" name="key" value="{{ pair.key_a }}">
+      <button type="submit" class="btn btn-secondary btn-sm">Archive A</button>
+    </form>
+    <form method="POST" action="/lifecycle/archive" style="display:inline">
+      <input type="hidden" name="key" value="{{ pair.key_b }}">
+      <button type="submit" class="btn btn-secondary btn-sm">Archive B</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="empty-state">No contradictions detected.</p>
+{% endif %}
+{% endblock %}

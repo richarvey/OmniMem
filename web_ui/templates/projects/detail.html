@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — OmniMem{% endblock %}
+
+{% block content %}
+<header class="detail-header">
+  <a href="/projects" class="btn btn-secondary btn-sm">&larr; Back</a>
+  <h2 style="font-size:1.2rem">{{ project.name }}</h2>
+  <div style="display:flex;gap:0.5rem">
+    <a href="/projects/{{ project.name }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+    <form method="POST" action="/projects/{{ project.name }}/delete" style="display:inline" onsubmit="return confirm('Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.')">
+      <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+    </form>
+  </div>
+</header>
+
+{% if project.description %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Description</h3>
+  <div class="detail-content">{{ project.description }}</div>
+</div>
+{% endif %}
+
+<div class="meta-grid">
+  {% if project.current_state %}
+  <div class="meta-item" style="grid-column:span 2">
+    <div class="meta-label">Current State</div>
+    <div class="meta-value" style="white-space:pre-wrap">{{ project.current_state }}</div>
+  </div>
+  {% endif %}
+
+  {% if project.stack %}
+  <div class="meta-item" style="grid-column:span 2">
+    <div class="meta-label">Stack</div>
+    <div class="meta-value">{{ project.stack }}</div>
+  </div>
+  {% endif %}
+
+  {% if project.goals %}
+  <div class="meta-item" style="grid-column:span 2">
+    <div class="meta-label">Goals</div>
+    <div class="meta-value" style="white-space:pre-wrap">{{ project.goals }}</div>
+  </div>
+  {% endif %}
+
+  {% if project.notes %}
+  <div class="meta-item" style="grid-column:span 2">
+    <div class="meta-label">Notes</div>
+    <div class="meta-value" style="white-space:pre-wrap">{{ project.notes }}</div>
+  </div>
+  {% endif %}
+
+  <div class="meta-item">
+    <div class="meta-label">Created</div>
+    <div class="meta-value mono">{{ project.created_at }}</div>
+  </div>
+
+  <div class="meta-item">
+    <div class="meta-label">Updated</div>
+    <div class="meta-value mono">{{ project.updated_at }}</div>
+  </div>
+</div>
+{% endblock %}

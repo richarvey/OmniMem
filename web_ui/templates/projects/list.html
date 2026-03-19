@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Projects — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Projects</h2>
+  <a href="/projects/new" class="btn btn-primary btn-sm">New Project</a>
+</header>
+
+{% if projects %}
+<table class="data-table projects-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+      <th>Current State</th>
+      <th>Updated</th>
+      <th style="width:5rem"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in projects %}
+    <tr>
+      <td class="name-cell">
+        {% if p.has_context %}
+        <a href="/projects/{{ p.name }}" class="project-name">{{ p.name }}</a>
+        {% else %}
+        <span class="project-name">{{ p.name }}</span>
+        {% endif %}
+        {% if p.memory_count > 0 %}
+        <span class="memory-count-badge">{{ p.memory_count }}</span>
+        {% endif %}
+      </td>
+      <td class="content-cell">{{ p.description }}</td>
+      <td class="content-cell">{{ p.current_state }}</td>
+      <td class="date-cell">
+        <span class="date-main">{{ p.updated_date }}</span>
+        <span class="date-time">{{ p.updated_time }}</span>
+      </td>
+      <td style="text-align:right">
+        {% if p.has_context %}
+        <form method="POST" action="/projects/{{ p.name }}/delete" style="display:inline" onsubmit="return confirm('Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.')">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No projects configured yet.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Graveyard — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Abandoned Approach Graveyard</h2>
+  <a href="/experience" class="btn btn-secondary btn-sm">&larr; Summary</a>
+</header>
+
+{% if abandoned %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Type</th>
+      <th>Reason</th>
+      <th>Effort</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in abandoned %}
+    <tr>
+      <td style="font-weight:600;color:var(--orange)">{{ a.name }}</td>
+      <td><span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ a.type }}</span></td>
+      <td class="content-cell">{{ a.reason }}</td>
+      <td>{% if a.effort_score %}<span class="score">{{ a.effort_score }}/5</span>{% else %}—{% endif %}</td>
+      <td><a href="/memory/{{ a.memory_key }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No abandoned approaches recorded yet. That's a good sign.</p>
+{% endif %}
+{% endblock %}

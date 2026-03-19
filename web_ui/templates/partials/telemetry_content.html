@@ -1,0 +1,102 @@
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-ns">Total Memories</div>
+    <div class="stat-total">{{ total_memories }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Total Recalls</div>
+    <div class="stat-total">{{ total_recalls }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Unique Recalled</div>
+    <div class="stat-total">{{ unique_recalled }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Never Recalled</div>
+    <div class="stat-total">{{ never_recalled }}</div>
+  </div>
+</div>
+
+<div class="recent-section">
+  <h3>Most Recalled</h3>
+  {% if most_recalled %}
+  <table class="data-table telemetry-table">
+    <thead>
+      <tr>
+        <th>Namespace</th>
+        <th>Content</th>
+        <th>Project</th>
+        <th>Count</th>
+        <th>Last Recalled</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in most_recalled %}
+      <tr>
+        <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
+        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td>{{ m.project }}</td>
+        <td><span class="recall-badge">{{ m.recall_count }}</span></td>
+        <td class="mono">{{ m.last_recalled }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No memories have been recalled yet.</p>
+  {% endif %}
+</div>
+
+{% if gone_cold %}
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Gone Cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h3>
+  <table class="data-table telemetry-table">
+    <thead>
+      <tr>
+        <th>Namespace</th>
+        <th>Content</th>
+        <th>Project</th>
+        <th>Count</th>
+        <th>Last Recalled</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in gone_cold %}
+      <tr class="cold-row">
+        <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
+        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td>{{ m.project }}</td>
+        <td><span class="recall-badge">{{ m.recall_count }}</span></td>
+        <td class="mono">{{ m.last_recalled }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Never Recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h3>
+  {% if never_recalled_list %}
+  <table class="data-table telemetry-table">
+    <thead>
+      <tr>
+        <th>Namespace</th>
+        <th>Content</th>
+        <th>Project</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in never_recalled_list %}
+      <tr>
+        <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
+        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td>{{ m.project }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">All memories have been recalled at least once.</p>
+  {% endif %}
+</div>

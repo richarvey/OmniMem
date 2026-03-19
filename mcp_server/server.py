@@ -9,6 +9,8 @@ import time
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
+from instructions import INSTRUCTIONS
+
 load_dotenv()
 
 logging.basicConfig(
@@ -17,9 +19,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger("omnimem")
 
-mcp = FastMCP("omnimem")
+mcp = FastMCP("omnimem", instructions=INSTRUCTIONS)
 
 _start_time = time.time()
+
+
+def _migrate_project_names(store) -> None:
+    """Set project_name from project field on ULID-keyed project memories missing it."""
+    keys = store.scan_prefix("mem:project:")
+    if not keys:
+        return
+
+    all_data = store.get_multi(keys)
+    fixed = 0
+    for key, data in zip(keys, all_data):
+        if not data:
+            continue
+        # Skip entries that already have project_name set
+        if data.get("project_name"):
+            continue
+        # Use the project field if available
+        project = data.get("project")
+        if project:
+            store.set_field(key, "project_name", project)
+            fixed += 1
+
+    if fixed:
+        logger.info("Migration: set project_name on %d project memories", fixed)
 
 
 def _init() -> None:
@@ -48,19 +74,23 @@ def _init() -> None:
     tools_pkg._lifecycle = lifecycle
     tools_pkg._pipeline = pipeline
 
+    # One-time migration: set project_name on ULID-keyed project memories
+    _migrate_project_names(store)
+
     logger.info("OmniMem initialised successfully")
 
 
 def _register_tools() -> None:
     """Register all MCP tools from tool modules."""
     from tools.core import (
+        version,
         remember, recall, recall_index, recall_detail,
         deprioritise, archive, reinstate, forget,
         suppress_topic, unsuppress_topic, list_suppressions, find_duplicates,
     )
     from tools.project import (
         set_project_context, get_project_context, list_projects,
-        update_project_state,
+        update_project_state, compile_project_context,
     )
     from tools.audit import memory_audit, why_did_you_mention, explain_memory
     from tools.experience import (
@@ -72,6 +102,7 @@ def _register_tools() -> None:
     from tools.briefing import briefing
 
     # Core tools
+    mcp.tool()(version)
     mcp.tool()(remember)
     mcp.tool()(recall)
     mcp.tool()(recall_index)
@@ -90,6 +121,7 @@ def _register_tools() -> None:
     mcp.tool()(get_project_context)
     mcp.tool()(list_projects)
     mcp.tool()(update_project_state)
+    mcp.tool()(compile_project_context)
 
     # Audit tools
     mcp.tool()(memory_audit)

@@ -38,7 +38,16 @@ from tools.core import (
     remember,
     suppress_topic,
     unsuppress_topic,
+    version,
 )
+
+
+class TestVersion:
+    def test_returns_version_string(self):
+        result = version()
+        assert "version" in result
+        assert isinstance(result["version"], str)
+        assert result["version"]  # non-empty version string
 
 
 class TestRemember:

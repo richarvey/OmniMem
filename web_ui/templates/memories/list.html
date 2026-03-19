@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Memories — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Memories <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+</header>
+
+<div class="filter-bar">
+  <div class="form-group">
+    <label>Namespace</label>
+    <select class="form-select" name="namespace"
+            hx-get="/memories" hx-target="#results" hx-push-url="true"
+            hx-include="[name='state'],[name='project'],[name='sort']">
+      <option value="">All</option>
+      <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
+      <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
+      <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>State</label>
+    <select class="form-select" name="state"
+            hx-get="/memories" hx-target="#results" hx-push-url="true"
+            hx-include="[name='namespace'],[name='project'],[name='sort']">
+      <option value="">All</option>
+      <option value="active"{% if state == 'active' %} selected{% endif %}>Active</option>
+      <option value="deprioritised"{% if state == 'deprioritised' %} selected{% endif %}>Deprioritised</option>
+      <option value="archived"{% if state == 'archived' %} selected{% endif %}>Archived</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Project</label>
+    <select class="form-select" name="project"
+            hx-get="/memories" hx-target="#results" hx-push-url="true"
+            hx-include="[name='namespace'],[name='state'],[name='sort']">
+      <option value="">All</option>
+      {% for p in projects %}
+      <option value="{{ p }}"{% if project == p %} selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Sort</label>
+    <select class="form-select" name="sort"
+            hx-get="/memories" hx-target="#results" hx-push-url="true"
+            hx-include="[name='namespace'],[name='state'],[name='project']">
+      <option value="newest"{% if sort == 'newest' %} selected{% endif %}>Newest</option>
+      <option value="oldest"{% if sort == 'oldest' %} selected{% endif %}>Oldest</option>
+    </select>
+  </div>
+</div>
+
+<div id="results">
+  {% include "memories/_rows.html" %}
+</div>
+{% endblock %}

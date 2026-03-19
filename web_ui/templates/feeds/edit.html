@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}Add Feed{% else %}Edit {{ feed.name }}{% endif %} — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>{% if is_new %}Add Feed{% else %}Edit Feed{% endif %}</h2>
+</header>
+
+<form method="POST" action="{% if is_new %}/feeds/new{% else %}/feeds/{{ feed.index }}/edit{% endif %}" style="max-width:700px">
+  <div class="form-group">
+    <label>Feed Name</label>
+    <input type="text" name="name" class="form-input" value="{{ feed.name }}" placeholder="Rust Official Blog" required autofocus>
+  </div>
+
+  <div class="form-group">
+    <label>Feed URL</label>
+    <input type="url" name="url" class="form-input" value="{{ feed.url }}" placeholder="https://blog.example.com/feed.xml" required>
+  </div>
+
+  <div class="form-group">
+    <label>Topics (comma-separated)</label>
+    <input type="text" name="topics" class="form-input" value="{{ feed.topics }}" placeholder="rust, systems, language">
+  </div>
+
+  <div style="display:flex;gap:0.5rem">
+    <button type="submit" class="btn btn-primary">{% if is_new %}Add Feed{% else %}Save{% endif %}</button>
+    <a href="/feeds" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

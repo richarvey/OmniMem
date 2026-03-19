@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Telemetry — OmniMem{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Telemetry</h2>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <form method="GET" action="/telemetry" style="display:flex;gap:0.5rem;align-items:center">
+      <input type="text" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
+      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+    <button class="btn btn-secondary btn-sm"
+            hx-get="/telemetry/refresh{% if project_filter %}?project={{ project_filter }}{% endif %}"
+            hx-target="#telemetry-content"
+            hx-swap="innerHTML">
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div id="telemetry-content">
+  {% include "partials/telemetry_content.html" %}
+</div>
+{% endblock %}

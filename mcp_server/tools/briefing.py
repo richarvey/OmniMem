@@ -222,4 +222,29 @@ def briefing(
     if suppressed:
         result["suppressed_topics"] = suppressed
 
+    # 8. Auto-maintenance: dedup + contradiction scan on briefing interval
+    if project:
+        try:
+            interval = int(os.getenv("AUTO_MAINTENANCE_INTERVAL", "10"))
+            if interval > 0:
+                meta_key = f"meta:maintenance:{project}"
+                count = store.client.hincrby(meta_key, "briefing_count", 1)
+                if count >= interval:
+                    from memory.maintenance import run_maintenance
+                    maintenance_result = run_maintenance(
+                        store, embedder, lifecycle, project,
+                    )
+                    result["auto_maintenance"] = maintenance_result
+                    # Reset counter and record timestamp
+                    store.client.hset(meta_key, mapping={
+                        "briefing_count": "0",
+                        "last_maintenance_at": maintenance_result["ran_at"],
+                        "last_maintenance_summary": json.dumps({
+                            "duplicates_archived": len(maintenance_result["duplicates_archived"]),
+                            "contradictions_found": len(maintenance_result["contradictions_found"]),
+                        }),
+                    })
+        except Exception as exc:
+            logger.error("Auto-maintenance failed for project %s: %s", project, exc)
+
     return result
