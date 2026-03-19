@@ -544,6 +544,9 @@
     .feature-card.fade-in:nth-child(4) { transition-delay: 0.24s; }
     .feature-card.fade-in:nth-child(5) { transition-delay: 0.32s; }
     .feature-card.fade-in:nth-child(6) { transition-delay: 0.4s; }
+    .feature-card.fade-in:nth-child(7) { transition-delay: 0.48s; }
+    .feature-card.fade-in:nth-child(8) { transition-delay: 0.56s; }
+    .feature-card.fade-in:nth-child(9) { transition-delay: 0.64s; }
 
     /* ── Lifecycle diagram ── */
     .lifecycle {
@@ -1232,7 +1235,7 @@
     <div class="features-grid">
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#9760;</div>
+        <div class="feature-icon"><i class="fa-solid fa-skull-crossbones"></i></div>
         <h3>The Graveyard</h3>
         <p>
           Every dead-end gets logged: what you tried, what type it was, why it failed, and how much
@@ -1242,7 +1245,7 @@
       </div>
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#9878;</div>
+        <div class="feature-icon"><i class="fa-solid fa-ranking-star"></i></div>
         <h3>Experience scoring</h3>
         <p>
           Something that worked first time is handy. But something that took four attempts,
@@ -1252,7 +1255,7 @@
       </div>
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#8644;</div>
+        <div class="feature-icon"><i class="fa-solid fa-code-compare"></i></div>
         <h3>Contradiction detection</h3>
         <p>
           If a new memory disagrees with something already stored, OmniMem catches it and warns you.
@@ -1262,7 +1265,7 @@
       </div>
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#10697;</div>
+        <div class="feature-icon"><i class="fa-solid fa-clone"></i></div>
         <h3>Semantic deduplication</h3>
         <p>
           When you store something new, it gets compared against what's already there. If it's
@@ -1272,7 +1275,7 @@
       </div>
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#9881;</div>
+        <div class="feature-icon"><i class="fa-solid fa-layer-group"></i></div>
         <h3>Three memory namespaces</h3>
         <p>
           <strong>Episodic</strong> for your decisions, bugs, and patterns.
@@ -1283,12 +1286,42 @@
       </div>
 
       <div class="feature-card fade-in">
-        <div class="feature-icon">&#9889;</div>
+        <div class="feature-icon"><i class="fa-solid fa-bolt"></i></div>
         <h3>One-call briefing</h3>
         <p>
           One call to <code>briefing()</code> and Claude gets everything it needs: project context,
           experience stats, stale memories, new articles, contradictions, and anything
           that might need reinstating. No more three-step warm-up at the start of every session.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon"><i class="fa-solid fa-gauge-high"></i></div>
+        <h3>Web UI dashboard</h3>
+        <p>
+          Browse, search, and manage all your memories from a web interface built with htmx.
+          Manage RSS feeds, view project contexts, download and restore backups, and see
+          memory details without touching the command line. Runs on port 8080 alongside the MCP server.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon"><i class="fa-solid fa-chart-line"></i></div>
+        <h3>Telemetry and metrics</h3>
+        <p>
+          Every recall tracks which memories actually get used. The telemetry dashboard shows
+          recall counts and last-accessed timestamps per memory. There's a Prometheus-compatible
+          <code>/metrics</code> endpoint too, so you can plug it straight into Grafana.
+        </p>
+      </div>
+
+      <div class="feature-card fade-in">
+        <div class="feature-icon"><i class="fa-solid fa-arrows-rotate"></i></div>
+        <h3>Auto-maintenance</h3>
+        <p>
+          Every few <code>briefing()</code> calls, OmniMem automatically scans for duplicate memories
+          and runs a heuristic contradiction check. Stale duplicates get archived, conflicts get flagged.
+          Runs in the background so you never have to think about it.
         </p>
       </div>
 
@@ -1471,6 +1504,24 @@
             <td class="partial">Varies</td>
             <td class="omnimem-col yes">Yes, via proxy</td>
           </tr>
+          <tr>
+            <td>Web dashboard</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes, htmx</td>
+          </tr>
+          <tr>
+            <td>Telemetry / Prometheus</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes, /metrics</td>
+          </tr>
+          <tr>
+            <td>Auto-maintenance</td>
+            <td class="no">No</td>
+            <td class="no">No</td>
+            <td class="omnimem-col yes">Yes, on briefing</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1483,7 +1534,7 @@
     <div style="text-align:center;">
       <h2>Architecture</h2>
       <p style="color:var(--text-muted); margin: 1rem auto 0; max-width: 600px;">
-        Three Docker containers, local embeddings, and nothing leaves your machine.
+        Four Docker containers, local embeddings, and nothing leaves your machine.
       </p>
     </div>
     <div class="architecture-diagram">  <span class="highlight">Claude Code</span> (any machine)
@@ -1508,7 +1559,17 @@
   |  idx:episodic   |   |  APScheduler     |
   |  idx:project    |   |  Claude Haiku    |
   |  idx:knowledge  |   +------------------+
-  +-----------------+
+  +--------+--------+
+           |
+           v
+  +-------------------------------------------+
+  |          <span class="highlight">Web UI Dashboard</span>                |
+  |     Starlette &#183; Jinja2 &#183; htmx              |
+  |                                           |
+  |   Browse memories   Manage RSS feeds      |
+  |   Search &#183; Telemetry &#183; Backups              |
+  |   Prometheus /metrics endpoint            |
+  +-------------------------------------------+
 
   <span class="muted">Recall pipeline:</span>
     query &rarr; abandoned fast-path &rarr; embed &rarr; vector search
@@ -1543,9 +1604,10 @@ cp .env.example .env
         <div class="step-number">02</div>
         <div class="step-text">
           <h3>Start the containers</h3>
-          <p>This spins up three containers: Valkey with vector search, the MCP server, and the RSS worker.</p>
+          <p>This spins up four containers: Valkey with vector search, the MCP server, the RSS worker, and the web UI dashboard.</p>
         </div>
-        <pre>docker compose up -d</pre>
+        <pre>docker compose up -d
+<span class="comment"># Web UI at http://localhost:8080</span></pre>
       </div>
 
       <div class="step fade-in">
@@ -1567,7 +1629,7 @@ cp .env.example .env
 
       <div class="pro-tip fade-in">
         <div class="pro-tip-label">Pro tip</div>
-        <p>Add this to your <code>~/.claude/CLAUDE.md</code> to tell Claude Code to use OmniMem for all memory instead of its built-in file-based system. This works globally across every project.</p>
+        <p>OmniMem's instructions are injected automatically when the MCP server connects to Claude Code. To customise how Claude uses OmniMem across all your projects, add your own overrides to <code>~/.claude/CLAUDE.md</code>:</p>
         <pre><span class="comment">## Memory</span>
 Always use the omnimem MCP tools (remember, recall, briefing,
 etc.) for all memory storage instead of the file-based memory
