@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-03-19
+### Added
+- **compile_project_context tool**: New MCP tool that gathers all episodic memories, tags, experience data, breakthroughs, gotchas, and abandoned approaches for a project and returns them as a structured draft context. Supports `auto_save=True` to automatically create or update the project context record from the compiled data
+
 ## [3.3.6] - 2026-03-19
 ### Added
 - **Download feeds.yml**: Download icon button on the RSS Feeds page saves the current `feeds.yml` configuration file to the browser

@@ -88,7 +88,7 @@ def _register_tools() -> None:
     )
     from tools.project import (
         set_project_context, get_project_context, list_projects,
-        update_project_state,
+        update_project_state, compile_project_context,
     )
     from tools.audit import memory_audit, why_did_you_mention, explain_memory
     from tools.experience import (
@@ -119,6 +119,7 @@ def _register_tools() -> None:
     mcp.tool()(get_project_context)
     mcp.tool()(list_projects)
     mcp.tool()(update_project_state)
+    mcp.tool()(compile_project_context)
 
     # Audit tools
     mcp.tool()(memory_audit)
