@@ -9,6 +9,8 @@ import time
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
+from instructions import INSTRUCTIONS
+
 load_dotenv()
 
 logging.basicConfig(
@@ -17,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("omnimem")
 
-mcp = FastMCP("omnimem")
+mcp = FastMCP("omnimem", instructions=INSTRUCTIONS)
 
 _start_time = time.time()
 

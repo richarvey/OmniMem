@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-19
+### Added
+- **Auto tool setup via MCP instructions**: The server now ships its usage guide (session start, recall workflow, experience recording, tagging vocabulary) as the `instructions` field in the MCP protocol handshake. Agents connecting to OmniMem automatically receive the full usage guide in their system prompt — no need to manually copy `claude_config/CLAUDE.md` into project directories
+- New `mcp_server/instructions.py` module contains the embedded instructions constant
+### Changed
+- **FastMCP minimum version**: Bumped from `>=0.9.0` to `>=2.13.0` (instructions support was added in v2.12.4)
+
 ## [3.4.1] - 2026-03-19
 ### Changed
 - **CLAUDE.md**: Added `compile_project_context` instructions to Session Start (auto-generate context from existing memories) and Session End (refresh context after significant work)

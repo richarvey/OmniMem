@@ -171,7 +171,9 @@ To stop Claude Code asking for permission every time it calls an OmniMem tool, a
 
 This allows all OmniMem MCP tools (`remember`, `recall`, `briefing`, etc.) to run without prompts across every project. If you already have other entries in the `allow` array, just add `"mcp__omnimem__*"` to it.
 
-Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will load project context at session start, check the graveyard before suggesting approaches, and store what it learns as you go.
+That is it. The server automatically delivers its usage guide to any connecting agent via the MCP protocol's `instructions` field. Claude Code will load project context at session start, check the graveyard before suggesting approaches, and store what it learns as you go — no manual configuration file needed.
+
+If you want to customise the instructions or use OmniMem with a setup that does not support MCP instructions, a copy of the guide lives at `claude_config/CLAUDE.md` for manual use.
 
 ---
 
