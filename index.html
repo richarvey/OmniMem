@@ -1127,7 +1127,7 @@
   <div class="hero-accent-shape"></div>
   <div class="hero-accent-shape"></div>
   <div class="container">
-    <div class="hero-badge">Open source &#183; Self-hosted &#183; Free forever</div>
+    <div class="hero-badge">Open source &#183; Self-hosted &#183; Free forever &#183; <span id="release-info"><a href="https://codeberg.org/ric_harvey/omnimem/releases" style="color: inherit; text-decoration: none;">Releases</a></span></div>
     <h1>Stop living the<br>same session <em>twice</em></h1>
     <p class="hero-subtitle">
       A self-hosted MCP server that gives Claude Code persistent memory
@@ -1736,6 +1736,27 @@ cp .env.example .env
       document.getElementById('lightbox').classList.remove('open');
     }
   });
+</script>
+
+<script>
+  (async function() {
+    try {
+      const response = await fetch('https://codeberg.org/api/v1/repos/ric_harvey/omnimem/releases/latest', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        mode: 'cors'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const releaseInfo = document.getElementById('release-info');
+        if (data.tag_name) {
+          releaseInfo.innerHTML = `<a href="${data.html_url || 'https://codeberg.org/ric_harvey/omnimem/releases'}" style="color: inherit; text-decoration: none;" target="_blank" rel="noopener">${data.tag_name}</a>`;
+        }
+      }
+    } catch (error) {
+      console.log('Unable to fetch release info:', error.message);
+    }
+  })();
 </script>
 
 </body>
