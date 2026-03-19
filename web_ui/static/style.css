@@ -356,6 +356,8 @@ body {
 
 .name-cell {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding-right: 1rem;
 }
 
@@ -505,6 +507,8 @@ span.project-name {
   font-size: 0.85rem;
   font-family: inherit;
   transition: border-color 0.15s;
+  box-sizing: border-box;
+  height: 2.25rem;
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
