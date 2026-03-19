@@ -294,10 +294,14 @@ class RecallPipeline:
         }
 
         try:
-            # Single pipeline round-trip instead of two separate commands
+            # Single pipeline round-trip for log entry + per-memory counters
             pipe = self.store.client.pipeline(transaction=False)
             pipe.hset(log_key, mapping=log_data)
             pipe.expire(log_key, 30 * 86400)  # 30-day TTL
+            # Update per-memory recall counters
+            for r in results[:10]:
+                pipe.hincrby(r.key, "recall_count", 1)
+                pipe.hset(r.key, "last_recalled", timestamp)
             pipe.execute()
         except Exception as exc:
             logger.warning("Failed to log recall event: %s", exc)
