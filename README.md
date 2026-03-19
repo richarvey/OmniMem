@@ -261,6 +261,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
 | `AUTO_MAINTENANCE_INTERVAL` | `10` | Number of `briefing()` calls per project before auto-maintenance runs (0 to disable) |
+| `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 
@@ -345,7 +346,23 @@ OmniMem includes a browser-based management interface at `http://localhost:8080`
 | **Duplicates** | Scan a namespace for near-identical memory clusters. Archive extras directly |
 | **Contradictions** | Side-by-side comparison of contradicting memories with resolve actions |
 | **Suppressions** | Add and remove suppressed topics inline |
+| **Telemetry** | Recall counters, most recalled, gone cold, never recalled. Filter by project |
 | **Backups** | Create backups, preview restore contents, and confirm restore |
+
+### Prometheus metrics
+
+The web UI exposes a `/metrics` endpoint in Prometheus text format. Point your Grafana or Prometheus scraper at `http://localhost:8080/metrics` with a 15-60 second scrape interval.
+
+Available gauges:
+
+| Metric | Labels | Description |
+|---|---|---|
+| `omnimem_memories_total` | `namespace`, `state` | Total memories by namespace and lifecycle state |
+| `omnimem_memories_never_recalled` | `namespace` | Active memories with zero recalls |
+| `omnimem_recalls_total` | — | Sum of all recall counts across all memories |
+| `omnimem_memories_gone_cold` | — | Memories recalled before but not within the cold threshold |
+
+The endpoint scans Valkey on each scrape, which is fine for typical intervals.
 
 The web UI has no built-in authentication. If you expose it on a public network, put it behind a reverse proxy with basic auth. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
@@ -399,6 +416,7 @@ The web UI has no built-in authentication. If you expose it on a public network,
       -> check reinstate eligibility
       -> surface contradiction warnings
       -> merge, re-rank, return top_k
+      -> log recall event + increment per-memory recall counters
 ```
 
 ---
