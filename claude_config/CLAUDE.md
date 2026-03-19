@@ -72,10 +72,12 @@ Always include at least one stack tag and one intent tag.
 
 - Call `suppress_topic("<topic>")` and let the human know it has been suppressed
 
-**Periodic maintenance** — after every 10 `remember()` calls in a session, or at the end of any long session:
+**Automatic maintenance** — every 10 `briefing()` calls per project (configurable via `AUTO_MAINTENANCE_INTERVAL`), the server automatically:
 
-- Call `find_duplicates()` on the active namespace and flag any clusters to the human
-- Call `check_contradictions()` on recent memories and surface any conflicts for resolution
+- Scans for duplicate memories and archives the oldest in each cluster
+- Runs a heuristic contradiction scan on active project memories
+
+When maintenance runs, the briefing response includes an `auto_maintenance` section showing what was cleaned up. You can still call `find_duplicates()` and `check_contradictions()` manually at any time. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable.
 
 -----
 

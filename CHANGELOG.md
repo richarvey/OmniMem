@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-03-19
+### Added
+- **Automatic maintenance on briefing interval**: Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server automatically scans for duplicate episodic memories and archives the oldest in each cluster, then runs a heuristic contradiction scan on active project memories. Results appear in the briefing response under `auto_maintenance`. Per-project counter tracked in Valkey at `meta:maintenance:{project}`. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable
+- New `mcp_server/memory/maintenance.py` module with `run_maintenance()` function
+- `meta:` key prefix added to valid key prefixes for maintenance counters and included in backup/restore
+### Changed
+- **Instructions updated**: Periodic maintenance section in `instructions.py` and `claude_config/CLAUDE.md` now describes automatic maintenance instead of manual `find_duplicates()`/`check_contradictions()` guidance
+
 ## [3.5.0] - 2026-03-19
 ### Added
 - **Auto tool setup via MCP instructions**: The server now ships its usage guide (session start, recall workflow, experience recording, tagging vocabulary) as the `instructions` field in the MCP protocol handshake. Agents connecting to OmniMem automatically receive the full usage guide in their system prompt — no need to manually copy `claude_config/CLAUDE.md` into project directories

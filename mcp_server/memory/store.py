@@ -16,7 +16,7 @@ from valkey.commands.search.query import Query
 logger = logging.getLogger(__name__)
 
 # Valid key prefixes to prevent writing to arbitrary Valkey keys
-_VALID_KEY_PREFIXES = ("mem:episodic:", "mem:project:", "mem:knowledge:", "topics:", "log:recall:")
+_VALID_KEY_PREFIXES = ("mem:episodic:", "mem:project:", "mem:knowledge:", "topics:", "log:recall:", "meta:")
 
 # Valid namespace names for search index lookups
 _VALID_NAMESPACES = {"episodic", "project", "knowledge"}
@@ -309,7 +309,7 @@ class ValkeyStore:
     def dump_all(self) -> dict[str, dict[str, Any]]:
         """Export all mem:* and topics:* keys with all fields. Safe for large datasets."""
         result: dict[str, dict[str, Any]] = {}
-        prefixes = ["mem:", "topics:", "log:recall:"]
+        prefixes = ["mem:", "topics:", "log:recall:", "meta:"]
         for prefix in prefixes:
             keys = self.scan_prefix(prefix)
             if not keys:

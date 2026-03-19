@@ -114,6 +114,17 @@ Instead of making three separate calls at session start, a single `briefing(proj
 
 One tool call, one response, full context.
 
+### Automatic maintenance
+
+Memory systems accumulate duplicates and contradictions over time. OmniMem handles this automatically.
+
+Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server runs a maintenance pass:
+
+1. **Dedup scan** — finds clusters of near-identical episodic memories and archives the oldest in each cluster, keeping the newest
+2. **Contradiction scan** — runs the heuristic negation-pattern check across all active project memories and flags opposing pairs
+
+The results appear in the briefing response under `auto_maintenance` so you know what was cleaned up. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable. Manual `find_duplicates()` and `check_contradictions()` calls still work as before.
+
 ---
 
 ## Self-hosted, open source, yours
@@ -249,6 +260,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
+| `AUTO_MAINTENANCE_INTERVAL` | `10` | Number of `briefing()` calls per project before auto-maintenance runs (0 to disable) |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 
