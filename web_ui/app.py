@@ -27,6 +27,7 @@ from .routes.suppressions import routes as suppression_routes
 from .routes.backups import routes as backup_routes
 from .routes.feeds import routes as feed_routes
 from .routes.telemetry import routes as telemetry_routes
+from .routes.metrics import routes as metrics_routes
 
 load_dotenv()
 
@@ -65,6 +66,7 @@ app = Starlette(
         *backup_routes,
         *feed_routes,
         *telemetry_routes,
+        *metrics_routes,
     ],
     lifespan=lifespan,
 )
