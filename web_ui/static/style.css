@@ -417,6 +417,36 @@ span.project-name {
   align-items: center;
 }
 
+/* Telemetry table */
+.telemetry-table { table-layout: fixed; }
+.telemetry-table th:nth-child(1),
+.telemetry-table td:nth-child(1) { width: 12%; }
+.telemetry-table th:nth-child(2),
+.telemetry-table td:nth-child(2) { width: 40%; }
+.telemetry-table th:nth-child(3),
+.telemetry-table td:nth-child(3) { width: 16%; }
+.telemetry-table th:nth-child(4),
+.telemetry-table td:nth-child(4) { width: 10%; }
+.telemetry-table th:nth-child(5),
+.telemetry-table td:nth-child(5) { width: 22%; }
+
+.recall-badge {
+  display: inline-block;
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent);
+  padding: 0.1rem 0.5rem;
+  border-radius: 99px;
+  min-width: 1.8rem;
+  text-align: center;
+}
+
+.cold-row {
+  border-left: 3px solid var(--yellow);
+}
+
 /* Section */
 .recent-section h3 {
   font-size: 0.95rem;
