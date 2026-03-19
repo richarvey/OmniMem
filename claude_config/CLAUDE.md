@@ -10,8 +10,8 @@ At the beginning of every session:
 
 1. **Determine the project name** — use the current working directory name as the default. If uncertain, call `list_projects()` and match against known projects. If the project is genuinely ambiguous, ask the human before proceeding.
 1. Call `briefing(project="<project_name>")` — this single call aggregates project context, experience summary, stale memories, new knowledge articles, contradiction warnings, and reinstate candidates.
-1. If `briefing()` returns no project context (new project or first session), immediately call:
-   
+1. If `briefing()` returns no project context but the project has episodic memories, call `compile_project_context("<project_name>", auto_save=True)` to auto-generate the context from stored memories. Review the compiled draft with the human and refine via `set_project_context()` if needed. If there are no episodic memories either (genuinely new project), call:
+
    ```
    set_project_context(
      name="<project_name>",
@@ -127,6 +127,7 @@ At the end of every session, without exception:
 1. Call `remember()` for any key outcomes, decisions, or discoveries not already stored during the session
 1. Ensure `record_experience()` has been called for all non-trivial work this session
 1. If any contradictions were surfaced during the session but not resolved, note them in the project state update so the next session picks them up
+1. If significant work was done this session (multiple memories stored, stack or goals changed), call `compile_project_context("<project_name>", auto_save=True)` to refresh the project context from the full set of memories. This keeps the context current without manual curation
 
 -----
 

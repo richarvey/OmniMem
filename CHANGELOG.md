@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-03-19
+### Changed
+- **CLAUDE.md**: Added `compile_project_context` instructions to Session Start (auto-generate context from existing memories) and Session End (refresh context after significant work)
+- **README**: Added `compile_project_context` to the Project context tools table
+
 ## [3.4.0] - 2026-03-19
 ### Added
 - **compile_project_context tool**: New MCP tool that gathers all episodic memories, tags, experience data, breakthroughs, gotchas, and abandoned approaches for a project and returns them as a structured draft context. Supports `auto_save=True` to automatically create or update the project context record from the compiled data

@@ -201,6 +201,7 @@ Then drop `claude_config/CLAUDE.md` into any project directory. Claude Code will
 | `set_project_context(name, description, stack, goals, current_state)` | Create or update project memory |
 | `get_project_context(name)` | Retrieve it, called at every session start |
 | `update_project_state(name, current_state, notes?)` | Update state without re-embedding |
+| `compile_project_context(name, auto_save?)` | Auto-produce or refresh a project context from its episodic memories, tags, experience data, and abandoned approaches |
 | `list_projects()` | See all stored projects |
 
 ### Experience scoring
