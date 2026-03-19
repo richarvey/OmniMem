@@ -1,11 +1,11 @@
-"""RSS feed management routes: list, create, edit, delete."""
+"""RSS feed management routes: list, create, edit, delete, download, upload."""
 
 import logging
 import os
 
 import yaml
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,13 @@ async def feed_list(request: Request) -> HTMLResponse:
             "topics": ", ".join(feed.get("topics", [])),
         })
 
+    message = request.query_params.get("message")
+    error = request.query_params.get("error")
     template = request.app.state.templates.get_template("feeds/list.html")
-    content = template.render(request=request, feeds=items, current_page="feeds")
+    content = template.render(
+        request=request, feeds=items, current_page="feeds",
+        message=message, error=error,
+    )
     return HTMLResponse(content)
 
 
@@ -144,10 +149,68 @@ async def feed_delete(request: Request) -> RedirectResponse:
     return RedirectResponse(url="/feeds", status_code=303)
 
 
+async def feed_download(request: Request):
+    """GET /feeds/download — download the feeds.yml file."""
+    if not os.path.exists(FEEDS_PATH):
+        return RedirectResponse(url="/feeds?error=No+feeds.yml+file+found", status_code=303)
+
+    return FileResponse(
+        FEEDS_PATH,
+        media_type="application/x-yaml",
+        filename="feeds.yml",
+    )
+
+
+async def feed_upload(request: Request) -> RedirectResponse:
+    """POST /feeds/upload — upload a YAML file to replace feeds.yml."""
+    form = await request.form()
+    upload = form.get("file")
+
+    if not upload or not upload.filename:
+        return RedirectResponse(url="/feeds?error=No+file+selected", status_code=303)
+
+    # Only allow .yml / .yaml files
+    if not upload.filename.lower().endswith((".yml", ".yaml")):
+        return RedirectResponse(
+            url="/feeds?error=Only+.yml+or+.yaml+files+are+accepted", status_code=303,
+        )
+
+    raw = await upload.read()
+
+    # Validate YAML structure
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        logger.warning("Uploaded feeds file is not valid YAML: %s", exc)
+        return RedirectResponse(url="/feeds?error=Invalid+YAML+file", status_code=303)
+
+    if not isinstance(data, dict) or "feeds" not in data:
+        return RedirectResponse(
+            url="/feeds?error=YAML+must+contain+a+top-level+'feeds'+key", status_code=303,
+        )
+
+    if not isinstance(data["feeds"], list):
+        return RedirectResponse(
+            url="/feeds?error='feeds'+must+be+a+list", status_code=303,
+        )
+
+    # Write the validated file — mtime change will trigger rss_worker reload
+    with open(FEEDS_PATH, "wb") as f:
+        f.write(raw)
+
+    logger.info("Uploaded new feeds.yml (%d feeds) from %s", len(data["feeds"]), upload.filename)
+    return RedirectResponse(
+        url="/feeds?message=Feeds+config+uploaded+successfully.+RSS+worker+will+reload+automatically.",
+        status_code=303,
+    )
+
+
 routes = [
     Route("/feeds", feed_list),
     Route("/feeds/new", feed_create_form),
     Route("/feeds/new", feed_create, methods=["POST"]),
+    Route("/feeds/download", feed_download),
+    Route("/feeds/upload", feed_upload, methods=["POST"]),
     Route("/feeds/{index:int}/edit", feed_edit_form),
     Route("/feeds/{index:int}/edit", feed_save, methods=["POST"]),
     Route("/feeds/{index:int}/delete", feed_delete, methods=["POST"]),

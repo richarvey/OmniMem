@@ -5,8 +5,33 @@
 {% block content %}
 <header class="page-header">
   <h2>RSS Feeds</h2>
-  <a href="/feeds/new" class="btn btn-primary btn-sm">Add Feed</a>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <a href="/feeds/new" class="btn btn-primary btn-sm">Add Feed</a>
+    <a href="/feeds/download" class="btn btn-secondary btn-sm" title="Download feeds.yml" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </a>
+    <form method="POST" action="/feeds/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center">
+      <input type="file" name="file" accept=".yml,.yaml" required style="display:none" id="feeds-file-input" onchange="this.form.submit()">
+      <button type="button" class="btn btn-secondary btn-sm" title="Upload feeds.yml" onclick="document.getElementById('feeds-file-input').click()" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+    </form>
+  </div>
 </header>
+
+{% if message %}
+<div class="flash flash-success">
+  {{ message }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="flash flash-error">
+  {{ error }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
 
 {% if feeds %}
 <table class="data-table feeds-table">

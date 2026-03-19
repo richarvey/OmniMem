@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.3.6] - 2026-03-19
+### Added
+- **Download feeds.yml**: Download icon button on the RSS Feeds page saves the current `feeds.yml` configuration file to the browser
+- **Upload feeds.yml**: Upload icon button accepts `.yml`/`.yaml` files only, validates YAML structure (must contain a top-level `feeds` list), replaces `feeds.yml` on disk, and triggers automatic RSS worker reload via mtime change
+### Changed
+- **Sidebar "Knowledge" section**: RSS Feeds moved into its own labelled sidebar section with dividers, separating knowledge ingestion tools from memory maintenance
+
 ## [3.3.5] - 2026-03-19
 ### Added
 - **Upload backups**: New Upload button on the backups page opens a file picker filtered to `.json` files, validates the content is valid JSON, sanitises the filename, and saves to the backup directory. The list refreshes automatically after upload

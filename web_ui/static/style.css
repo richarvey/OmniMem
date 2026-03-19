@@ -104,6 +104,16 @@ body {
   margin: 0.5rem 1.25rem;
 }
 
+.nav-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 0.25rem 1.25rem 0;
+  list-style: none;
+}
+
 /* Site footer */
 .site-footer {
   position: fixed;
@@ -717,6 +727,7 @@ span.project-name {
   .nav-list { display: flex; flex-wrap: wrap; gap: 0; padding: 0.5rem 1rem; }
   .nav-link { padding: 0.35rem 0.75rem; }
   .nav-divider { display: none; }
+  .nav-section-label { display: none; }
 
   .memories-table { table-layout: auto; }
   .memories-table th:nth-child(1),
