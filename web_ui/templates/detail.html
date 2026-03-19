@@ -61,6 +61,16 @@
     <div class="meta-value mono">{{ memory.updated_at }}</div>
   </div>
 
+  <div class="meta-item">
+    <div class="meta-label">Recall Count</div>
+    <div class="meta-value">{{ memory.recall_count }}</div>
+  </div>
+
+  <div class="meta-item">
+    <div class="meta-label">Last Recalled</div>
+    <div class="meta-value mono">{{ memory.last_recalled }}</div>
+  </div>
+
   {% if memory.source_url %}
   <div class="meta-item">
     <div class="meta-label">Source</div>

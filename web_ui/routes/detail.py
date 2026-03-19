@@ -93,6 +93,8 @@ async def memory_detail(request: Request) -> HTMLResponse:
         "deprioritised_reason": data.get("deprioritised_reason", ""),
         "source_url": data.get("source_url", ""),
         "feed_name": data.get("feed_name", ""),
+        "recall_count": int(data.get("recall_count") or 0),
+        "last_recalled": fmt_ts(data.get("last_recalled")) if data.get("last_recalled") else "Never",
         "created_at": fmt_ts(data.get("created_at")),
         "updated_at": fmt_ts(data.get("updated_at")),
     }

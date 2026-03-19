@@ -208,6 +208,8 @@ def explain_memory(key: str) -> dict[str, Any]:
         "deprioritised_reason": data.get("deprioritised_reason") or None,
         "reinstate_hints": _safe_json_loads(data.get("reinstate_hints", "[]")),
         "contradictions": _safe_json_loads(data.get("contradictions", "[]")),
+        "recall_count": int(data.get("recall_count") or 0),
+        "last_recalled": data.get("last_recalled"),
     }
 
     # Additional context fields for knowledge namespace
