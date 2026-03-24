@@ -9,7 +9,7 @@ on:
 jobs:
   bandit:
     name: Bandit SAST
-    runs-on: ubuntu-latest
+    runs-on: codeberg-small
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +26,7 @@ jobs:
 
   pip-audit:
     name: Dependency Audit (${{ matrix.service }})
-    runs-on: ubuntu-latest
+    runs-on: codeberg-small
     strategy:
       matrix:
         service:
@@ -49,13 +49,17 @@ jobs:
 
   gitleaks:
     name: Secret Scan
-    runs-on: ubuntu-latest
-    container:
-      image: zricethezav/gitleaks:latest
+    runs-on: codeberg-small
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION=$(curl -sSf https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz
+          chmod +x gitleaks
+
       - name: Run Gitleaks
-        run: gitleaks detect --source=. --exit-code=1 --redact
+        run: ./gitleaks detect --source=. --exit-code=1 --redact
