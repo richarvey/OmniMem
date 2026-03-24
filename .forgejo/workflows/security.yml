@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov genbadge[coverage]
-          pip install -r mcp_server/requirements.txt
+          pip install numpy pydantic python-dotenv ulid-py valkey
 
       - name: Run tests with coverage
         working-directory: mcp_server
