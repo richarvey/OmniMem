@@ -161,6 +161,7 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 |-------|-------|-----------|
 | Claude Code | [guides/claude-code.md](guides/claude-code.md) | Native SSE |
 | GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | Native SSE |
+| GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | Native SSE |
 | Cursor | [guides/cursor.md](guides/cursor.md) | SSE (known quirks) |
 | AWS Kiro | [guides/kiro.md](guides/kiro.md) | Native SSE |
 | OpenCode | [guides/opencode.md](guides/opencode.md) | Native SSE |
