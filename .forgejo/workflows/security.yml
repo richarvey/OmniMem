@@ -74,11 +74,16 @@ jobs:
 
       - name: Publish badge to badges branch
         run: |
+          cp coverage-badge.svg /tmp/coverage-badge.svg
           git config user.name "Forgejo Actions"
           git config user.email "actions@codeberg.org"
-          git fetch origin badges:badges 2>/dev/null || git checkout --orphan badges
-          git checkout badges
-          cp coverage-badge.svg .
+          if git fetch origin badges 2>/dev/null; then
+            git checkout badges
+          else
+            git checkout --orphan badges
+            git rm -rf . 2>/dev/null || true
+          fi
+          cp /tmp/coverage-badge.svg coverage-badge.svg
           git add coverage-badge.svg
           git diff --cached --quiet || git commit -m "Update coverage badge"
           git push origin badges
