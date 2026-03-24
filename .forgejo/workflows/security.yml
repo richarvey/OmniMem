@@ -47,6 +47,36 @@ jobs:
       - name: Audit dependencies
         run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --strict --vulnerability-service osv
 
+  coverage:
+    name: Test Coverage
+    runs-on: codeberg-small
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov genbadge[coverage]
+          pip install -r mcp_server/requirements.txt
+
+      - name: Run tests with coverage
+        working-directory: mcp_server
+        run: pytest --cov=memory --cov=tools --cov-report=xml --cov-report=term-missing
+
+      - name: Generate coverage badge
+        working-directory: mcp_server
+        run: genbadge coverage --local -i coverage.xml -o ../coverage-badge.svg
+
+      - name: Upload badge artifact
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: coverage-badge
+          path: coverage-badge.svg
+
   gitleaks:
     name: Secret Scan
     runs-on: codeberg-small
