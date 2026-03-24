@@ -155,7 +155,18 @@ Four containers start: Valkey with vector search, the OmniMem MCP server, the RS
 
 Open `http://localhost:8080` in a browser to access the management dashboard — browse memories, run semantic searches, manage projects, track experience, and handle backups without needing to use MCP tool calls.
 
-Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.json`):
+Connect your coding agent to OmniMem. The example below is for Claude Code — see the full guides for other tools:
+
+| Agent | Guide | Transport |
+|-------|-------|-----------|
+| Claude Code | [guides/claude-code.md](guides/claude-code.md) | Native SSE |
+| GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | Native SSE |
+| Cursor | [guides/cursor.md](guides/cursor.md) | SSE (known quirks) |
+| AWS Kiro | [guides/kiro.md](guides/kiro.md) | Native SSE |
+| OpenCode | [guides/opencode.md](guides/opencode.md) | Native SSE |
+| OpenAI Codex CLI | [guides/codex.md](guides/codex.md) | Needs supergateway bridge |
+
+**Claude Code** (`~/.claude.json`):
 
 ```json
 {
@@ -340,7 +351,7 @@ labels:
   - "traefik.http.services.omnimem.loadbalancer.server.port=8765"
 ```
 
-Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every machine you work from shares the same memory, the same graveyard, and the same project context.
+Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
