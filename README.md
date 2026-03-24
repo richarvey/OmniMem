@@ -168,6 +168,22 @@ Add OmniMem to your Claude Code config (`~/.claude.json` or your project `.mcp.j
 }
 ```
 
+If you set `MCP_AUTH_TOKEN` in your `.env`, add the token to the config:
+
+```json
+{
+  "mcpServers": {
+    "omnimem": {
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
+      "headers": {
+        "Authorization": "Bearer your-token-here"
+      }
+    }
+  }
+}
+```
+
 To stop Claude Code asking for permission every time it calls an OmniMem tool, add a wildcard allow rule to your global settings (`~/.claude/settings.json`):
 
 ```json
@@ -248,6 +264,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 |---|---|---|
 | `VALKEY_PASSWORD` | `changeme` | Please change this |
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
+| `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP SSE endpoint. When unset, no auth is required |
+| `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard. `/metrics` and static assets are exempt |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
 | `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |
@@ -326,7 +344,7 @@ Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every mach
 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
-Security checklist: strong `VALKEY_PASSWORD`, TLS on the proxy, authentication middleware on both MCP and web UI if you are exposing them publicly, and keep the Valkey port off the public internet.
+Security checklist: strong `VALKEY_PASSWORD`, set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env`, TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet.
 
 ---
 
@@ -364,7 +382,7 @@ Available gauges:
 
 The endpoint scans Valkey on each scrape, which is fine for typical intervals.
 
-The web UI has no built-in authentication. If you expose it on a public network, put it behind a reverse proxy with basic auth. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
+The web UI supports optional bearer token authentication via the `WEB_UI_AUTH_TOKEN` environment variable. The `/metrics` endpoint is exempt so Prometheus can scrape without credentials. For additional security options (TLS, IP allowlisting, SSO), see `docs/reverse-proxy.md`.
 
 ---
 

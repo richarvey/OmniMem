@@ -8,6 +8,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
@@ -39,6 +43,32 @@ logger = logging.getLogger("omnimem.web")
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Paths that bypass auth (Prometheus scraping, static assets)
+_AUTH_EXEMPT_PREFIXES = ("/metrics", "/static/")
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    """Reject requests without a valid Bearer token.
+
+    Exempts paths in _AUTH_EXEMPT_PREFIXES so Prometheus can scrape /metrics
+    and static assets load without credentials.
+    """
+
+    def __init__(self, app, token: str) -> None:
+        super().__init__(app)
+        self.token = token
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in _AUTH_EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header == f"Bearer {self.token}":
+            return await call_next(request)
+
+        return PlainTextResponse("Unauthorised", status_code=401)
+
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
@@ -48,6 +78,13 @@ async def lifespan(app: Starlette):
     yield
     logger.info("OmniMem Web UI shutting down")
 
+
+# Optional bearer token auth — only enabled when WEB_UI_AUTH_TOKEN is set
+_web_auth_token = os.getenv("WEB_UI_AUTH_TOKEN", "").strip()
+_middleware: list[Middleware] = []
+if _web_auth_token:
+    _middleware.append(Middleware(BearerAuthMiddleware, token=_web_auth_token))
+    logger.info("Bearer token authentication enabled for web UI")
 
 app = Starlette(
     routes=[
@@ -68,6 +105,7 @@ app = Starlette(
         *telemetry_routes,
         *metrics_routes,
     ],
+    middleware=_middleware,
     lifespan=lifespan,
 )
 

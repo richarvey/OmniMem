@@ -1,8 +1,44 @@
-# Reverse Proxy Authentication
+# Authentication
 
-OmniMem has no built-in authentication on any endpoint. For production deployments on public networks, place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, SSE transport) behind a reverse proxy with basic auth and TLS.
+## Built-in bearer token auth (v3.8.0+)
 
-## Traefik
+OmniMem supports optional bearer token authentication on both the MCP server and web UI. Set the relevant environment variables in your `.env` file to enable:
+
+```bash
+MCP_AUTH_TOKEN=your-secret-token      # Protects the MCP SSE endpoint (port 8765)
+WEB_UI_AUTH_TOKEN=your-secret-token   # Protects the web dashboard (port 8080)
+```
+
+When set, all requests must include an `Authorization: Bearer <token>` header. The `/metrics` endpoint and static assets are exempt from web UI auth so Prometheus can scrape without credentials.
+
+When unset or blank, authentication is disabled and behaviour is unchanged from previous versions.
+
+You can use the same token for both or different tokens. To generate a secure token:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Claude Code configuration**: Add the token to your MCP server config in `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "omnimem": {
+      "url": "http://localhost:8765/sse",
+      "headers": {
+        "Authorization": "Bearer your-secret-token"
+      }
+    }
+  }
+}
+```
+
+## Reverse proxy (alternative)
+
+For production deployments that need TLS termination, IP allowlisting, or more advanced auth (OAuth, SSO), place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, SSE transport) behind a reverse proxy. This can be used instead of or in addition to built-in bearer token auth.
+
+### Traefik
 
 Add labels to both the `web_ui` and `mcp_server` services in `docker-compose.yml`. They share a single basic auth middleware definition.
 
@@ -37,7 +73,7 @@ Escape `$` signs as `$$` in the compose file. Both routers reference the same `o
 
 > **Note:** If you prefer a single domain, you can use path-based routing instead of separate hosts — e.g. `PathPrefix('/sse')` for the MCP server — but separate subdomains are simpler to reason about.
 
-## Caddy
+### Caddy
 
 ```
 omnimem.example.com {
@@ -61,7 +97,7 @@ Generate the password hash:
 caddy hash-password
 ```
 
-## Keeping it local (no proxy needed)
+### Keeping it local (no proxy needed)
 
 By default, both services bind to `127.0.0.1` in `docker-compose.yml`, so they are not reachable from the network. If you only access OmniMem from the same machine, no reverse proxy is needed. For remote access without a public endpoint, an SSH tunnel works well:
 

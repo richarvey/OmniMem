@@ -19,7 +19,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger("omnimem")
 
-mcp = FastMCP("omnimem", instructions=INSTRUCTIONS)
+# Optional bearer token auth — only enabled when MCP_AUTH_TOKEN is set
+_auth_token = os.getenv("MCP_AUTH_TOKEN", "").strip()
+_auth = None
+if _auth_token:
+    from fastmcp.server.auth import AccessToken, TokenVerifier
+
+    class _SharedSecretAuth(TokenVerifier):
+        """Validates a shared secret bearer token (not JWT)."""
+
+        def __init__(self, token: str) -> None:
+            super().__init__()
+            self._token = token
+
+        async def verify_token(self, token: str) -> AccessToken | None:
+            if token == self._token:
+                return AccessToken(token=token, client_id="omnimem", scopes=[])
+            return None
+
+    _auth = _SharedSecretAuth(_auth_token)
+    logger.info("Bearer token authentication enabled for MCP server")
+
+mcp = FastMCP("omnimem", instructions=INSTRUCTIONS, auth=_auth)
 
 _start_time = time.time()
 

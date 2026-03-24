@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-03-24
+### Added
+- **Optional bearer token authentication**: Set `MCP_AUTH_TOKEN` to enable bearer token auth on the MCP SSE endpoint (via a custom `TokenVerifier` subclass). Set `WEB_UI_AUTH_TOKEN` to protect the web dashboard with a Starlette middleware that checks `Authorization: Bearer <token>` headers. Both are fully optional — when unset, behaviour is unchanged. The `/metrics` endpoint and `/static/` assets are exempt from web UI auth so Prometheus scraping continues to work without credentials
+
 ## [3.7.1] - 2026-03-24
 ### Fixed
 - **Duplicate detection in web UI showing empty clusters**: The duplicates page reported the correct number of clusters but displayed "0 memories, similarity ?" for each one. Root cause was a mismatch between the `find_all_duplicates()` return structure (flat list of dicts) and the Jinja2 template which expected named attributes (`cluster.keys`, `cluster.max_similarity`). Clusters are now returned as `{"memories": [...], "max_similarity": float}` and the template iterates correctly. Max pairwise similarity is now computed and displayed per cluster.
