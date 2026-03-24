@@ -1,0 +1,95 @@
+name: Docker Build & Push
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-mcp-server:
+    name: Build mcp_server
+    runs-on: codeberg-medium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+            buildah login -u "${{ vars.DOCKERHUB_USERNAME }}" --password-stdin docker.io
+
+      - name: Build image
+        uses: https://codeberg.org/actions/buildah-simple@main
+        with:
+          tag: "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:${{ github.ref_name }}"
+          context: mcp_server
+          push: false
+
+      - name: Tag as latest
+        run: |
+          buildah tag \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:${{ github.ref_name }}" \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:latest"
+
+      - name: Push images
+        run: |
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:${{ github.ref_name }}"
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:latest"
+
+  build-web-ui:
+    name: Build web_ui
+    runs-on: codeberg-medium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+            buildah login -u "${{ vars.DOCKERHUB_USERNAME }}" --password-stdin docker.io
+
+      - name: Build image
+        uses: https://codeberg.org/actions/buildah-simple@main
+        with:
+          tag: "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:${{ github.ref_name }}"
+          context: .
+          additional_flags: "-f web_ui/Dockerfile"
+          push: false
+
+      - name: Tag as latest
+        run: |
+          buildah tag \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:${{ github.ref_name }}" \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:latest"
+
+      - name: Push images
+        run: |
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:${{ github.ref_name }}"
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:latest"
+
+  build-rss-worker:
+    name: Build rss_worker
+    runs-on: codeberg-medium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+            buildah login -u "${{ vars.DOCKERHUB_USERNAME }}" --password-stdin docker.io
+
+      - name: Build image
+        uses: https://codeberg.org/actions/buildah-simple@main
+        with:
+          tag: "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:${{ github.ref_name }}"
+          context: rss_worker
+          push: false
+
+      - name: Tag as latest
+        run: |
+          buildah tag \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:${{ github.ref_name }}" \
+            "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:latest"
+
+      - name: Push images
+        run: |
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:${{ github.ref_name }}"
+          buildah push "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:latest"

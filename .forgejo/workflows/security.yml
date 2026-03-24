@@ -72,11 +72,16 @@ jobs:
         working-directory: mcp_server
         run: genbadge coverage --local -i coverage.xml -o ../coverage-badge.svg
 
-      - name: Upload badge artifact
-        uses: https://code.forgejo.org/forgejo/upload-artifact@v4
-        with:
-          name: coverage-badge
-          path: coverage-badge.svg
+      - name: Publish badge to badges branch
+        run: |
+          git config user.name "Forgejo Actions"
+          git config user.email "actions@codeberg.org"
+          git fetch origin badges:badges 2>/dev/null || git checkout --orphan badges
+          git checkout badges
+          cp coverage-badge.svg .
+          git add coverage-badge.svg
+          git diff --cached --quiet || git commit -m "Update coverage badge"
+          git push origin badges
 
   gitleaks:
     name: Secret Scan
