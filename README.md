@@ -1,5 +1,7 @@
 # \<OmniMem\>
 
+[![Security Scans](https://codeberg.org/ric_harvey/omnimem/badges/workflows/security.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
+
 **Stop living the same session twice.**
 
 Every Claude Code session starts from zero. No memory of your project. No memory of what failed last week. No memory that you spent three hours last Tuesday discovering why `onnxruntime` explodes on Alpine before finding something that actually works.
