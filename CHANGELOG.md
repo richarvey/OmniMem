@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-03-24
+### Fixed
+- **Duplicate detection in web UI showing empty clusters**: The duplicates page reported the correct number of clusters but displayed "0 memories, similarity ?" for each one. Root cause was a mismatch between the `find_all_duplicates()` return structure (flat list of dicts) and the Jinja2 template which expected named attributes (`cluster.keys`, `cluster.max_similarity`). Clusters are now returned as `{"memories": [...], "max_similarity": float}` and the template iterates correctly. Max pairwise similarity is now computed and displayed per cluster.
+
+## [3.7.0] - 2026-03-24
+### Added
+- **Prometheus /metrics endpoint**: Web UI now exposes a `/metrics` endpoint for Prometheus scraping with memory counts, recall statistics, and server uptime
+
 ## [3.6.1] - 2026-03-19
 ### Added
 - **Last auto-maintenance timestamp in web UI**: Duplicates and Contradictions pages now show when auto-maintenance last ran, which project it ran for, and how many duplicates were archived or contradictions found

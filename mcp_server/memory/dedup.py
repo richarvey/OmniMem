@@ -87,7 +87,7 @@ def find_all_duplicates(
     threshold: float | None = None,
     project_filter: str | None = None,
     max_keys: int = 2000,
-) -> list[list[dict[str, Any]]]:
+) -> list[dict[str, Any]]:
     """Scan all memories in a namespace and return clusters of duplicates.
 
     Re-embeds all content and performs pairwise comparison.
@@ -102,7 +102,8 @@ def find_all_duplicates(
         max_keys: Maximum keys to scan.
 
     Returns:
-        List of duplicate clusters. Each cluster is a list of memory dicts.
+        List of duplicate clusters. Each cluster is a dict with 'memories' (list of
+        memory dicts) and 'max_similarity' (highest pairwise similarity in the cluster).
     """
     if threshold is None:
         threshold = float(os.getenv("DEDUP_SIMILARITY_THRESHOLD", "0.92"))
@@ -171,22 +172,32 @@ def find_all_duplicates(
         clusters_map.setdefault(root, []).append(i)
 
     # Only return clusters with 2+ members
-    clusters: list[list[dict[str, Any]]] = []
+    clusters: list[dict[str, Any]] = []
     for indices in clusters_map.values():
         if len(indices) < 2:
             continue
-        cluster = []
+        memories = []
+        max_sim = 0.0
         for idx in indices:
             key, data = valid_entries[idx]
-            cluster.append({
+            memories.append({
                 "key": key,
                 "content": data.get("content", "")[:200],
                 "project": data.get("project") or data.get("project_name"),
                 "state": data.get("state", "active"),
                 "created_at": data.get("created_at"),
             })
-        clusters.append(cluster)
+        # Find max pairwise similarity within this cluster
+        for i_idx, a in enumerate(indices):
+            for b in indices[i_idx + 1:]:
+                sim = float(similarity_matrix[a, b])
+                if sim > max_sim:
+                    max_sim = sim
+        clusters.append({
+            "memories": memories,
+            "max_similarity": max_sim,
+        })
 
     # Sort clusters by size descending
-    clusters.sort(key=len, reverse=True)
+    clusters.sort(key=lambda c: len(c["memories"]), reverse=True)
     return clusters

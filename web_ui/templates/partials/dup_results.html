@@ -4,14 +4,14 @@
 {% for cluster in clusters %}
 <div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">
   <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem">
-    Cluster — {{ cluster.keys|length }} memories, similarity {{ cluster.max_similarity | round(3) if cluster.max_similarity is defined else '?' }}
+    Cluster — {{ cluster.memories|length }} memories{% if cluster.max_similarity is defined %}, similarity {{ cluster.max_similarity | round(3) }}{% endif %}
   </div>
-  {% for key in cluster.keys %}
+  {% for mem in cluster.memories %}
   <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid var(--border)">
-    <a href="/memory/{{ key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none;flex:1">{{ key }}</a>
-    <span style="font-size:0.8rem;color:var(--text-dim)">{{ cluster.contents[loop.index0][:80] if cluster.contents is defined else '' }}</span>
+    <a href="/memory/{{ mem.key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none;flex:1">{{ mem.key }}</a>
+    <span style="font-size:0.8rem;color:var(--text-dim)">{{ mem.content[:80] }}</span>
     <form method="POST" action="/lifecycle/archive" style="display:inline;margin-left:auto">
-      <input type="hidden" name="key" value="{{ key }}">
+      <input type="hidden" name="key" value="{{ mem.key }}">
       <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
     </form>
   </div>

@@ -55,17 +55,17 @@ def run_maintenance(
         )
         for cluster in clusters:
             # Sort by created_at ascending (oldest first)
-            sorted_cluster = sorted(
-                cluster,
+            sorted_members = sorted(
+                cluster["memories"],
                 key=lambda m: float(m.get("created_at") or "0"),
             )
             # Archive all but the newest (last in sorted list)
-            for entry in sorted_cluster[:-1]:
+            for entry in sorted_members[:-1]:
                 key = entry["key"]
                 try:
                     lifecycle.transition(
                         key, MemoryState.ARCHIVED,
-                        reason=f"auto-maintenance: duplicate of {sorted_cluster[-1]['key']}",
+                        reason=f"auto-maintenance: duplicate of {sorted_members[-1]['key']}",
                     )
                     duplicates_archived.append(key)
                 except (ValueError, KeyError) as exc:

@@ -87,7 +87,7 @@ class TestFindAllDuplicates:
 
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic")
         assert len(clusters) >= 1
-        assert any(len(c) >= 2 for c in clusters)
+        assert any(len(c["memories"]) >= 2 for c in clusters)
 
     def test_no_duplicates_with_different_content(self, fake_store, fake_embedder):
         store_memory(fake_store, fake_embedder, "mem:episodic:fd003",
@@ -97,7 +97,7 @@ class TestFindAllDuplicates:
 
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic")
         # Different content unlikely to cluster
-        duplicate_clusters = [c for c in clusters if len(c) >= 2]
+        duplicate_clusters = [c for c in clusters if len(c["memories"]) >= 2]
         # Can't guarantee no match with hash-based embedder, but test the flow
         assert isinstance(clusters, list)
 
@@ -110,7 +110,7 @@ class TestFindAllDuplicates:
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic")
         # Archived should be excluded, so no cluster of 2
         for cluster in clusters:
-            keys = [c["key"] for c in cluster]
+            keys = [m["key"] for m in cluster["memories"]]
             assert "mem:episodic:fd006" not in keys
 
     def test_fewer_than_two_returns_empty(self, fake_store, fake_embedder):
@@ -139,5 +139,5 @@ class TestFindAllDuplicates:
                                        project_filter="alpha")
         # Only alpha project memories should be scanned
         for cluster in clusters:
-            for item in cluster:
+            for item in cluster["memories"]:
                 assert item.get("project") == "alpha"
