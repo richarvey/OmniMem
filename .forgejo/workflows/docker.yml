@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+env:
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 jobs:
   build-mcp-server:
     name: Build mcp_server
