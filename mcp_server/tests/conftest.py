@@ -288,6 +288,30 @@ class FakeValkeyStore:
             result[key] = {"_type": "set", "members": list(members)}
         return result
 
+    def restore_all(self, data):
+        """Merge backup data into the store. Newer entries overwrite older ones."""
+        restored = 0
+        skipped = 0
+        for key, fields in data.items():
+            if fields.get("_type") == "set":
+                members = fields.get("members", [])
+                if members:
+                    self._client.sadd(key, *members)
+                    restored += 1
+                continue
+            existing = self.get(key)
+            if existing:
+                existing_ts = float(existing.get("updated_at", "0"))
+                backup_ts = float(fields.get("updated_at", "0"))
+                if existing_ts >= backup_ts:
+                    skipped += 1
+                    continue
+            safe = {k: v for k, v in fields.items() if v is not None}
+            if safe:
+                self._client.hset(key, mapping=safe)
+                restored += 1
+        return restored, skipped
+
 
 @pytest.fixture
 def fake_store():
@@ -314,7 +338,7 @@ def store_memory(store, embedder, key, content, namespace="episodic",
                  effort_score=None, outcome=None, experience_weight="1.0",
                  abandoned_approaches=None, surface_score="1.0",
                  reinstate_hints=None, deprioritised_reason=None,
-                 breakthrough=None, contradictions=None):
+                 breakthrough=None, gotchas=None, contradictions=None):
     """Helper: store a memory directly into the fake store."""
     now = str(time.time())
     vector = embedder.embed(content)
@@ -341,6 +365,8 @@ def store_memory(store, embedder, key, content, namespace="episodic",
         fields["deprioritised_reason"] = deprioritised_reason
     if breakthrough:
         fields["breakthrough"] = breakthrough
+    if gotchas:
+        fields["gotchas"] = gotchas
     if contradictions:
         fields["contradictions"] = json.dumps(contradictions)
     store.upsert(namespace, key, fields, vector)
