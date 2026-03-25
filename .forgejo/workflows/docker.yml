@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        run: /usr/bin/docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+        run: /usr/bin/docker run --rm --privileged tonistiigi/binfmt --install all
 
       - name: Set up Docker Buildx
         run: |
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        run: /usr/bin/docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+        run: /usr/bin/docker run --rm --privileged tonistiigi/binfmt --install all
 
       - name: Set up Docker Buildx
         run: |
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        run: /usr/bin/docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+        run: /usr/bin/docker run --rm --privileged tonistiigi/binfmt --install all
 
       - name: Set up Docker Buildx
         run: |
