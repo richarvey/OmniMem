@@ -4,6 +4,18 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-03-25
+### Added
+- **Multi-arch Docker images**: All three images (omnimem-mcp, omnimem-web, omnimem-rss) now build for both `linux/amd64` and `linux/arm64` via docker buildx on a self-hosted runner. Docker Hub serves the correct architecture automatically
+- **Manual workflow trigger**: Docker build workflow supports `workflow_dispatch` for on-demand builds without creating tags
+- **Test coverage to 76%**: 92 new tests across 5 new test files covering project context tools, briefing helpers, audit tools, backup/restore, and contradiction detection tool
+### Fixed
+- **pip-audit CVE-2026-4539 false positive**: Added `--ignore-vuln` for unpatched low-severity pygments ReDoS (no fix available from upstream)
+- **Coverage badge publish failing**: Untracked `coverage-badge.svg` blocked `git checkout badges`. Now removed before branch switch
+- **Security scans not triggering on tags**: Added explicit `tags-ignore` to prevent security workflow running on version tag pushes
+### Changed
+- **Docker workflow migrated from buildah to docker buildx**: Switched from single-arch buildah builds on Codeberg hosted runners to multi-platform docker buildx builds on a self-hosted arm64 runner with QEMU for amd64 cross-compilation
+
 ## [3.8.0] - 2026-03-24
 ### Added
 - **Optional bearer token authentication**: Set `MCP_AUTH_TOKEN` to enable bearer token auth on the MCP SSE endpoint (via a custom `TokenVerifier` subclass). Set `WEB_UI_AUTH_TOKEN` to protect the web dashboard with a Starlette middleware that checks `Authorization: Bearer <token>` headers. Both are fully optional — when unset, behaviour is unchanged. The `/metrics` endpoint and `/static/` assets are exempt from web UI auth so Prometheus scraping continues to work without credentials

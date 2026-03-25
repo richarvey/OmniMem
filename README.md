@@ -136,7 +136,8 @@ The results appear in the briefing response under `auto_maintenance` so you know
 No SaaS. No vendor lock-in. No context shipped to someone else's servers.
 
 - **Valkey** is an open source Redis fork. All your data stays in a named Docker volume on your own machine.
-- **sentence-transformers** runs embeddings locally with no API calls. It works fine on a Raspberry Pi.
+- **Multi-arch Docker images** for amd64 and arm64. It runs on a Raspberry Pi, AWS Graviton, or Apple Silicon just as well as x86.
+- **sentence-transformers** runs embeddings locally with no API calls.
 - **MIT licensed** means fork it, extend it, run it wherever you want.
 - **One backup command** calls `dump_to_file()` and exports everything to a JSON file you own.
 
