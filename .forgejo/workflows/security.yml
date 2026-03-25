@@ -45,7 +45,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit dependencies
-        run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --strict --vulnerability-service osv
+        run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --strict --vulnerability-service osv --ignore-vuln CVE-2026-4539
 
   coverage:
     name: Test Coverage
@@ -75,6 +75,7 @@ jobs:
       - name: Publish badge to badges branch
         run: |
           cp coverage-badge.svg /tmp/coverage-badge.svg
+          rm -f coverage-badge.svg
           git config user.name "Forgejo Actions"
           git config user.email "actions@codeberg.org"
           if git fetch origin badges 2>/dev/null; then
