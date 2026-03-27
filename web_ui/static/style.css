@@ -76,11 +76,12 @@ body {
   position: relative;
   display: inline-block;
   cursor: pointer;
+  vertical-align: middle;
 }
 
 .version-update-icon {
-  font-size: 0.85rem;
-  color: var(--yellow);
+  font-size: 1rem;
+  color: var(--red);
   line-height: 1;
 }
 
@@ -91,14 +92,15 @@ body {
   top: calc(100% + 6px);
   transform: translateX(-50%);
   background: var(--bg-card);
-  border: 1px solid var(--yellow);
-  color: var(--yellow);
+  border: 1px solid var(--red);
+  color: var(--red);
   font-size: 0.7rem;
   font-weight: 600;
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius);
   white-space: nowrap;
   z-index: 50;
+  pointer-events: none;
 }
 
 .version-update-wrapper:hover .version-update-tooltip {
