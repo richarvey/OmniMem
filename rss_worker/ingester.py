@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -70,6 +71,10 @@ def _url_hash(url: str) -> str:
 
 def _fetch_page_content(url: str) -> str | None:
     """Fetch a web page and extract plain text content."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        logger.warning("Refusing to fetch non-HTTP URL: %s", url)
+        return None
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": _PAGE_USER_AGENT,
