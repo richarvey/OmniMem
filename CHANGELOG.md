@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.10.1] - 2026-03-27
+### Added
+- **Update available indicator in web UI**: A warning triangle appears next to the version badge in the sidebar when a newer release is published on Codeberg. Hovering shows the available version number. Checks the Codeberg releases API with a 1-hour cache and 5-second timeout, fails silently if unreachable
+- **Claude Desktop connection guide**: New guide at `guides/claude-desktop.md` covering Streamable HTTP and legacy SSE setup via `mcp-remote`, config file locations for macOS and Windows, auth, migration steps, and troubleshooting
+- **`MCP_TRANSPORT` in `.env.example`**: Documented as a commented-out option
+
 ## [3.10.0] - 2026-03-27
 ### Added
 - **Streamable HTTP transport support**: MCP server now supports Streamable HTTP via `MCP_TRANSPORT=http` env var, using FastMCP's canonical `"http"` transport string. Endpoint moves from `/sse` to `/mcp` when enabled. Community contribution from [@timstoop](https://codeberg.org/timstoop) ([PR #4](https://codeberg.org/ric_harvey/omnimem/pulls/4))

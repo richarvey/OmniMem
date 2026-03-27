@@ -72,6 +72,39 @@ body {
   font-weight: 600;
 }
 
+.version-update-wrapper {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.version-update-icon {
+  font-size: 0.85rem;
+  color: var(--yellow);
+  line-height: 1;
+}
+
+.version-update-tooltip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  z-index: 50;
+}
+
+.version-update-wrapper:hover .version-update-tooltip {
+  display: block;
+}
+
 .nav-list {
   list-style: none;
   padding: 0.75rem 0;
