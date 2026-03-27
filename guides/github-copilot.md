@@ -1,6 +1,9 @@
 # Connecting OmniMem to GitHub Copilot
 
-GitHub Copilot in VS Code supports MCP servers natively since VS Code 1.99 (April 2025). It supports SSE transport and custom headers.
+GitHub Copilot in VS Code supports MCP servers natively since VS Code 1.99 (April 2025). It supports SSE and Streamable HTTP transports with custom headers.
+
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use `"type": "http"` with URL `.../mcp` in the config below.
 
 ## Requirements
 
@@ -16,8 +19,8 @@ Create or edit `.vscode/mcp.json` in your project root:
 {
   "servers": {
     "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp"
+      "type": "sse",
+      "url": "http://localhost:8765/sse"
     }
   }
 }
@@ -31,8 +34,8 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), you
 {
   "servers": {
     "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp",
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
       "headers": {
         "Authorization": "Bearer ${input:omnimem_token}"
       }
@@ -92,7 +95,7 @@ You should see Valkey connection status, index counts, and embedding model statu
 - **Agent mode only**: MCP tools do not work in standard Chat/Ask mode. You must select Agent mode.
 - **No MCP resources**: Copilot only supports MCP tools, not MCP resources (the read-only data primitive). This does not affect OmniMem since it only exposes tools.
 - **Server naming**: Server names in `mcp.json` should use camelCase with no whitespace or special characters.
-- **SSE fallback**: VS Code also supports `"type": "sse"` for older servers. OmniMem uses Streamable HTTP by default; use `"type": "http"` as shown above.
+- **Streamable HTTP**: VS Code also supports `"type": "http"` for Streamable HTTP. OmniMem defaults to SSE in 3.10 but will switch to Streamable HTTP in a future release. Set `MCP_TRANSPORT=http` and use `"type": "http"` with URL `.../mcp` to migrate early.
 - **Claude Desktop auto-discovery**: If you also use Claude Desktop, VS Code can discover its MCP servers. Enable with `"chat.mcp.discovery.enabled": true` in VS Code settings.
 
 ## Notes

@@ -4,6 +4,21 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-03-27
+### Added
+- **Streamable HTTP transport support**: MCP server now supports Streamable HTTP via `MCP_TRANSPORT=http` env var, using FastMCP's canonical `"http"` transport string. Endpoint moves from `/sse` to `/mcp` when enabled. Community contribution from [@timstoop](https://codeberg.org/timstoop) ([PR #4](https://codeberg.org/ric_harvey/omnimem/pulls/4))
+- **`MCP_TRANSPORT` env var**: Controls which transport the MCP server uses. Accepts `sse` (default) or `http`. Existing deployments continue to work without changes
+### Deprecated
+- **SSE transport**: SSE remains the default in 3.10 but will be removed in a future release. A deprecation warning is logged on startup when using SSE. All connection guides updated with migration instructions
+### Fixed
+- **Bandit B310 security finding** (v3.9.5): Validate URL scheme is `http` or `https` before calling `urllib.request.urlopen` in the RSS worker page fetcher. Added `# nosec B310` annotation for the scheme-validated call
+- **Version string out of sync** (v3.9.4): `__version__` in `memory/version.py` was stuck on `3.9.3` despite commit messages referencing `3.9.4`
+- **Trailing code fence in reverse-proxy docs**: Stray ``` removed from `docs/reverse-proxy.md`
+### Changed
+- All connection guides (Claude Code, GitHub Copilot, GitLab Duo, Cursor, Kiro, OpenCode, Codex) updated to show SSE as default config with GFM deprecation warnings and Streamable HTTP migration instructions
+- Kiro guide type field corrected from `"streamable-http"` to `"http"` for consistency with FastMCP docs
+- Docker Hub guide `.env` example shows `MCP_TRANSPORT` as a commented-out option
+
 ## [3.8.2] - 2026-03-25
 ### Added
 - **Multi-arch Docker images**: All three images (omnimem-mcp, omnimem-web, omnimem-rss) now build for both `linux/amd64` and `linux/arm64` via docker buildx on a self-hosted runner. Docker Hub serves the correct architecture automatically

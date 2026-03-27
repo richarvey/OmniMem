@@ -222,6 +222,12 @@ if __name__ == "__main__":
 
     port = int(os.getenv("MCP_PORT", "8765"))
     host = os.getenv("MCP_HOST", "127.0.0.1")
-    transport = os.getenv("MCP_TRANSPORT", "streamable-http")
+    transport = os.getenv("MCP_TRANSPORT", "sse")
+    if transport == "sse":
+        logger.warning(
+            "SSE transport is deprecated and will be removed in a future release. "
+            "Set MCP_TRANSPORT=http and update your client config to use "
+            "type 'http' with URL http://<host>:<port>/mcp"
+        )
     logger.info("Starting OmniMem MCP server on %s:%d (%s)", host, port, transport)
     mcp.run(transport=transport, host=host, port=port)

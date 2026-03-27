@@ -4,6 +4,11 @@
 [![Docker Build](https://codeberg.org/ric_harvey/omnimem/badges/workflows/docker.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
 [![Coverage](https://codeberg.org/ric_harvey/omnimem/raw/branch/badges/coverage-badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
 
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but now supports Streamable HTTP via `MCP_TRANSPORT=http`. SSE will be removed in a future release. To migrate: set `MCP_TRANSPORT=http` in your `.env` and update your client config to use `"type": "http"` with URL `.../mcp` instead of `.../sse`. See the [connection guides](guides/) for updated examples.
+>
+> Streamable HTTP support is a community contribution from [@timstoop](https://codeberg.org/timstoop) — thanks!
+
 **Stop living the same session twice.**
 
 Every Claude Code session starts from zero. No memory of your project. No memory of what failed last week. No memory that you spent three hours last Tuesday discovering why `onnxruntime` explodes on Alpine before finding something that actually works.
@@ -164,13 +169,13 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 
 | Agent | Guide | Transport |
 |-------|-------|-----------|
-| Claude Code | [guides/claude-code.md](guides/claude-code.md) | Streamable HTTP |
-| GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | Streamable HTTP |
-| GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | Streamable HTTP |
-| Cursor | [guides/cursor.md](guides/cursor.md) | Streamable HTTP |
-| AWS Kiro | [guides/kiro.md](guides/kiro.md) | Streamable HTTP |
-| OpenCode | [guides/opencode.md](guides/opencode.md) | Streamable HTTP |
-| OpenAI Codex CLI | [guides/codex.md](guides/codex.md) | Streamable HTTP |
+| Claude Code | [guides/claude-code.md](guides/claude-code.md) | SSE (default) / Streamable HTTP |
+| GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | SSE (default) / Streamable HTTP |
+| GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | SSE (default) / Streamable HTTP |
+| Cursor | [guides/cursor.md](guides/cursor.md) | SSE (default) / Streamable HTTP |
+| AWS Kiro | [guides/kiro.md](guides/kiro.md) | SSE (default) / Streamable HTTP |
+| OpenCode | [guides/opencode.md](guides/opencode.md) | SSE (default) / Streamable HTTP |
+| OpenAI Codex CLI | [guides/codex.md](guides/codex.md) | SSE (default) / Streamable HTTP |
 
 **Claude Code** (`~/.claude.json`):
 
@@ -178,8 +183,8 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 {
   "mcpServers": {
     "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp"
+      "type": "sse",
+      "url": "http://localhost:8765/sse"
     }
   }
 }
@@ -191,8 +196,8 @@ If you set `MCP_AUTH_TOKEN` in your `.env`, add the token to the config:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp",
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }
@@ -357,7 +362,7 @@ labels:
   - "traefik.http.services.omnimem.loadbalancer.server.port=8765"
 ```
 
-Update the MCP config URL to `https://omnimem.yourdomain.com/mcp` and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
+Update the MCP config URL to `https://omnimem.yourdomain.com/sse` (or `.../mcp` if using Streamable HTTP) and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 

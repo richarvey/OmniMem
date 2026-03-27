@@ -1,6 +1,9 @@
 # Connecting OmniMem to Cursor
 
-Cursor is an AI-powered code editor built on VS Code. It supports MCP servers via Streamable HTTP and SSE transports.
+Cursor is an AI-powered code editor built on VS Code. It supports MCP servers via SSE and Streamable HTTP transports.
+
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use URL `.../mcp` in the config below.
 
 ## Quick setup
 
@@ -10,7 +13,7 @@ Create or edit `~/.cursor/mcp.json` for global access:
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/mcp"
+      "url": "http://localhost:8765/sse"
     }
   }
 }
@@ -22,7 +25,7 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/mcp",
+      "url": "http://localhost:8765/sse",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }
@@ -37,7 +40,7 @@ You can use environment variable interpolation to avoid hardcoding the token:
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/mcp",
+      "url": "http://localhost:8765/sse",
       "headers": {
         "Authorization": "Bearer ${env:OMNIMEM_TOKEN}"
       }

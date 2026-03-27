@@ -25,8 +25,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 {
   "mcpServers": {
     "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp",
+      "type": "sse",
+      "url": "http://localhost:8765/sse",
       "headers": {
         "Authorization": "Bearer your-secret-token"
       }
@@ -37,7 +37,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Reverse proxy (alternative)
 
-For production deployments that need TLS termination, IP allowlisting, or more advanced auth (OAuth, SSO), place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, Streamable HTTP transport) behind a reverse proxy. This can be used instead of or in addition to built-in bearer token auth.
+For production deployments that need TLS termination, IP allowlisting, or more advanced auth (OAuth, SSO), place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, SSE or Streamable HTTP transport) behind a reverse proxy. This can be used instead of or in addition to built-in bearer token auth.
 
 ### Traefik
 
@@ -106,5 +106,4 @@ By default, both services bind to `127.0.0.1` in `docker-compose.yml`, so they a
 ssh -L 8080:127.0.0.1:8080 -L 8765:127.0.0.1:8765 your-server
 ```
 
-Then connect to `http://localhost:8765/mcp` from your local machine.
-```
+Then connect to `http://localhost:8765/sse` from your local machine.

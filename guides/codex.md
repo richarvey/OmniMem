@@ -2,9 +2,12 @@
 
 Codex CLI is OpenAI's open-source coding agent for the terminal. It uses TOML configuration and supports MCP servers via stdio and Streamable HTTP transports.
 
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. Codex only supports Streamable HTTP natively, so set `MCP_TRANSPORT=http` in your `.env` to use Codex with OmniMem.
+
 ## Quick setup
 
-Create or edit `~/.codex/config.toml`:
+Set `MCP_TRANSPORT=http` in your OmniMem `.env` file, then create or edit `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.omnimem]
