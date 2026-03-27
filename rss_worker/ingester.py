@@ -81,7 +81,7 @@ def _fetch_page_content(url: str) -> str | None:
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-GB,en;q=0.9",
         })
-        with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:  # nosec B310 — scheme validated above
             html = resp.read().decode("utf-8", errors="replace")
 
         # Strip script and style blocks, then all tags
