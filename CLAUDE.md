@@ -56,7 +56,7 @@ cp .env.example .env   # Edit: set VALKEY_PASSWORD, optionally ANTHROPIC_API_KEY
 docker compose up -d
 ```
 
-- MCP server: `http://localhost:8765/sse`
+- MCP server: `http://localhost:8765/mcp`
 - Web UI: `http://localhost:8080`
 - Valkey: `localhost:6379`
 

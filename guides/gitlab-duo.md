@@ -1,6 +1,6 @@
 # Connecting OmniMem to GitLab Duo
 
-GitLab Duo supports MCP servers natively since GitLab 18.1 (experiment), with general availability in GitLab 18.8. It works in VS Code and JetBrains IDEs via the GitLab Workflow extension.
+GitLab Duo supports MCP servers natively since GitLab 18.1 (experiment), with general availability in GitLab 18.8. It works in VS Code and JetBrains IDEs via the GitLab Workflow extension. OmniMem uses Streamable HTTP transport (the `http` type in config).
 
 ## Requirements
 
@@ -18,8 +18,8 @@ Create or edit `~/.gitlab/duo/mcp.json` for global access:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "approvedTools": true
     }
   }
@@ -69,11 +69,11 @@ You should see Valkey connection status, index counts, and embedding model statu
 
 ## Known quirks
 
-- **No custom headers**: The `headers` field is not supported for `sse` or `http` server types. Bearer token auth cannot be passed via the config file.
+- **No custom headers**: The `headers` field is not supported for `http` server types in GitLab Duo. Bearer token auth cannot be passed via the config file.
 - **VS Code and JetBrains only**: The GitLab Web IDE does not support MCP servers.
 - **Tool approval persists**: `approvedTools: true` survives IDE restarts. Without it, you are prompted once per session (not per call).
 - **Relative command paths**: For `stdio` servers, absolute paths are required if the command is not in `PATH`. Not relevant for OmniMem's SSE transport.
-- **AI Catalog MCP servers** (18.10+, experimental) are a separate admin-managed feature that only supports HTTP transport, not SSE.
+- **AI Catalog MCP servers** (18.10+, experimental) are a separate admin-managed feature that only supports HTTP transport.
 
 ## Notes
 

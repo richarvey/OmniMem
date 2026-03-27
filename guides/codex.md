@@ -2,37 +2,16 @@
 
 Codex CLI is OpenAI's open-source coding agent for the terminal. It uses TOML configuration and supports MCP servers via stdio and Streamable HTTP transports.
 
-## Important: SSE compatibility
-
-OmniMem currently serves a **legacy SSE endpoint** (`/sse`). Codex's remote transport support targets **Streamable HTTP**, which is a different protocol. Pointing Codex directly at `http://localhost:8765/sse` will not work reliably.
-
-There are two options: use the **supergateway bridge** (works now) or wait for OmniMem to add a Streamable HTTP endpoint (future).
-
-## Option 1: supergateway bridge (recommended)
-
-[supergateway](https://github.com/supercorp-ai/supergateway) translates between SSE and stdio, which Codex supports natively. Codex launches and manages the bridge process automatically.
+## Quick setup
 
 Create or edit `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.omnimem]
-command = "npx"
-args = ["-y", "supergateway", "--sse", "http://localhost:8765/sse"]
+url = "http://localhost:8765/mcp"
 ```
 
 If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`):
-
-```toml
-[mcp_servers.omnimem]
-command = "npx"
-args = ["-y", "supergateway", "--sse", "http://localhost:8765/sse", "--header", "Authorization: Bearer your-token"]
-```
-
-You will need Node.js and npx installed for this to work.
-
-## Option 2: direct Streamable HTTP (future)
-
-When OmniMem adds a Streamable HTTP endpoint (e.g. `/mcp`), you will be able to connect directly:
 
 ```toml
 [mcp_servers.omnimem]
@@ -55,7 +34,7 @@ Note: `bearer_token_env_var` takes the **name** of the env var, not the token it
 
 - **TOML section name**: The section must be `[mcp_servers]` with an underscore. Using `[mcp-servers]` or `[mcpservers]` causes Codex to silently ignore the entire block.
 - **Silent config failures**: TOML syntax errors are not reported -- Codex simply ignores the MCP configuration.
-- **Streamable HTTP is not legacy SSE**: These are different protocols. `url =` in Codex config targets Streamable HTTP, not SSE. Do not point it at `/sse`.
+- **Legacy SSE**: If you are running an older OmniMem version (pre-streamable-http), you can use the supergateway bridge: `args = ["-y", "supergateway", "--sse", "http://localhost:8765/sse"]` with `command = "npx"`. New installs do not need this.
 
 ## Verifying the connection
 

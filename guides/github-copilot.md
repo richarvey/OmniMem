@@ -16,8 +16,8 @@ Create or edit `.vscode/mcp.json` in your project root:
 {
   "servers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
+      "type": "http",
+      "url": "http://localhost:8765/mcp"
     }
   }
 }
@@ -31,8 +31,8 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), you
 {
   "servers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer ${input:omnimem_token}"
       }
@@ -92,7 +92,7 @@ You should see Valkey connection status, index counts, and embedding model statu
 - **Agent mode only**: MCP tools do not work in standard Chat/Ask mode. You must select Agent mode.
 - **No MCP resources**: Copilot only supports MCP tools, not MCP resources (the read-only data primitive). This does not affect OmniMem since it only exposes tools.
 - **Server naming**: Server names in `mcp.json` should use camelCase with no whitespace or special characters.
-- **SSE is deprecated in the MCP spec** but VS Code continues to support it. If you use `"type": "http"`, VS Code will try Streamable HTTP first and fall back to SSE automatically.
+- **SSE fallback**: VS Code also supports `"type": "sse"` for older servers. OmniMem uses Streamable HTTP by default; use `"type": "http"` as shown above.
 - **Claude Desktop auto-discovery**: If you also use Claude Desktop, VS Code can discover its MCP servers. Enable with `"chat.mcp.discovery.enabled": true` in VS Code settings.
 
 ## Notes

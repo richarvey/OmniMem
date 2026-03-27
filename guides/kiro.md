@@ -1,6 +1,6 @@
 # Connecting OmniMem to Kiro
 
-Kiro is AWS's AI-powered IDE built on VS Code. It supports MCP servers via SSE transport.
+Kiro is AWS's AI-powered IDE built on VS Code. It supports MCP servers via Streamable HTTP and SSE transports.
 
 ## Quick setup
 
@@ -10,8 +10,8 @@ Create or edit `~/.kiro/settings/mcp.json` for global access:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
+      "type": "streamable-http",
+      "url": "http://localhost:8765/mcp"
     }
   }
 }
@@ -23,8 +23,8 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "streamable-http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer ${OMNIMEM_TOKEN}"
       }
@@ -48,8 +48,8 @@ You can also configure MCP servers through Kiro's UI:
 
 1. Open the **MCP Servers** panel from the sidebar or command palette
 2. Click **Add Server**
-3. Select **SSE** as the transport type
-4. Enter the URL: `http://localhost:8765/sse`
+3. Select **Streamable HTTP** as the transport type
+4. Enter the URL: `http://localhost:8765/mcp`
 5. Add the authorisation header if auth is enabled
 
 ## Using OmniMem with Kiro
@@ -75,7 +75,7 @@ You should see Valkey connection status, index counts, and embedding model statu
 - **Silent failures**: If OmniMem is unreachable, Kiro can fail to load all MCP servers without any visible error. If tools suddenly disappear, check that OmniMem's Docker containers are running.
 - **CLI vs IDE env var syntax**: The IDE uses `${VAR_NAME}` but the Kiro CLI expects `${env:VAR_NAME}`. You cannot share a single `mcp.json` between both without editing it.
 - **OAuth redirects don't work**: If you ever add OAuth-based auth to OmniMem via a reverse proxy, Kiro cannot complete localhost OAuth redirects. Plain bearer tokens via `headers` work fine.
-- **Streamable HTTP**: Kiro also supports `"type": "streamable-http"` for the newer MCP transport, but OmniMem currently uses SSE. Stick with `"type": "sse"`.
+- **Legacy SSE**: If you are running an older OmniMem version that still uses SSE, set `"type": "sse"` and use `http://localhost:8765/sse` as the URL. New installs use Streamable HTTP by default.
 
 ## Notes
 

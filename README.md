@@ -164,13 +164,13 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 
 | Agent | Guide | Transport |
 |-------|-------|-----------|
-| Claude Code | [guides/claude-code.md](guides/claude-code.md) | Native SSE |
-| GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | Native SSE |
-| GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | Native SSE |
-| Cursor | [guides/cursor.md](guides/cursor.md) | SSE (known quirks) |
-| AWS Kiro | [guides/kiro.md](guides/kiro.md) | Native SSE |
-| OpenCode | [guides/opencode.md](guides/opencode.md) | Native SSE |
-| OpenAI Codex CLI | [guides/codex.md](guides/codex.md) | Needs supergateway bridge |
+| Claude Code | [guides/claude-code.md](guides/claude-code.md) | Streamable HTTP |
+| GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | Streamable HTTP |
+| GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | Streamable HTTP |
+| Cursor | [guides/cursor.md](guides/cursor.md) | Streamable HTTP |
+| AWS Kiro | [guides/kiro.md](guides/kiro.md) | Streamable HTTP |
+| OpenCode | [guides/opencode.md](guides/opencode.md) | Streamable HTTP |
+| OpenAI Codex CLI | [guides/codex.md](guides/codex.md) | Streamable HTTP |
 
 **Claude Code** (`~/.claude.json`):
 
@@ -178,8 +178,8 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
+      "type": "http",
+      "url": "http://localhost:8765/mcp"
     }
   }
 }
@@ -191,8 +191,8 @@ If you set `MCP_AUTH_TOKEN` in your `.env`, add the token to the config:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }
@@ -357,7 +357,7 @@ labels:
   - "traefik.http.services.omnimem.loadbalancer.server.port=8765"
 ```
 
-Update the MCP config URL to `https://omnimem.yourdomain.com/sse` and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
+Update the MCP config URL to `https://omnimem.yourdomain.com/mcp` and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 

@@ -5,7 +5,7 @@
 OmniMem supports optional bearer token authentication on both the MCP server and web UI. Set the relevant environment variables in your `.env` file to enable:
 
 ```bash
-MCP_AUTH_TOKEN=your-secret-token      # Protects the MCP SSE endpoint (port 8765)
+MCP_AUTH_TOKEN=your-secret-token      # Protects the MCP endpoint (port 8765)
 WEB_UI_AUTH_TOKEN=your-secret-token   # Protects the web dashboard (port 8080)
 ```
 
@@ -25,7 +25,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer your-secret-token"
       }
@@ -36,7 +37,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Reverse proxy (alternative)
 
-For production deployments that need TLS termination, IP allowlisting, or more advanced auth (OAuth, SSO), place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, SSE transport) behind a reverse proxy. This can be used instead of or in addition to built-in bearer token auth.
+For production deployments that need TLS termination, IP allowlisting, or more advanced auth (OAuth, SSO), place both the **web UI** (port 8080, includes `/metrics`) and the **MCP server** (port 8765, Streamable HTTP transport) behind a reverse proxy. This can be used instead of or in addition to built-in bearer token auth.
 
 ### Traefik
 
@@ -71,7 +72,7 @@ htpasswd -nB admin
 
 Escape `$` signs as `$$` in the compose file. Both routers reference the same `omnimem-auth` middleware, so you only define the credentials once.
 
-> **Note:** If you prefer a single domain, you can use path-based routing instead of separate hosts — e.g. `PathPrefix('/sse')` for the MCP server — but separate subdomains are simpler to reason about.
+> **Note:** If you prefer a single domain, you can use path-based routing instead of separate hosts — e.g. `PathPrefix('/mcp')` for the MCP server — but separate subdomains are simpler to reason about.
 
 ### Caddy
 
@@ -103,4 +104,7 @@ By default, both services bind to `127.0.0.1` in `docker-compose.yml`, so they a
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 -L 8765:127.0.0.1:8765 your-server
+```
+
+Then connect to `http://localhost:8765/mcp` from your local machine.
 ```

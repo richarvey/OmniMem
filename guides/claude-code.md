@@ -1,6 +1,6 @@
 # Connecting OmniMem to Claude Code
 
-Claude Code is Anthropic's CLI-based coding agent. It supports MCP servers natively via SSE transport.
+Claude Code is Anthropic's CLI-based coding agent. It supports MCP servers natively via Streamable HTTP and SSE transports.
 
 ## Quick setup
 
@@ -10,8 +10,8 @@ Add OmniMem to your global config at `~/.claude.json`:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
+      "type": "http",
+      "url": "http://localhost:8765/mcp"
     }
   }
 }
@@ -23,8 +23,8 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }
@@ -39,8 +39,8 @@ You can also use environment variable expansion to avoid hardcoding the token:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer ${OMNIMEM_TOKEN}"
       }
@@ -55,10 +55,10 @@ Instead of editing JSON manually, you can use the `claude mcp add` command:
 
 ```bash
 # Without auth
-claude mcp add --transport sse omnimem http://localhost:8765/sse --scope user
+claude mcp add --transport http omnimem http://localhost:8765/mcp --scope user
 
 # With auth header
-claude mcp add --transport sse omnimem http://localhost:8765/sse \
+claude mcp add --transport http omnimem http://localhost:8765/mcp \
   --header "Authorization: Bearer your-token-here" \
   --scope user
 ```
@@ -115,8 +115,8 @@ If OmniMem runs on a different machine, update the URL to point to your server:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "https://omnimem.yourdomain.com/sse",
+      "type": "http",
+      "url": "https://omnimem.yourdomain.com/mcp",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }

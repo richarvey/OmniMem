@@ -222,5 +222,6 @@ if __name__ == "__main__":
 
     port = int(os.getenv("MCP_PORT", "8765"))
     host = os.getenv("MCP_HOST", "127.0.0.1")
-    logger.info("Starting OmniMem MCP server on %s:%d (SSE)", host, port)
-    mcp.run(transport="sse", host=host, port=port)
+    transport = os.getenv("MCP_TRANSPORT", "streamable-http")
+    logger.info("Starting OmniMem MCP server on %s:%d (%s)", host, port, transport)
+    mcp.run(transport=transport, host=host, port=port)

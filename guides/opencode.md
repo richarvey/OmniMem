@@ -12,7 +12,7 @@ Create or edit `~/.config/opencode/opencode.json` for global access:
   "mcp": {
     "omnimem": {
       "type": "remote",
-      "url": "http://localhost:8765/sse",
+      "url": "http://localhost:8765/mcp",
       "oauth": false,
       "timeout": 15000
     }
@@ -32,7 +32,7 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
   "mcp": {
     "omnimem": {
       "type": "remote",
-      "url": "http://localhost:8765/sse",
+      "url": "http://localhost:8765/mcp",
       "headers": {
         "Authorization": "Bearer {env:OMNIMEM_TOKEN}"
       },
@@ -77,7 +77,7 @@ You should see Valkey connection status, index counts, and embedding model statu
 - **OAuth auto-negotiation**: OpenCode auto-detects OAuth on remote connections by watching for 401 responses. For OmniMem's simple bearer token auth, set `"oauth": false` to prevent unexpected auth flows.
 - **Default timeout is 5 seconds**: OmniMem's embedding model may need longer on first call. Set `"timeout": 15000` (15 seconds) to avoid premature timeouts.
 - **Context window consumption**: Every MCP tool description is injected into the LLM context on each request. OmniMem's 30+ tools will consume a non-trivial number of tokens. Use `"enabled": false` to temporarily disable OmniMem for a session if needed.
-- **Transport detection order**: OpenCode tries SSE first, then falls back to Streamable HTTP. For OmniMem's `/sse` endpoint this works correctly.
+- **Transport detection order**: OpenCode tries SSE first, then falls back to Streamable HTTP. Point it directly at `/mcp` to use Streamable HTTP without the detection step.
 
 ## Notes
 
