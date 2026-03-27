@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.9.3] - 2026-03-27
+### Added
+- **Digest mode toggle in web UI**: RSS feed create/edit forms now have a "Digest mode" checkbox that writes `mode: digest` to feeds.yml when enabled. The feeds list page shows a mode column with a badge for digest feeds
+- **Tool Priority in MCP instructions**: Agents connecting to OmniMem are now instructed to query `recall()` or `recall_index()` before falling back to web search or training data, making the knowledge base more useful
+
 ## [3.9.2] - 2026-03-27
 ### Fixed
 - **RSS worker crash on large digest batches**: `libgomp: Thread creation failed` when digest mode produced many items (e.g. 160+). Added `OMP_NUM_THREADS=1` and `TOKENIZERS_PARALLELISM=false` to rss_worker Docker environment to prevent OpenMP thread explosion

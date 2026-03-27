@@ -46,6 +46,7 @@ async def feed_list(request: Request) -> HTMLResponse:
             "name": feed.get("name", ""),
             "url": feed.get("url", ""),
             "topics": ", ".join(feed.get("topics", [])),
+            "digest": feed.get("mode") == "digest",
         })
 
     message = request.query_params.get("message")
@@ -60,7 +61,7 @@ async def feed_list(request: Request) -> HTMLResponse:
 
 async def feed_create_form(request: Request) -> HTMLResponse:
     """GET /feeds/new — form to add a new feed."""
-    feed = {"name": "", "url": "", "topics": ""}
+    feed = {"name": "", "url": "", "topics": "", "digest": False}
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=True,
@@ -74,14 +75,19 @@ async def feed_create(request: Request) -> RedirectResponse:
     name = form.get("name", "").strip()
     url = form.get("url", "").strip()
     topics_raw = form.get("topics", "").strip()
+    digest = form.get("digest") == "on"
 
     if not name or not url:
         return RedirectResponse(url="/feeds/new", status_code=303)
 
     topics = [t.strip() for t in topics_raw.split(",") if t.strip()] if topics_raw else []
 
+    feed_entry: dict = {"url": url, "name": name, "topics": topics}
+    if digest:
+        feed_entry["mode"] = "digest"
+
     feeds = _load_feeds()
-    feeds.append({"url": url, "name": name, "topics": topics})
+    feeds.append(feed_entry)
     _save_feeds(feeds)
 
     logger.info("Added RSS feed: %s (%s)", name, url)
@@ -102,6 +108,7 @@ async def feed_edit_form(request: Request) -> HTMLResponse:
         "name": raw.get("name", ""),
         "url": raw.get("url", ""),
         "topics": ", ".join(raw.get("topics", [])),
+        "digest": raw.get("mode") == "digest",
     }
 
     template = request.app.state.templates.get_template("feeds/edit.html")
@@ -119,6 +126,7 @@ async def feed_save(request: Request) -> RedirectResponse:
     name = form.get("name", "").strip()
     url = form.get("url", "").strip()
     topics_raw = form.get("topics", "").strip()
+    digest = form.get("digest") == "on"
 
     if not name or not url:
         return RedirectResponse(url=f"/feeds/{index}/edit", status_code=303)
@@ -129,7 +137,10 @@ async def feed_save(request: Request) -> RedirectResponse:
     if index < 0 or index >= len(feeds):
         return RedirectResponse(url="/feeds", status_code=303)
 
-    feeds[index] = {"url": url, "name": name, "topics": topics}
+    feed_entry: dict = {"url": url, "name": name, "topics": topics}
+    if digest:
+        feed_entry["mode"] = "digest"
+    feeds[index] = feed_entry
     _save_feeds(feeds)
 
     logger.info("Updated RSS feed #%d: %s (%s)", index, name, url)

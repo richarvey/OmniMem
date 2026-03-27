@@ -11,6 +11,16 @@ You have access to a persistent memory system via the `omnimem` MCP server.
 
 -----
 
+### Tool Priority
+
+Before using web_search or answering from training data, ALWAYS query OmniMem first:
+
+1. Call `recall("<relevant query>")` or `recall_index("<relevant query>")` to check for prior solutions, patterns, or knowledge articles
+2. Only fall back to web_search if OmniMem returns nothing useful
+3. Combine both when recency matters — use OmniMem for project context and prior decisions, web for the latest information
+
+-----
+
 ### Session Start
 
 At the beginning of every session:

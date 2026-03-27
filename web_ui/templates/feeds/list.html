@@ -40,6 +40,7 @@
       <th>Name</th>
       <th>URL</th>
       <th>Topics</th>
+      <th>Mode</th>
       <th>Actions</th>
     </tr>
   </thead>
@@ -54,6 +55,13 @@
           <span class="badge ns-knowledge">{{ topic }}</span>
           {% endif %}
         {% endfor %}
+      </td>
+      <td>
+        {% if f.digest %}
+        <span class="badge ns-episodic">digest</span>
+        {% else %}
+        <span style="color:var(--text-muted)">summary</span>
+        {% endif %}
       </td>
       <td class="actions-cell">
         <a href="/feeds/{{ f.index }}/edit" class="btn btn-secondary btn-sm">Edit</a>

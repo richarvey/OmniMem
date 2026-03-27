@@ -23,6 +23,16 @@
     <input type="text" name="topics" class="form-input" value="{{ feed.topics }}" placeholder="rust, systems, language">
   </div>
 
+  <div class="form-group">
+    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+      <input type="checkbox" name="digest" {% if feed.digest %}checked{% endif %}>
+      Digest mode
+    </label>
+    <small style="color:var(--text-muted);margin-top:0.25rem;display:block">
+      Extract individual items from newsletter-style feeds instead of summarising the whole article.
+    </small>
+  </div>
+
   <div style="display:flex;gap:0.5rem">
     <button type="submit" class="btn btn-primary">{% if is_new %}Add Feed{% else %}Save{% endif %}</button>
     <a href="/feeds" class="btn btn-secondary">Cancel</a>
