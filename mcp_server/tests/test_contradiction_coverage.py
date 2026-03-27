@@ -38,15 +38,19 @@ class TestCheckContradictionApi:
             assert "not available" in result["explanation"]
 
     def test_returns_fallback_when_no_api_key(self):
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}, clear=False):
-            result = check_contradiction_api("Use Redis", "Don't use Redis")
-            assert result["is_contradiction"] is False
-            assert "not configured" in result["explanation"]
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}, clear=False):
+                result = check_contradiction_api("Use Redis", "Don't use Redis")
+                assert result["is_contradiction"] is False
+                assert "not configured" in result["explanation"]
 
     def test_returns_fallback_when_placeholder_api_key(self):
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "your_key_here"}, clear=False):
-            result = check_contradiction_api("Use Redis", "Don't use Redis")
-            assert result["is_contradiction"] is False
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "your_key_here"}, clear=False):
+                result = check_contradiction_api("Use Redis", "Don't use Redis")
+                assert result["is_contradiction"] is False
 
     def test_api_call_success(self):
         mock_anthropic = MagicMock()
