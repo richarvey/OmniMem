@@ -6,7 +6,7 @@ Pre-built Docker images are available on Docker Hub. This is the quickest way to
 
 | Image | Service | Description |
 |-------|---------|-------------|
-| `richarvey/omnimem-mcp` | MCP server | FastMCP SSE transport on port 8765 |
+| `richarvey/omnimem-mcp` | MCP server | FastMCP SSE (default) or Streamable HTTP transport on port 8765 |
 | `richarvey/omnimem-web` | Web UI | Starlette dashboard on port 8080 |
 | `richarvey/omnimem-rss` | RSS worker | Background feed ingestion via Claude Haiku |
 
@@ -28,6 +28,7 @@ VALKEY_PASSWORD=change-me-to-something-secure
 ANTHROPIC_API_KEY=
 MCP_PORT=8765
 MCP_HOST=0.0.0.0
+# MCP_TRANSPORT=http          # uncomment to switch to Streamable HTTP (SSE is default)
 WEB_PORT=8080
 # MCP_AUTH_TOKEN=
 # WEB_UI_AUTH_TOKEN=
@@ -122,7 +123,7 @@ docker compose up -d
 
 Four containers will start:
 - **Valkey** with vector search module
-- **MCP server** on `http://localhost:8765/sse`
+- **MCP server** on `http://localhost:8765/sse` (SSE default; set `MCP_TRANSPORT=http` for Streamable HTTP on `/mcp`)
 - **Web UI** on `http://localhost:8080`
 - **RSS worker** running in the background
 
@@ -140,6 +141,9 @@ See the [connection guides](../guides/) for your specific tool. For Claude Code,
   }
 }
 ```
+
+> [!WARNING]
+> **SSE transport is deprecated.** Switch to Streamable HTTP by setting `MCP_TRANSPORT=http` in your `.env` and using `"type": "http"` with URL `http://localhost:8765/mcp` in your client config. SSE will be removed in a future release.
 
 If you set `MCP_AUTH_TOKEN`, add the header:
 

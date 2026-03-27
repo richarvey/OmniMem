@@ -2,6 +2,9 @@
 
 Cursor is an AI-powered code editor built on VS Code. It supports MCP servers via SSE and Streamable HTTP transports.
 
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use URL `.../mcp` in the config below.
+
 ## Quick setup
 
 Create or edit `~/.cursor/mcp.json` for global access:
@@ -80,10 +83,9 @@ Once connected, you can ask Cursor's agent to use OmniMem tools directly:
 
 - **40-tool hard limit**: Cursor sends a maximum of 40 MCP tools to the LLM across all connected servers. OmniMem has 30+ tools, so if you have other MCP servers connected, some tools may be silently inaccessible.
 - **Agent mode only**: MCP tools do not appear in standard chat mode -- you must use Agent mode.
-- **SSE can be unreliable**: Cursor's SSE implementation has known bugs. If you see "no tools available" despite the server showing as connected, try restarting Cursor. If problems persist, a reverse proxy on a standard port (80/443) may help.
-- **Streamable HTTP fallback**: Cursor may try Streamable HTTP first before falling back to SSE. This fallback does not always work reliably. If you experience issues, check that the URL ends in `/sse`.
+- **Connection issues**: If you see "no tools available" despite the server showing as connected, try restarting Cursor. If problems persist, a reverse proxy on a standard port (80/443) may help.
 - **SSH remote development**: MCP does not work reliably over Remote-SSH. The MCP server runs locally but Cursor edits files remotely, creating a disconnect.
-- **CLI mode**: Cursor's CLI/headless mode (`cursor-agent`) has a known bug where SSE-based MCP servers fail entirely. The GUI agent does not have this issue.
+- **CLI mode**: Cursor's CLI/headless mode (`cursor-agent`) has a known bug with some MCP transports. The GUI agent is more reliable.
 
 ## Verifying the connection
 

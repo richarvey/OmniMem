@@ -1,6 +1,9 @@
 # Connecting OmniMem to Claude Code
 
-Claude Code is Anthropic's CLI-based coding agent. It supports MCP servers natively via SSE transport.
+Claude Code is Anthropic's CLI-based coding agent. It supports MCP servers natively via SSE and Streamable HTTP transports.
+
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use the Streamable HTTP config shown below.
 
 ## Quick setup
 
@@ -49,13 +52,31 @@ You can also use environment variable expansion to avoid hardcoding the token:
 }
 ```
 
+### Streamable HTTP (recommended migration)
+
+Set `MCP_TRANSPORT=http` in your `.env`, then use this config instead:
+
+```json
+{
+  "mcpServers": {
+    "omnimem": {
+      "type": "http",
+      "url": "http://localhost:8765/mcp"
+    }
+  }
+}
+```
+
 ### Adding via CLI
 
 Instead of editing JSON manually, you can use the `claude mcp add` command:
 
 ```bash
-# Without auth
+# SSE (current default)
 claude mcp add --transport sse omnimem http://localhost:8765/sse --scope user
+
+# Streamable HTTP (after setting MCP_TRANSPORT=http)
+claude mcp add --transport http omnimem http://localhost:8765/mcp --scope user
 
 # With auth header
 claude mcp add --transport sse omnimem http://localhost:8765/sse \

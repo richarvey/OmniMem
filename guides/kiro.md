@@ -1,6 +1,9 @@
 # Connecting OmniMem to Kiro
 
-Kiro is AWS's AI-powered IDE built on VS Code. It supports MCP servers via SSE transport.
+Kiro is AWS's AI-powered IDE built on VS Code. It supports MCP servers via SSE and Streamable HTTP transports.
+
+> [!WARNING]
+> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use `"type": "http"` with URL `.../mcp` in the config below.
 
 ## Quick setup
 
@@ -75,7 +78,7 @@ You should see Valkey connection status, index counts, and embedding model statu
 - **Silent failures**: If OmniMem is unreachable, Kiro can fail to load all MCP servers without any visible error. If tools suddenly disappear, check that OmniMem's Docker containers are running.
 - **CLI vs IDE env var syntax**: The IDE uses `${VAR_NAME}` but the Kiro CLI expects `${env:VAR_NAME}`. You cannot share a single `mcp.json` between both without editing it.
 - **OAuth redirects don't work**: If you ever add OAuth-based auth to OmniMem via a reverse proxy, Kiro cannot complete localhost OAuth redirects. Plain bearer tokens via `headers` work fine.
-- **Streamable HTTP**: Kiro also supports `"type": "streamable-http"` for the newer MCP transport, but OmniMem currently uses SSE. Stick with `"type": "sse"`.
+- **Streamable HTTP**: To migrate to Streamable HTTP early, set `MCP_TRANSPORT=http` in your `.env` and use `"type": "http"` with URL `http://localhost:8765/mcp`. SSE is the current default but will be removed in a future release.
 
 ## Notes
 
