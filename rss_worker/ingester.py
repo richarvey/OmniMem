@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+import urllib.request
 from typing import Any
 
 import feedparser
@@ -14,9 +15,16 @@ import valkey
 import yaml
 from sentence_transformers import SentenceTransformer
 
-from summariser import summarise
+from summariser import extract_items, summarise
 
 logger = logging.getLogger(__name__)
+
+_MIN_CONTENT_LENGTH = 500  # chars — below this we fetch the full page
+_PAGE_FETCH_TIMEOUT = 30
+_PAGE_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 
 _embedder: SentenceTransformer | None = None
 _valkey_client: valkey.Valkey | None = None
@@ -59,6 +67,92 @@ def _url_hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:16]
 
 
+def _fetch_page_content(url: str) -> str | None:
+    """Fetch a web page and extract plain text content."""
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": _PAGE_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-GB,en;q=0.9",
+        })
+        with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+
+        # Strip script and style blocks, then all tags
+        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+    except Exception as exc:
+        logger.warning("Failed to fetch page content from %s: %s", url, exc)
+        return None
+
+
+def _format_item(item: dict[str, str]) -> str:
+    """Format an extracted item as readable content for storage."""
+    return (
+        f"# {item['title']}\n\n"
+        f"**Who:** {item['who']}\n"
+        f"**What:** {item['what']}\n"
+        f"**Why:** {item['why']}"
+    )
+
+
+def _get_entry_content(entry: Any) -> str:
+    """Extract plain text content from an RSS feed entry."""
+    content_raw = (
+        entry.get("content", [{}])[0].get("value", "")
+        if entry.get("content")
+        else entry.get("summary", "")
+    )
+    return _strip_html(content_raw)
+
+
+def _process_digest_entry(
+    entry: Any, article_url: str, feed_name: str,
+) -> list[dict[str, Any]] | None:
+    """Process a digest-mode entry: get full content and extract items.
+
+    Returns a list of article dicts (same shape as summary mode) or None.
+    """
+    title = entry.get("title", "Untitled")
+    content_text = _get_entry_content(entry)
+
+    # If RSS content is too short (teaser/paywall), fetch the full page
+    if len(content_text) < _MIN_CONTENT_LENGTH:
+        logger.info(
+            "RSS content too short for '%s' (%d chars), fetching page",
+            title, len(content_text),
+        )
+        page_text = _fetch_page_content(article_url)
+        if page_text:
+            content_text = page_text
+        elif len(content_text) < 50:
+            logger.warning("No usable content for '%s' — skipping", title)
+            return None
+
+    items = extract_items(title, article_url, content_text)
+    if not items:
+        return None
+
+    published_at = ""
+    if entry.get("published_parsed"):
+        published_at = str(time.mktime(entry.published_parsed))
+
+    articles = []
+    for i, item in enumerate(items):
+        key = f"mem:knowledge:{_url_hash(article_url + ':' + str(i))}"
+        articles.append({
+            "key": key,
+            "title": item["title"],
+            "summary": _format_item(item),
+            "article_url": article_url,
+            "published_at": published_at,
+        })
+
+    return articles
+
+
 def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     """Fetch and ingest a single RSS feed.
 
@@ -73,6 +167,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     url = feed_config["url"]
     name = feed_config.get("name", url)
     topics = feed_config.get("topics", [])
+    mode = feed_config.get("mode", "summary")
     max_articles = int(os.getenv("RSS_MAX_ARTICLES_PER_FEED", "20"))
 
     stats = {"added": 0, "skipped": 0, "errors": 0}
@@ -93,14 +188,18 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
 
     entries = feed.entries[:max_articles]
 
-    # Phase 1: Extract URLs and keys for all entries
-    entry_keys: list[tuple[Any, str, str]] = []  # (feed_entry, article_url, valkey_key)
+    # Phase 1: Extract URLs and dedup keys for all entries.
+    # Digest mode uses a different key so one article can produce many items.
+    entry_keys: list[tuple[Any, str, str]] = []  # (feed_entry, article_url, dedup_key)
     for entry in entries:
         article_url = entry.get("link", "")
         if not article_url:
             continue
-        key = f"mem:knowledge:{_url_hash(article_url)}"
-        entry_keys.append((entry, article_url, key))
+        if mode == "digest":
+            dedup_key = f"mem:knowledge:{_url_hash(article_url + ':0')}"
+        else:
+            dedup_key = f"mem:knowledge:{_url_hash(article_url)}"
+        entry_keys.append((entry, article_url, dedup_key))
 
     if not entry_keys:
         return stats
@@ -111,35 +210,45 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
         pipe.exists(key)
     exists_results = pipe.execute()
 
-    # Phase 3: Summarise new articles (this is the API-bound step)
+    # Phase 3: Process new articles — summary or digest mode
     new_articles: list[dict[str, Any]] = []
-    for (entry, article_url, key), exists in zip(entry_keys, exists_results):
+    for (entry, article_url, dedup_key), exists in zip(entry_keys, exists_results):
         if exists:
             stats["skipped"] += 1
             continue
 
         try:
-            title = entry.get("title", "Untitled")
-            content_raw = (
-                entry.get("content", [{}])[0].get("value", "")
-                if entry.get("content")
-                else entry.get("summary", "")
-            )
-            content_text = _strip_html(content_raw)[:2000]
+            if mode == "digest":
+                items = _process_digest_entry(entry, article_url, name)
+                if items is None:
+                    logger.info(
+                        "Skipping '%s' — digest extraction failed",
+                        entry.get("title", "Untitled"),
+                    )
+                    stats["skipped"] += 1
+                    continue
+                new_articles.extend(items)
+            else:
+                title = entry.get("title", "Untitled")
+                content_text = _get_entry_content(entry)[:2000]
 
-            summary = summarise(title, article_url, content_text)
+                summary = summarise(title, article_url, content_text)
+                if summary is None:
+                    logger.info("Skipping '%s' — summarisation refused", title)
+                    stats["skipped"] += 1
+                    continue
 
-            published_at = ""
-            if entry.get("published_parsed"):
-                published_at = str(time.mktime(entry.published_parsed))
+                published_at = ""
+                if entry.get("published_parsed"):
+                    published_at = str(time.mktime(entry.published_parsed))
 
-            new_articles.append({
-                "key": key,
-                "title": title,
-                "summary": summary,
-                "article_url": article_url,
-                "published_at": published_at,
-            })
+                new_articles.append({
+                    "key": dedup_key,
+                    "title": title,
+                    "summary": summary,
+                    "article_url": article_url,
+                    "published_at": published_at,
+                })
         except Exception as exc:
             logger.error("Error processing entry from %s: %s", name, exc)
             stats["errors"] += 1

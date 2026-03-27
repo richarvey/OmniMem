@@ -4,6 +4,28 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.9.1] - 2026-03-27
+### Added
+- **Digest mode for newsletter-style feeds**: New `mode: digest` option in `feeds.yml` extracts individual items from multi-topic articles (newsletters, roundups, digests) and stores each as a separate knowledge memory with structured who/what/why fields. Single-topic articles produce one item. Opt-in per feed — default remains `mode: summary`
+- **Full page content fetching**: When RSS feed content is too short (teasers, paywalls), digest mode automatically fetches the full article page via HTTP and extracts plain text for processing
+- `summariser.py`: New `extract_items()` function asks Claude Haiku to return a JSON array of `{title, who, what, why}` objects from the article content
+- `ingester.py`: New helpers `_fetch_page_content()`, `_format_item()`, `_get_entry_content()`, and `_process_digest_entry()` for the digest pipeline
+
+### feeds.yml example
+```yaml
+- url: https://selfh.st/rss/
+  name: Self-Host Weekly
+  topics: [selfhosted, homelab]
+  mode: digest  # extracts individual items from each newsletter issue
+```
+
+## [3.9.0] - 2026-03-27
+### Fixed
+- **RSS worker stores refusal responses as knowledge memories**: When Claude Haiku can't summarise an article (e.g. responds with "I don't have access to external URLs..."), the useless refusal text was stored verbatim in the knowledge base. Now detected and skipped with a warning log instead
+### Changed
+- `summariser.py`: `summarise()` returns `None` when the model refuses to summarise, detected via `_is_refusal()` helper that checks for common refusal phrases
+- `ingester.py`: Articles where `summarise()` returns `None` are counted as skipped, not stored in Valkey
+
 ## [3.8.2] - 2026-03-25
 ### Added
 - **Multi-arch Docker images**: All three images (omnimem-mcp, omnimem-web, omnimem-rss) now build for both `linux/amd64` and `linux/arm64` via docker buildx on a self-hosted runner. Docker Hub serves the correct architecture automatically
