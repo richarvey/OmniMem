@@ -1,6 +1,6 @@
 ## OmniMem — Persistent Semantic Memory
 
-You have access to a persistent memory system via the `omnimem` MCP server.
+You have access to a persistent memory system via the `omnimem` MCP server. It is the primary persistent memory store for all sessions.
 
 -----
 
@@ -54,12 +54,19 @@ At the beginning of every session:
 - If a warning comes back, tell the human before proceeding: *“We tried [X] before and abandoned it because [reason] — shall we try again or look for alternatives?”*
 - Do not skip this check because the human suggested the approach. Dead ends are dead ends regardless of who proposed them.
 
-**When storing memories**, call `remember()` when you and the human:
+**Store memories proactively.** When you learn something worth keeping, write it to OmniMem using `remember()`. Do not wait to be asked. Call `remember()` when you:
 
 - Reach a decision or agree on an approach
 - Solve a tricky or non-obvious bug
 - Discover a pattern, constraint, or gotcha
 - Complete a meaningful piece of work
+- Learn a preference, a brand rule, or a technical choice
+
+**Choose the right namespace:**
+
+- `episodic` — things that happened: decisions made, work done, bugs fixed (default)
+- `knowledge` — facts, rules, preferences, reference information
+- `project` — scoped context for a specific project
 
 Use this tagging vocabulary for consistency:
 

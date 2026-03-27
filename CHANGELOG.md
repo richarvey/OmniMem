@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.9.4] - 2026-03-27
+### Changed
+- **Proactive memory storage in MCP instructions**: Agents are now explicitly told to store memories proactively without waiting to be asked, with clear namespace guidance (episodic for decisions/work, knowledge for facts/rules, project for scoped context)
+- **"Primary persistent memory store" framing**: Header updated across all instruction sources to reinforce OmniMem as the first place to read from and write to
+
 ## [3.9.3] - 2026-03-27
 ### Added
 - **Digest mode toggle in web UI**: RSS feed create/edit forms now have a "Digest mode" checkbox that writes `mode: digest` to feeds.yml when enabled. The feeds list page shows a mode column with a badge for digest feeds
