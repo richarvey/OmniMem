@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_CONTENT_LENGTH = 500  # chars — below this we fetch the full page
 _PAGE_FETCH_TIMEOUT = 30
+_EMBED_CHUNK_SIZE = 32  # embed + store in chunks to limit thread pressure
 _PAGE_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -169,6 +170,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     topics = feed_config.get("topics", [])
     mode = feed_config.get("mode", "summary")
     max_articles = int(os.getenv("RSS_MAX_ARTICLES_PER_FEED", "20"))
+    max_digest = int(os.getenv("RSS_MAX_DIGEST_ENTRIES", "2"))
 
     stats = {"added": 0, "skipped": 0, "errors": 0}
 
@@ -186,7 +188,8 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     client = _get_valkey()
     embedder = _get_embedder()
 
-    entries = feed.entries[:max_articles]
+    limit = max_digest if mode == "digest" else max_articles
+    entries = feed.entries[:limit]
 
     # Phase 1: Extract URLs and dedup keys for all entries.
     # Digest mode uses a different key so one article can produce many items.
@@ -260,44 +263,55 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
         )
         return stats
 
-    # Phase 4: Batch embed all summaries at once instead of one-at-a-time
-    summaries = [a["summary"] for a in new_articles]
-    try:
-        vectors = embedder.encode(summaries, normalize_embeddings=True, batch_size=32)
-    except Exception as exc:
-        logger.error("Batch embedding failed for feed %s: %s", name, exc)
-        stats["errors"] += len(new_articles)
-        return stats
-
-    # Phase 5: Batch store all articles using a pipeline
+    # Phase 4+5: Embed and store in chunks to limit thread pressure
+    # and ensure earlier chunks persist even if a later chunk fails.
     now = str(time.time())
     topics_json = json.dumps(topics)
 
-    store_pipe = client.pipeline(transaction=False)
-    for article, vector in zip(new_articles, vectors):
-        vector_bytes = np.array(vector, dtype=np.float32).tobytes()
-        fields = {
-            "content": article["summary"],
-            "title": article["title"],
-            "source_url": article["article_url"],
-            "feed_name": name,
-            "published_at": article["published_at"],
-            "topics": topics_json,
-            "state": "active",
-            "surface_score": "1.0",
-            "experience_weight": "1.0",
-            "created_at": now,
-            "updated_at": now,
-            "vector": vector_bytes,
-        }
-        store_pipe.hset(article["key"], mapping=fields)
+    for chunk_start in range(0, len(new_articles), _EMBED_CHUNK_SIZE):
+        chunk = new_articles[chunk_start:chunk_start + _EMBED_CHUNK_SIZE]
+        summaries = [a["summary"] for a in chunk]
 
-    try:
-        store_pipe.execute()
-        stats["added"] += len(new_articles)
-    except Exception as exc:
-        logger.error("Batch store failed for feed %s: %s", name, exc)
-        stats["errors"] += len(new_articles)
+        try:
+            vectors = embedder.encode(
+                summaries, normalize_embeddings=True, batch_size=_EMBED_CHUNK_SIZE,
+            )
+        except Exception as exc:
+            logger.error(
+                "Embedding failed for chunk %d–%d of feed %s: %s",
+                chunk_start, chunk_start + len(chunk), name, exc,
+            )
+            stats["errors"] += len(chunk)
+            continue
+
+        store_pipe = client.pipeline(transaction=False)
+        for article, vector in zip(chunk, vectors):
+            vector_bytes = np.array(vector, dtype=np.float32).tobytes()
+            fields = {
+                "content": article["summary"],
+                "title": article["title"],
+                "source_url": article["article_url"],
+                "feed_name": name,
+                "published_at": article["published_at"],
+                "topics": topics_json,
+                "state": "active",
+                "surface_score": "1.0",
+                "experience_weight": "1.0",
+                "created_at": now,
+                "updated_at": now,
+                "vector": vector_bytes,
+            }
+            store_pipe.hset(article["key"], mapping=fields)
+
+        try:
+            store_pipe.execute()
+            stats["added"] += len(chunk)
+        except Exception as exc:
+            logger.error(
+                "Store failed for chunk %d–%d of feed %s: %s",
+                chunk_start, chunk_start + len(chunk), name, exc,
+            )
+            stats["errors"] += len(chunk)
 
     logger.info(
         "Feed %s: added=%d, skipped=%d, errors=%d",

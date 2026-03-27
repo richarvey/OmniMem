@@ -40,6 +40,9 @@ services:
       - ./rss_worker/feeds.yml:/app/feeds.yml
     env_file:
       - .env
+    environment:
+      - OMP_NUM_THREADS=1
+      - TOKENIZERS_PARALLELISM=false
     restart: unless-stopped
 
   web_ui:

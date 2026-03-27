@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.9.2] - 2026-03-27
+### Fixed
+- **RSS worker crash on large digest batches**: `libgomp: Thread creation failed` when digest mode produced many items (e.g. 160+). Added `OMP_NUM_THREADS=1` and `TOKENIZERS_PARALLELISM=false` to rss_worker Docker environment to prevent OpenMP thread explosion
+- **All-or-nothing data loss on embedding failure**: Embedding and storing now happens in chunks of 32. If one chunk fails, earlier chunks are already persisted in Valkey instead of losing everything
+### Added
+- **`RSS_MAX_DIGEST_ENTRIES` env var** (default 2): Limits how many feed entries are processed in digest mode, preventing the worker from churning through an entire backlog of newsletters on first run
+
 ## [3.9.1] - 2026-03-27
 ### Added
 - **Digest mode for newsletter-style feeds**: New `mode: digest` option in `feeds.yml` extracts individual items from multi-topic articles (newsletters, roundups, digests) and stores each as a separate knowledge memory with structured who/what/why fields. Single-topic articles produce one item. Opt-in per feed — default remains `mode: summary`
