@@ -1,3 +1,3 @@
 """Single source of truth for the OmniMem version string."""
 
-__version__ = "3.8.2"
+__version__ = "3.9.1"
