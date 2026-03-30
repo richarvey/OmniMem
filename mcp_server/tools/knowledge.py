@@ -71,3 +71,27 @@ def recent_knowledge(
 
     results.sort(key=lambda x: float(x.get("created_at") or "0"), reverse=True)
     return results[:limit]
+
+
+def promote_knowledge(key: str) -> dict[str, Any]:
+    """Mark a knowledge item as permanently useful by removing its expiry.
+
+    Clears the expires_at field so the item is never auto-archived by maintenance.
+    Use this when an RSS-ingested article turns out to be genuinely valuable.
+
+    Args:
+        key: The memory key (e.g. mem:knowledge:01ABC...).
+    """
+    store = _get_deps()
+
+    if not key.startswith("mem:knowledge:"):
+        return {"error": f"Key must be in the knowledge namespace: {key}"}
+
+    data = store.get(key)
+    if data is None:
+        return {"error": f"Key not found: {key}"}
+    if data.get("state") == "archived":
+        return {"error": f"Cannot promote archived item: {key}"}
+
+    store.set_field(key, "expires_at", "")
+    return {"key": key, "promoted": True}

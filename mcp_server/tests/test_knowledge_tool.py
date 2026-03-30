@@ -22,7 +22,7 @@ def inject_deps(fake_store, fake_embedder, lifecycle, pipeline):
     tools_module._pipeline = None
 
 
-from tools.knowledge import recent_knowledge
+from tools.knowledge import recent_knowledge, promote_knowledge
 
 
 def store_knowledge(store, embedder, key, content, feed_name=None,
@@ -115,3 +115,31 @@ class TestRecentKnowledge:
     def test_empty_store(self):
         result = recent_knowledge(days=7)
         assert result == []
+
+
+class TestPromoteKnowledge:
+    def test_clears_expires_at(self, fake_store, fake_embedder):
+        store_knowledge(fake_store, fake_embedder, "mem:knowledge:k01", "Useful article",
+                        expires_at=time.time() + 86400)
+        result = promote_knowledge("mem:knowledge:k01")
+        assert result["promoted"] is True
+        assert fake_store.get("mem:knowledge:k01").get("expires_at") == ""
+
+    def test_wrong_namespace_returns_error(self):
+        result = promote_knowledge("mem:episodic:abc")
+        assert "error" in result
+
+    def test_missing_key_returns_error(self, fake_store):
+        result = promote_knowledge("mem:knowledge:doesnotexist")
+        assert "error" in result
+
+    def test_archived_item_returns_error(self, fake_store, fake_embedder):
+        store_knowledge(fake_store, fake_embedder, "mem:knowledge:k01", "Archived article",
+                        state="archived")
+        result = promote_knowledge("mem:knowledge:k01")
+        assert "error" in result
+
+    def test_item_without_expires_at_still_succeeds(self, fake_store, fake_embedder):
+        store_knowledge(fake_store, fake_embedder, "mem:knowledge:k01", "Manual article")
+        result = promote_knowledge("mem:knowledge:k01")
+        assert result["promoted"] is True
