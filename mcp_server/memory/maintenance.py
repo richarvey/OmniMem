@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Cap on keys scanned during heuristic contradiction check
 _CONTRADICTION_SCAN_CAP = 200
+# Cap on total pairwise comparisons to prevent O(n^2) blowup
+_CONTRADICTION_COMPARISON_CAP = 2000
 
 
 def run_maintenance(
@@ -91,11 +93,17 @@ def run_maintenance(
                 if len(active_entries) >= _CONTRADICTION_SCAN_CAP:
                     break
 
-            # Pairwise heuristic check
+            # Pairwise heuristic check (capped to prevent O(n^2) blowup)
+            comparisons = 0
             for i in range(len(active_entries)):
+                if comparisons >= _CONTRADICTION_COMPARISON_CAP:
+                    break
                 key_a, data_a = active_entries[i]
                 content_a = data_a.get("content", "")
                 for j in range(i + 1, len(active_entries)):
+                    if comparisons >= _CONTRADICTION_COMPARISON_CAP:
+                        break
+                    comparisons += 1
                     key_b, data_b = active_entries[j]
                     content_b = data_b.get("content", "")
                     if _has_negation_pair(content_a, content_b):

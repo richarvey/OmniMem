@@ -16,42 +16,106 @@ def _get_deps():
     return _store, _embedder, _lifecycle, _pipeline
 
 
-def _get_stale_memories(
+def _scan_episodic_once(
     store,
     stale_days: int,
     project_filter: str | None = None,
-) -> list[dict[str, Any]]:
-    """Find active memories that haven't been updated in stale_days."""
+) -> dict[str, list[dict[str, Any]]]:
+    """Single pass over episodic memories for stale, reinstate, and contradiction data."""
     now = time.time()
-    cutoff = now - (stale_days * 86400)
+    stale_cutoff = now - (stale_days * 86400)
+
     stale: list[dict[str, Any]] = []
+    reinstate_candidates: list[dict[str, Any]] = []
+    contradiction_warnings: list[dict[str, Any]] = []
 
     keys = store.scan_prefix("mem:episodic:")
     if not keys:
-        return stale
+        return {"stale": [], "reinstate": [], "contradictions": []}
 
     all_data = store.get_multi(keys)
     for key, data in zip(keys, all_data):
         if data is None:
             continue
-        if data.get("state") != "active":
-            continue
+
+        state = data.get("state")
         if project_filter:
             doc_project = data.get("project") or data.get("project_name")
             if doc_project != project_filter:
                 continue
 
-        updated_at = float(data.get("updated_at", "0"))
-        if updated_at < cutoff:
-            age_days = int((now - updated_at) / 86400)
-            stale.append({
-                "key": key,
-                "content": data.get("content", "")[:80],
-                "days_stale": age_days,
-            })
+        # Stale: active memories not updated recently
+        if state == "active":
+            updated_at = float(data.get("updated_at", "0"))
+            if updated_at < stale_cutoff:
+                age_days = int((now - updated_at) / 86400)
+                stale.append({
+                    "key": key,
+                    "content": data.get("content", "")[:80],
+                    "days_stale": age_days,
+                })
+
+            # Contradictions: active memories with unresolved contradictions
+            contradictions_raw = data.get("contradictions", "[]")
+            try:
+                contradictions = json.loads(contradictions_raw)
+            except (json.JSONDecodeError, TypeError):
+                contradictions = []
+            if contradictions:
+                contradiction_warnings.append({
+                    "key": key,
+                    "content": data.get("content", "")[:80],
+                    "contradicts": [c.get("key", "") for c in contradictions if isinstance(c, dict)],
+                })
+
+        # Reinstate: deprioritised memories with reinstate hints
+        elif state == "deprioritised":
+            hints_raw = data.get("reinstate_hints", "[]")
+            try:
+                hints = json.loads(hints_raw)
+            except (json.JSONDecodeError, TypeError):
+                hints = []
+            if hints:
+                reinstate_candidates.append({
+                    "key": key,
+                    "content": data.get("content", "")[:80],
+                    "reason": data.get("deprioritised_reason", ""),
+                    "reinstate_hints": hints,
+                })
 
     stale.sort(key=lambda x: x["days_stale"], reverse=True)
-    return stale[:10]
+
+    return {
+        "stale": stale[:10],
+        "reinstate": reinstate_candidates[:5],
+        "contradictions": contradiction_warnings[:5],
+    }
+
+
+def _get_stale_memories(
+    store,
+    stale_days: int,
+    project_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Thin wrapper for backwards compatibility with tests."""
+    return _scan_episodic_once(store, stale_days, project_filter)["stale"]
+
+
+def _get_reinstate_candidates(
+    store,
+    lifecycle,
+    project_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Thin wrapper for backwards compatibility with tests."""
+    return _scan_episodic_once(store, 30, project_filter)["reinstate"]
+
+
+def _get_contradiction_warnings(
+    store,
+    project_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Thin wrapper for backwards compatibility with tests."""
+    return _scan_episodic_once(store, 30, project_filter)["contradictions"]
 
 
 def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
@@ -81,84 +145,6 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
             }))
 
     return new_articles[:10]
-
-
-def _get_reinstate_candidates(
-    store,
-    lifecycle,
-    project_filter: str | None = None,
-) -> list[dict[str, Any]]:
-    """Find deprioritised memories that might warrant reinstatement."""
-    candidates: list[dict[str, Any]] = []
-
-    keys = store.scan_prefix("mem:episodic:")
-    if not keys:
-        return candidates
-
-    all_data = store.get_multi(keys)
-    for key, data in zip(keys, all_data):
-        if data is None:
-            continue
-        if data.get("state") != "deprioritised":
-            continue
-        if project_filter:
-            doc_project = data.get("project") or data.get("project_name")
-            if doc_project != project_filter:
-                continue
-
-        hints_raw = data.get("reinstate_hints", "[]")
-        try:
-            hints = json.loads(hints_raw)
-        except (json.JSONDecodeError, TypeError):
-            hints = []
-
-        if hints:
-            candidates.append({
-                "key": key,
-                "content": data.get("content", "")[:80],
-                "reason": data.get("deprioritised_reason", ""),
-                "reinstate_hints": hints,
-            })
-
-    return candidates[:5]
-
-
-def _get_contradiction_warnings(
-    store,
-    project_filter: str | None = None,
-) -> list[dict[str, Any]]:
-    """Find active memories with unresolved contradictions."""
-    warnings: list[dict[str, Any]] = []
-
-    keys = store.scan_prefix("mem:episodic:")
-    if not keys:
-        return warnings
-
-    all_data = store.get_multi(keys)
-    for key, data in zip(keys, all_data):
-        if data is None:
-            continue
-        if data.get("state") != "active":
-            continue
-        if project_filter:
-            doc_project = data.get("project") or data.get("project_name")
-            if doc_project != project_filter:
-                continue
-
-        contradictions_raw = data.get("contradictions", "[]")
-        try:
-            contradictions = json.loads(contradictions_raw)
-        except (json.JSONDecodeError, TypeError):
-            contradictions = []
-
-        if contradictions:
-            warnings.append({
-                "key": key,
-                "content": data.get("content", "")[:80],
-                "contradicts": [c.get("key", "") for c in contradictions if isinstance(c, dict)],
-            })
-
-    return warnings[:5]
 
 
 def briefing(
@@ -192,30 +178,24 @@ def briefing(
     # 2. Experience summary
     from .experience import experience_summary as _experience_summary
     exp = _experience_summary(project=project)
-    # Only include if there's actual experience data
     if exp.get("memories_with_experience", 0) > 0:
         result["experience_summary"] = exp
 
-    # 3. Stale memories
-    stale = _get_stale_memories(store, stale_days, project_filter=project)
-    if stale:
-        result["stale_memories"] = stale
+    # 3-5. Single episodic scan for stale, contradictions, and reinstate
+    episodic = _scan_episodic_once(store, stale_days, project_filter=project)
 
-    # 4. New knowledge articles
+    if episodic["stale"]:
+        result["stale_memories"] = episodic["stale"]
+    if episodic["contradictions"]:
+        result["contradiction_warnings"] = episodic["contradictions"]
+    if episodic["reinstate"]:
+        result["reinstate_candidates"] = episodic["reinstate"]
+
+    # 6. New knowledge articles
     if include_knowledge:
         new_knowledge = _get_new_knowledge(store)
         if new_knowledge:
             result["new_knowledge"] = new_knowledge
-
-    # 5. Contradiction warnings
-    contradiction_warnings = _get_contradiction_warnings(store, project_filter=project)
-    if contradiction_warnings:
-        result["contradiction_warnings"] = contradiction_warnings
-
-    # 6. Reinstate candidates
-    reinstate_candidates = _get_reinstate_candidates(store, lifecycle, project_filter=project)
-    if reinstate_candidates:
-        result["reinstate_candidates"] = reinstate_candidates
 
     # 7. Suppressed topics
     suppressed = lifecycle.get_suppressed_topics()
@@ -235,7 +215,6 @@ def briefing(
                         store, embedder, lifecycle, project,
                     )
                     result["auto_maintenance"] = maintenance_result
-                    # Reset counter and record timestamp
                     store.client.hset(meta_key, mapping={
                         "briefing_count": "0",
                         "last_maintenance_at": maintenance_result["ran_at"],

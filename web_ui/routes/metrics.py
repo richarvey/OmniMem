@@ -1,4 +1,11 @@
-"""Prometheus /metrics endpoint — point-in-time gauges read from Valkey."""
+"""Prometheus /metrics endpoint — point-in-time gauges read from Valkey.
+
+Caches computed metrics for METRICS_CACHE_TTL seconds (default 60) to avoid
+scanning all memories on every Prometheus scrape.
+"""
+
+import os
+import time
 
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
 from starlette.requests import Request
@@ -6,6 +13,8 @@ from starlette.responses import Response
 from starlette.routing import Route
 
 from .. import deps
+
+METRICS_CACHE_TTL = int(os.getenv("METRICS_CACHE_TTL", "60"))
 
 _NAMESPACE_PREFIXES = {
     "episodic": "mem:episodic:",
@@ -56,18 +65,19 @@ _tool_errors_total = Gauge(
     registry=_registry,
 )
 
+# Simple time-based cache
+_cache: dict = {"output": None, "computed_at": 0.0}
 
-async def metrics_endpoint(request: Request) -> Response:
-    """GET /metrics — Prometheus text format."""
-    import os
-    import time
 
+def _recompute_metrics() -> bytes:
+    """Scan Valkey and set all gauge values. Returns serialised Prometheus output."""
     cold_days = int(os.getenv("TELEMETRY_COLD_DAYS", "60"))
     cold_threshold = time.time() - (cold_days * 86400)
 
-    # Reset all gauges before scanning
     _memories_total._metrics.clear()
     _memories_never_recalled._metrics.clear()
+    _tool_calls_total._metrics.clear()
+    _tool_errors_total._metrics.clear()
 
     total_recalls = 0
     gone_cold_count = 0
@@ -110,18 +120,24 @@ async def metrics_endpoint(request: Request) -> Response:
     _memories_gone_cold.set(gone_cold_count)
 
     # Tool call metrics
-    _tool_calls_total._metrics.clear()
-    _tool_errors_total._metrics.clear()
-
     from .token_overhead import read_tool_metrics
     tool_metrics = read_tool_metrics(deps.store)
     for tool_name, data in tool_metrics.items():
         _tool_calls_total.labels(tool=tool_name).set(data["call_count"])
         _tool_errors_total.labels(tool=tool_name).set(data["error_count"])
 
-    output = generate_latest(_registry)
+    return generate_latest(_registry)
+
+
+async def metrics_endpoint(request: Request) -> Response:
+    """GET /metrics — Prometheus text format (cached)."""
+    now = time.time()
+    if _cache["output"] is None or (now - _cache["computed_at"]) >= METRICS_CACHE_TTL:
+        _cache["output"] = _recompute_metrics()
+        _cache["computed_at"] = now
+
     return Response(
-        content=output,
+        content=_cache["output"],
         media_type="text/plain; version=0.0.4; charset=utf-8",
     )
 

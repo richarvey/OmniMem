@@ -160,10 +160,16 @@ def find_all_duplicates(
         if ra != rb:
             parent[ra] = rb
 
+    # Track max similarity per cluster root during union-find
+    cluster_max_sim: dict[int, float] = {}
     for i in range(n):
         for j in range(i + 1, n):
-            if similarity_matrix[i, j] >= threshold:
+            sim = float(similarity_matrix[i, j])
+            if sim >= threshold:
                 union(i, j)
+                root = find(i)
+                if sim > cluster_max_sim.get(root, 0.0):
+                    cluster_max_sim[root] = sim
 
     # Group into clusters
     clusters_map: dict[int, list[int]] = {}
@@ -173,11 +179,10 @@ def find_all_duplicates(
 
     # Only return clusters with 2+ members
     clusters: list[dict[str, Any]] = []
-    for indices in clusters_map.values():
+    for root, indices in clusters_map.items():
         if len(indices) < 2:
             continue
         memories = []
-        max_sim = 0.0
         for idx in indices:
             key, data = valid_entries[idx]
             memories.append({
@@ -187,15 +192,9 @@ def find_all_duplicates(
                 "state": data.get("state", "active"),
                 "created_at": data.get("created_at"),
             })
-        # Find max pairwise similarity within this cluster
-        for i_idx, a in enumerate(indices):
-            for b in indices[i_idx + 1:]:
-                sim = float(similarity_matrix[a, b])
-                if sim > max_sim:
-                    max_sim = sim
         clusters.append({
             "memories": memories,
-            "max_similarity": max_sim,
+            "max_similarity": cluster_max_sim.get(find(root), 0.0),
         })
 
     # Sort clusters by size descending

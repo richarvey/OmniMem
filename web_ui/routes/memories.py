@@ -12,10 +12,13 @@ from .. import deps
 PAGE_SIZE = 25
 
 
-def _get_all_memories(namespace: str | None, state: str | None, project: str | None) -> list[dict]:
-    """Fetch and filter memories across namespaces."""
+def _get_all_memories(
+    namespace: str | None, state: str | None, project: str | None,
+) -> tuple[list[dict], list[str]]:
+    """Fetch and filter memories, returning (memories, distinct_projects) in a single pass."""
     ns_list = [namespace] if namespace else ["episodic", "project", "knowledge"]
     memories = []
+    projects = set()
 
     for ns in ns_list:
         keys = deps.store.scan_prefix(f"mem:{ns}:")
@@ -25,12 +28,18 @@ def _get_all_memories(namespace: str | None, state: str | None, project: str | N
         for key, data in zip(keys, all_data):
             if data is None:
                 continue
+
             mem_state = data.get("state", "active")
+            mem_project = data.get("project") or data.get("project_name") or ""
+
+            if mem_project:
+                projects.add(mem_project)
+
             if state and mem_state != state:
                 continue
-            mem_project = data.get("project") or data.get("project_name") or ""
             if project and mem_project != project:
                 continue
+
             memories.append({
                 "key": key,
                 "namespace": ns,
@@ -40,23 +49,7 @@ def _get_all_memories(namespace: str | None, state: str | None, project: str | N
                 "updated_at": float(data.get("updated_at", "0")),
             })
 
-    return memories
-
-
-def _get_projects() -> list[str]:
-    """Get distinct project names from episodic memories."""
-    projects = set()
-    for ns in ["episodic", "project", "knowledge"]:
-        keys = deps.store.scan_prefix(f"mem:{ns}:")
-        if not keys:
-            continue
-        all_data = deps.store.get_multi(keys)
-        for data in all_data:
-            if data and data.get("project"):
-                projects.add(data["project"])
-            if data and data.get("project_name"):
-                projects.add(data["project_name"])
-    return sorted(projects)
+    return memories, sorted(projects)
 
 
 async def memories_list(request: Request) -> HTMLResponse:
@@ -67,7 +60,7 @@ async def memories_list(request: Request) -> HTMLResponse:
     sort = request.query_params.get("sort", "newest")
     page = max(1, int(request.query_params.get("page", "1")))
 
-    memories = _get_all_memories(
+    memories, projects = _get_all_memories(
         namespace=namespace or None,
         state=state or None,
         project=project or None,
@@ -96,8 +89,6 @@ async def memories_list(request: Request) -> HTMLResponse:
     page = min(page, total_pages)
     start = (page - 1) * PAGE_SIZE
     page_memories = memories[start:start + PAGE_SIZE]
-
-    projects = _get_projects()
 
     # Build extra params string for pagination links
     params = []

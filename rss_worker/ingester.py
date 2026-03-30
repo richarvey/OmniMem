@@ -51,7 +51,7 @@ def _get_valkey() -> valkey.Valkey:
             port=int(os.getenv("VALKEY_PORT", "6379")),
             password=os.getenv("VALKEY_PASSWORD", ""),
             decode_responses=True,
-            max_connections=10,
+            max_connections=int(os.getenv("VALKEY_MAX_CONNECTIONS", "50")),
         )
         _valkey_client = valkey.Valkey(connection_pool=pool)
     return _valkey_client

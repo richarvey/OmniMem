@@ -4,6 +4,17 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-03-30
+### Changed
+- **Briefing: 3 episodic scans consolidated into 1** — stale memories, contradiction warnings, and reinstate candidates now collected in a single `_scan_episodic_once()` pass instead of three separate `scan_prefix` + `get_multi` calls. Reduces session-start latency by ~200-400ms per 1,000 memories
+- **Dashboard: single-pass scan** — state counts and recent memories now collected in one loop per namespace instead of two separate passes
+- **Memories page: projects extracted during same scan** — removed the separate `_get_projects()` re-scan of all namespaces; project names now collected alongside memory filtering
+- **Metrics endpoint: 60-second cache** — `/metrics` no longer re-scans all memories on every Prometheus scrape. Cache TTL configurable via `METRICS_CACHE_TTL` env var (default 60s)
+- **Docker: multi-stage builds** — all three Dockerfiles (mcp_server, web_ui, rss_worker) now use a builder stage with gcc/g++ and a slim runtime stage with only libgomp1/libopenblas0. Removes ~300-500MB of build tools from final images
+- **Maintenance: pairwise comparison cap** — heuristic contradiction scan now capped at 2,000 comparisons (was unbounded O(n^2) on up to 200 entries = 19,900 comparisons)
+- **Dedup: max_similarity tracked during union-find** — eliminates redundant pairwise re-scan when building cluster results
+- **RSS worker: configurable connection pool** — `VALKEY_MAX_CONNECTIONS` env var (default 50, was hardcoded 10)
+
 ## [3.11.1] - 2026-03-30
 ### Changed
 - **Token overhead page simplified**: Replaced confusing estimated session ranges with actual measured tool usage since uptime. Single "Tool Usage Since Uptime" table shows real call counts, avg duration, avg/total tokens, errors, and last called per tool
