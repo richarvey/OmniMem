@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Token Overhead — OmniMem{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Token Overhead</h2>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <form method="GET" action="/token-overhead" style="display:flex;gap:0.5rem;align-items:center">
+      <input type="text" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
+      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+    <button class="btn btn-secondary btn-sm"
+            hx-get="/token-overhead/refresh{% if project_filter %}?project={{ project_filter }}{% endif %}"
+            hx-target="#token-overhead-content"
+            hx-swap="innerHTML">
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div id="token-overhead-content">
+  {% include "partials/token_overhead_content.html" %}
+</div>
+{% endblock %}

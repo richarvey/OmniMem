@@ -1,0 +1,134 @@
+<p class="section-note">Estimated token cost of running OmniMem per Claude Code session. Static overhead is always present in context; dynamic overhead varies with usage. Assumes ~4 characters per token.</p>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-ns">Static Overhead</div>
+    <div class="stat-total">{{ "{:,}".format(static_total_tokens) }}</div>
+    <div class="stat-label">tokens/session</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Dynamic Overhead</div>
+    <div class="stat-total">{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</div>
+    <div class="stat-label">tokens/session</div>
+  </div>
+  <div class="stat-card stat-card-highlight">
+    <div class="stat-ns">Session Total</div>
+    <div class="stat-total">{{ "{:,}".format(session_total_low) }}–{{ "{:,}".format(session_total_high) }}</div>
+    <div class="stat-label">tokens/session</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Stored Memories</div>
+    <div class="stat-total">{{ "{:,}".format(total_memories) }}</div>
+    <div class="stat-label">active</div>
+  </div>
+</div>
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Static Overhead Breakdown</h3>
+  <p class="section-note">These are always loaded into the LLM context when OmniMem is configured.</p>
+  <table class="data-table overhead-table">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Characters</th>
+        <th>Tokens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>MCP instructions</td>
+        <td class="mono">{{ "{:,}".format(instructions_chars) }}</td>
+        <td class="mono">~{{ "{:,}".format(instructions_tokens) }}</td>
+      </tr>
+      <tr>
+        <td>Tool schemas ({{ tool_count }} tools)</td>
+        <td class="mono">{{ "{:,}".format(tool_schemas_chars) }}</td>
+        <td class="mono">~{{ "{:,}".format(tool_schemas_tokens) }}</td>
+      </tr>
+      <tr>
+        <td>Deferred tool names</td>
+        <td class="mono">{{ "{:,}".format(deferred_names_chars) }}</td>
+        <td class="mono">~{{ "{:,}".format(deferred_names_tokens) }}</td>
+      </tr>
+      <tr class="total-row">
+        <td><strong>Total static</strong></td>
+        <td class="mono"><strong>{{ "{:,}".format(static_total_chars) }}</strong></td>
+        <td class="mono"><strong>~{{ "{:,}".format(static_total_tokens) }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Dynamic Overhead Per Session</h3>
+  <p class="section-note">Estimated token cost per tool call, based on typical request + response sizes.</p>
+  <table class="data-table overhead-table">
+    <thead>
+      <tr>
+        <th>Tool Call</th>
+        <th>Calls/Session</th>
+        <th>Tokens/Call</th>
+        <th>Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for call in call_breakdown %}
+      <tr>
+        <td class="mono">{{ call.name }}</td>
+        <td class="mono">{{ call.calls_low }}–{{ call.calls_high }}</td>
+        <td class="mono">~{{ "{:,}".format(call.tokens_per_call) }}</td>
+        <td class="mono">{{ "{:,}".format(call.subtotal_low) }}–{{ "{:,}".format(call.subtotal_high) }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td><strong>Total dynamic</strong></td>
+        <td></td>
+        <td></td>
+        <td class="mono"><strong>{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Memory Store</h3>
+  <p class="section-note">Data stored in Valkey that influences dynamic overhead.</p>
+  <table class="data-table overhead-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Total active memories</td>
+        <td class="mono">{{ "{:,}".format(total_memories) }}</td>
+      </tr>
+      <tr>
+        <td>Episodic</td>
+        <td class="mono">{{ "{:,}".format(namespace_counts.episodic) }}</td>
+      </tr>
+      <tr>
+        <td>Project</td>
+        <td class="mono">{{ "{:,}".format(namespace_counts.project) }}</td>
+      </tr>
+      <tr>
+        <td>Knowledge</td>
+        <td class="mono">{{ "{:,}".format(namespace_counts.knowledge) }}</td>
+      </tr>
+      <tr>
+        <td>Total recall operations (all time)</td>
+        <td class="mono">{{ "{:,}".format(total_recalls) }}</td>
+      </tr>
+      <tr>
+        <td>Total stored content</td>
+        <td class="mono">{{ "{:,}".format(total_content_chars) }} chars (~{{ "{:,}".format(total_content_tokens) }} tokens)</td>
+      </tr>
+      <tr>
+        <td>Average content per memory</td>
+        <td class="mono">{{ "{:,}".format(avg_content_chars) }} chars (~{{ "{:,}".format(avg_content_tokens) }} tokens)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
