@@ -1,4 +1,8 @@
-"""Tests for the tool telemetry middleware and metrics reader."""
+"""Tests for the tool telemetry middleware and metrics reader.
+
+Skipped in CI where fastmcp and starlette are not installed (they live
+in the MCP server and web UI containers respectively, not the test runner).
+"""
 
 import asyncio
 import sys
@@ -7,6 +11,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+# Skip entire module if fastmcp or starlette are missing (CI test runner)
+pytest.importorskip("fastmcp", reason="fastmcp not installed (CI)")
+pytest.importorskip("starlette", reason="starlette not installed (CI)")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
