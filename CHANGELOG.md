@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-03-30
+### Fixed
+- **Auto-maintenance contradiction scanner producing mass false positives**: The heuristic negation check (`_has_negation_pair`) was running on all pairwise combinations without checking semantic similarity first. Memories containing common words like "use", "with", or "works" matched against almost everything. Now embeds all content and requires cosine similarity >= 0.5 before checking negation patterns, matching the approach used by the Tier 1 check in `remember()`. Also capped results at 10 contradictions per maintenance run (was unbounded)
+
 ## [3.12.0] - 2026-03-30
 ### Changed
 - **Briefing: 3 episodic scans consolidated into 1** — stale memories, contradiction warnings, and reinstate candidates now collected in a single `_scan_episodic_once()` pass instead of three separate `scan_prefix` + `get_multi` calls. Reduces session-start latency by ~200-400ms per 1,000 memories

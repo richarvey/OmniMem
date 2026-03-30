@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 _CONTRADICTION_SCAN_CAP = 200
 # Cap on total pairwise comparisons to prevent O(n^2) blowup
 _CONTRADICTION_COMPARISON_CAP = 2000
+# Minimum cosine similarity required before checking negation patterns.
+# Without this, _has_negation_pair fires on unrelated memories that happen
+# to contain common words like "use", "with", "works".
+_CONTRADICTION_SIMILARITY_THRESHOLD = 0.5
+# Cap on contradiction results returned
+_CONTRADICTION_RESULTS_CAP = 10
 
 
 def run_maintenance(
@@ -75,8 +81,13 @@ def run_maintenance(
     except Exception as exc:
         logger.error("Maintenance dedup phase failed for project %s: %s", project, exc)
 
-    # Phase 2: Heuristic contradiction scan on active project memories
+    # Phase 2: Similarity-gated contradiction scan on active project memories.
+    # First embeds content to build a similarity matrix, then only checks
+    # negation patterns on pairs that are semantically similar. This prevents
+    # false positives from unrelated memories sharing common words.
     try:
+        import numpy as np
+
         keys = store.scan_prefix("mem:episodic:")
         if keys:
             all_data = store.get_multi(keys)
@@ -93,26 +104,42 @@ def run_maintenance(
                 if len(active_entries) >= _CONTRADICTION_SCAN_CAP:
                     break
 
-            # Pairwise heuristic check (capped to prevent O(n^2) blowup)
-            comparisons = 0
-            for i in range(len(active_entries)):
-                if comparisons >= _CONTRADICTION_COMPARISON_CAP:
-                    break
-                key_a, data_a = active_entries[i]
-                content_a = data_a.get("content", "")
-                for j in range(i + 1, len(active_entries)):
+            if len(active_entries) >= 2:
+                # Embed all content and build similarity matrix
+                texts = [data.get("content", "") for _, data in active_entries]
+                vectors = embedder.embed_batch(texts)
+                vectors_array = np.array(vectors)
+                similarity_matrix = vectors_array @ vectors_array.T
+
+                # Only check negation on semantically similar pairs
+                comparisons = 0
+                for i in range(len(active_entries)):
                     if comparisons >= _CONTRADICTION_COMPARISON_CAP:
                         break
-                    comparisons += 1
-                    key_b, data_b = active_entries[j]
-                    content_b = data_b.get("content", "")
-                    if _has_negation_pair(content_a, content_b):
-                        contradictions_found.append({
-                            "key_a": key_a,
-                            "key_b": key_b,
-                            "content_a": content_a[:80],
-                            "content_b": content_b[:80],
-                        })
+                    if len(contradictions_found) >= _CONTRADICTION_RESULTS_CAP:
+                        break
+                    key_a, data_a = active_entries[i]
+                    content_a = data_a.get("content", "")
+                    for j in range(i + 1, len(active_entries)):
+                        if comparisons >= _CONTRADICTION_COMPARISON_CAP:
+                            break
+                        if len(contradictions_found) >= _CONTRADICTION_RESULTS_CAP:
+                            break
+                        comparisons += 1
+
+                        # Skip pairs that aren't semantically similar
+                        if float(similarity_matrix[i, j]) < _CONTRADICTION_SIMILARITY_THRESHOLD:
+                            continue
+
+                        key_b, data_b = active_entries[j]
+                        content_b = data_b.get("content", "")
+                        if _has_negation_pair(content_a, content_b):
+                            contradictions_found.append({
+                                "key_a": key_a,
+                                "key_b": key_b,
+                                "content_a": content_a[:80],
+                                "content_b": content_b[:80],
+                            })
     except Exception as exc:
         logger.error("Maintenance contradiction phase failed for project %s: %s", project, exc)
 
