@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.10.4] - 2026-03-30
+### Fixed
+- **Version update tooltip clipped by sidebar** ([#5](https://codeberg.org/ric_harvey/omnimem/issues/5)): The hover tooltip showing "vX.Y.Z is available" was partially hidden because the sidebar's `overflow-y: auto` clips absolute-positioned children. Changed tooltip alignment from centred (`left: 50%; transform: translateX(-50%)`) to right-anchored (`right: 0`) so it extends leftward within the sidebar bounds
+
 ## [3.10.3] - 2026-03-30
 ### Added
 - **Token overhead estimation page**: New `/token-overhead` endpoint in the web UI showing estimated token cost of running OmniMem per Claude Code session. Breaks down static overhead (MCP instructions, tool schemas, deferred tool names) and dynamic per-session overhead (briefing, recall, remember, warn_if_abandoned, update_project_state calls). Includes memory store metrics (namespace counts, total content size, average content per memory). Supports project filtering and htmx refresh
