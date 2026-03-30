@@ -42,10 +42,62 @@ _SESSION_CALLS = {
     "update_project_state": (1, 1),
 }
 
+# Map tool names to call_breakdown display names
+_TOOL_NAME_MAP = {
+    "briefing": "briefing()",
+    "recall": "recall()",
+    "remember": "remember()",
+    "warn_if_abandoned": "warn_if_abandoned()",
+    "update_project_state": "update_project_state()",
+}
+
 
 def _chars_to_tokens(chars: int) -> int:
     """Convert character count to estimated token count."""
     return chars // _CHARS_PER_TOKEN
+
+
+def _fmt_ts(raw) -> str:
+    try:
+        ts = float(raw)
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+    except (ValueError, TypeError):
+        return "—"
+
+
+def read_tool_metrics(store) -> dict[str, dict]:
+    """Read per-tool metrics from Valkey meta:tool_metrics:* hashes.
+
+    Returns {tool_name: {call_count, avg_duration_ms, avg_response_chars,
+    avg_response_tokens, error_count, last_called_at}}.
+    """
+    keys = store.scan_prefix("meta:tool_metrics:")
+    if not keys:
+        return {}
+
+    all_data = store.get_multi(keys)
+    metrics = {}
+    for key, data in zip(keys, all_data):
+        if not data:
+            continue
+        tool_name = key.replace("meta:tool_metrics:", "")
+        call_count = int(data.get("call_count", "0"))
+        if call_count == 0:
+            continue
+        total_duration = int(data.get("total_duration_ms", "0"))
+        total_chars = int(data.get("total_response_chars", "0"))
+        avg_chars = round(total_chars / call_count)
+        metrics[tool_name] = {
+            "call_count": call_count,
+            "total_duration_ms": total_duration,
+            "total_response_chars": total_chars,
+            "avg_duration_ms": round(total_duration / call_count, 1),
+            "avg_response_chars": avg_chars,
+            "avg_response_tokens": avg_chars // _CHARS_PER_TOKEN,
+            "error_count": int(data.get("error_count", "0")),
+            "last_called_at": _fmt_ts(data.get("last_called_at")),
+        }
+    return metrics
 
 
 def _build_token_data(project_filter: str | None = None) -> dict:
@@ -91,65 +143,47 @@ def _build_token_data(project_filter: str | None = None) -> dict:
     avg_content_chars = total_content_chars // total_memories if total_memories else 0
     avg_content_tokens = _chars_to_tokens(avg_content_chars)
 
-    # --- Dynamic session estimates ---
-    dynamic_low = (
-        _SESSION_CALLS["briefing"][0] * _TOKENS_PER_BRIEFING
-        + _SESSION_CALLS["recall"][0] * _TOKENS_PER_RECALL
-        + _SESSION_CALLS["remember"][0] * _TOKENS_PER_REMEMBER
-        + _SESSION_CALLS["warn_if_abandoned"][0] * _TOKENS_PER_WARN
-        + _SESSION_CALLS["update_project_state"][0] * _TOKENS_PER_UPDATE
-    )
-    dynamic_high = (
-        _SESSION_CALLS["briefing"][1] * _TOKENS_PER_BRIEFING
-        + _SESSION_CALLS["recall"][1] * _TOKENS_PER_RECALL
-        + _SESSION_CALLS["remember"][1] * _TOKENS_PER_REMEMBER
-        + _SESSION_CALLS["warn_if_abandoned"][1] * _TOKENS_PER_WARN
-        + _SESSION_CALLS["update_project_state"][1] * _TOKENS_PER_UPDATE
-    )
+    # --- Measured tool metrics ---
+    measured = read_tool_metrics(deps.store)
+    has_measured_data = bool(measured)
 
-    # --- Per-call breakdown for the table ---
-    call_breakdown = [
-        {
-            "name": "briefing()",
-            "calls_low": _SESSION_CALLS["briefing"][0],
-            "calls_high": _SESSION_CALLS["briefing"][1],
-            "tokens_per_call": _TOKENS_PER_BRIEFING,
-            "subtotal_low": _SESSION_CALLS["briefing"][0] * _TOKENS_PER_BRIEFING,
-            "subtotal_high": _SESSION_CALLS["briefing"][1] * _TOKENS_PER_BRIEFING,
-        },
-        {
-            "name": "recall()",
-            "calls_low": _SESSION_CALLS["recall"][0],
-            "calls_high": _SESSION_CALLS["recall"][1],
-            "tokens_per_call": _TOKENS_PER_RECALL,
-            "subtotal_low": _SESSION_CALLS["recall"][0] * _TOKENS_PER_RECALL,
-            "subtotal_high": _SESSION_CALLS["recall"][1] * _TOKENS_PER_RECALL,
-        },
-        {
-            "name": "remember()",
-            "calls_low": _SESSION_CALLS["remember"][0],
-            "calls_high": _SESSION_CALLS["remember"][1],
-            "tokens_per_call": _TOKENS_PER_REMEMBER,
-            "subtotal_low": _SESSION_CALLS["remember"][0] * _TOKENS_PER_REMEMBER,
-            "subtotal_high": _SESSION_CALLS["remember"][1] * _TOKENS_PER_REMEMBER,
-        },
-        {
-            "name": "warn_if_abandoned()",
-            "calls_low": _SESSION_CALLS["warn_if_abandoned"][0],
-            "calls_high": _SESSION_CALLS["warn_if_abandoned"][1],
-            "tokens_per_call": _TOKENS_PER_WARN,
-            "subtotal_low": _SESSION_CALLS["warn_if_abandoned"][0] * _TOKENS_PER_WARN,
-            "subtotal_high": _SESSION_CALLS["warn_if_abandoned"][1] * _TOKENS_PER_WARN,
-        },
-        {
-            "name": "update_project_state()",
-            "calls_low": _SESSION_CALLS["update_project_state"][0],
-            "calls_high": _SESSION_CALLS["update_project_state"][1],
-            "tokens_per_call": _TOKENS_PER_UPDATE,
-            "subtotal_low": _SESSION_CALLS["update_project_state"][0] * _TOKENS_PER_UPDATE,
-            "subtotal_high": _SESSION_CALLS["update_project_state"][1] * _TOKENS_PER_UPDATE,
-        },
-    ]
+    # --- Dynamic session estimates ---
+    estimate_map = {
+        "briefing": _TOKENS_PER_BRIEFING,
+        "recall": _TOKENS_PER_RECALL,
+        "remember": _TOKENS_PER_REMEMBER,
+        "warn_if_abandoned": _TOKENS_PER_WARN,
+        "update_project_state": _TOKENS_PER_UPDATE,
+    }
+
+    dynamic_low = 0
+    dynamic_high = 0
+    call_breakdown = []
+
+    for tool_key, (low, high) in _SESSION_CALLS.items():
+        est_tokens = estimate_map[tool_key]
+        m = measured.get(tool_key)
+        measured_tokens = m["avg_response_tokens"] if m else None
+
+        entry = {
+            "name": _TOOL_NAME_MAP[tool_key],
+            "calls_low": low,
+            "calls_high": high,
+            "tokens_per_call": est_tokens,
+            "measured_tokens_per_call": measured_tokens,
+            "subtotal_low": low * est_tokens,
+            "subtotal_high": high * est_tokens,
+        }
+        call_breakdown.append(entry)
+        dynamic_low += entry["subtotal_low"]
+        dynamic_high += entry["subtotal_high"]
+
+    # --- All tool metrics for the detailed table ---
+    tool_metrics = sorted(
+        [{"name": name, **data} for name, data in measured.items()],
+        key=lambda t: t["call_count"],
+        reverse=True,
+    )
 
     return {
         # Static
@@ -174,6 +208,9 @@ def _build_token_data(project_filter: str | None = None) -> dict:
         "dynamic_low": dynamic_low,
         "dynamic_high": dynamic_high,
         "call_breakdown": call_breakdown,
+        # Measured
+        "has_measured_data": has_measured_data,
+        "tool_metrics": tool_metrics,
         # Totals
         "session_total_low": static_total_tokens + dynamic_low,
         "session_total_high": static_total_tokens + dynamic_high,

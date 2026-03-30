@@ -10,6 +10,7 @@
       <input type="text" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
       <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
     </form>
+    <a href="/token-overhead" class="btn btn-secondary btn-sm">Token Overhead</a>
     <button class="btn btn-secondary btn-sm"
             hx-get="/telemetry/refresh{% if project_filter %}?project={{ project_filter }}{% endif %}"
             hx-target="#telemetry-content"

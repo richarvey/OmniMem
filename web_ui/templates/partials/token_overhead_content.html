@@ -9,7 +9,7 @@
   <div class="stat-card">
     <div class="stat-ns">Dynamic Overhead</div>
     <div class="stat-total">{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</div>
-    <div class="stat-label">tokens/session</div>
+    <div class="stat-label">tokens/session (est)</div>
   </div>
   <div class="stat-card stat-card-highlight">
     <div class="stat-ns">Session Total</div>
@@ -61,13 +61,14 @@
 
 <div class="recent-section" style="margin-top:2rem">
   <h3>Dynamic Overhead Per Session</h3>
-  <p class="section-note">Estimated token cost per tool call, based on typical request + response sizes.</p>
-  <table class="data-table overhead-table">
+  <p class="section-note">Estimated token cost per tool call{% if has_measured_data %}, with measured averages from actual usage{% endif %}.</p>
+  <table class="data-table overhead-table-dynamic">
     <thead>
       <tr>
         <th>Tool Call</th>
         <th>Calls/Session</th>
-        <th>Tokens/Call</th>
+        <th>Est. Tokens/Call</th>
+        {% if has_measured_data %}<th>Measured Tokens/Call</th>{% endif %}
         <th>Subtotal</th>
       </tr>
     </thead>
@@ -77,6 +78,9 @@
         <td class="mono">{{ call.name }}</td>
         <td class="mono">{{ call.calls_low }}–{{ call.calls_high }}</td>
         <td class="mono">~{{ "{:,}".format(call.tokens_per_call) }}</td>
+        {% if has_measured_data %}
+        <td class="mono">{% if call.measured_tokens_per_call is not none %}{{ "{:,}".format(call.measured_tokens_per_call) }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}</td>
+        {% endif %}
         <td class="mono">{{ "{:,}".format(call.subtotal_low) }}–{{ "{:,}".format(call.subtotal_high) }}</td>
       </tr>
       {% endfor %}
@@ -84,11 +88,45 @@
         <td><strong>Total dynamic</strong></td>
         <td></td>
         <td></td>
+        {% if has_measured_data %}<td></td>{% endif %}
         <td class="mono"><strong>{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</strong></td>
       </tr>
     </tbody>
   </table>
 </div>
+
+{% if tool_metrics %}
+<div class="recent-section" style="margin-top:2rem">
+  <h3>All Tool Call Metrics</h3>
+  <p class="section-note">Measured from actual MCP tool calls. Response tokens estimated at ~4 chars/token.</p>
+  <table class="data-table tool-metrics-table">
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Calls</th>
+        <th>Avg Duration</th>
+        <th>Avg Response</th>
+        <th>Avg Tokens</th>
+        <th>Errors</th>
+        <th>Last Called</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tool_metrics %}
+      <tr>
+        <td class="mono">{{ t.name }}</td>
+        <td class="mono">{{ "{:,}".format(t.call_count) }}</td>
+        <td class="mono">{{ t.avg_duration_ms }}ms</td>
+        <td class="mono">{{ "{:,}".format(t.avg_response_chars) }} chars</td>
+        <td class="mono">~{{ "{:,}".format(t.avg_response_tokens) }}</td>
+        <td class="mono">{% if t.error_count > 0 %}<span style="color:var(--red)">{{ t.error_count }}</span>{% else %}0{% endif %}</td>
+        <td class="mono">{{ t.last_called_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
   <h3>Memory Store</h3>

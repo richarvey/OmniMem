@@ -42,6 +42,20 @@ _memories_gone_cold = Gauge(
     registry=_registry,
 )
 
+_tool_calls_total = Gauge(
+    "omnimem_tool_calls_total",
+    "Total tool call count by tool name",
+    ["tool"],
+    registry=_registry,
+)
+
+_tool_errors_total = Gauge(
+    "omnimem_tool_errors_total",
+    "Total tool call errors by tool name",
+    ["tool"],
+    registry=_registry,
+)
+
 
 async def metrics_endpoint(request: Request) -> Response:
     """GET /metrics — Prometheus text format."""
@@ -94,6 +108,16 @@ async def metrics_endpoint(request: Request) -> Response:
 
     _recalls_total.set(total_recalls)
     _memories_gone_cold.set(gone_cold_count)
+
+    # Tool call metrics
+    _tool_calls_total._metrics.clear()
+    _tool_errors_total._metrics.clear()
+
+    from .token_overhead import read_tool_metrics
+    tool_metrics = read_tool_metrics(deps.store)
+    for tool_name, data in tool_metrics.items():
+        _tool_calls_total.labels(tool=tool_name).set(data["call_count"])
+        _tool_errors_total.labels(tool=tool_name).set(data["error_count"])
 
     output = generate_latest(_registry)
     return Response(

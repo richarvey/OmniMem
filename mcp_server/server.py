@@ -220,6 +220,10 @@ if __name__ == "__main__":
     _init()
     _register_tools()
 
+    from middleware.telemetry import ToolTelemetryMiddleware
+    import tools as tools_pkg
+    mcp.add_middleware(ToolTelemetryMiddleware(tools_pkg._store))
+
     port = int(os.getenv("MCP_PORT", "8765"))
     host = os.getenv("MCP_HOST", "127.0.0.1")
     transport = os.getenv("MCP_TRANSPORT", "sse")

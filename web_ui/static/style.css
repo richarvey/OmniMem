@@ -477,6 +477,12 @@ span.project-name {
 .overhead-table td:nth-child(4) { width: 30%; }
 .total-row td { border-top: 2px solid var(--border); }
 
+/* Dynamic overhead table (variable columns) */
+.overhead-table-dynamic { table-layout: auto; }
+
+/* Tool metrics table */
+.tool-metrics-table { table-layout: auto; }
+
 /* Telemetry table */
 .telemetry-table { table-layout: fixed; }
 .telemetry-table th:nth-child(1),

@@ -4,6 +4,15 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-03-30
+### Added
+- **Real tool call telemetry**: FastMCP middleware instruments every MCP tool call, recording call count, duration (ms), response size (chars), and errors to Valkey (`meta:tool_metrics:{tool_name}` hashes). Metrics accumulate via atomic `hincrby` counters and never block or break tool calls
+- **Measured averages on token overhead page**: The dynamic overhead table now shows a "Measured Tokens/Call" column alongside estimates when telemetry data exists. A new "All Tool Call Metrics" section displays per-tool stats: calls, avg duration, avg response size, avg tokens, errors, and last called timestamp
+- **Prometheus tool call metrics**: New `omnimem_tool_calls_total` and `omnimem_tool_errors_total` gauges on `/metrics`, labelled by tool name
+- **17 new tests** for telemetry middleware and metrics reader (434 total, 91% coverage)
+### Changed
+- **Token Overhead moved under Telemetry**: Removed standalone sidebar link; now accessed via a button on the Telemetry page header, with a back link on the Token Overhead page
+
 ## [3.10.4] - 2026-03-30
 ### Fixed
 - **Version update tooltip clipped by sidebar** ([#5](https://codeberg.org/ric_harvey/omnimem/issues/5)): The hover tooltip showing "vX.Y.Z is available" was partially hidden because the sidebar's `overflow-y: auto` clips absolute-positioned children. Changed tooltip alignment from centred (`left: 50%; transform: translateX(-50%)`) to right-anchored (`right: 0`) so it extends leftward within the sidebar bounds
