@@ -1,11 +1,15 @@
 """FastMCP middleware that records per-tool call metrics to Valkey."""
 
+from __future__ import annotations
+
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
-from fastmcp.tools.tool import ToolResult
-from mcp.types import CallToolRequestParams, TextContent
+
+if TYPE_CHECKING:
+    from fastmcp.tools.tool import ToolResult
 
 logger = logging.getLogger("omnimem.middleware.telemetry")
 
@@ -68,6 +72,7 @@ def _measure_response(result: ToolResult) -> int:
     """Sum character length of all text content blocks in a ToolResult."""
     total = 0
     for block in result.content:
-        if isinstance(block, TextContent):
-            total += len(block.text)
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            total += len(text)
     return total

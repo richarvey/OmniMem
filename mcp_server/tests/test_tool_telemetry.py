@@ -1,20 +1,49 @@
 """Tests for the tool telemetry middleware and metrics reader.
 
-Skipped in CI where fastmcp and starlette are not installed (they live
-in the MCP server and web UI containers respectively, not the test runner).
+Provides minimal stubs for fastmcp and starlette so tests run in CI
+where those packages aren't installed.
 """
 
 import asyncio
 import sys
 import time
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# Skip entire module if fastmcp or starlette are missing (CI test runner)
-pytest.importorskip("fastmcp", reason="fastmcp not installed (CI)")
-pytest.importorskip("starlette", reason="starlette not installed (CI)")
+# --- Provide module stubs for CI where fastmcp/starlette aren't installed ---
+
+if "fastmcp" not in sys.modules:
+
+    class _StubMiddleware:
+        """Minimal Middleware base class stub."""
+        pass
+
+    _mw_mod = ModuleType("fastmcp.server.middleware")
+    _mw_mod.Middleware = _StubMiddleware
+    _mw_mod.CallNext = object
+    _mw_mod.MiddlewareContext = object
+
+    sys.modules["fastmcp"] = ModuleType("fastmcp")
+    sys.modules["fastmcp.server"] = ModuleType("fastmcp.server")
+    sys.modules["fastmcp.server.middleware"] = _mw_mod
+    sys.modules["fastmcp.tools"] = ModuleType("fastmcp.tools")
+    sys.modules["fastmcp.tools.tool"] = ModuleType("fastmcp.tools.tool")
+
+if "starlette" not in sys.modules:
+    _starlette = ModuleType("starlette")
+    _requests = ModuleType("starlette.requests")
+    _requests.Request = MagicMock
+    _responses = ModuleType("starlette.responses")
+    _responses.HTMLResponse = MagicMock
+    _routing = ModuleType("starlette.routing")
+    _routing.Route = MagicMock
+    sys.modules["starlette"] = _starlette
+    sys.modules["starlette.requests"] = _requests
+    sys.modules["starlette.responses"] = _responses
+    sys.modules["starlette.routing"] = _routing
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -27,12 +56,9 @@ from tests.conftest import FakeValkeyStore
 # ---------------------------------------------------------------------------
 
 def _make_text_content(text: str):
-    """Create a mock TextContent block."""
+    """Create a mock TextContent block with a .text attribute."""
     block = MagicMock()
     block.text = text
-    # Make isinstance() check work for TextContent
-    from mcp.types import TextContent
-    block.__class__ = TextContent
     return block
 
 
@@ -75,9 +101,8 @@ class TestMeasureResponse:
     def test_non_text_content_ignored(self):
         from middleware.telemetry import _measure_response
         result = MagicMock()
-        # A non-TextContent block
-        block = MagicMock()
-        block.__class__ = type("ImageContent", (), {})
+        # A block without a string .text attribute (e.g. image content)
+        block = MagicMock(spec=[])  # spec=[] means no auto-created attributes
         result.content = [block]
         assert _measure_response(result) == 0
 
