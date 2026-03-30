@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.11.1] - 2026-03-30
+### Changed
+- **Token overhead page simplified**: Replaced confusing estimated session ranges with actual measured tool usage since uptime. Single "Tool Usage Since Uptime" table shows real call counts, avg duration, avg/total tokens, errors, and last called per tool
+- **Stat cards updated**: Now show total tool calls and total tool tokens (measured) instead of estimated low–high ranges
+### Fixed
+- **Token Overhead link position** ([#8](https://codeberg.org/ric_harvey/omnimem/issues/8)): Moved navigation links after the Refresh button on both Telemetry and Token Overhead pages so they no longer split the filter/refresh controls
+
 ## [3.11.0] - 2026-03-30
 ### Added
 - **Real tool call telemetry**: FastMCP middleware instruments every MCP tool call, recording call count, duration (ms), response size (chars), and errors to Valkey (`meta:tool_metrics:{tool_name}` hashes). Metrics accumulate via atomic `hincrby` counters and never block or break tool calls

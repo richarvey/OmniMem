@@ -1,4 +1,4 @@
-<p class="section-note">Estimated token cost of running OmniMem per Claude Code session. Static overhead is always present in context; dynamic overhead varies with usage. Assumes ~4 characters per token.</p>
+<p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls since server start. Tokens estimated at ~4 chars/token.</p>
 
 <div class="stats-grid">
   <div class="stat-card">
@@ -7,14 +7,14 @@
     <div class="stat-label">tokens/session</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Dynamic Overhead</div>
-    <div class="stat-total">{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</div>
-    <div class="stat-label">tokens/session (est)</div>
+    <div class="stat-ns">Total Tool Calls</div>
+    <div class="stat-total">{{ "{:,}".format(total_tool_calls) }}</div>
+    <div class="stat-label">since uptime</div>
   </div>
   <div class="stat-card stat-card-highlight">
-    <div class="stat-ns">Session Total</div>
-    <div class="stat-total">{{ "{:,}".format(session_total_low) }}–{{ "{:,}".format(session_total_high) }}</div>
-    <div class="stat-label">tokens/session</div>
+    <div class="stat-ns">Total Tool Tokens</div>
+    <div class="stat-total">~{{ "{:,}".format(total_tool_tokens) }}</div>
+    <div class="stat-label">since uptime</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Stored Memories</div>
@@ -25,7 +25,7 @@
 
 <div class="recent-section" style="margin-top:2rem">
   <h3>Static Overhead Breakdown</h3>
-  <p class="section-note">These are always loaded into the LLM context when OmniMem is configured.</p>
+  <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
   <table class="data-table overhead-table">
     <thead>
       <tr>
@@ -59,54 +59,18 @@
   </table>
 </div>
 
-<div class="recent-section" style="margin-top:2rem">
-  <h3>Dynamic Overhead Per Session</h3>
-  <p class="section-note">Estimated token cost per tool call{% if has_measured_data %}, with measured averages from actual usage{% endif %}.</p>
-  <table class="data-table overhead-table-dynamic">
-    <thead>
-      <tr>
-        <th>Tool Call</th>
-        <th>Calls/Session</th>
-        <th>Est. Tokens/Call</th>
-        {% if has_measured_data %}<th>Measured Tokens/Call</th>{% endif %}
-        <th>Subtotal</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for call in call_breakdown %}
-      <tr>
-        <td class="mono">{{ call.name }}</td>
-        <td class="mono">{{ call.calls_low }}–{{ call.calls_high }}</td>
-        <td class="mono">~{{ "{:,}".format(call.tokens_per_call) }}</td>
-        {% if has_measured_data %}
-        <td class="mono">{% if call.measured_tokens_per_call is not none %}{{ "{:,}".format(call.measured_tokens_per_call) }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}</td>
-        {% endif %}
-        <td class="mono">{{ "{:,}".format(call.subtotal_low) }}–{{ "{:,}".format(call.subtotal_high) }}</td>
-      </tr>
-      {% endfor %}
-      <tr class="total-row">
-        <td><strong>Total dynamic</strong></td>
-        <td></td>
-        <td></td>
-        {% if has_measured_data %}<td></td>{% endif %}
-        <td class="mono"><strong>{{ "{:,}".format(dynamic_low) }}–{{ "{:,}".format(dynamic_high) }}</strong></td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
 {% if tool_metrics %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>All Tool Call Metrics</h3>
-  <p class="section-note">Measured from actual MCP tool calls. Response tokens estimated at ~4 chars/token.</p>
+  <h3>Tool Usage Since Uptime</h3>
+  <p class="section-note">Measured from actual MCP tool calls.</p>
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
         <th>Tool</th>
         <th>Calls</th>
         <th>Avg Duration</th>
-        <th>Avg Response</th>
         <th>Avg Tokens</th>
+        <th>Total Tokens</th>
         <th>Errors</th>
         <th>Last Called</th>
       </tr>
@@ -117,20 +81,34 @@
         <td class="mono">{{ t.name }}</td>
         <td class="mono">{{ "{:,}".format(t.call_count) }}</td>
         <td class="mono">{{ t.avg_duration_ms }}ms</td>
-        <td class="mono">{{ "{:,}".format(t.avg_response_chars) }} chars</td>
         <td class="mono">~{{ "{:,}".format(t.avg_response_tokens) }}</td>
+        <td class="mono">~{{ "{:,}".format(t.total_response_tokens) }}</td>
         <td class="mono">{% if t.error_count > 0 %}<span style="color:var(--red)">{{ t.error_count }}</span>{% else %}0{% endif %}</td>
         <td class="mono">{{ t.last_called_at }}</td>
       </tr>
       {% endfor %}
+      <tr class="total-row">
+        <td><strong>Total</strong></td>
+        <td class="mono"><strong>{{ "{:,}".format(total_tool_calls) }}</strong></td>
+        <td></td>
+        <td></td>
+        <td class="mono"><strong>~{{ "{:,}".format(total_tool_tokens) }}</strong></td>
+        <td class="mono">{% if total_tool_errors > 0 %}<span style="color:var(--red)"><strong>{{ "{:,}".format(total_tool_errors) }}</strong></span>{% else %}<strong>0</strong>{% endif %}</td>
+        <td></td>
+      </tr>
     </tbody>
   </table>
+</div>
+{% else %}
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Tool Usage Since Uptime</h3>
+  <p class="empty-state">No tool calls recorded yet. Metrics will appear here once the MCP server starts processing requests.</p>
 </div>
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
   <h3>Memory Store</h3>
-  <p class="section-note">Data stored in Valkey that influences dynamic overhead.</p>
+  <p class="section-note">Data stored in Valkey.</p>
   <table class="data-table overhead-table">
     <thead>
       <tr>

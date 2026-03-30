@@ -263,23 +263,21 @@ class TestBuildTokenDataWithMetrics:
         data = _build_token_data()
         assert data["has_measured_data"] is False
 
-    def test_measured_tokens_in_breakdown(self, monkeypatch, store_with_metrics):
+    def test_total_tool_calls(self, monkeypatch, store_with_metrics):
         from web_ui import deps
         from web_ui.routes.token_overhead import _build_token_data
         monkeypatch.setattr(deps, "store", store_with_metrics)
         data = _build_token_data()
+        # recall: 20 calls + briefing: 5 calls = 25
+        assert data["total_tool_calls"] == 25
 
-        recall_entry = next(c for c in data["call_breakdown"] if c["name"] == "recall()")
-        # 40000 chars / 20 calls = 2000 avg chars / 4 = 500 tokens
-        assert recall_entry["measured_tokens_per_call"] == 500
-
-        briefing_entry = next(c for c in data["call_breakdown"] if c["name"] == "briefing()")
-        # 15000 chars / 5 calls = 3000 avg chars / 4 = 750 tokens
-        assert briefing_entry["measured_tokens_per_call"] == 750
-
-        # Tools without metrics should have None
-        warn_entry = next(c for c in data["call_breakdown"] if c["name"] == "warn_if_abandoned()")
-        assert warn_entry["measured_tokens_per_call"] is None
+    def test_total_tool_tokens(self, monkeypatch, store_with_metrics):
+        from web_ui import deps
+        from web_ui.routes.token_overhead import _build_token_data
+        monkeypatch.setattr(deps, "store", store_with_metrics)
+        data = _build_token_data()
+        # recall: 40000 chars / 4 = 10000 tokens + briefing: 15000 / 4 = 3750 tokens
+        assert data["total_tool_tokens"] == 13750
 
     def test_tool_metrics_list(self, monkeypatch, store_with_metrics):
         from web_ui import deps
@@ -291,3 +289,12 @@ class TestBuildTokenDataWithMetrics:
         # Sorted by call_count descending
         assert data["tool_metrics"][0]["name"] == "recall"
         assert data["tool_metrics"][1]["name"] == "briefing"
+
+    def test_empty_store_totals(self, monkeypatch):
+        from web_ui import deps
+        from web_ui.routes.token_overhead import _build_token_data
+        monkeypatch.setattr(deps, "store", FakeValkeyStore())
+        data = _build_token_data()
+        assert data["total_tool_calls"] == 0
+        assert data["total_tool_tokens"] == 0
+        assert data["total_tool_errors"] == 0
