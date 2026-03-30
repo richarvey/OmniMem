@@ -452,6 +452,32 @@ span.project-name {
   align-items: center;
 }
 
+/* Section note */
+.section-note {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin: 0 0 1rem;
+}
+
+/* Stat label (sub-text under stat-total) */
+.stat-label {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  margin-top: 0.15rem;
+}
+
+/* Token overhead table */
+.overhead-table { table-layout: fixed; }
+.overhead-table th:nth-child(1),
+.overhead-table td:nth-child(1) { width: 40%; }
+.overhead-table th:nth-child(2),
+.overhead-table td:nth-child(2) { width: 30%; }
+.overhead-table th:nth-child(3),
+.overhead-table td:nth-child(3) { width: 30%; }
+.overhead-table th:nth-child(4),
+.overhead-table td:nth-child(4) { width: 30%; }
+.total-row td { border-top: 2px solid var(--border); }
+
 /* Telemetry table */
 .telemetry-table { table-layout: fixed; }
 .telemetry-table th:nth-child(1),
