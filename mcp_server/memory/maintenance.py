@@ -16,6 +16,49 @@ logger = logging.getLogger(__name__)
 _CONTRADICTION_SCAN_CAP = 200
 
 
+def expire_knowledge_items(
+    store: ValkeyStore,
+    lifecycle: MemoryLifecycle,
+) -> list[str]:
+    """Archive RSS-ingested knowledge items whose expires_at has passed.
+
+    Only items with both feed_name and expires_at set are considered.
+    Manually stored knowledge items (no expires_at) are never touched.
+
+    Returns:
+        List of keys that were archived.
+    """
+    now = time.time()
+    expired: list[str] = []
+
+    keys = store.scan_prefix("mem:knowledge:")
+    if not keys:
+        return expired
+
+    all_data = store.get_multi(keys)
+    for key, data in zip(keys, all_data):
+        if data is None:
+            continue
+        if data.get("state") != "active":
+            continue
+        if not data.get("feed_name"):
+            continue
+        expires_at_raw = data.get("expires_at")
+        if not expires_at_raw:
+            continue
+        if float(expires_at_raw) <= now:
+            try:
+                lifecycle.transition(
+                    key, MemoryState.ARCHIVED,
+                    reason="auto-maintenance: knowledge item expired",
+                )
+                expired.append(key)
+            except (ValueError, KeyError) as exc:
+                logger.debug("Skipped archiving %s during knowledge expiry: %s", key, exc)
+
+    return expired
+
+
 def run_maintenance(
     store: ValkeyStore,
     embedder: Embedder,
@@ -108,9 +151,17 @@ def run_maintenance(
     except Exception as exc:
         logger.error("Maintenance contradiction phase failed for project %s: %s", project, exc)
 
+    # Phase 3: Expire RSS knowledge items (global, not project-scoped)
+    knowledge_expired: list[str] = []
+    try:
+        knowledge_expired = expire_knowledge_items(store, lifecycle)
+    except Exception as exc:
+        logger.error("Maintenance knowledge expiry phase failed: %s", exc)
+
     return {
         "project": project,
         "ran_at": ran_at,
         "duplicates_archived": duplicates_archived,
         "contradictions_found": contradictions_found,
+        "knowledge_expired": knowledge_expired,
     }

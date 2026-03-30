@@ -121,6 +121,7 @@ def _register_tools() -> None:
     from tools.backup import dump_to_file, restore_from_file, list_backups
     from tools.contradiction import check_contradictions
     from tools.briefing import briefing
+    from tools.knowledge import recent_knowledge
 
     # Core tools
     mcp.tool()(version)
@@ -161,6 +162,9 @@ def _register_tools() -> None:
 
     # Briefing tool
     mcp.tool()(briefing)
+
+    # Knowledge tools
+    mcp.tool()(recent_knowledge)
 
     # Backup tools
     mcp.tool()(dump_to_file)
