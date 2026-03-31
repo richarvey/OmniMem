@@ -4,6 +4,16 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-03-31
+### Added
+- **RSS knowledge expiry**: Articles ingested by the RSS worker now get an `expires_at` timestamp set to `created_at + MAX_KNOWLEDGE_AGE_DAYS` (default 30, configurable via env var). Expired items are auto-archived during maintenance Phase 3. Manually stored knowledge items are never affected
+- **`recent_knowledge()` tool**: Query recent knowledge articles with filters for `days` (lookback window, default 7), `feed_name`, `topics`, and `limit` (default 20, max 50). Returns articles sorted newest first
+- **`promote_knowledge()` tool**: Mark an RSS-ingested knowledge article as permanently useful by clearing its `expires_at` field, preventing auto-archival
+- **`NumericField("expires_at")`** added to `idx:knowledge` index — triggers automatic index migration on startup
+- **22 new tests** for knowledge expiry, promotion, and the recent_knowledge tool (458 total)
+
+Community contribution from [@timstoop](https://codeberg.org/timstoop) ([PR #9](https://codeberg.org/ric_harvey/omnimem/pulls/9), resolves [#6](https://codeberg.org/ric_harvey/omnimem/issues/6))
+
 ## [3.12.1] - 2026-03-30
 ### Fixed
 - **Auto-maintenance contradiction scanner producing mass false positives**: The heuristic negation check (`_has_negation_pair`) was running on all pairwise combinations without checking semantic similarity first. Memories containing common words like "use", "with", or "works" matched against almost everything. Now embeds all content and requires cosine similarity >= 0.5 before checking negation patterns, matching the approach used by the Tier 1 check in `remember()`. Also capped results at 10 contradictions per maintenance run (was unbounded)
