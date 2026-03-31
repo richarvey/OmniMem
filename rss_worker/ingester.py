@@ -272,6 +272,8 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     # and ensure earlier chunks persist even if a later chunk fails.
     now = str(time.time())
     topics_json = json.dumps(topics)
+    max_age_days = int(os.getenv("MAX_KNOWLEDGE_AGE_DAYS", "30"))
+    expires_at = str(float(now) + max_age_days * 86400)
 
     for chunk_start in range(0, len(new_articles), _EMBED_CHUNK_SIZE):
         chunk = new_articles[chunk_start:chunk_start + _EMBED_CHUNK_SIZE]
@@ -304,6 +306,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
                 "experience_weight": "1.0",
                 "created_at": now,
                 "updated_at": now,
+                "expires_at": expires_at,
                 "vector": vector_bytes,
             }
             store_pipe.hset(article["key"], mapping=fields)
