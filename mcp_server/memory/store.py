@@ -41,7 +41,7 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
     "knowledge": (
         "similarity_score", "content", "source_url", "feed_name", "published_at",
         "topics", "state", "surface_score", "created_at", "updated_at",
-        "recall_count", "last_recalled",
+        "recall_count", "last_recalled", "expires_at",
     ),
 }
 
@@ -100,6 +100,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("created_at"),
             NumericField("updated_at"),
             NumericField("recall_count"),
+            NumericField("expires_at"),
         ],
     },
 }
