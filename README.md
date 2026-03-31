@@ -130,7 +130,8 @@ Memory systems accumulate duplicates and contradictions over time. OmniMem handl
 Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server runs a maintenance pass:
 
 1. **Dedup scan** — finds clusters of near-identical episodic memories and archives the oldest in each cluster, keeping the newest
-2. **Contradiction scan** — runs the heuristic negation-pattern check across all active project memories and flags opposing pairs
+2. **Contradiction scan** — checks semantically similar active project memories for negation pattern mismatches (requires cosine similarity >= 0.5 before checking, capped at 10 results)
+3. **Knowledge expiry** — archives RSS-ingested knowledge articles that have passed their `expires_at` timestamp (default 30 days after ingestion, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Manually stored knowledge items are never affected
 
 The results appear in the briefing response under `auto_maintenance` so you know what was cleaned up. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable. Manual `find_duplicates()` and `check_contradictions()` calls still work as before.
 
@@ -265,6 +266,13 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `experience_summary(project?)` | Graveyard, breakthroughs, and effort stats |
 | `get_experience(key)` | Full experience data for one memory |
 
+### Knowledge
+
+| Tool | What it does |
+|---|---|
+| `recent_knowledge(days?, feed_name?, topics?, limit?)` | Query recent RSS articles with optional filters, sorted newest first |
+| `promote_knowledge(key)` | Mark an article as permanently useful by clearing its expiry |
+
 ### Audit and backup
 
 | Tool | What it does |
@@ -301,6 +309,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
 | `AUTO_MAINTENANCE_INTERVAL` | `10` | Number of `briefing()` calls per project before auto-maintenance runs (0 to disable) |
+| `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
+| `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
@@ -326,7 +336,7 @@ feeds:
     topics: [automation, workflow, n8n]
 ```
 
-Each article gets fetched, stripped of HTML, summarised to a couple of sentences by Claude Haiku, embedded, and stored in the `knowledge` namespace. Duplicates are skipped by URL. The worker runs once on startup and then on whatever schedule you set in `RSS_SCHEDULE_HOURS`.
+Each article gets fetched, stripped of HTML, summarised to a couple of sentences by Claude Haiku, embedded, and stored in the `knowledge` namespace with an `expires_at` timestamp (default 30 days, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Expired articles are auto-archived during maintenance. If an article turns out to be genuinely useful, call `promote_knowledge(key)` to clear its expiry and keep it permanently. Duplicates are skipped by URL. The worker runs once on startup and then on whatever schedule you set in `RSS_SCHEDULE_HOURS`.
 
 ---
 
@@ -387,6 +397,7 @@ OmniMem includes a browser-based management interface at `http://localhost:8080`
 | **Contradictions** | Side-by-side comparison of contradicting memories with resolve actions |
 | **Suppressions** | Add and remove suppressed topics inline |
 | **Telemetry** | Recall counters, most recalled, gone cold, never recalled. Filter by project |
+| **Token Overhead** | Measured tool call metrics since uptime: calls, avg duration, avg tokens, errors per tool. Static context cost breakdown |
 | **Backups** | Create backups, preview restore contents, and confirm restore |
 
 ### Prometheus metrics
@@ -401,8 +412,10 @@ Available gauges:
 | `omnimem_memories_never_recalled` | `namespace` | Active memories with zero recalls |
 | `omnimem_recalls_total` | — | Sum of all recall counts across all memories |
 | `omnimem_memories_gone_cold` | — | Memories recalled before but not within the cold threshold |
+| `omnimem_tool_calls_total` | `tool` | Total MCP tool call count by tool name |
+| `omnimem_tool_errors_total` | `tool` | Total MCP tool call errors by tool name |
 
-The endpoint scans Valkey on each scrape, which is fine for typical intervals.
+Metrics are cached for 60 seconds (configurable via `METRICS_CACHE_TTL`) to avoid scanning all memories on every scrape.
 
 The web UI supports optional bearer token authentication via the `WEB_UI_AUTH_TOKEN` environment variable. The `/metrics` endpoint is exempt so Prometheus can scrape without credentials. For additional security options (TLS, IP allowlisting, SSO), see `docs/reverse-proxy.md`.
 
