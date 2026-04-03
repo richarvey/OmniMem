@@ -281,7 +281,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `explain_memory(key)` | Full history for a single memory |
 | `why_did_you_mention(query)` | Debug why something surfaced |
 | `dump_to_file(filename?)` | Export everything to a timestamped JSON file |
-| `restore_from_file(filename, dry_run?)` | Restore from backup, merges rather than overwrites |
+| `restore_from_file(filename, dry_run?)` | Restore from backup, merges rather than overwrites, re-embeds for immediate recall |
 | `list_backups()` | See available backup files |
 | `health()` | Server, Valkey, index, and model status |
 | `version()` | Return the current OmniMem version |

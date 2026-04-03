@@ -47,7 +47,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit dependencies
-        run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --strict --vulnerability-service osv --ignore-vuln CVE-2026-4539
+        run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --strict --vulnerability-service osv
 
   coverage:
     name: Test Coverage

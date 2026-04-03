@@ -395,10 +395,16 @@ class ValkeyStore:
 
         return result
 
-    def restore_all(self, data: dict[str, dict[str, Any]]) -> tuple[int, int]:
-        """Bulk restore from backup dict. Merges — existing keys only overwritten if backup is newer."""
+    def restore_all(self, data: dict[str, dict[str, Any]]) -> tuple[int, int, list[str]]:
+        """Bulk restore from backup dict. Merges — existing keys only overwritten if backup is newer.
+
+        Returns:
+            (restored_count, skipped_count, restored_keys) where restored_keys
+            lists the keys that were actually written.
+        """
         restored = 0
         skipped = 0
+        restored_keys: list[str] = []
 
         # Separate sets from hashes, validating key prefixes
         set_items: list[tuple[str, list]] = []
@@ -424,6 +430,7 @@ class ValkeyStore:
                 pipe.sadd(key, *members)
             pipe.execute()
             restored += len(set_items)
+            restored_keys.extend(k for k, _ in set_items)
 
         # Batch-fetch existing updated_at timestamps to decide merge
         if hash_items:
@@ -436,6 +443,7 @@ class ValkeyStore:
             # Write all qualifying hashes in a pipeline
             write_pipe = self.client.pipeline(transaction=False)
             write_count = 0
+            written_keys: list[str] = []
             for (key, fields), ts_list in zip(hash_items, existing_timestamps):
                 existing_updated_raw = ts_list[0] if ts_list else None
                 if existing_updated_raw is not None:
@@ -449,9 +457,11 @@ class ValkeyStore:
                 if safe_fields:
                     write_pipe.hset(key, mapping=safe_fields)
                     write_count += 1
+                    written_keys.append(key)
 
             if write_count:
                 write_pipe.execute()
             restored += write_count
+            restored_keys.extend(written_keys)
 
-        return restored, skipped
+        return restored, skipped, restored_keys

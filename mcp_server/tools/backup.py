@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from . import __version__
 
 logger = logging.getLogger(__name__)
@@ -20,8 +22,8 @@ _SAFE_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
 
 
 def _get_deps():
-    from tools import _store
-    return _store
+    from tools import _store, _embedder
+    return _store, _embedder
 
 
 def _backup_dir() -> Path:
@@ -66,7 +68,7 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
     Args:
         filename: Auto-generated if not provided.
     """
-    store = _get_deps()
+    store, _embedder = _get_deps()
 
     if filename is None:
         ts = time.strftime("%Y%m%d_%H%M%S")
@@ -130,7 +132,7 @@ def restore_from_file(
         filename: Backup filename (must be in BACKUP_DIR).
         dry_run: Preview only (default True). Set False to restore.
     """
-    store = _get_deps()
+    store, embedder = _get_deps()
 
     filepath, err = _safe_filepath(filename)
     if err:
@@ -182,16 +184,34 @@ def restore_from_file(
         }
 
     try:
-        restored, skipped = store.restore_all(data)
+        restored, skipped, restored_keys = store.restore_all(data)
     except Exception as exc:
         logger.error("Restore failed: %s", exc)
         return {"status": "error", "message": "Restore operation failed"}
 
-    logger.info("Restored %d keys, skipped %d from %s", restored, skipped, filename)
+    # Re-embed restored memories so they are immediately searchable.
+    # Backups exclude binary vector data (decode_responses=True prevents
+    # round-tripping raw bytes), so we regenerate embeddings from content.
+    re_embedded = 0
+    if embedder:
+        mem_keys = [k for k in restored_keys if k.startswith("mem:")]
+        for key in mem_keys:
+            content = data.get(key, {}).get("content", "")
+            if content:
+                vector = embedder.embed(content)
+                namespace = key.split(":")[1]
+                store.upsert(namespace, key, {}, vector)
+                re_embedded += 1
+
+    logger.info(
+        "Restored %d keys, skipped %d, re-embedded %d from %s",
+        restored, skipped, re_embedded, filename,
+    )
     return {
         "status": "restored",
         "restored_keys": restored,
         "skipped_keys": skipped,
+        "re_embedded": re_embedded,
         "filename": filename,
     }
 

@@ -289,15 +289,21 @@ class FakeValkeyStore:
         return result
 
     def restore_all(self, data):
-        """Merge backup data into the store. Newer entries overwrite older ones."""
+        """Merge backup data into the store. Newer entries overwrite older ones.
+
+        Returns:
+            (restored_count, skipped_count, restored_keys)
+        """
         restored = 0
         skipped = 0
+        restored_keys = []
         for key, fields in data.items():
             if fields.get("_type") == "set":
                 members = fields.get("members", [])
                 if members:
                     self._client.sadd(key, *members)
                     restored += 1
+                    restored_keys.append(key)
                 continue
             existing = self.get(key)
             if existing:
@@ -310,7 +316,8 @@ class FakeValkeyStore:
             if safe:
                 self._client.hset(key, mapping=safe)
                 restored += 1
-        return restored, skipped
+                restored_keys.append(key)
+        return restored, skipped, restored_keys
 
 
 @pytest.fixture

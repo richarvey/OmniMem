@@ -139,6 +139,58 @@ class TestRestoreFromFile:
         assert "invalid key prefix" in result["message"]
 
 
+class TestRestoreReEmbed:
+    """Verify that restored memories are immediately recallable (issue #10)."""
+
+    def _write_backup(self, backup_dir, filename, data):
+        backup = {
+            "metadata": {"exported_at": "2024-01-01T00:00:00Z", "total_keys": len(data)},
+            "data": data,
+        }
+        filepath = backup_dir / filename
+        with open(filepath, "w") as f:
+            json.dump(backup, f)
+        return filepath
+
+    def test_dump_restore_recall_roundtrip(self, fake_store, fake_embedder, pipeline, backup_dir):
+        """A memory that is dumped and restored should be immediately recallable."""
+        # 1. Store a memory with vector
+        store_memory(fake_store, fake_embedder, "mem:episodic:RT01", "valkey search bug fix")
+
+        # 2. Dump — this excludes vectors (as expected)
+        result = dump_to_file("roundtrip.json")
+        assert result["total_keys"] >= 1
+
+        # 3. Wipe the store to simulate fresh instance
+        fake_store._client._data.clear()
+        fake_store._client._sets.clear()
+
+        # 4. Verify recall returns nothing
+        results = pipeline.recall("valkey search bug fix", top_k=5)
+        assert len(results) == 0
+
+        # 5. Restore from backup
+        result = restore_from_file("roundtrip.json", dry_run=False)
+        assert result["status"] == "restored"
+        assert result["restored_keys"] >= 1
+        assert result["re_embedded"] >= 1
+
+        # 6. Recall should now find the memory immediately
+        results = pipeline.recall("valkey search bug fix", top_k=5)
+        assert len(results) >= 1
+        assert any("valkey search bug fix" in r.content for r in results)
+
+    def test_restore_re_embeds_only_mem_keys(self, fake_store, fake_embedder, backup_dir):
+        """Only mem:* keys should be re-embedded, not topics: or log: keys."""
+        self._write_backup(backup_dir, "mixed.json", {
+            "mem:episodic:E01": {"content": "test memory", "updated_at": "9999999999"},
+            "topics:suppressed": {"_type": "set", "members": ["boring-topic"]},
+        })
+        result = restore_from_file("mixed.json", dry_run=False)
+        assert result["status"] == "restored"
+        assert result["re_embedded"] == 1  # Only the mem: key
+
+
 class TestListBackups:
     def test_empty_directory(self, backup_dir):
         result = list_backups()

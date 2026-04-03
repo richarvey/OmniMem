@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [3.13.1] - 2026-04-03
+### Fixed
+- **Restored memories not searchable until manual intervention** ([#10](https://codeberg.org/ric_harvey/omnimem/issues/10)): `restore_from_file` now automatically re-embeds all restored `mem:*` keys after writing them back to Valkey. Previously, backups excluded binary vector data (required by `decode_responses=True`), so restored memories had no embeddings and were invisible to `recall` and `recall_index`. The restore response now includes a `re_embedded` count
+- **`restore_all` return type extended**: Now returns `(restored_count, skipped_count, restored_keys)` so callers know exactly which keys were written
+- **2 new tests** for the dump-restore-recall round-trip and selective re-embedding (462 total)
+### Removed
+- **CVE-2026-4539 `--ignore-vuln` workaround**: Upstream pygments has patched the ReDoS vulnerability in AdlLexer. Removed the `--ignore-vuln CVE-2026-4539` flag from the pip-audit CI step
+
 ## [3.13.0] - 2026-03-31
 ### Added
 - **RSS knowledge expiry**: Articles ingested by the RSS worker now get an `expires_at` timestamp set to `created_at + MAX_KNOWLEDGE_AGE_DAYS` (default 30, configurable via env var). Expired items are auto-archived during maintenance Phase 3. Manually stored knowledge items are never affected
