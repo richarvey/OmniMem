@@ -170,7 +170,9 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 
 | Agent | Guide | Transport |
 |-------|-------|-----------|
+| claude.ai | [guides/claude-ai.md](guides/claude-ai.md) | Streamable HTTP + OAuth 2.1 |
 | Claude Code | [guides/claude-code.md](guides/claude-code.md) | SSE (default) / Streamable HTTP |
+| Claude Desktop | [guides/claude-desktop.md](guides/claude-desktop.md) | SSE / Streamable HTTP (via mcp-remote) |
 | GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | SSE (default) / Streamable HTTP |
 | GitLab Duo | [guides/gitlab-duo.md](guides/gitlab-duo.md) | SSE (default) / Streamable HTTP |
 | Cursor | [guides/cursor.md](guides/cursor.md) | SSE (default) / Streamable HTTP |
@@ -296,6 +298,10 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
 | `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP SSE endpoint. When unset, no auth is required |
 | `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard. `/metrics` and static assets are exempt |
+| `OAUTH_ENABLED` | *(unset)* | Set to `true` to enable OAuth 2.1 authorisation server for claude.ai and other OAuth MCP clients |
+| `OAUTH_BASE_URL` | *(unset)* | Externally-reachable URL of your OmniMem instance (e.g. `https://mcp.example.com`). Required when OAuth is enabled |
+| `OAUTH_ADMIN_USER` | *(unset)* | Username for the OAuth admin account. Required when OAuth is enabled |
+| `OAUTH_ADMIN_PASSWORD` | *(unset)* | Password for the OAuth admin account. Required when OAuth is enabled |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
 | `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |
@@ -377,6 +383,28 @@ Update the MCP config URL to `https://omnimem.yourdomain.com/sse` (or `.../mcp` 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
 Security checklist: strong `VALKEY_PASSWORD`, set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env`, TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet.
+
+### OAuth 2.1 for claude.ai
+
+If you want to connect from **claude.ai** (or any MCP client that uses OAuth), OmniMem has optional built-in OAuth 2.1 support. Enable it in your `.env`:
+
+```bash
+OAUTH_ENABLED=true
+OAUTH_BASE_URL=https://mcp.yourdomain.com   # externally-reachable URL
+OAUTH_ADMIN_USER=admin
+OAUTH_ADMIN_PASSWORD=a-strong-password-here
+```
+
+When enabled, OmniMem acts as a full OAuth 2.1 authorisation server with:
+
+- **Discovery** (`/.well-known/oauth-authorization-server`) — auto-discovered by clients
+- **Dynamic client registration** (`/register`) — clients register automatically (RFC 7591)
+- **Authorisation code flow with PKCE** (`/authorize` + `/oauth/login`) — browser-based login
+- **Token exchange and refresh** (`/token`) — 1-hour access tokens, 30-day refresh tokens with rotation
+
+Point claude.ai at your OmniMem URL and it handles the rest — discovery, registration, browser login, and token management all happen automatically.
+
+OAuth works alongside bearer token auth. If you have both `OAUTH_ENABLED` and `MCP_AUTH_TOKEN` set, both authentication methods are accepted via `MultiAuth`. Local Claude Code instances can continue using bearer tokens while claude.ai uses OAuth.
 
 ---
 

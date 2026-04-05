@@ -19,9 +19,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("omnimem")
 
-# Optional bearer token auth — only enabled when MCP_AUTH_TOKEN is set
+# ---------------------------------------------------------------------------
+# Authentication setup — bearer token, OAuth 2.1, or both
+# ---------------------------------------------------------------------------
+
 _auth_token = os.getenv("MCP_AUTH_TOKEN", "").strip()
+_oauth_enabled = os.getenv("OAUTH_ENABLED", "").strip().lower() in ("true", "1", "yes")
+
+_bearer_verifier = None
+_oauth_provider = None
 _auth = None
+
+# Bearer token auth (unchanged from pre-v4)
 if _auth_token:
     from fastmcp.server.auth import AccessToken, TokenVerifier
 
@@ -37,10 +46,55 @@ if _auth_token:
                 return AccessToken(token=token, client_id="omnimem", scopes=[])
             return None
 
-    _auth = _SharedSecretAuth(_auth_token)
+    _bearer_verifier = _SharedSecretAuth(_auth_token)
     logger.info("Bearer token authentication enabled for MCP server")
 
+# OAuth 2.1 auth — optional, enabled via OAUTH_ENABLED + admin credentials
+if _oauth_enabled:
+    _oauth_user = os.getenv("OAUTH_ADMIN_USER", "").strip()
+    _oauth_pass = os.getenv("OAUTH_ADMIN_PASSWORD", "").strip()
+    _oauth_base = os.getenv("OAUTH_BASE_URL", "").strip()
+
+    if not _oauth_user or not _oauth_pass:
+        logger.error(
+            "OAUTH_ENABLED is set but OAUTH_ADMIN_USER and/or "
+            "OAUTH_ADMIN_PASSWORD are missing — OAuth disabled"
+        )
+        _oauth_enabled = False
+    elif not _oauth_base:
+        logger.error(
+            "OAUTH_ENABLED is set but OAUTH_BASE_URL is missing — "
+            "set it to the externally-reachable URL (e.g. https://mcp.example.com)"
+        )
+        _oauth_enabled = False
+    else:
+        from oauth.provider import OmniMemOAuthProvider
+
+        _oauth_provider = OmniMemOAuthProvider(
+            base_url=_oauth_base,
+            admin_user=_oauth_user,
+            admin_password=_oauth_pass,
+        )
+        logger.info("OAuth 2.1 authentication enabled (base URL: %s)", _oauth_base)
+
+# Combine auth sources with MultiAuth when both are active
+if _oauth_provider and _bearer_verifier:
+    from fastmcp.server.auth import MultiAuth
+
+    _auth = MultiAuth(server=_oauth_provider, verifiers=[_bearer_verifier])
+    logger.info("MultiAuth: OAuth 2.1 + bearer token")
+elif _oauth_provider:
+    _auth = _oauth_provider
+elif _bearer_verifier:
+    _auth = _bearer_verifier
+
 mcp = FastMCP("omnimem", instructions=INSTRUCTIONS, auth=_auth)
+
+# Register OAuth login routes (must happen after mcp is created)
+if _oauth_provider:
+    from oauth.routes import register_oauth_routes
+
+    register_oauth_routes(mcp, _oauth_provider)
 
 _start_time = time.time()
 

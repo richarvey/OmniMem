@@ -4,6 +4,16 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-04-05
+### Added
+- **Optional OAuth 2.1 authorisation server**: OmniMem can now act as a full OAuth 2.1 authorisation server for claude.ai and other MCP clients that use OAuth. Enabled via `OAUTH_ENABLED=true` with a single admin user (`OAUTH_ADMIN_USER` / `OAUTH_ADMIN_PASSWORD`). Implements dynamic client registration (RFC 7591), authorisation code flow with PKCE (S256), token refresh with rotation, and token revocation (RFC 7009). Discovery via `/.well-known/oauth-authorization-server` is handled automatically by FastMCP
+- **Browser-based login page**: `/oauth/login` serves a styled login form during the OAuth authorisation flow. Users authenticate with admin credentials and are redirected back to the client with an authorisation code
+- **MultiAuth support**: When both `OAUTH_ENABLED` and `MCP_AUTH_TOKEN` are set, both authentication methods work simultaneously via FastMCP's `MultiAuth`. Local Claude Code instances can use bearer tokens while claude.ai uses OAuth
+- **New env vars**: `OAUTH_ENABLED`, `OAUTH_BASE_URL`, `OAUTH_ADMIN_USER`, `OAUTH_ADMIN_PASSWORD`
+- **18 new tests** for OAuth provider covering client registration, credential verification, authorisation flow, token exchange, refresh with rotation, expiry, and revocation
+### Changed
+- **FastMCP 3.x features used**: OAuth implementation uses `OAuthProvider`, `MultiAuth`, and `custom_route` from FastMCP 3.x. The minimum version constraint (`>=2.13.0`) still applies but OAuth features require 3.x
+
 ## [3.13.1] - 2026-04-03
 ### Fixed
 - **Restored memories not searchable until manual intervention** ([#10](https://codeberg.org/ric_harvey/omnimem/issues/10)): `restore_from_file` now automatically re-embeds all restored `mem:*` keys after writing them back to Valkey. Previously, backups excluded binary vector data (required by `decode_responses=True`), so restored memories had no embeddings and were invisible to `recall` and `recall_index`. The restore response now includes a `re_embedded` count
