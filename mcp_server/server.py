@@ -68,14 +68,30 @@ if _oauth_enabled:
         )
         _oauth_enabled = False
     else:
-        from oauth.provider import OmniMemOAuthProvider
+        from oauth.provider import OmniMemOAuthProvider, _StoredToken
+        from oauth.storage import ValkeyOAuthStorage
+
+        try:
+            _oauth_storage = ValkeyOAuthStorage(stored_token_cls=_StoredToken)
+        except Exception as exc:
+            logger.error(
+                "OAuth Valkey storage failed to initialise (%s) — falling back "
+                "to in-memory storage. Tokens will not survive restarts.",
+                exc,
+            )
+            _oauth_storage = None
 
         _oauth_provider = OmniMemOAuthProvider(
             base_url=_oauth_base,
             admin_user=_oauth_user,
             admin_password=_oauth_pass,
+            storage=_oauth_storage,
         )
-        logger.info("OAuth 2.1 authentication enabled (base URL: %s)", _oauth_base)
+        logger.info(
+            "OAuth 2.1 authentication enabled (base URL: %s, storage: %s)",
+            _oauth_base,
+            "valkey" if _oauth_storage else "in-memory",
+        )
 
 # Combine auth sources with MultiAuth when both are active
 if _oauth_provider and _bearer_verifier:

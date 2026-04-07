@@ -242,6 +242,45 @@ class TestRefreshToken:
 # ------------------------------------------------------------------
 
 
+class TestStoragePersistence:
+    """Simulates an mcp_server restart by sharing a storage backend across
+    two provider instances. Verifies that tokens issued by the first provider
+    are still valid via the second."""
+
+    def test_access_token_survives_provider_restart(self):
+        from oauth.storage import InMemoryOAuthStorage
+
+        storage = InMemoryOAuthStorage()
+        first = OmniMemOAuthProvider(
+            base_url="https://mcp.example.com",
+            admin_user="admin",
+            admin_password="secret123",
+            storage=storage,
+        )
+        client, token = _issue_tokens(first)
+
+        # "Restart" — new provider instance, same storage
+        second = OmniMemOAuthProvider(
+            base_url="https://mcp.example.com",
+            admin_user="admin",
+            admin_password="secret123",
+            storage=storage,
+        )
+        result = _run(second.load_access_token(token.access_token))
+        assert result is not None
+        assert result.client_id == client.client_id
+
+        # Refresh token also still works
+        stored_refresh = _run(
+            second.load_refresh_token(client, token.refresh_token)
+        )
+        assert stored_refresh is not None
+        new_token = _run(
+            second.exchange_refresh_token(client, stored_refresh, [])
+        )
+        assert new_token.access_token != token.access_token
+
+
 class TestRevocation:
     def test_revoke_access_token(self, provider):
         stored = _StoredToken("tok123", "client-1", ["omnimem"], 3600)

@@ -1,4 +1,4 @@
-"""OmniMem OAuth 2.1 provider — single admin user, in-memory state."""
+"""OmniMem OAuth 2.1 provider — single admin user, pluggable storage backend."""
 
 import logging
 import secrets
@@ -9,6 +9,8 @@ from fastmcp.server.auth.auth import ClientRegistrationOptions, RevocationOption
 from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from oauth.storage import InMemoryOAuthStorage
+
 logger = logging.getLogger("omnimem.oauth")
 
 # Token lifetimes (seconds)
@@ -18,7 +20,7 @@ AUTH_CODE_EXPIRY = 300  # 5 minutes
 
 
 class _StoredToken:
-    """In-memory access or refresh token."""
+    """Access or refresh token record. Stored via the storage backend."""
 
     __slots__ = ("token", "client_id", "scopes", "created_at", "expires_in")
 
@@ -37,7 +39,11 @@ class _StoredToken:
 
 
 class _PendingAuth:
-    """Tracks an in-flight /authorize request while the user logs in."""
+    """Tracks an in-flight /authorize request while the user logs in.
+
+    Always kept in-memory — short-lived browser flow, sticky sessions are
+    required for multi-instance deployments anyway.
+    """
 
     __slots__ = ("client_id", "params", "created_at")
 
@@ -55,7 +61,7 @@ class OmniMemOAuthProvider(OAuthProvider):
     """OAuth 2.1 authorisation server for OmniMem.
 
     * Single admin user (credentials from env).
-    * In-memory stores for clients, codes, and tokens.
+    * Pluggable storage backend (in-memory by default; Valkey for production).
     * PKCE (S256) verification handled by the MCP SDK token handler.
     """
 
@@ -64,6 +70,7 @@ class OmniMemOAuthProvider(OAuthProvider):
         base_url: str,
         admin_user: str,
         admin_password: str,
+        storage=None,
     ) -> None:
         super().__init__(
             base_url=base_url,
@@ -77,19 +84,25 @@ class OmniMemOAuthProvider(OAuthProvider):
         self._admin_user = admin_user
         self._admin_password = admin_password
 
-        # In-memory stores — cleared on restart (clients must re-register)
-        self._clients: dict[str, OAuthClientInformationFull] = {}
+        self._storage = storage if storage is not None else InMemoryOAuthStorage()
+
+        # Pending /authorize sessions are always in-memory
         self._pending: dict[str, _PendingAuth] = {}
-        self._codes: dict[str, AuthorizationCode] = {}
-        self._access_tokens: dict[str, _StoredToken] = {}
-        self._refresh_tokens: dict[str, _StoredToken] = {}
+
+        # Test compatibility: when using the in-memory backend, expose the
+        # underlying dicts as attributes so existing tests can poke them.
+        if isinstance(self._storage, InMemoryOAuthStorage):
+            self._clients = self._storage.clients
+            self._codes = self._storage.codes
+            self._access_tokens = self._storage.access_tokens
+            self._refresh_tokens = self._storage.refresh_tokens
 
     # ------------------------------------------------------------------
     # Client registration (RFC 7591)
     # ------------------------------------------------------------------
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
-        return self._clients.get(client_id)
+        return self._storage.get_client(client_id)
 
     async def register_client(
         self, client_info: OAuthClientInformationFull
@@ -98,7 +111,7 @@ class OmniMemOAuthProvider(OAuthProvider):
             client_info.client_id = f"omnimem-{secrets.token_urlsafe(16)}"
         client_info.client_secret = secrets.token_urlsafe(32)
         client_info.client_id_issued_at = int(time.time())
-        self._clients[client_info.client_id] = client_info
+        self._storage.save_client(client_info)
         logger.info(
             "Registered OAuth client: %s (%s)",
             client_info.client_id,
@@ -141,7 +154,7 @@ class OmniMemOAuthProvider(OAuthProvider):
         """Called after successful login. Returns (code, redirect_uri, state)."""
         pending = self._pending.pop(session_id)
         code = secrets.token_urlsafe(32)  # >= 256 bits of entropy
-        self._codes[code] = AuthorizationCode(
+        ac = AuthorizationCode(
             code=code,
             client_id=pending.client_id,
             redirect_uri=pending.params.redirect_uri,
@@ -151,6 +164,7 @@ class OmniMemOAuthProvider(OAuthProvider):
             expires_at=time.time() + AUTH_CODE_EXPIRY,
             resource=pending.params.resource,
         )
+        self._storage.save_code(ac)
         return code, str(pending.params.redirect_uri), pending.params.state
 
     # ------------------------------------------------------------------
@@ -162,13 +176,10 @@ class OmniMemOAuthProvider(OAuthProvider):
         client: OAuthClientInformationFull,
         authorization_code: str,
     ) -> AuthorizationCode | None:
-        ac = self._codes.get(authorization_code)
+        ac = self._storage.load_code(authorization_code)
         if ac is None:
             return None
         if ac.client_id != client.client_id:
-            return None
-        if time.time() > ac.expires_at:
-            del self._codes[authorization_code]
             return None
         return ac
 
@@ -178,23 +189,27 @@ class OmniMemOAuthProvider(OAuthProvider):
         authorization_code: AuthorizationCode,
     ) -> OAuthToken:
         # Consume the code (one-time use)
-        self._codes.pop(authorization_code.code, None)
+        self._storage.delete_code(authorization_code.code)
 
         access = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
         scopes = authorization_code.scopes or []
 
-        self._access_tokens[access] = _StoredToken(
-            token=access,
-            client_id=client.client_id,
-            scopes=scopes,
-            expires_in=ACCESS_TOKEN_EXPIRY,
+        self._storage.save_access(
+            _StoredToken(
+                token=access,
+                client_id=client.client_id,
+                scopes=scopes,
+                expires_in=ACCESS_TOKEN_EXPIRY,
+            )
         )
-        self._refresh_tokens[refresh] = _StoredToken(
-            token=refresh,
-            client_id=client.client_id,
-            scopes=scopes,
-            expires_in=REFRESH_TOKEN_EXPIRY,
+        self._storage.save_refresh(
+            _StoredToken(
+                token=refresh,
+                client_id=client.client_id,
+                scopes=scopes,
+                expires_in=REFRESH_TOKEN_EXPIRY,
+            )
         )
 
         logger.info("Issued tokens for client %s", client.client_id)
@@ -211,11 +226,8 @@ class OmniMemOAuthProvider(OAuthProvider):
     # ------------------------------------------------------------------
 
     async def load_access_token(self, token: str) -> AccessToken | None:
-        stored = self._access_tokens.get(token)
+        stored = self._storage.load_access(token)
         if stored is None:
-            return None
-        if stored.expired:
-            del self._access_tokens[token]
             return None
         return AccessToken(
             token=token, client_id=stored.client_id, scopes=stored.scopes
@@ -230,13 +242,10 @@ class OmniMemOAuthProvider(OAuthProvider):
         client: OAuthClientInformationFull,
         refresh_token: str,
     ) -> _StoredToken | None:
-        stored = self._refresh_tokens.get(refresh_token)
+        stored = self._storage.load_refresh(refresh_token)
         if stored is None:
             return None
         if stored.client_id != client.client_id:
-            return None
-        if stored.expired:
-            del self._refresh_tokens[refresh_token]
             return None
         return stored
 
@@ -247,23 +256,27 @@ class OmniMemOAuthProvider(OAuthProvider):
         scopes: list[str],
     ) -> OAuthToken:
         # Rotate: revoke old refresh token, issue new pair
-        self._refresh_tokens.pop(refresh_token.token, None)
+        self._storage.delete_refresh(refresh_token.token)
 
         effective_scopes = scopes or refresh_token.scopes
         new_access = secrets.token_urlsafe(32)
         new_refresh = secrets.token_urlsafe(32)
 
-        self._access_tokens[new_access] = _StoredToken(
-            token=new_access,
-            client_id=client.client_id,
-            scopes=effective_scopes,
-            expires_in=ACCESS_TOKEN_EXPIRY,
+        self._storage.save_access(
+            _StoredToken(
+                token=new_access,
+                client_id=client.client_id,
+                scopes=effective_scopes,
+                expires_in=ACCESS_TOKEN_EXPIRY,
+            )
         )
-        self._refresh_tokens[new_refresh] = _StoredToken(
-            token=new_refresh,
-            client_id=client.client_id,
-            scopes=effective_scopes,
-            expires_in=REFRESH_TOKEN_EXPIRY,
+        self._storage.save_refresh(
+            _StoredToken(
+                token=new_refresh,
+                client_id=client.client_id,
+                scopes=effective_scopes,
+                expires_in=REFRESH_TOKEN_EXPIRY,
+            )
         )
 
         logger.info("Refreshed tokens for client %s", client.client_id)
@@ -283,8 +296,7 @@ class OmniMemOAuthProvider(OAuthProvider):
         self, token: _StoredToken | AuthorizationCode
     ) -> None:
         tok = token.token if hasattr(token, "token") else token.code
-        removed = self._access_tokens.pop(tok, None) or self._refresh_tokens.pop(
-            tok, None
-        )
-        if removed:
-            logger.info("Revoked token for client %s", getattr(token, "client_id", "?"))
+        # Try both token stores; one will be a no-op
+        self._storage.delete_access(tok)
+        self._storage.delete_refresh(tok)
+        logger.info("Revoked token for client %s", getattr(token, "client_id", "?"))

@@ -10,6 +10,20 @@ from urllib.parse import urlencode
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
+# OmniMem icon — embedded SVG so claude.ai (and any other OAuth client that
+# reads a favicon/logo from a well-known path) can display a recognisable
+# brand mark for the connector. Kept inline to avoid shipping a binary asset.
+ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<rect width="64" height="64" rx="14" fill="#1e293b"/>'
+    '<path d="M16 32 q0 -10 8 -10 q4 0 6 4 q2 -4 6 -4 q8 0 8 10 '
+    'q0 10 -8 10 q-4 0 -6 -4 q-2 4 -6 4 q-8 0 -8 -10 z" '
+    'fill="none" stroke="#6366f1" stroke-width="3" stroke-linejoin="round"/>'
+    '<circle cx="32" cy="32" r="2.5" fill="#6366f1"/>'
+    '</svg>'
+)
+_ICON_HEADERS = {"cache-control": "public, max-age=86400"}
+
 if TYPE_CHECKING:
     from fastmcp import FastMCP
     from oauth.provider import OmniMemOAuthProvider
@@ -129,3 +143,19 @@ def register_oauth_routes(
         separator = "&" if "?" in redirect_uri else "?"
         target = f"{redirect_uri}{separator}{urlencode(params)}"
         return RedirectResponse(target, status_code=302)
+
+    # ------------------------------------------------------------------
+    # Brand icon — served from several well-known paths so OAuth clients
+    # like claude.ai can display a logo for the connector regardless of
+    # which discovery convention they use. (Issue #12)
+    # ------------------------------------------------------------------
+
+    async def _serve_icon(_request: Request) -> Response:
+        return Response(
+            ICON_SVG,
+            media_type="image/svg+xml",
+            headers=_ICON_HEADERS,
+        )
+
+    for path in ("/icon.svg", "/favicon.svg", "/favicon.ico", "/oauth/icon.svg"):
+        mcp.custom_route(path, methods=["GET"])(_serve_icon)

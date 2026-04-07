@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-04-08
+### Added
+- **Brand icon for the OAuth connector** ([#12](https://codeberg.org/ric_harvey/omnimem/issues/12)): an embedded SVG mark is now served from `/icon.svg`, `/favicon.svg`, `/favicon.ico`, and `/oauth/icon.svg` so claude.ai (and other OAuth MCP clients) can display a recognisable logo for the OmniMem connector regardless of which discovery convention they use
+### Fixed
+- **OAuth tokens lost on `mcp_server` restart** ([#13](https://codeberg.org/ric_harvey/omnimem/issues/13)): claude.ai sessions used to die with `401 invalid_token` after every restart because all OAuth state lived in plain dicts. State is now persisted in Valkey via a new pluggable storage backend (`oauth/storage.py`) with native TTLs matching `expires_in`. Registered clients survive indefinitely; auth codes, access tokens, and refresh tokens expire automatically. In-memory backend retained as a default for tests and as a fallback if Valkey is unreachable at startup
+- **New restart-replay test** verifying tokens issued by one provider instance remain valid via a fresh provider instance sharing the same storage
+
 ## [4.0.0] - 2026-04-05
 ### Added
 - **Optional OAuth 2.1 authorisation server**: OmniMem can now act as a full OAuth 2.1 authorisation server for claude.ai and other MCP clients that use OAuth. Enabled via `OAUTH_ENABLED=true` with a single admin user (`OAUTH_ADMIN_USER` / `OAUTH_ADMIN_PASSWORD`). Implements dynamic client registration (RFC 7591), authorisation code flow with PKCE (S256), token refresh with rotation, and token revocation (RFC 7009). Discovery via `/.well-known/oauth-authorization-server` is handled automatically by FastMCP
