@@ -383,10 +383,19 @@ class ValkeyStore:
         except valkey.ResponseError:
             pass
 
+        # Use execute_command directly — the client wrapper's .dropindex()
+        # was returning a response the python client misinterpreted, leaving
+        # the index in place and causing create_index to fail with "already
+        # exists". The raw command works reliably.
         try:
-            self.client.ft(idx_name).dropindex()
-        except valkey.ResponseError:
-            pass
+            self.client.execute_command("FT.DROPINDEX", idx_name)
+        except valkey.ResponseError as exc:
+            msg = str(exc).lower()
+            if "unknown index" in msg or "no such index" in msg:
+                pass  # Already gone — fine
+            else:
+                logger.warning("FT.DROPINDEX %s failed: %s", idx_name, exc)
+                raise
 
         definition = IndexDefinition(
             prefix=[idx_def["prefix"]],

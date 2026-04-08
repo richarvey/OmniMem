@@ -267,7 +267,7 @@ def health() -> dict:
             store.client.ping()
             result["valkey_connected"] = True
 
-            for namespace in ("episodic", "project", "knowledge"):
+            for namespace in ("episodic", "project", "knowledge", "preference"):
                 idx_name = f"idx:{namespace}"
                 num_docs: int | str
                 try:
