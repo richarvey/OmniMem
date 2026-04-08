@@ -16,7 +16,7 @@ def _get_all_memories(
     namespace: str | None, state: str | None, project: str | None,
 ) -> tuple[list[dict], list[str]]:
     """Fetch and filter memories, returning (memories, distinct_projects) in a single pass."""
-    ns_list = [namespace] if namespace else ["episodic", "project", "knowledge"]
+    ns_list = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
     memories = []
     projects = set()
 

@@ -9,7 +9,7 @@ from starlette.routing import Route
 
 from .. import deps
 
-_NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:"]
+_NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:"]
 
 # MCP instructions text size (measured from instructions.py).
 # Update if instructions change significantly.
@@ -90,7 +90,7 @@ def _build_token_data(project_filter: str | None = None) -> dict:
     total_memories = 0
     total_recalls = 0
     total_content_chars = 0
-    namespace_counts = {"episodic": 0, "project": 0, "knowledge": 0}
+    namespace_counts = {"episodic": 0, "project": 0, "knowledge": 0, "preference": 0}
 
     for prefix in _NAMESPACE_PREFIXES:
         namespace = prefix.split(":")[1]

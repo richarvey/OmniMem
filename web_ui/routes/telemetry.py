@@ -10,7 +10,7 @@ from starlette.routing import Route
 from .. import deps
 
 TELEMETRY_COLD_DAYS = int(os.getenv("TELEMETRY_COLD_DAYS", "60"))
-_NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:"]
+_NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:"]
 
 
 def _build_telemetry_data(project_filter: str | None = None) -> dict:

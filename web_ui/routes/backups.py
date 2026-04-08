@@ -56,7 +56,7 @@ async def create_backup(request: Request) -> RedirectResponse:
     try:
         all_data = deps.store.dump_all()
 
-        ns_counts = {"episodic": 0, "project": 0, "knowledge": 0}
+        ns_counts = {"episodic": 0, "project": 0, "knowledge": 0, "preference": 0}
         for key in all_data:
             if key.startswith("mem:episodic:"):
                 ns_counts["episodic"] += 1
@@ -64,6 +64,8 @@ async def create_backup(request: Request) -> RedirectResponse:
                 ns_counts["project"] += 1
             elif key.startswith("mem:knowledge:"):
                 ns_counts["knowledge"] += 1
+            elif key.startswith("mem:preference:"):
+                ns_counts["preference"] += 1
 
         from memory.version import __version__
         backup = {

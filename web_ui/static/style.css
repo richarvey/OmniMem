@@ -300,6 +300,7 @@ body {
 .badge.ns-episodic { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
 .badge.ns-project { background: rgba(52, 211, 153, 0.15); color: var(--green); }
 .badge.ns-knowledge { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+.badge.ns-preference { background: rgba(244, 114, 182, 0.15); color: #f472b6; }
 
 /* Tables */
 .data-table {

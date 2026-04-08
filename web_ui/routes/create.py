@@ -56,7 +56,7 @@ async def create_memory(request: Request) -> HTMLResponse:
             error="Content cannot be empty.", duplicate=None, values=values,
         ))
 
-    if namespace not in {"episodic", "project", "knowledge"}:
+    if namespace not in {"episodic", "project", "knowledge", "preference"}:
         namespace = "episodic"
 
     # Parse tags

@@ -15,7 +15,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     total = 0
     recent = []
 
-    for ns in ("episodic", "project", "knowledge"):
+    for ns in ("episodic", "project", "knowledge", "preference"):
         keys = deps.store.scan_prefix(f"mem:{ns}:")
         if not keys:
             ns_stats[ns] = {"total": 0, "states": {"active": 0, "deprioritised": 0, "archived": 0}}

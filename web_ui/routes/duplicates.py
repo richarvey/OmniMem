@@ -61,7 +61,7 @@ async def duplicates_page(request: Request) -> HTMLResponse:
 async def duplicates_scan(request: Request) -> HTMLResponse:
     """GET /duplicates/scan — htmx endpoint that runs duplicate detection."""
     namespace = request.query_params.get("namespace", "episodic")
-    if namespace not in {"episodic", "project", "knowledge"}:
+    if namespace not in {"episodic", "project", "knowledge", "preference"}:
         namespace = "episodic"
 
     project = request.query_params.get("project", "") or None
