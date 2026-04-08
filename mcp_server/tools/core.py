@@ -25,7 +25,7 @@ def version() -> dict[str, str]:
     """Return the current OmniMem version."""
     return {"version": __version__}
 
-VALID_NAMESPACES = {"episodic", "project", "knowledge"}
+VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
 MAX_CONTENT_LENGTH = 50_000
 MAX_TOP_K = 50
 MAX_TAG_LENGTH = 100

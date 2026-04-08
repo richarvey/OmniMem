@@ -164,6 +164,7 @@ class FakeSearchIndex:
             "idx:episodic": "mem:episodic:",
             "idx:project": "mem:project:",
             "idx:knowledge": "mem:knowledge:",
+            "idx:preference": "mem:preference:",
         }
         prefix = prefix_map.get(self._index_name, "")
         query_vec = None

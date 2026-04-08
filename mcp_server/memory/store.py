@@ -16,10 +16,13 @@ from valkey.commands.search.query import Query
 logger = logging.getLogger(__name__)
 
 # Valid key prefixes to prevent writing to arbitrary Valkey keys
-_VALID_KEY_PREFIXES = ("mem:episodic:", "mem:project:", "mem:knowledge:", "topics:", "log:recall:", "meta:")
+_VALID_KEY_PREFIXES = (
+    "mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:",
+    "topics:", "log:recall:", "meta:", "qexp:",
+)
 
 # Valid namespace names for search index lookups
-_VALID_NAMESPACES = {"episodic", "project", "knowledge"}
+_VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
 
 VECTOR_DIM = 384
 VECTOR_ALGORITHM = "HNSW"
@@ -42,6 +45,11 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "similarity_score", "content", "source_url", "feed_name", "published_at",
         "topics", "state", "surface_score", "created_at", "updated_at",
         "recall_count", "last_recalled", "expires_at",
+    ),
+    "preference": (
+        "similarity_score", "content", "project", "scope", "state",
+        "surface_score", "created_at", "updated_at", "tags",
+        "recall_count", "last_recalled", "source_doc_id",
     ),
 }
 
@@ -101,6 +109,24 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("updated_at"),
             NumericField("recall_count"),
             NumericField("expires_at"),
+        ],
+    },
+    "idx:preference": {
+        "prefix": "mem:preference:",
+        "fields": [
+            VectorField(
+                "vector",
+                VECTOR_ALGORITHM,
+                {"TYPE": "FLOAT32", "DIM": VECTOR_DIM, "DISTANCE_METRIC": DISTANCE_METRIC},
+            ),
+            TagField("project"),
+            TagField("scope"),
+            TagField("state"),
+            TagField("tags"),
+            NumericField("surface_score"),
+            NumericField("created_at"),
+            NumericField("updated_at"),
+            NumericField("recall_count"),
         ],
     },
 }
@@ -321,6 +347,77 @@ class ValkeyStore:
         self._validate_key(key)
         self.client.delete(key)
         logger.info("Deleted key %s", key)
+
+    def count_records(self, namespace: str) -> int:
+        """Count actual hash records for a namespace via SCAN.
+
+        Authoritative — unlike FT.INFO num_docs, which can drift if the
+        search index doesn't see hash deletions (e.g. when keyspace
+        notifications are disabled).
+        """
+        if namespace not in _VALID_NAMESPACES:
+            raise ValueError(f"Invalid namespace: {namespace}")
+        return len(self.scan_prefix(f"mem:{namespace}:"))
+
+    def reindex_namespace(self, namespace: str) -> dict[str, int]:
+        """Drop and recreate the search index for a namespace.
+
+        Data-safe: dropindex() removes only the index, not the underlying
+        hashes. Recreating it causes valkey-search to re-scan the prefix
+        and rebuild from existing hashes only — phantom entries from
+        previous deletes are dropped.
+
+        Returns:
+            Dict with before/after num_docs and actual record count.
+        """
+        if namespace not in _VALID_NAMESPACES:
+            raise ValueError(f"Invalid namespace: {namespace}")
+
+        idx_name = f"idx:{namespace}"
+        idx_def = INDEX_DEFINITIONS[idx_name]
+
+        before = 0
+        try:
+            info = self.client.ft(idx_name).info()
+            before = int(info.get("num_docs", 0))
+        except valkey.ResponseError:
+            pass
+
+        try:
+            self.client.ft(idx_name).dropindex()
+        except valkey.ResponseError:
+            pass
+
+        definition = IndexDefinition(
+            prefix=[idx_def["prefix"]],
+            index_type=IndexType.HASH,
+        )
+        self.client.ft(idx_name).create_index(
+            idx_def["fields"],
+            definition=definition,
+        )
+
+        actual = self.count_records(namespace)
+
+        # FT.INFO num_docs may take a moment to settle after recreate;
+        # the actual record count is the source of truth.
+        try:
+            info = self.client.ft(idx_name).info()
+            after = int(info.get("num_docs", 0))
+        except valkey.ResponseError:
+            after = actual
+
+        logger.info(
+            "Reindexed %s: num_docs %d -> %d (actual records: %d)",
+            idx_name, before, after, actual,
+        )
+        return {
+            "namespace": namespace,
+            "before_num_docs": before,
+            "after_num_docs": after,
+            "actual_records": actual,
+            "removed_phantoms": max(0, before - actual),
+        }
 
     def scan_prefix(self, prefix: str) -> list[str]:
         """Return all keys matching a prefix using SCAN."""

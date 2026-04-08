@@ -16,7 +16,7 @@ from .store import ValkeyStore
 
 logger = logging.getLogger(__name__)
 
-NAMESPACES = ["episodic", "project", "knowledge"]
+NAMESPACES = ["episodic", "project", "knowledge", "preference"]
 
 
 def compute_experience_weight(effort_score: int, outcome: str) -> float:
