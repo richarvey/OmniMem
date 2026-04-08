@@ -13,6 +13,7 @@ from .embedder import Embedder
 from .lifecycle import MemoryLifecycle, MemoryState
 from .query_expansion import expand_query
 from .store import ValkeyStore
+from .temporal import parse_query_date, temporal_boost
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class RecallResult:
     result_type: str = "memory"
     breakthrough: str | None = None
     contradictions: list[dict] = field(default_factory=list)
+    event_date: float | None = None
 
 
 class RecallPipeline:
@@ -122,6 +124,10 @@ class RecallPipeline:
         # Pre-fetch suppressed topics once for the entire recall, not per-doc
         suppressed_topics = self.lifecycle.get_suppressed_topics()
 
+        # Parse a date out of the query once. None when the query has no
+        # temporal language — temporal_multiplier stays at 1.0 in that case.
+        query_date = parse_query_date(query)
+
         for ns in namespaces:
             raw_results = self.store.search(ns, query_vector, top_k=20)
 
@@ -161,8 +167,24 @@ class RecallPipeline:
                 # Step 8: Experience weight
                 exp_weight = float(doc.get("experience_weight", "1.0"))
 
+                # Step 8b: Temporal boost — if the query mentioned a date and
+                # this memory has an event_date close to it, multiply the score.
+                temporal_multiplier = 1.0
+                event_date_raw = doc.get("event_date")
+                event_date_val: float | None = None
+                if event_date_raw:
+                    try:
+                        event_date_val = float(event_date_raw)
+                    except (ValueError, TypeError):
+                        event_date_val = None
+                if query_date is not None and event_date_val is not None:
+                    temporal_multiplier = temporal_boost(query_date, event_date_val)
+
                 # Combined adjusted score
-                adjusted_score = raw_score * surface_score * recency_multiplier * exp_weight
+                adjusted_score = (
+                    raw_score * surface_score * recency_multiplier
+                    * exp_weight * temporal_multiplier
+                )
 
                 # Parse tags
                 tags_raw = doc.get("tags", "[]")
@@ -215,6 +237,7 @@ class RecallPipeline:
                     result_type=result_type,
                     breakthrough=doc.get("breakthrough"),
                     contradictions=contradictions,
+                    event_date=event_date_val,
                 ))
 
         # Step 9b: Query expansion — run additional searches for each variant

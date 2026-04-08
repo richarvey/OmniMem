@@ -317,6 +317,8 @@ def recall(
             entry["contradictions"] = len(r.contradictions)
         if r.source_url:
             entry["source_url"] = r.source_url
+        if r.event_date is not None:
+            entry["event_date"] = r.event_date
         output.append(entry)
 
     return output
