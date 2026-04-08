@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-04-09
+### Fixed
+- **`reindex` tool failing with "Index already exists"**: the valkey-py client wrapper's `.dropindex()` method was returning a response the client misinterpreted as an error, so the try/except in `reindex_namespace()` silently swallowed it and the index was never actually dropped. The subsequent `create_index()` then failed because the old index was still in place. Switched to `execute_command("FT.DROPINDEX", idx_name)` directly, which works reliably, and stopped swallowing unexpected errors so any future failures surface to the caller instead of being hidden
+- **`health()` missing the preference namespace**: the hardcoded namespace list in the `/health` MCP tool only iterated over episodic/project/knowledge, so the new `idx:preference` index counts and drift were invisible. Now reports all four namespaces
+
 ## [5.1.0] - 2026-04-08
 ### Changed
 - **OAuth refresh tokens now extend session lifetime via rotation**: each `/token` refresh issues a new access+refresh pair without re-prompting the user. Refresh tokens carry an `absolute_expires_at` cap that is preserved across rotations, so an active claude.ai connector silently refreshes forever within the configured window and only re-auths once the absolute cap is reached
