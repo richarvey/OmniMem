@@ -6,7 +6,8 @@ from tests.conftest import store_memory
 
 
 @pytest.fixture
-def wired(fake_store, fake_embedder, lifecycle, pipeline):
+def wired(fake_store, fake_embedder, lifecycle, pipeline, monkeypatch):
+    monkeypatch.setenv("INGEST_MODE", "raw")
     import tools as tools_pkg
 
     tools_pkg._store = fake_store

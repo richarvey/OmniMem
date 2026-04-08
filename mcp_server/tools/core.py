@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -11,6 +12,7 @@ import ulid
 from memory.chunking import chunk as chunk_content, VALID_STRATEGIES as CHUNK_STRATEGIES
 from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
+from memory.extraction import extract_facts, ExtractedFact
 from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.recall import RecallPipeline
@@ -89,12 +91,62 @@ def _get_deps() -> tuple[ValkeyStore, Embedder, MemoryLifecycle, RecallPipeline]
     return _store, _embedder, _lifecycle, _pipeline
 
 
+def _resolve_mode(mode: str | None) -> str:
+    """Resolve ingest mode from arg or INGEST_MODE env (default 'full')."""
+    if mode is None:
+        mode = os.getenv("INGEST_MODE", "full").strip().lower()
+    if mode not in ("full", "raw"):
+        raise ValueError(f"Invalid mode '{mode}'. Must be 'full' or 'raw'.")
+    return mode
+
+
+def _store_extracted_fact(
+    store, embedder, fact: ExtractedFact, *,
+    project: str | None,
+    tags: list[str] | None,
+    base_namespace: str,
+    source_doc_id: str | None,
+    now: str,
+) -> str | None:
+    """Store one ExtractedFact, routing preferences to the preference namespace.
+
+    Returns the new key, or None if a near-duplicate exists.
+    """
+    target_ns = "preference" if fact.kind == "preference" else base_namespace
+    vector = embedder.embed(fact.text)
+    dup = check_duplicate(store, target_ns, vector, fact.text, project_filter=project)
+    if dup is not None:
+        return None
+
+    key = f"mem:{target_ns}:{ulid.new().str}"
+    fields: dict[str, Any] = {
+        "content": fact.text,
+        "state": MemoryState.ACTIVE.value,
+        "surface_score": "1.0",
+        "experience_weight": "1.0",
+        "created_at": now,
+        "updated_at": now,
+        "tags": json.dumps(tags or []),
+    }
+    if project:
+        fields["project"] = project
+    if source_doc_id:
+        fields["source_doc_id"] = source_doc_id
+    if fact.event_date is not None:
+        fields["event_date"] = str(fact.event_date)
+    if target_ns == "preference":
+        fields["scope"] = "project" if project else "global"
+    store.upsert(target_ns, key, fields, vector)
+    return key
+
+
 def remember(
     content: str,
     project: str | None = None,
     tags: list[str] | None = None,
     namespace: str = "episodic",
     force: bool = False,
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
 
@@ -102,8 +154,11 @@ def remember(
         content: Text to remember.
         project: Project to scope this memory to.
         tags: Categorisation tags.
-        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        namespace: 'episodic' (default), 'project', 'knowledge', or 'preference'.
         force: Skip duplicate check.
+        mode: 'full' (default — extract discrete facts via Claude before storing,
+            routing preferences to the preference namespace) or 'raw' (store
+            verbatim). Default follows the INGEST_MODE env var.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -111,6 +166,46 @@ def remember(
     _validate_content(content)
     _validate_project_name(project)
     _validate_tags(tags)
+    mode = _resolve_mode(mode)
+
+    # Full mode: extract atomic facts first, store each individually.
+    # Falls back to raw if extraction yields nothing (no API key, error, etc).
+    if mode == "full" and namespace != "knowledge":
+        facts = extract_facts(content)
+        if facts:
+            now = str(time.time())
+            doc_id = ulid.new().str
+            stored_keys: list[str] = []
+            preference_keys: list[str] = []
+            skipped = 0
+            for fact in facts:
+                key = _store_extracted_fact(
+                    store, embedder, fact,
+                    project=project, tags=tags,
+                    base_namespace=namespace,
+                    source_doc_id=doc_id,
+                    now=now,
+                )
+                if key is None:
+                    skipped += 1
+                    continue
+                stored_keys.append(key)
+                if key.startswith("mem:preference:"):
+                    preference_keys.append(key)
+            logger.info(
+                "remember(mode=full) extracted %d facts (%d stored, %d preferences, %d dupes)",
+                len(facts), len(stored_keys), len(preference_keys), skipped,
+            )
+            return {
+                "mode": "full",
+                "doc_id": doc_id,
+                "keys": stored_keys,
+                "preference_keys": preference_keys,
+                "facts_extracted": len(facts),
+                "facts_stored": len(stored_keys),
+                "duplicates_skipped": skipped,
+            }
+        # Fall through to raw if extraction returned nothing usable
 
     key = f"mem:{namespace}:{ulid.new().str}"
     now = str(time.time())
@@ -174,6 +269,7 @@ def remember_document(
     tags: list[str] | None = None,
     namespace: str = "episodic",
     chunk_size: int | None = None,
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """Index a long-form document by splitting it into chunks and storing each chunk as a memory.
 
@@ -196,6 +292,7 @@ def remember_document(
     _validate_content(content)
     _validate_project_name(project)
     _validate_tags(tags)
+    mode = _resolve_mode(mode)
     if chunk_strategy not in CHUNK_STRATEGIES:
         raise ValueError(
             f"Invalid chunk_strategy '{chunk_strategy}'. "
@@ -211,9 +308,36 @@ def remember_document(
     keys: list[str] = []
     skipped = 0
 
+    preference_keys: list[str] = []
+    fact_count = 0
+
     for idx, chunk_text in enumerate(chunks):
         if len(chunk_text) > MAX_CONTENT_LENGTH:
             chunk_text = chunk_text[:MAX_CONTENT_LENGTH]
+
+        # Full mode: extract facts from this chunk and store each individually,
+        # routing preferences to the preference namespace.
+        if mode == "full" and namespace != "knowledge":
+            facts = extract_facts(chunk_text)
+            if facts:
+                fact_count += len(facts)
+                for fact in facts:
+                    new_key = _store_extracted_fact(
+                        store, embedder, fact,
+                        project=project, tags=tags,
+                        base_namespace=namespace,
+                        source_doc_id=doc_id,
+                        now=now,
+                    )
+                    if new_key is None:
+                        skipped += 1
+                        continue
+                    keys.append(new_key)
+                    if new_key.startswith("mem:preference:"):
+                        preference_keys.append(new_key)
+                continue
+            # Fall through to raw chunk storage if extraction yielded nothing
+
         vector = embedder.embed(chunk_text)
         # Skip near-duplicate chunks (e.g. boilerplate paragraphs across docs)
         dup = check_duplicate(store, namespace, vector, chunk_text, project_filter=project)
@@ -240,8 +364,8 @@ def remember_document(
         keys.append(key)
 
     logger.info(
-        "Stored document doc_id=%s chunks=%d stored=%d skipped_dupes=%d strategy=%s",
-        doc_id, len(chunks), len(keys), skipped, chunk_strategy,
+        "Stored document doc_id=%s mode=%s chunks=%d stored=%d facts=%d preferences=%d skipped_dupes=%d strategy=%s",
+        doc_id, mode, len(chunks), len(keys), fact_count, len(preference_keys), skipped, chunk_strategy,
     )
     return {
         "doc_id": doc_id,
@@ -250,6 +374,9 @@ def remember_document(
         "chunks_total": len(chunks),
         "duplicates_skipped": skipped,
         "namespace": namespace,
+        "mode": mode,
+        "facts_extracted": fact_count,
+        "preference_keys": preference_keys,
     }
 
 

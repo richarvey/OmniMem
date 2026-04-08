@@ -88,8 +88,13 @@ def test_chunk_dispatch_routes_correctly():
 
 
 @pytest.fixture
-def wired(fake_store, fake_embedder, lifecycle, pipeline):
-    """Wire the fakes into the tools package the same way server.py does."""
+def wired(fake_store, fake_embedder, lifecycle, pipeline, monkeypatch):
+    """Wire the fakes into the tools package the same way server.py does.
+
+    Forces INGEST_MODE=raw so chunking tests don't depend on Claude API.
+    Mode-specific tests live in test_extraction.py.
+    """
+    monkeypatch.setenv("INGEST_MODE", "raw")
     import tools as tools_pkg
 
     tools_pkg._store = fake_store
