@@ -9,7 +9,7 @@ from . import _compact
 
 logger = logging.getLogger(__name__)
 
-_VALID_NAMESPACES = {"episodic", "project", "knowledge"}
+_VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
 
 
 def _get_deps():
@@ -219,6 +219,37 @@ def explain_memory(key: str) -> dict[str, Any]:
         result["feed_name"] = data["feed_name"]
 
     return _compact(result)
+
+
+def reindex(namespace: str | None = None) -> dict[str, Any]:
+    """Drop and recreate Valkey search indexes to clear orphaned vector entries.
+
+    Use when `health` reports a drift between index num_docs and actual
+    record counts (typically caused by deletes that the search module
+    didn't observe — e.g. when keyspace notifications were disabled).
+
+    Data-safe: only the index is dropped, not the underlying memory hashes.
+
+    Args:
+        namespace: 'episodic', 'project', or 'knowledge'. If omitted,
+                   reindexes all three.
+    """
+    store, _ = _get_deps()
+
+    if namespace is not None and namespace not in _VALID_NAMESPACES:
+        raise ValueError(
+            f"Invalid namespace '{namespace}'. "
+            f"Must be one of: {', '.join(sorted(_VALID_NAMESPACES))}"
+        )
+
+    targets = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
+    results = [store.reindex_namespace(ns) for ns in targets]
+
+    return {
+        "status": "ok",
+        "reindexed": results,
+        "total_phantoms_removed": sum(r["removed_phantoms"] for r in results),
+    }
 
 
 def _safe_json_loads(raw: str | None) -> Any:
