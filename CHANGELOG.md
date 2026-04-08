@@ -4,6 +4,21 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-04-08
+### Added
+- **`remember_document()` MCP tool** ([#15](https://codeberg.org/ric_harvey/omnimem/issues/15)): a new tool for indexing long-form content. Splits input via one of four chunking strategies (`turn_pairs` for User:/Assistant: transcripts, `sentences`, `paragraphs`, `fixed_tokens`) and stores each chunk as an individual memory linked by a shared `doc_id`, with `chunk_index` and `chunk_strategy` metadata. Driven by the LongMemEval benchmark finding that whole-session storage produced 45% zero-recall on 500-2000 word inputs while turn-pair chunking dropped that to 0%
+- **Built-in query expansion for `recall()`** ([#16](https://codeberg.org/ric_harvey/omnimem/issues/16)): new `expand_queries` flag on `recall()` and `recall_index()`. When enabled, generates alternative phrasings of the query via Claude Haiku and unions the results, deduplicating by key and keeping the best `adjusted_score` per memory. Variants are cached in Valkey under `qexp:<sha1>` with a 24h TTL so repeated queries don't re-bill the API. Configurable via `RECALL_EXPAND_QUERIES` (default `false`) and `RECALL_EXPAND_COUNT` (default `3`) env vars
+- **Fact extraction at ingest** ([#17](https://codeberg.org/ric_harvey/omnimem/issues/17)): new `mode` parameter on `remember()` and `remember_document()`. In `full` mode (the new default), Claude Haiku extracts atomic declarative facts from raw input before storing each as its own memory. Preference-shaped facts ("I prefer X", "always do Y") are routed automatically to a new `preference` namespace. Each extracted fact carries a `source_doc_id` linking back to the original input. Configurable via `INGEST_MODE` env var (`full` default, `raw` to opt out). Falls back to raw automatically when no API key is set or extraction errors out
+- **Preference namespace**: a new fourth memory namespace alongside episodic, project, and knowledge. Preferences are prescriptive ("always update README and CHANGELOG after a feature lands") rather than descriptive. Has its own Valkey search index, key prefix (`mem:preference:`), and pink badge in the web UI. Surfaced on the dashboard, memories list, create form, backups export, telemetry, and duplicates scan
+- **Temporal-aware retrieval**: new scoring multiplier in the recall pipeline. When the query contains date language ("yesterday", "last Tuesday", "in March"), `dateparser` extracts the referenced date and any matching memory's `event_date` is used to compute a 1.0–1.5x score boost on a linear falloff (full boost within ±7 days, decaying to 1.0 at ±60 days). A cheap regex pre-filter avoids paying the dateparser cost on every recall — only queries that look temporal trigger the parse. `event_date` is now stored on the episodic and preference indexes and surfaced via `RecallResult` and the `recall()` tool output
+- **New env vars**: `INGEST_MODE`, `RECALL_EXPAND_QUERIES`, `RECALL_EXPAND_COUNT`
+- **New dependency**: `dateparser>=1.2.0` for temporal query parsing
+- **47 new tests** covering chunking strategies, query expansion (cache + variant union + dedupe), preference namespace plumbing, temporal scoring, fact extraction parsing, and ingest mode routing
+### Changed
+- **Default ingest behaviour**: `remember()` now extracts atomic facts before storing by default. Set `INGEST_MODE=raw` to restore the previous verbatim behaviour. The fallback path is automatic — deployments without an Anthropic key keep working unchanged
+- **Recall pipeline searches four namespaces** instead of three (episodic, project, knowledge, preference)
+- **Index migration on startup** automatically picks up the new `idx:preference` index — no manual reindex needed on existing deployments
+
 ## [4.0.1] - 2026-04-08
 ### Added
 - **Brand icon for the OAuth connector** ([#12](https://codeberg.org/ric_harvey/omnimem/issues/12)): an embedded SVG mark is now served from `/icon.svg`, `/favicon.svg`, `/favicon.ico`, and `/oauth/icon.svg` so claude.ai (and other OAuth MCP clients) can display a recognisable logo for the OmniMem connector regardless of which discovery convention they use

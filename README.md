@@ -21,7 +21,7 @@ OmniMem fixes that. It is a self-hosted MCP server that gives Claude Code persis
 
 ## What it does
 
-OmniMem gives Claude Code three things it currently lacks.
+OmniMem gives Claude Code four things it currently lacks.
 
 **Episodic memory** is the decisions you made, the bugs you fixed, the patterns you discovered. The things that took real effort to learn and should not have to be re-learned every morning.
 
@@ -29,7 +29,9 @@ OmniMem gives Claude Code three things it currently lacks.
 
 **Passive knowledge** comes from RSS feeds you configure. They get fetched on a schedule, summarised by Claude Haiku, embedded, and stored. When you are working on a Rust problem and a relevant article was ingested last week, it surfaces as a starting point worth reading.
 
-All three namespaces are searched together at recall time. The top result might be a decision from six months ago on a different project, a solution from yesterday, or an article that landed in your knowledge base on Tuesday night. It does not matter where it came from as long as it is useful.
+**Preferences** are prescriptive rules about how you want to work — "always update the README and CHANGELOG after a feature lands", "prefer terse responses with no trailing summary". These are extracted from your conversations automatically (via the new fact-extraction ingest mode) and surfaced whenever they apply.
+
+All four namespaces are searched together at recall time. The top result might be a decision from six months ago on a different project, a solution from yesterday, or an article that landed in your knowledge base on Tuesday night. It does not matter where it came from as long as it is useful.
 
 ---
 
@@ -235,8 +237,9 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 
 | Tool | What it does |
 |---|---|
-| `remember(content, project?, tags?, force?)` | Store a memory (auto-checks for duplicates and contradictions) |
-| `recall(query, top_k?, project_filter?)` | Semantic search across all namespaces |
+| `remember(content, project?, tags?, force?, mode?)` | Store a memory. In `full` mode (default) extracts atomic facts via Claude Haiku and routes preferences to the preference namespace; `raw` stores verbatim. Auto-checks for duplicates and contradictions |
+| `remember_document(content, chunk_strategy, project?, tags?, namespace?, chunk_size?, mode?)` | Index a long-form document by splitting it into chunks (`turn_pairs`, `sentences`, `paragraphs`, or `fixed_tokens`) and storing each as a memory linked by a shared `doc_id` |
+| `recall(query, top_k?, project_filter?, expand_queries?)` | Semantic search across all namespaces. With `expand_queries=true`, generates alternative phrasings via Claude Haiku and unions the results to improve recall coverage when query vocabulary doesn't match stored content |
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Soft-suppress without deleting |
 | `archive(key_or_query)` | Remove from recall but keep for history |
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
@@ -311,6 +314,9 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |
 | `DEPRIORITISED_WEIGHT` | `0.2` | Surface score for deprioritised memories |
 | `RECENCY_DECAY_DAYS` | `90` | Days before the age penalty kicks in |
+| `INGEST_MODE` | `full` | `full` extracts atomic facts via Claude Haiku before storing and routes preferences to the preference namespace; `raw` stores verbatim. Falls back to raw automatically when no API key is set |
+| `RECALL_EXPAND_QUERIES` | `false` | Globally enable query expansion on `recall()`. Generates alternative phrasings via Claude Haiku and unions the results |
+| `RECALL_EXPAND_COUNT` | `3` | Number of variant queries to generate when expansion is enabled |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |

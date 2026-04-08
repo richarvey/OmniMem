@@ -2,9 +2,9 @@
 
 ## What is this?
 
-Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via three namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), and knowledge base (RSS articles auto-summarised by Claude Haiku).
+Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature").
 
-**Version**: 4.0.0
+**Version**: 5.0.0
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
