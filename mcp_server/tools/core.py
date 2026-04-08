@@ -8,6 +8,7 @@ from typing import Any
 
 import ulid
 
+from memory.chunking import chunk as chunk_content, VALID_STRATEGIES as CHUNK_STRATEGIES
 from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
 from memory.embedder import Embedder
@@ -164,6 +165,92 @@ def remember(
     if contradiction_warning:
         result["contradiction_warning"] = contradiction_warning
     return result
+
+
+def remember_document(
+    content: str,
+    chunk_strategy: str = "paragraphs",
+    project: str | None = None,
+    tags: list[str] | None = None,
+    namespace: str = "episodic",
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Index a long-form document by splitting it into chunks and storing each chunk as a memory.
+
+    Use this instead of remember() for conversation transcripts, articles, meeting notes,
+    or any content longer than a focused fact. Returns the list of inserted keys plus a
+    shared doc_id so callers can clean up or group them later.
+
+    Args:
+        content: Long-form text to index.
+        chunk_strategy: 'turn_pairs' (User:/Assistant: transcripts), 'sentences',
+            'paragraphs' (default), or 'fixed_tokens'.
+        project: Project to scope these memories to.
+        tags: Categorisation tags applied to every chunk.
+        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        chunk_size: Words per chunk for fixed_tokens strategy (default 200).
+    """
+    store, embedder, _, _ = _get_deps()
+
+    _validate_namespace(namespace)
+    _validate_content(content)
+    _validate_project_name(project)
+    _validate_tags(tags)
+    if chunk_strategy not in CHUNK_STRATEGIES:
+        raise ValueError(
+            f"Invalid chunk_strategy '{chunk_strategy}'. "
+            f"Must be one of: {', '.join(sorted(CHUNK_STRATEGIES))}"
+        )
+
+    chunks = chunk_content(content, chunk_strategy, chunk_size=chunk_size)
+    if not chunks:
+        return {"doc_id": None, "keys": [], "chunks_stored": 0}
+
+    doc_id = ulid.new().str
+    now = str(time.time())
+    keys: list[str] = []
+    skipped = 0
+
+    for idx, chunk_text in enumerate(chunks):
+        if len(chunk_text) > MAX_CONTENT_LENGTH:
+            chunk_text = chunk_text[:MAX_CONTENT_LENGTH]
+        vector = embedder.embed(chunk_text)
+        # Skip near-duplicate chunks (e.g. boilerplate paragraphs across docs)
+        dup = check_duplicate(store, namespace, vector, chunk_text, project_filter=project)
+        if dup is not None:
+            skipped += 1
+            continue
+
+        key = f"mem:{namespace}:{ulid.new().str}"
+        fields: dict[str, Any] = {
+            "content": chunk_text,
+            "state": MemoryState.ACTIVE.value,
+            "surface_score": "1.0",
+            "experience_weight": "1.0",
+            "created_at": now,
+            "updated_at": now,
+            "tags": json.dumps(tags or []),
+            "doc_id": doc_id,
+            "chunk_index": str(idx),
+            "chunk_strategy": chunk_strategy,
+        }
+        if project:
+            fields["project"] = project
+        store.upsert(namespace, key, fields, vector)
+        keys.append(key)
+
+    logger.info(
+        "Stored document doc_id=%s chunks=%d stored=%d skipped_dupes=%d strategy=%s",
+        doc_id, len(chunks), len(keys), skipped, chunk_strategy,
+    )
+    return {
+        "doc_id": doc_id,
+        "keys": keys,
+        "chunks_stored": len(keys),
+        "chunks_total": len(chunks),
+        "duplicates_skipped": skipped,
+        "namespace": namespace,
+    }
 
 
 def recall(

@@ -175,7 +175,7 @@ def _register_tools() -> None:
     """Register all MCP tools from tool modules."""
     from tools.core import (
         version,
-        remember, recall, recall_index, recall_detail,
+        remember, remember_document, recall, recall_index, recall_detail,
         deprioritise, archive, reinstate, forget,
         suppress_topic, unsuppress_topic, list_suppressions, find_duplicates,
     )
@@ -183,7 +183,7 @@ def _register_tools() -> None:
         set_project_context, get_project_context, list_projects,
         update_project_state, compile_project_context,
     )
-    from tools.audit import memory_audit, why_did_you_mention, explain_memory
+    from tools.audit import memory_audit, why_did_you_mention, explain_memory, reindex
     from tools.experience import (
         record_experience, log_abandoned, get_experience,
         experience_summary, warn_if_abandoned,
@@ -196,6 +196,7 @@ def _register_tools() -> None:
     # Core tools
     mcp.tool()(version)
     mcp.tool()(remember)
+    mcp.tool()(remember_document)
     mcp.tool()(recall)
     mcp.tool()(recall_index)
     mcp.tool()(recall_detail)
@@ -219,6 +220,7 @@ def _register_tools() -> None:
     mcp.tool()(memory_audit)
     mcp.tool()(why_did_you_mention)
     mcp.tool()(explain_memory)
+    mcp.tool()(reindex)
 
     # Experience tools
     mcp.tool()(record_experience)
@@ -253,6 +255,8 @@ def health() -> dict:
     result = {
         "valkey_connected": False,
         "indexes": {},
+        "records": {},
+        "drift": {},
         "model_loaded": False,
         "uptime_seconds": round(time.time() - _start_time, 1),
     }
@@ -263,12 +267,23 @@ def health() -> dict:
             store.client.ping()
             result["valkey_connected"] = True
 
-            for idx_name in ["idx:episodic", "idx:project", "idx:knowledge"]:
+            for namespace in ("episodic", "project", "knowledge"):
+                idx_name = f"idx:{namespace}"
+                num_docs: int | str
                 try:
                     info = store.client.ft(idx_name).info()
-                    result["indexes"][idx_name] = info.get("num_docs", 0)
+                    num_docs = int(info.get("num_docs", 0))
                 except Exception:
-                    result["indexes"][idx_name] = "unavailable"
+                    num_docs = "unavailable"
+                result["indexes"][idx_name] = num_docs
+
+                try:
+                    actual = store.count_records(namespace)
+                    result["records"][namespace] = actual
+                    if isinstance(num_docs, int) and num_docs != actual:
+                        result["drift"][namespace] = num_docs - actual
+                except Exception:
+                    result["records"][namespace] = "unavailable"
     except Exception:
         result["valkey_error"] = "connection_failed"
 
