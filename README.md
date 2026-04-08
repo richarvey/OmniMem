@@ -305,6 +305,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `OAUTH_BASE_URL` | *(unset)* | Externally-reachable URL of your OmniMem instance (e.g. `https://mcp.example.com`). Required when OAuth is enabled |
 | `OAUTH_ADMIN_USER` | *(unset)* | Username for the OAuth admin account. Required when OAuth is enabled |
 | `OAUTH_ADMIN_PASSWORD` | *(unset)* | Password for the OAuth admin account. Required when OAuth is enabled |
+| `OAUTH_REFRESH_MAX_DAYS` | `30` | Absolute lifetime of an OAuth refresh-token chain. Each rotation silently re-issues tokens without re-prompting the user, until this cap is reached. Hard-capped at `90` |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
 | `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |

@@ -1,6 +1,7 @@
 """OmniMem OAuth 2.1 provider — single admin user, pluggable storage backend."""
 
 import logging
+import os
 import secrets
 import time
 
@@ -15,23 +16,70 @@ logger = logging.getLogger("omnimem.oauth")
 
 # Token lifetimes (seconds)
 ACCESS_TOKEN_EXPIRY = 3600  # 1 hour
-REFRESH_TOKEN_EXPIRY = 30 * 24 * 3600  # 30 days
 AUTH_CODE_EXPIRY = 300  # 5 minutes
+
+# Refresh token absolute lifetime — configurable, hard-capped at 90 days.
+# Refresh tokens are rotated on each use; the new token inherits the original
+# chain's absolute_expires_at, so an active session never re-prompts for login
+# until the absolute cap is reached.
+_REFRESH_MAX_DAYS_DEFAULT = 30
+_REFRESH_MAX_DAYS_HARD_CAP = 90
+
+
+def _refresh_max_seconds() -> int:
+    raw = os.getenv("OAUTH_REFRESH_MAX_DAYS", str(_REFRESH_MAX_DAYS_DEFAULT))
+    try:
+        days = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid OAUTH_REFRESH_MAX_DAYS=%r, falling back to %d",
+            raw, _REFRESH_MAX_DAYS_DEFAULT,
+        )
+        days = _REFRESH_MAX_DAYS_DEFAULT
+    if days < 1:
+        days = 1
+    if days > _REFRESH_MAX_DAYS_HARD_CAP:
+        logger.warning(
+            "OAUTH_REFRESH_MAX_DAYS=%d exceeds hard cap, clamping to %d",
+            days, _REFRESH_MAX_DAYS_HARD_CAP,
+        )
+        days = _REFRESH_MAX_DAYS_HARD_CAP
+    return days * 24 * 3600
+
+
+# Evaluated at import time for the module-level constant tests reference,
+# but the provider re-reads on each issue so env changes during a process
+# are picked up.
+REFRESH_TOKEN_EXPIRY = _refresh_max_seconds()
 
 
 class _StoredToken:
-    """Access or refresh token record. Stored via the storage backend."""
+    """Access or refresh token record. Stored via the storage backend.
 
-    __slots__ = ("token", "client_id", "scopes", "created_at", "expires_in")
+    ``absolute_expires_at`` is set on refresh tokens at initial issue and is
+    carried forward unchanged across rotations, enforcing an absolute cap on
+    the refresh chain regardless of how often it is renewed.
+    """
+
+    __slots__ = (
+        "token", "client_id", "scopes", "created_at", "expires_in",
+        "absolute_expires_at",
+    )
 
     def __init__(
-        self, token: str, client_id: str, scopes: list[str], expires_in: int
+        self,
+        token: str,
+        client_id: str,
+        scopes: list[str],
+        expires_in: int,
+        absolute_expires_at: float | None = None,
     ) -> None:
         self.token = token
         self.client_id = client_id
         self.scopes = scopes
         self.created_at = time.time()
         self.expires_in = expires_in
+        self.absolute_expires_at = absolute_expires_at
 
     @property
     def expired(self) -> bool:
@@ -195,6 +243,9 @@ class OmniMemOAuthProvider(OAuthProvider):
         refresh = secrets.token_urlsafe(32)
         scopes = authorization_code.scopes or []
 
+        max_seconds = _refresh_max_seconds()
+        absolute_expires_at = time.time() + max_seconds
+
         self._storage.save_access(
             _StoredToken(
                 token=access,
@@ -208,7 +259,8 @@ class OmniMemOAuthProvider(OAuthProvider):
                 token=refresh,
                 client_id=client.client_id,
                 scopes=scopes,
-                expires_in=REFRESH_TOKEN_EXPIRY,
+                expires_in=max_seconds,
+                absolute_expires_at=absolute_expires_at,
             )
         )
 
@@ -262,6 +314,14 @@ class OmniMemOAuthProvider(OAuthProvider):
         new_access = secrets.token_urlsafe(32)
         new_refresh = secrets.token_urlsafe(32)
 
+        # Carry the original chain's absolute cap forward. Tokens issued
+        # before the field existed get a fresh cap so they aren't immediately
+        # invalidated on upgrade.
+        absolute_expires_at = getattr(refresh_token, "absolute_expires_at", None)
+        if absolute_expires_at is None:
+            absolute_expires_at = time.time() + _refresh_max_seconds()
+        new_expires_in = max(1, int(absolute_expires_at - time.time()))
+
         self._storage.save_access(
             _StoredToken(
                 token=new_access,
@@ -275,7 +335,8 @@ class OmniMemOAuthProvider(OAuthProvider):
                 token=new_refresh,
                 client_id=client.client_id,
                 scopes=effective_scopes,
-                expires_in=REFRESH_TOKEN_EXPIRY,
+                expires_in=new_expires_in,
+                absolute_expires_at=absolute_expires_at,
             )
         )
 

@@ -4,6 +4,12 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-04-08
+### Changed
+- **OAuth refresh tokens now extend session lifetime via rotation**: each `/token` refresh issues a new access+refresh pair without re-prompting the user. Refresh tokens carry an `absolute_expires_at` cap that is preserved across rotations, so an active claude.ai connector silently refreshes forever within the configured window and only re-auths once the absolute cap is reached
+- **New `OAUTH_REFRESH_MAX_DAYS` env var** controls the absolute lifetime of a refresh-token chain. Default `30`, hard-capped at `90`. Invalid or out-of-range values fall back to the default with a warning
+- **Storage backend** persists `absolute_expires_at` so the cap survives `mcp_server` restarts. Pre-upgrade tokens without the field get a fresh cap on first rotation rather than being invalidated
+
 ## [5.0.0] - 2026-04-08
 ### Added
 - **`remember_document()` MCP tool** ([#15](https://codeberg.org/ric_harvey/omnimem/issues/15)): a new tool for indexing long-form content. Splits input via one of four chunking strategies (`turn_pairs` for User:/Assistant: transcripts, `sentences`, `paragraphs`, `fixed_tokens`) and stores each chunk as an individual memory linked by a shared `doc_id`, with `chunk_index` and `chunk_strategy` metadata. Driven by the LongMemEval benchmark finding that whole-session storage produced 45% zero-recall on 500-2000 word inputs while turn-pair chunking dropped that to 0%
