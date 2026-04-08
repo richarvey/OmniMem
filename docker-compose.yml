@@ -5,6 +5,7 @@ services:
       valkey-server
       --loadmodule /usr/lib/valkey/libsearch.so
       --requirepass ${VALKEY_PASSWORD}
+      --notify-keyspace-events AKE
     volumes:
       - valkey_data:/data
     environment:
