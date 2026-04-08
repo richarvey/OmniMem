@@ -11,6 +11,7 @@ import numpy as np
 
 from .embedder import Embedder
 from .lifecycle import MemoryLifecycle, MemoryState
+from .query_expansion import expand_query
 from .store import ValkeyStore
 
 logger = logging.getLogger(__name__)
@@ -70,14 +71,26 @@ class RecallPipeline:
         namespaces: list[str] | None = None,
         top_k: int | None = None,
         project_filter: str | None = None,
+        expand_queries: bool | None = None,
     ) -> list[RecallResult]:
-        """Full recall pipeline: abandoned fast-path, search, score, rank."""
+        """Full recall pipeline: abandoned fast-path, search, score, rank.
+
+        When expand_queries is True (or RECALL_EXPAND_QUERIES env var is set),
+        the query is expanded into N variants via Claude Haiku and results are
+        unioned across all variants, deduplicated by key, and ranked by best
+        adjusted_score.
+        """
         if top_k is None:
             top_k = int(os.getenv("MEMORY_RECALL_TOP_K", "5"))
         # Clamp top_k to a sane range
         top_k = max(1, min(top_k, 50))
         if namespaces is None:
             namespaces = NAMESPACES
+
+        if expand_queries is None:
+            expand_queries = os.getenv("RECALL_EXPAND_QUERIES", "").strip().lower() in (
+                "true", "1", "yes",
+            )
 
         results: list[RecallResult] = []
 
@@ -204,7 +217,37 @@ class RecallPipeline:
                     contradictions=contradictions,
                 ))
 
-        # Step 10: Sort by adjusted_score descending
+        # Step 9b: Query expansion — run additional searches for each variant
+        # and merge results by key, keeping the highest adjusted_score.
+        if expand_queries:
+            try:
+                variants = expand_query(query, store=self.store)
+            except Exception as exc:
+                logger.warning("Query expansion failed, using original only: %s", exc)
+                variants = []
+            for variant in variants:
+                if not variant or variant == query:
+                    continue
+                variant_results = self._search_variant(
+                    variant=variant,
+                    namespaces=namespaces,
+                    project_filter=project_filter,
+                    suppressed_topics=suppressed_topics,
+                    recency_decay_days=recency_decay_days,
+                    now=now,
+                )
+                results.extend(variant_results)
+            if variants:
+                logger.debug("Query expansion produced %d variants", len(variants))
+
+        # Step 10: Dedupe by key (keep best adjusted_score) and sort
+        if expand_queries:
+            best: dict[str, RecallResult] = {}
+            for r in results:
+                existing = best.get(r.key)
+                if existing is None or r.adjusted_score > existing.adjusted_score:
+                    best[r.key] = r
+            results = list(best.values())
         results.sort(key=lambda r: r.adjusted_score, reverse=True)
 
         # Step 11: Return top_k
@@ -214,6 +257,93 @@ class RecallPipeline:
         self.log_recall_event(query, final)
 
         return final
+
+    def _search_variant(
+        self,
+        variant: str,
+        namespaces: list[str],
+        project_filter: str | None,
+        suppressed_topics: list[str],
+        recency_decay_days: int,
+        now: float,
+    ) -> list[RecallResult]:
+        """Run vector search for one query variant. Used by query expansion.
+
+        This intentionally mirrors the main per-namespace loop in recall() —
+        same scoring, same filters — but skips the abandoned fast-path and
+        recall logging which only run once per top-level call.
+        """
+        out: list[RecallResult] = []
+        query_vector = self.embedder.embed(variant)
+        for ns in namespaces:
+            raw_results = self.store.search(ns, query_vector, top_k=20)
+            for doc in raw_results:
+                state_str = doc.get("state", "active")
+                if state_str in (MemoryState.ARCHIVED.value, MemoryState.DELETED.value):
+                    continue
+                content = doc.get("content", "")
+                if suppressed_topics:
+                    content_lower = content.lower()
+                    if any(topic in content_lower for topic in suppressed_topics):
+                        continue
+                doc_project = doc.get("project") or doc.get("project_name")
+                if project_filter and doc_project != project_filter:
+                    continue
+
+                raw_score = max(0.0, 1.0 - float(doc.get("similarity_score", "1.0")))
+                surface_score = float(doc.get("surface_score", "1.0"))
+                created_at = float(doc.get("created_at", str(now)))
+                age_days = (now - created_at) / 86400
+                recency_multiplier = 1.0
+                if age_days > recency_decay_days:
+                    excess_periods = (age_days - recency_decay_days) / 30.0
+                    recency_multiplier = max(1.0 - 0.05 * excess_periods, 0.3)
+                exp_weight = float(doc.get("experience_weight", "1.0"))
+                adjusted_score = raw_score * surface_score * recency_multiplier * exp_weight
+
+                tags_raw = doc.get("tags", "[]")
+                try:
+                    tags = json.loads(tags_raw) if tags_raw else []
+                except (json.JSONDecodeError, TypeError):
+                    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if isinstance(tags_raw, str) else []
+
+                effort_raw = doc.get("effort_score")
+                effort = None
+                if effort_raw is not None:
+                    try:
+                        effort = int(float(effort_raw))
+                    except (ValueError, TypeError):
+                        pass
+
+                contradictions_raw = doc.get("contradictions", "[]")
+                try:
+                    contradictions = json.loads(contradictions_raw) if contradictions_raw else []
+                except (json.JSONDecodeError, TypeError):
+                    contradictions = []
+
+                result_type = "knowledge" if ns == "knowledge" else "memory"
+
+                out.append(RecallResult(
+                    key=doc.get("key", ""),
+                    namespace=ns,
+                    content=content,
+                    score=raw_score,
+                    adjusted_score=adjusted_score,
+                    state=state_str,
+                    project=doc_project,
+                    source_url=doc.get("source_url"),
+                    published_at=doc.get("published_at"),
+                    reinstate_candidate=False,
+                    tags=tags,
+                    deprioritised_reason=doc.get("deprioritised_reason"),
+                    effort_score=effort,
+                    outcome=doc.get("outcome"),
+                    experience_weight=exp_weight,
+                    result_type=result_type,
+                    breakthrough=doc.get("breakthrough"),
+                    contradictions=contradictions,
+                ))
+        return out
 
     def warn_if_abandoned(self, query: str) -> list[dict[str, Any]]:
         """Keyword scan for abandoned approaches matching the query.

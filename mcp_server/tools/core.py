@@ -258,6 +258,7 @@ def recall(
     top_k: int = 5,
     namespaces: list[str] | None = None,
     project_filter: str | None = None,
+    expand_queries: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Search memories by semantic similarity. Returns ranked results; abandoned-approach warnings appear first.
 
@@ -266,6 +267,8 @@ def recall(
         top_k: Max results (default 5).
         namespaces: Namespaces to search ('episodic', 'project', 'knowledge'). All by default.
         project_filter: Restrict to a project.
+        expand_queries: If True, generate alternative phrasings via Claude Haiku and union
+            the results. Default follows the RECALL_EXPAND_QUERIES env var.
     """
     _, _, _, pipeline = _get_deps()
 
@@ -281,6 +284,7 @@ def recall(
         namespaces=namespaces,
         top_k=top_k,
         project_filter=project_filter,
+        expand_queries=expand_queries,
     )
 
     output: list[dict[str, Any]] = []
@@ -324,6 +328,7 @@ def recall_index(
     namespaces: list[str] | None = None,
     project_filter: str | None = None,
     snippet_length: int = 150,
+    expand_queries: bool | None = None,
 ) -> dict[str, Any]:
     """Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
 
@@ -350,6 +355,7 @@ def recall_index(
         namespaces=namespaces,
         top_k=top_k,
         project_filter=project_filter,
+        expand_queries=expand_queries,
     )
 
     output: list[dict[str, Any]] = []
