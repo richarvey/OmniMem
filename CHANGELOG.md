@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.1.2] - 2026-04-09
+### Fixed
+- **`remember(force=True)` 5x slower than necessary** ([#18](https://codeberg.org/ric_harvey/omnimem/issues/18)): the Tier 1 contradiction heuristic (a vector search + negation scan) was running unconditionally on every `remember()` call, adding ~1.3s per write even when `force=True` should be a raw bypass. Contradiction check and full-mode extracted-fact dedup are now skipped when `force=True`. Expected improvement: ~1.7s → ~0.4s per call, reducing bulk ingestion time from ~59h to ~3.5h for a 500-item LongMemEval run
+
 ## [5.1.1] - 2026-04-09
 ### Fixed
 - **`reindex` tool failing with "Index already exists"**: the valkey-py client wrapper's `.dropindex()` method was returning a response the client misinterpreted as an error, so the try/except in `reindex_namespace()` silently swallowed it and the index was never actually dropped. The subsequent `create_index()` then failed because the old index was still in place. Switched to `execute_command("FT.DROPINDEX", idx_name)` directly, which works reliably, and stopped swallowing unexpected errors so any future failures surface to the caller instead of being hidden
