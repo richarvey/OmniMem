@@ -4,6 +4,11 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.2.1] - 2026-04-09
+### Added
+- **`queue_status()` MCP tool** ([#19](https://codeberg.org/ric_harvey/omnimem/issues/19)): returns the number of pending enrichment jobs in the Valkey queue. Benchmark runners can poll this between ingest and scoring phases to know when background fact extraction has completed
+- **Dashboard enrichment indicator**: the web UI dashboard now shows enrichment queue status as a health indicator — green when the queue is empty, amber with a count when jobs are pending
+
 ## [5.2.0] - 2026-04-09
 ### Added
 - **Async enrichment queue** ([#19](https://codeberg.org/ric_harvey/omnimem/issues/19)): `remember()` and `remember_document()` in full mode now store content raw (embed + write, ~0.25s) and return immediately. A background `EnrichmentWorker` daemon thread pops keys from a Valkey-backed queue (`queue:enrich`), runs fact extraction via Claude Haiku, and writes extracted facts/preferences as new linked memories. The queue persists across mcp_server restarts. The return payload includes `enrichment: "queued"` so callers know enrichment is in progress
