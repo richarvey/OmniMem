@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-04-09
+### Added
+- **Async enrichment queue** ([#19](https://codeberg.org/ric_harvey/omnimem/issues/19)): `remember()` and `remember_document()` in full mode now store content raw (embed + write, ~0.25s) and return immediately. A background `EnrichmentWorker` daemon thread pops keys from a Valkey-backed queue (`queue:enrich`), runs fact extraction via Claude Haiku, and writes extracted facts/preferences as new linked memories. The queue persists across mcp_server restarts. The return payload includes `enrichment: "queued"` so callers know enrichment is in progress
+- **Batch extraction mode**: when `ENRICHMENT_BATCH_MODE=true`, `remember_document()` sends all chunks as a single enrichment job so the background worker makes one Haiku API call instead of N. Returns `enrichment: "batch_queued"`. Off by default; enable for benchmark runs or large document ingestion where API call reduction matters
+- **New env var**: `ENRICHMENT_BATCH_MODE` (default `false`)
+### Changed
+- **Full-mode ingest is now non-blocking**: the synchronous fact extraction loop that previously ran inline during `remember()` and `remember_document()` has been replaced by the async queue. Callers no longer wait for Haiku API calls to complete before getting a response
+
 ## [5.1.2] - 2026-04-09
 ### Fixed
 - **`remember(force=True)` 5x slower than necessary** ([#18](https://codeberg.org/ric_harvey/omnimem/issues/18)): the Tier 1 contradiction heuristic (a vector search + negation scan) was running unconditionally on every `remember()` call, adding ~1.3s per write even when `force=True` should be a raw bypass. Contradiction check and full-mode extracted-fact dedup are now skipped when `force=True`. Expected improvement: ~1.7s → ~0.4s per call, reducing bulk ingestion time from ~59h to ~3.5h for a 500-item LongMemEval run
