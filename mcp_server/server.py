@@ -168,6 +168,13 @@ def _init() -> None:
     # One-time migration: set project_name on ULID-keyed project memories
     _migrate_project_names(store)
 
+    # Start background enrichment worker for async fact extraction
+    from memory.enrichment import EnrichmentWorker
+
+    enrichment_worker = EnrichmentWorker(store, embedder)
+    enrichment_worker.start()
+    tools_pkg._enrichment_worker = enrichment_worker
+
     logger.info("OmniMem initialised successfully")
 
 

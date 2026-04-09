@@ -110,69 +110,78 @@ def test_extract_facts_swallows_api_failure(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_remember_full_mode_routes_preferences(monkeypatch, wired, fake_store):
-    """Preferences extracted from raw text land in the preference namespace."""
+def test_remember_full_mode_enqueues_enrichment(monkeypatch, wired, fake_store):
+    """Full mode stores raw immediately and signals enrichment=queued."""
     from tools import core
 
     monkeypatch.setenv("INGEST_MODE", "full")
-    monkeypatch.setattr(
-        core, "extract_facts",
-        lambda content: [
-            ExtractedFact(text="OmniMem stores memories in Valkey", kind="fact"),
-            ExtractedFact(text="prefer British English spelling", kind="preference"),
-        ],
-    )
 
     result = core.remember(
         content="OmniMem stores memories in Valkey. I prefer British English spelling.",
         project="omnimem",
     )
-    assert result["mode"] == "full"
-    assert result["facts_extracted"] == 2
-    assert result["facts_stored"] == 2
-    assert len(result["preference_keys"]) == 1
-    assert result["preference_keys"][0].startswith("mem:preference:")
-
-    # Other fact landed in episodic
-    other = [k for k in result["keys"] if k.startswith("mem:episodic:")]
-    assert len(other) == 1
-
-
-def test_remember_full_mode_falls_back_to_raw_when_no_facts(monkeypatch, wired, fake_store):
-    from tools import core
-
-    monkeypatch.setenv("INGEST_MODE", "full")
-    monkeypatch.setattr(core, "extract_facts", lambda content: [])
-
-    result = core.remember(content="some content here", project="omnimem")
-    # Falls through to raw single-memory path
-    assert "key" in result
+    # Raw memory stored immediately
     assert result["key"].startswith("mem:episodic:")
+    assert result["enrichment"] == "queued"
+
+    # Verify the raw memory exists in the store
+    data = fake_store.get(result["key"])
+    assert data is not None
+    assert "OmniMem stores memories" in data["content"]
 
 
-def test_remember_raw_mode_skips_extraction(monkeypatch, wired, fake_store):
-    from tools import core
-
-    called = {"count": 0}
-
-    def tracker(content):
-        called["count"] += 1
-        return []
-
-    monkeypatch.setattr(core, "extract_facts", tracker)
-    core.remember(content="hi there", project="omnimem", mode="raw")
-    assert called["count"] == 0
-
-
-def test_remember_document_full_mode_extracts_per_chunk(monkeypatch, wired, fake_store):
+def test_remember_full_mode_enrichment_worker_routes_preferences(
+    monkeypatch, wired, fake_store, fake_embedder
+):
+    """End-to-end: remember() stores raw, then worker extracts + routes preferences."""
+    from memory import enrichment
     from tools import core
 
     monkeypatch.setenv("INGEST_MODE", "full")
-    # One fact per chunk
-    monkeypatch.setattr(
-        core, "extract_facts",
-        lambda content: [ExtractedFact(text=f"fact-from: {content[:20]}", kind="fact")],
+
+    # Step 1: remember() stores raw + enqueues
+    result = core.remember(
+        content="OmniMem stores memories in Valkey. I prefer British English spelling.",
+        project="omnimem",
     )
+    assert result["enrichment"] == "queued"
+
+    # Step 2: simulate the enrichment worker processing the queue
+    monkeypatch.setattr(
+        enrichment, "extract_facts",
+        lambda content: [
+            ExtractedFact(text="OmniMem stores memories in Valkey", kind="fact"),
+            ExtractedFact(text="prefer British English spelling", kind="preference"),
+        ],
+    )
+    worker = enrichment.EnrichmentWorker(fake_store, fake_embedder)
+    worker._enrich({
+        "key": result["key"],
+        "namespace": "episodic",
+        "project": "omnimem",
+    })
+
+    # Verify: one episodic fact + one preference created
+    new_episodic = [k for k in fake_store._client._data
+                    if k.startswith("mem:episodic:") and k != result["key"]]
+    pref_keys = [k for k in fake_store._client._data if k.startswith("mem:preference:")]
+    assert len(new_episodic) == 1
+    assert len(pref_keys) == 1
+
+
+def test_remember_raw_mode_no_enrichment(monkeypatch, wired, fake_store):
+    from tools import core
+
+    monkeypatch.setenv("INGEST_MODE", "raw")
+    result = core.remember(content="hi there", project="omnimem")
+    assert "enrichment" not in result
+
+
+def test_remember_document_full_mode_enqueues_per_chunk(monkeypatch, wired, fake_store):
+    from tools import core
+
+    monkeypatch.setenv("INGEST_MODE", "full")
+    monkeypatch.delenv("ENRICHMENT_BATCH_MODE", raising=False)
 
     result = core.remember_document(
         content="para one\n\npara two\n\npara three",
@@ -181,24 +190,20 @@ def test_remember_document_full_mode_extracts_per_chunk(monkeypatch, wired, fake
     )
     assert result["mode"] == "full"
     assert result["chunks_total"] == 3
-    assert result["facts_extracted"] == 3
-    assert len(result["keys"]) == 3
+    assert result["chunks_stored"] == 3
+    assert result["enrichment"] == "queued"
 
 
-def test_remember_document_full_mode_routes_preferences(monkeypatch, wired):
+def test_remember_document_full_mode_batch_enqueue(monkeypatch, wired, fake_store):
     from tools import core
 
     monkeypatch.setenv("INGEST_MODE", "full")
-    monkeypatch.setattr(
-        core, "extract_facts",
-        lambda content: [
-            ExtractedFact(text=f"pref from {content[:10]}", kind="preference"),
-        ],
-    )
+    monkeypatch.setenv("ENRICHMENT_BATCH_MODE", "true")
+
     result = core.remember_document(
         content="alpha block\n\nbeta block",
         chunk_strategy="paragraphs",
         project="omnimem",
     )
-    assert len(result["preference_keys"]) == 2
-    assert all(k.startswith("mem:preference:") for k in result["preference_keys"])
+    assert result["enrichment"] == "batch_queued"
+    assert result["chunks_stored"] == 2

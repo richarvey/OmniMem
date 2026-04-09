@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from memory.embedder import Embedder
+    from memory.enrichment import EnrichmentWorker
     from memory.lifecycle import MemoryLifecycle
     from memory.recall import RecallPipeline
     from memory.store import ValkeyStore
@@ -16,6 +17,7 @@ _store: ValkeyStore = None  # type: ignore[assignment]
 _embedder: Embedder = None  # type: ignore[assignment]
 _lifecycle: MemoryLifecycle = None  # type: ignore[assignment]
 _pipeline: RecallPipeline = None  # type: ignore[assignment]
+_enrichment_worker: EnrichmentWorker = None  # type: ignore[assignment]
 
 
 def _compact(d: dict[str, Any]) -> dict[str, Any]:

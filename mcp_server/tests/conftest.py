@@ -67,6 +67,26 @@ class FakeValkeyClient:
     def smembers(self, key):
         return self._sets.get(key, set())
 
+    # --- list commands ---
+    def lpush(self, key, *values):
+        if key not in self._data:
+            self._data[key] = {"_list": []}
+        lst = self._data[key].setdefault("_list", [])
+        for v in values:
+            lst.insert(0, v)
+        return len(lst)
+
+    def brpop(self, key, timeout=0):
+        data = self._data.get(key, {})
+        lst = data.get("_list", [])
+        if lst:
+            return (key, lst.pop())
+        return None
+
+    def llen(self, key):
+        data = self._data.get(key, {})
+        return len(data.get("_list", []))
+
     # --- hash increment ---
     def hincrby(self, key, field, amount=1):
         if key not in self._data:

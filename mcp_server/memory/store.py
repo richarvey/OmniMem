@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Valid key prefixes to prevent writing to arbitrary Valkey keys
 _VALID_KEY_PREFIXES = (
     "mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:",
-    "topics:", "log:recall:", "meta:", "qexp:",
+    "topics:", "log:recall:", "meta:", "qexp:", "queue:",
 )
 
 # Valid namespace names for search index lookups

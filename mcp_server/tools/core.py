@@ -12,6 +12,7 @@ import ulid
 from memory.chunking import chunk as chunk_content, VALID_STRATEGIES as CHUNK_STRATEGIES
 from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
+from memory.enrichment import enqueue, enqueue_batch
 from memory.extraction import extract_facts, ExtractedFact
 from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
@@ -168,71 +169,11 @@ def remember(
     _validate_tags(tags)
     mode = _resolve_mode(mode)
 
-    # Full mode: extract atomic facts first, store each individually.
-    # Falls back to raw if extraction yields nothing (no API key, error, etc).
+    # Full mode: store raw immediately, then enqueue for background
+    # fact extraction. Caller gets instant response; enrichment worker
+    # extracts facts and writes them as linked memories asynchronously.
     # Skipped entirely when force=True — force means raw bypass write.
-    if mode == "full" and namespace != "knowledge" and not force:
-        facts = extract_facts(content)
-        if facts:
-            now = str(time.time())
-            doc_id = ulid.new().str
-            stored_keys: list[str] = []
-            preference_keys: list[str] = []
-            skipped = 0
-            for fact in facts:
-                # Skip dedup in the extraction path when force=True
-                if force:
-                    target_ns = "preference" if fact.kind == "preference" else namespace
-                    vector = embedder.embed(fact.text)
-                    fkey = f"mem:{target_ns}:{ulid.new().str}"
-                    fields: dict[str, Any] = {
-                        "content": fact.text,
-                        "state": MemoryState.ACTIVE.value,
-                        "surface_score": "1.0",
-                        "experience_weight": "1.0",
-                        "created_at": now,
-                        "updated_at": now,
-                        "tags": json.dumps(tags or []),
-                        "source_doc_id": doc_id,
-                    }
-                    if project:
-                        fields["project"] = project
-                    if fact.event_date is not None:
-                        fields["event_date"] = str(fact.event_date)
-                    if target_ns == "preference":
-                        fields["scope"] = "project" if project else "global"
-                    store.upsert(target_ns, fkey, fields, vector)
-                    stored_keys.append(fkey)
-                    if fkey.startswith("mem:preference:"):
-                        preference_keys.append(fkey)
-                    continue
-                key = _store_extracted_fact(
-                    store, embedder, fact,
-                    project=project, tags=tags,
-                    base_namespace=namespace,
-                    source_doc_id=doc_id,
-                    now=now,
-                )
-                if key is None:
-                    skipped += 1
-                    continue
-                stored_keys.append(key)
-                if key.startswith("mem:preference:"):
-                    preference_keys.append(key)
-            logger.info(
-                "remember(mode=full) extracted %d facts (%d stored, %d preferences, %d dupes)",
-                len(facts), len(stored_keys), len(preference_keys), skipped,
-            )
-            return {
-                "mode": "full",
-                "doc_id": doc_id,
-                "keys": stored_keys,
-                "preference_keys": preference_keys,
-                "facts_extracted": len(facts),
-                "facts_stored": len(stored_keys),
-                "duplicates_skipped": skipped,
-            }
-        # Fall through to raw if extraction returned nothing usable
+    _enrich_after = mode == "full" and namespace != "knowledge" and not force
 
     key = f"mem:{namespace}:{ulid.new().str}"
     now = str(time.time())
@@ -285,7 +226,13 @@ def remember(
     store.upsert(namespace, key, fields, vector)
     logger.info("Stored memory %s in %s", key, namespace)
 
+    # Enqueue for background fact extraction if full mode
+    if _enrich_after:
+        enqueue(store, key, namespace, project=project, tags=tags)
+
     result: dict[str, Any] = {"key": key, "namespace": namespace}
+    if _enrich_after:
+        result["enrichment"] = "queued"
     if contradiction_warning:
         result["contradiction_warning"] = contradiction_warning
     return result
@@ -337,35 +284,12 @@ def remember_document(
     keys: list[str] = []
     skipped = 0
 
-    preference_keys: list[str] = []
-    fact_count = 0
+    _enrich_after = mode == "full" and namespace != "knowledge"
+    _batch_mode = os.getenv("ENRICHMENT_BATCH_MODE", "").strip().lower() in ("true", "1", "yes")
 
     for idx, chunk_text in enumerate(chunks):
         if len(chunk_text) > MAX_CONTENT_LENGTH:
             chunk_text = chunk_text[:MAX_CONTENT_LENGTH]
-
-        # Full mode: extract facts from this chunk and store each individually,
-        # routing preferences to the preference namespace.
-        if mode == "full" and namespace != "knowledge":
-            facts = extract_facts(chunk_text)
-            if facts:
-                fact_count += len(facts)
-                for fact in facts:
-                    new_key = _store_extracted_fact(
-                        store, embedder, fact,
-                        project=project, tags=tags,
-                        base_namespace=namespace,
-                        source_doc_id=doc_id,
-                        now=now,
-                    )
-                    if new_key is None:
-                        skipped += 1
-                        continue
-                    keys.append(new_key)
-                    if new_key.startswith("mem:preference:"):
-                        preference_keys.append(new_key)
-                continue
-            # Fall through to raw chunk storage if extraction yielded nothing
 
         vector = embedder.embed(chunk_text)
         # Skip near-duplicate chunks (e.g. boilerplate paragraphs across docs)
@@ -392,9 +316,25 @@ def remember_document(
         store.upsert(namespace, key, fields, vector)
         keys.append(key)
 
+    # Enqueue for background enrichment after all chunks are stored
+    if _enrich_after and keys:
+        if _batch_mode:
+            # Single Haiku call for all chunks combined
+            combined = "\n\n".join(chunks)
+            enqueue_batch(
+                store, keys, combined, namespace,
+                project=project, tags=tags, doc_id=doc_id,
+            )
+            logger.info("Enqueued batch enrichment for doc_id=%s (%d chunks)", doc_id, len(keys))
+        else:
+            # One enrichment job per chunk
+            for k in keys:
+                enqueue(store, k, namespace, project=project, tags=tags, doc_id=doc_id)
+            logger.info("Enqueued %d enrichment jobs for doc_id=%s", len(keys), doc_id)
+
     logger.info(
-        "Stored document doc_id=%s mode=%s chunks=%d stored=%d facts=%d preferences=%d skipped_dupes=%d strategy=%s",
-        doc_id, mode, len(chunks), len(keys), fact_count, len(preference_keys), skipped, chunk_strategy,
+        "Stored document doc_id=%s mode=%s chunks=%d stored=%d skipped_dupes=%d strategy=%s",
+        doc_id, mode, len(chunks), len(keys), skipped, chunk_strategy,
     )
     return {
         "doc_id": doc_id,
@@ -404,8 +344,7 @@ def remember_document(
         "duplicates_skipped": skipped,
         "namespace": namespace,
         "mode": mode,
-        "facts_extracted": fact_count,
-        "preference_keys": preference_keys,
+        "enrichment": "batch_queued" if (_enrich_after and _batch_mode) else ("queued" if _enrich_after else "none"),
     }
 
 
