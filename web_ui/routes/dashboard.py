@@ -62,6 +62,13 @@ async def dashboard(request: Request) -> HTMLResponse:
         pass
     health["model"] = deps.embedder.is_loaded if deps.embedder else False
 
+    # Enrichment queue status
+    enrichment_pending = 0
+    try:
+        enrichment_pending = deps.store.client.llen("queue:enrich")
+    except Exception:
+        enrichment_pending = -1
+
     template = request.app.state.templates.get_template("dashboard.html")
     content = template.render(
         request=request,
@@ -69,6 +76,7 @@ async def dashboard(request: Request) -> HTMLResponse:
         total=total,
         recent=recent,
         health=health,
+        enrichment_pending=enrichment_pending,
         current_page="dashboard",
     )
     return HTMLResponse(content)

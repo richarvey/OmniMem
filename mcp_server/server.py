@@ -199,6 +199,7 @@ def _register_tools() -> None:
     from tools.contradiction import check_contradictions
     from tools.briefing import briefing
     from tools.knowledge import recent_knowledge, promote_knowledge
+    from tools.queue import queue_status
 
     # Core tools
     mcp.tool()(version)
@@ -245,6 +246,9 @@ def _register_tools() -> None:
     # Knowledge tools
     mcp.tool()(recent_knowledge)
     mcp.tool()(promote_knowledge)
+
+    # Queue tools
+    mcp.tool()(queue_status)
 
     # Backup tools
     mcp.tool()(dump_to_file)

@@ -8,6 +8,10 @@
   <div class="health-indicators">
     <span class="indicator {{ 'ok' if health.valkey else 'err' }}">Valkey</span>
     <span class="indicator {{ 'ok' if health.model else 'err' }}">Model</span>
+    <span class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}"
+          title="Enrichment queue: {{ enrichment_pending }} pending">
+      Enrichment{% if enrichment_pending > 0 %} ({{ enrichment_pending }}){% endif %}
+    </span>
   </div>
 </header>
 

@@ -230,6 +230,11 @@ body {
   color: var(--red);
 }
 
+.indicator.warn {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--yellow);
+}
+
 /* Stats grid */
 .stats-grid {
   display: grid;
