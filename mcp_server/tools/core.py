@@ -170,7 +170,8 @@ def remember(
 
     # Full mode: extract atomic facts first, store each individually.
     # Falls back to raw if extraction yields nothing (no API key, error, etc).
-    if mode == "full" and namespace != "knowledge":
+    # Skipped entirely when force=True — force means raw bypass write.
+    if mode == "full" and namespace != "knowledge" and not force:
         facts = extract_facts(content)
         if facts:
             now = str(time.time())
