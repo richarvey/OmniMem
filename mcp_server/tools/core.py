@@ -179,6 +179,32 @@ def remember(
             preference_keys: list[str] = []
             skipped = 0
             for fact in facts:
+                # Skip dedup in the extraction path when force=True
+                if force:
+                    target_ns = "preference" if fact.kind == "preference" else namespace
+                    vector = embedder.embed(fact.text)
+                    fkey = f"mem:{target_ns}:{ulid.new().str}"
+                    fields: dict[str, Any] = {
+                        "content": fact.text,
+                        "state": MemoryState.ACTIVE.value,
+                        "surface_score": "1.0",
+                        "experience_weight": "1.0",
+                        "created_at": now,
+                        "updated_at": now,
+                        "tags": json.dumps(tags or []),
+                        "source_doc_id": doc_id,
+                    }
+                    if project:
+                        fields["project"] = project
+                    if fact.event_date is not None:
+                        fields["event_date"] = str(fact.event_date)
+                    if target_ns == "preference":
+                        fields["scope"] = "project" if project else "global"
+                    store.upsert(target_ns, fkey, fields, vector)
+                    stored_keys.append(fkey)
+                    if fkey.startswith("mem:preference:"):
+                        preference_keys.append(fkey)
+                    continue
                 key = _store_extracted_fact(
                     store, embedder, fact,
                     project=project, tags=tags,
@@ -228,18 +254,20 @@ def remember(
                 "similarity": round(dup.similarity, 4),
             }
 
-    # Tier 1 contradiction check (fast heuristic)
+    # Tier 1 contradiction check (fast heuristic) — skipped when force=True
+    # so bulk ingestion stays fast (force is documented as raw bypass write).
     contradiction_warning = None
-    contradiction = check_contradiction_heuristic(
-        store, namespace, vector, content, project_filter=project
-    )
-    if contradiction is not None:
-        contradiction_warning = {
-            "existing_key": contradiction.key_b,
-            "existing_content": contradiction.content_b,
-            "similarity": round(contradiction.similarity, 4),
-            "explanation": contradiction.explanation,
-        }
+    if not force:
+        contradiction = check_contradiction_heuristic(
+            store, namespace, vector, content, project_filter=project
+        )
+        if contradiction is not None:
+            contradiction_warning = {
+                "existing_key": contradiction.key_b,
+                "existing_content": contradiction.content_b,
+                "similarity": round(contradiction.similarity, 4),
+                "explanation": contradiction.explanation,
+            }
 
     fields: dict[str, Any] = {
         "content": content,
