@@ -289,6 +289,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `restore_from_file(filename, dry_run?)` | Restore from backup, merges rather than overwrites, re-embeds for immediate recall |
 | `list_backups()` | See available backup files |
 | `health()` | Server, Valkey, index, and model status |
+| `queue_status()` | Enrichment queue depth — poll until `pending` reaches 0 after batch ingest before running recall/scoring |
+| `reindex(namespace?)` | Drop and recreate Valkey search indexes to clear orphaned vector entries. Data-safe |
 | `version()` | Return the current OmniMem version |
 
 ---
@@ -318,6 +320,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `INGEST_MODE` | `full` | `full` extracts atomic facts via Claude Haiku before storing and routes preferences to the preference namespace; `raw` stores verbatim. Falls back to raw automatically when no API key is set |
 | `RECALL_EXPAND_QUERIES` | `false` | Globally enable query expansion on `recall()`. Generates alternative phrasings via Claude Haiku and unions the results |
 | `RECALL_EXPAND_COUNT` | `3` | Number of variant queries to generate when expansion is enabled |
+| `ENRICHMENT_BATCH_MODE` | `false` | When `true`, `remember_document()` sends all chunks as a single enrichment job so the background worker makes one Haiku API call instead of N. Faster for large documents and benchmark runs |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
 | `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
