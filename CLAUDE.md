@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature").
 
-**Version**: 5.3.0
+**Version**: 5.3.1
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -105,14 +105,17 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 ## Recall Pipeline (how scoring works)
 
 1. Abandoned fast-path: keyword scan on `abandoned_approaches` (no embedding needed; parsed entries cached for `ABANDONED_CACHE_TTL_SECONDS`, default 60, invalidated on experience/forget/restore writes)
-2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter). State and project filters are pushed into FT.SEARCH as tag filters so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net
+2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter). State and project filters are pushed into FT.SEARCH as tag filters (episodic, preference, knowledge) so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net
 3. Apply multipliers in order:
    - Surface score (lifecycle state: active 1.0x, deprioritised 0.2x, archived 0.0x)
    - Recency decay (age penalty after `RECENCY_DECAY_DAYS`, default 90)
    - Experience weight (effort × outcome: succeeded 1.0x–1.8x, pivoted 0.7x, abandoned 0.1x)
    - Temporal boost (1.0–1.5x when the query mentions a date and the memory has a close `event_date`; applied in both the main loop and query-expansion variants)
-4. Merge results from all namespaces, re-rank by adjusted_score
-5. Log recall event and increment per-memory `recall_count` + `last_recalled` counters
+4. Merge results from all namespaces, dedupe by (key, result type), re-rank by adjusted_score
+5. Select top_k, suppressing an extracted fact when its `enriched_from` source memory already made the cut (verbatim carries more context — issue #20)
+6. Log recall event and increment per-memory `recall_count` + `last_recalled` counters
+
+**Enriched facts** (issue #20): background extraction routes facts to the `knowledge` namespace (preferences to `preference`) with `surface_score` 0.5 so verbatim chunks outrank their own facts, `enriched_from` linking back to the source, and an `event_date` fallback chain (fact's own date → source `event_date` → source `created_at`) so temporal queries can find them.
 
 ## Gotchas
 

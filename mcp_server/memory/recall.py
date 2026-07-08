@@ -33,12 +33,17 @@ _STATE_FILTER = "(@state:{active} | @state:{deprioritised})"
 # relies on the Python-side filter below.
 _TAG_VALUE_SAFE_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
 
-# Which indexed field carries the project scope, per namespace. knowledge has
-# no project field in its index, so it can't be pushed down (the Python-side
-# filter drops knowledge docs under project_filter, matching old behaviour).
-# The project namespace is excluded too: ULID-keyed docs written mid-session
+# Which indexed field carries the project scope, per namespace. knowledge
+# gained an indexed project tag in v5.3.1 — extracted facts live there scoped
+# to a project (issue #20); RSS articles have no project field and so drop
+# out under a project filter, same as the Python-side filter always did.
+# The project namespace is excluded: ULID-keyed docs written mid-session
 # may only carry `project` until the startup migration backfills project_name.
-_PROJECT_FILTER_FIELDS = {"episodic": "project", "preference": "project"}
+_PROJECT_FILTER_FIELDS = {
+    "episodic": "project",
+    "preference": "project",
+    "knowledge": "project",
+}
 
 
 def _build_filter_expr(namespace: str, project_filter: str | None) -> str:
@@ -100,6 +105,7 @@ class RecallResult:
     breakthrough: str | None = None
     contradictions: list[dict] = field(default_factory=list)
     event_date: float | None = None
+    enriched_from: str | None = None
 
 
 class RecallPipeline:
@@ -304,6 +310,7 @@ class RecallPipeline:
                     breakthrough=doc.get("breakthrough"),
                     contradictions=contradictions,
                     event_date=event_date_val,
+                    enriched_from=doc.get("enriched_from"),
                 ))
 
         # Step 9b: Query expansion — run additional searches for each variant
@@ -331,14 +338,41 @@ class RecallPipeline:
             if variants:
                 logger.debug("Query expansion produced %d variants", len(variants))
 
-        # Step 10: Dedupe by key (keep best adjusted_score) and sort
-        if expand_queries:
-            best: dict[str, RecallResult] = {}
-            for r in results:
-                existing = best.get(r.key)
-                if existing is None or r.adjusted_score > existing.adjusted_score:
-                    best[r.key] = r
-            results = list(best.values())
+        # Step 10: Dedupe (keep best adjusted_score). Always on, not just
+        # under query expansion. Keyed on (key, result_type) so an abandoned-
+        # approach warning never collapses into the memory that carries it.
+        best: dict[tuple[str, str], RecallResult] = {}
+        for r in results:
+            dedupe_key = (r.key, r.result_type)
+            existing = best.get(dedupe_key)
+            if existing is None or r.adjusted_score > existing.adjusted_score:
+                best[dedupe_key] = r
+        results = list(best.values())
+
+        # Step 10b: When an extracted fact and its verbatim source BOTH
+        # matched, keep only the source — promoted to the fact's score if the
+        # fact ranked higher (the fact acted as a retrieval pointer; the
+        # verbatim chunk carries strictly more context). Doing this before
+        # the sort handles both orderings: a source can never end up ranked
+        # below where its fact would have been (issue #20: facts supplement,
+        # they don't compete). Warnings are excluded — they share the carrier
+        # memory's key without showing its content.
+        memory_by_key = {
+            r.key: r for r in results if r.result_type != "abandoned_warning"
+        }
+        deduped: list[RecallResult] = []
+        for r in results:
+            source = (
+                memory_by_key.get(r.enriched_from)
+                if r.result_type != "abandoned_warning" and r.enriched_from
+                else None
+            )
+            if source is not None:
+                if r.adjusted_score > source.adjusted_score:
+                    source.adjusted_score = r.adjusted_score
+                continue  # drop the fact; its source stands in for it
+            deduped.append(r)
+        results = deduped
         results.sort(key=lambda r: r.adjusted_score, reverse=True)
 
         # Step 11: Return top_k
@@ -459,6 +493,7 @@ class RecallPipeline:
                     breakthrough=doc.get("breakthrough"),
                     contradictions=contradictions,
                     event_date=event_date_val,
+                    enriched_from=doc.get("enriched_from"),
                 ))
         return out
 

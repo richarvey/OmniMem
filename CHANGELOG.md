@@ -4,6 +4,17 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-07-08
+### Fixed
+- **Fact extraction now supplements verbatim content instead of competing with it** ([#20](https://codeberg.org/ric_harvey/omnimem/issues/20)): extracted facts were stored in the same namespace as their source chunks, so compact 1-2 sentence facts crowded the richer verbatim content out of the per-namespace KNN candidate budget — v5-full mode scored 33.6% on LongMemEval against v5-raw's 65.6%, with temporal reasoning collapsing to 7.5%. Four changes land together:
+  - **Facts route to the `knowledge` namespace** (preferences still go to `preference`). Verbatim chunks keep their own episodic candidate budget; both are searchable at recall time
+  - **`event_date` fallback chain**: an extracted fact carries its own date if Claude found one, else it inherits the source memory's `event_date`, else the source's ingest time. `enqueue()`/`enqueue_batch()` now pass `created_at` through the queue payload so batch mode gets timestamps too. Without this, extraction stripped the temporal anchor and date-shaped queries couldn't find the fact
+  - **Verbatim-first ranking**: facts are written with `surface_score` 0.5 so the original wording outranks its own derived fact on direct recall, and when a fact and its `enriched_from` source both match, the merge keeps only the source — promoted to the fact's score if the fact ranked higher, so the verbatim stands in at the fact's rank instead of a near-duplicate burning a result slot
+  - **Knowledge results carry `project`, `event_date`, `tags` and `enriched_from`**: `_NAMESPACE_RETURN_FIELDS` for knowledge was missing `project` entirely, so a project-filtered recall silently dropped every knowledge result. The knowledge index also gains an indexed `project` tag (picked up by the startup index migration) so the project filter is pushed into the vector search
+### Changed
+- **Recall dedupe is always on** (was only under query expansion), keyed by (key, result type) so an abandoned-approach warning never collapses into the memory that carries it
+- No data migration needed: existing enriched facts stay where they are and age out naturally; new facts take the new path
+
 ## [5.3.0] - 2026-07-08
 ### Fixed
 - **claude.ai re-authenticating too often**: OAuth refresh-token rotation was strict single-use — the old token was deleted the instant it rotated. claude.ai keeps several connections open and can refresh the same token concurrently (or retry a request), so every refresh after the first failed with `invalid_grant`, which claude.ai surfaces as a dropped connection and a fresh sign-in prompt. `exchange_refresh_token()` now retires the old token with a short grace window instead: during the window it stays loadable and replays return the *same* successor pair, so concurrent/retried refreshes all succeed. Configurable via `OAUTH_REFRESH_GRACE_SECONDS` (default 120s, capped 3600, `0` restores strict single-use). The `rotated_to` marker is persisted in the Valkey storage backend so it survives restarts

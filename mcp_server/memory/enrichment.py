@@ -95,12 +95,27 @@ class EnrichmentWorker:
         key = payload.get("key", "")
         project = payload.get("project")
         tags = payload.get("tags")
-        namespace = payload.get("namespace", "episodic")
         batch_mode = payload.get("batch_mode", False)
         batch_content = payload.get("batch_content")
 
+        # Source timestamps for the event_date fallback chain (issue #20).
+        # Batch mode can't read individual sources, so the ingest time rides
+        # in the payload; single-key mode reads the source memory directly.
+        source_event_date = payload.get("event_date")
+        source_created_at = payload.get("created_at")
+
         if batch_mode and batch_content:
-            # Batch extraction: all chunks combined into one API call
+            # Batch extraction: all chunks combined into one API call.
+            # If the payload predates the created_at field (queued before an
+            # upgrade), fall back to reading the first chunk's timestamps so
+            # the facts still get a temporal anchor.
+            if not source_created_at and key:
+                rows = self._store.get_fields_multi(
+                    [key], ("event_date", "created_at")
+                )
+                src = rows[0] if rows and rows[0] else {}
+                source_event_date = source_event_date or src.get("event_date")
+                source_created_at = src.get("created_at")
             facts = extract_facts(batch_content)
         else:
             # Single-key extraction: read content from store
@@ -111,6 +126,8 @@ class EnrichmentWorker:
             content = data.get("content", "")
             if not content:
                 return
+            source_event_date = data.get("event_date") or source_event_date
+            source_created_at = data.get("created_at") or source_created_at
             facts = extract_facts(content)
 
         if not facts:
@@ -123,7 +140,12 @@ class EnrichmentWorker:
         duplicates = 0
 
         for fact in facts:
-            target_ns = "preference" if fact.kind == "preference" else namespace
+            # Facts supplement the verbatim chunk, they don't replace it
+            # (issue #20). Routing them to the knowledge namespace keeps them
+            # out of the source namespace's KNN candidate budget, so compact
+            # facts can't crowd out the richer verbatim content that recall
+            # queries naturally match.
+            target_ns = "preference" if fact.kind == "preference" else "knowledge"
             vector = self._embedder.embed(fact.text)
 
             # Skip near-duplicate facts. The synchronous extraction path used
@@ -141,7 +163,10 @@ class EnrichmentWorker:
             fields = {
                 "content": fact.text,
                 "state": MemoryState.ACTIVE.value,
-                "surface_score": "1.0",
+                # Verbatim chunks keep 1.0 so they outrank their own facts on
+                # direct recall; facts win on contradiction/knowledge-update
+                # checks where their compactness helps (issue #20).
+                "surface_score": "0.5",
                 "experience_weight": "1.0",
                 "created_at": now,
                 "updated_at": now,
@@ -151,8 +176,17 @@ class EnrichmentWorker:
             }
             if project:
                 fields["project"] = project
+            # event_date fallback chain: the fact's own date, else the source
+            # memory's event_date, else the source's ingest time. Without
+            # this, extraction strips the temporal anchor and date-shaped
+            # recall queries can't find the fact (issue #20 — temporal
+            # reasoning fell from 53.4% to 7.5%).
             if fact.event_date is not None:
                 fields["event_date"] = str(fact.event_date)
+            elif source_event_date:
+                fields["event_date"] = str(source_event_date)
+            elif source_created_at:
+                fields["event_date"] = str(source_created_at)
             if target_ns == "preference":
                 fields["scope"] = "project" if project else "global"
             self._store.upsert(target_ns, fact_key, fields, vector)
@@ -173,6 +207,7 @@ def enqueue(
     project: str | None = None,
     tags: list[str] | None = None,
     doc_id: str | None = None,
+    created_at: str | None = None,
 ) -> None:
     """Push a memory key onto the enrichment queue for background processing."""
     payload = json.dumps({
@@ -181,6 +216,7 @@ def enqueue(
         "project": project,
         "tags": tags,
         "doc_id": doc_id,
+        "created_at": created_at,
     })
     store.client.lpush(QUEUE_KEY, payload)
 
@@ -193,6 +229,7 @@ def enqueue_batch(
     project: str | None = None,
     tags: list[str] | None = None,
     doc_id: str | None = None,
+    created_at: str | None = None,
 ) -> None:
     """Push a batch enrichment job — all chunks extracted in one Haiku call."""
     payload = json.dumps({
@@ -201,6 +238,7 @@ def enqueue_batch(
         "project": project,
         "tags": tags,
         "doc_id": doc_id,
+        "created_at": created_at,
         "batch_mode": True,
         "batch_content": combined_content[:24000],  # cap for prompt size
     })

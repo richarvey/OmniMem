@@ -28,7 +28,11 @@ VECTOR_DIM = 384
 VECTOR_ALGORITHM = "HNSW"
 DISTANCE_METRIC = "COSINE"
 
-# Fields returned per namespace to avoid fetching unnecessary data
+# Fields returned per namespace to avoid fetching unnecessary data.
+# GOTCHA: this acts as a whitelist — a field stored in the hash but missing
+# here is silently absent from search results. The knowledge namespace once
+# lacked "project", which made recall's project_filter drop every knowledge
+# result without a trace (issue #20).
 _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
     "episodic": (
         "similarity_score", "content", "project", "state", "surface_score",
@@ -36,6 +40,7 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "reinstate_hints", "effort_score", "outcome", "iterations",
         "abandoned_approaches", "breakthrough", "gotchas", "experience_weight",
         "contradictions", "recall_count", "last_recalled", "event_date",
+        "enriched_from",
     ),
     "project": (
         "similarity_score", "content", "project_name", "stack", "state",
@@ -45,11 +50,13 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "similarity_score", "content", "source_url", "feed_name", "published_at",
         "topics", "state", "surface_score", "created_at", "updated_at",
         "recall_count", "last_recalled", "expires_at",
+        "project", "event_date", "tags", "enriched_from",
     ),
     "preference": (
         "similarity_score", "content", "project", "scope", "state",
         "surface_score", "created_at", "updated_at", "tags",
         "recall_count", "last_recalled", "source_doc_id",
+        "event_date", "enriched_from",
     ),
 }
 
@@ -109,6 +116,10 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("updated_at"),
             NumericField("recall_count"),
             NumericField("expires_at"),
+            # Extracted facts land here scoped to a project (issue #20);
+            # indexed so the recall project filter can be pushed down.
+            # Startup index migration picks up the new field automatically.
+            TagField("project"),
         ],
     },
     "idx:preference": {

@@ -192,7 +192,7 @@ def remember(
 
     # Enqueue for background fact extraction if full mode
     if _enrich_after:
-        enqueue(store, key, namespace, project=project, tags=tags)
+        enqueue(store, key, namespace, project=project, tags=tags, created_at=now)
 
     result: dict[str, Any] = {"key": key, "namespace": namespace}
     if _enrich_after:
@@ -287,13 +287,14 @@ def remember_document(
             combined = "\n\n".join(chunks)
             enqueue_batch(
                 store, keys, combined, namespace,
-                project=project, tags=tags, doc_id=doc_id,
+                project=project, tags=tags, doc_id=doc_id, created_at=now,
             )
             logger.info("Enqueued batch enrichment for doc_id=%s (%d chunks)", doc_id, len(keys))
         else:
             # One enrichment job per chunk
             for k in keys:
-                enqueue(store, k, namespace, project=project, tags=tags, doc_id=doc_id)
+                enqueue(store, k, namespace, project=project, tags=tags,
+                        doc_id=doc_id, created_at=now)
             logger.info("Enqueued %d enrichment jobs for doc_id=%s", len(keys), doc_id)
 
     logger.info(
@@ -378,6 +379,8 @@ def recall(
             entry["source_url"] = r.source_url
         if r.event_date is not None:
             entry["event_date"] = r.event_date
+        if r.enriched_from:
+            entry["enriched_from"] = r.enriched_from
         output.append(entry)
 
     return output

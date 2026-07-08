@@ -161,11 +161,14 @@ def test_remember_full_mode_enrichment_worker_routes_preferences(
         "project": "omnimem",
     })
 
-    # Verify: one episodic fact + one preference created
+    # Verify: one knowledge fact (supplementing the episodic verbatim source,
+    # issue #20) + one preference created
     new_episodic = [k for k in fake_store._client._data
                     if k.startswith("mem:episodic:") and k != result["key"]]
+    knowledge_keys = [k for k in fake_store._client._data if k.startswith("mem:knowledge:")]
     pref_keys = [k for k in fake_store._client._data if k.startswith("mem:preference:")]
-    assert len(new_episodic) == 1
+    assert len(new_episodic) == 0
+    assert len(knowledge_keys) == 1
     assert len(pref_keys) == 1
 
 

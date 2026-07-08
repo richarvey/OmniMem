@@ -76,16 +76,20 @@ def test_enrich_extracts_and_stores_facts(monkeypatch, fake_store, fake_embedder
         "project": "test",
     })
 
-    # Check that new memories were created
+    # Facts route to knowledge (supplementing the episodic verbatim source,
+    # issue #20); preference-shaped facts still go to preference.
     episodic_keys = [k for k in fake_store._client._data if k.startswith("mem:episodic:") and k != "mem:episodic:01SRC"]
+    knowledge_keys = [k for k in fake_store._client._data if k.startswith("mem:knowledge:")]
     pref_keys = [k for k in fake_store._client._data if k.startswith("mem:preference:")]
-    assert len(episodic_keys) == 1
+    assert len(episodic_keys) == 0
+    assert len(knowledge_keys) == 1
     assert len(pref_keys) == 1
 
-    # Check enriched_from link
-    data = fake_store.get(episodic_keys[0])
+    # Check enriched_from link and verbatim-first surface score
+    data = fake_store.get(knowledge_keys[0])
     assert data["enriched_from"] == "mem:episodic:01SRC"
     assert data["project"] == "test"
+    assert data["surface_score"] == "0.5"
 
 
 def test_enrich_batch_mode(monkeypatch, fake_store, fake_embedder):
@@ -105,9 +109,9 @@ def test_enrich_batch_mode(monkeypatch, fake_store, fake_embedder):
         "batch_content": "Turn 1. Turn 2. Turn 3.",
     })
 
-    episodic_keys = [k for k in fake_store._client._data if k.startswith("mem:episodic:")]
-    assert len(episodic_keys) == 1
-    data = fake_store.get(episodic_keys[0])
+    knowledge_keys = [k for k in fake_store._client._data if k.startswith("mem:knowledge:")]
+    assert len(knowledge_keys) == 1
+    data = fake_store.get(knowledge_keys[0])
     assert "fact from batch" in data["content"]
 
 

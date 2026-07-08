@@ -95,11 +95,9 @@ class TestEnrichmentDedup:
         worker._enrich({"key": "mem:episodic:src1", "namespace": "episodic"})
         worker._enrich({"key": "mem:episodic:src2", "namespace": "episodic"})
 
+        # Facts route to knowledge (issue #20); the duplicate is skipped there.
         fact_keys = [
-            k for k in fake_store._client._data
-            if k.startswith("mem:episodic:") and k not in (
-                "mem:episodic:src1", "mem:episodic:src2",
-            )
+            k for k in fake_store._client._data if k.startswith("mem:knowledge:")
         ]
         assert len(fact_keys) == 1, fact_keys
 
@@ -157,8 +155,10 @@ class TestFilterExpr:
         assert "@project:{omni mem}" in expr
         assert "\\" not in expr
 
-    def test_knowledge_and_project_ns_not_pushed(self):
-        assert "@project" not in _build_filter_expr("knowledge", "proj")
+    def test_knowledge_pushed_project_ns_not(self):
+        # knowledge gained an indexed project tag in v5.3.1 (issue #20 facts)
+        assert "@project:{proj}" in _build_filter_expr("knowledge", "proj")
+        # project namespace stays Python-side (project_name backfill timing)
         assert "@project" not in _build_filter_expr("project", "proj")
 
     def test_unsafe_value_not_interpolated(self):

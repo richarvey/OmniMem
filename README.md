@@ -322,7 +322,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |
 | `DEPRIORITISED_WEIGHT` | `0.2` | Surface score for deprioritised memories |
 | `RECENCY_DECAY_DAYS` | `90` | Days before the age penalty kicks in |
-| `INGEST_MODE` | `full` | `full` extracts atomic facts via Claude Haiku before storing and routes preferences to the preference namespace; `raw` stores verbatim. Falls back to raw automatically when no API key is set |
+| `INGEST_MODE` | `full` | `full` stores content verbatim then extracts atomic facts via Claude Haiku in the background — facts land in the knowledge namespace (preferences in the preference namespace) as supplements to the verbatim original, inheriting its timestamp so temporal recall works; `raw` stores verbatim only. Falls back to raw automatically when no API key is set |
 | `RECALL_EXPAND_QUERIES` | `false` | Globally enable query expansion on `recall()`. Generates alternative phrasings via Claude Haiku and unions the results |
 | `RECALL_EXPAND_COUNT` | `3` | Number of variant queries to generate when expansion is enabled |
 | `ENRICHMENT_BATCH_MODE` | `false` | When `true`, `remember_document()` sends all chunks as a single enrichment job so the background worker makes one Haiku API call instead of N. Faster for large documents and benchmark runs |
