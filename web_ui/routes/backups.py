@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -14,9 +15,32 @@ from .. import deps
 
 logger = logging.getLogger(__name__)
 
+# Reject anything but a plain <name>.json filename (no slashes, no traversal).
+_SAFE_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_\-.]+\.json$")
+
+# Cap uploaded/restored backup files at 100 MB (matches the MCP backup tool).
+_MAX_BACKUP_FILE_SIZE = 100 * 1024 * 1024
+
 
 def _backup_dir() -> Path:
     return Path(os.getenv("BACKUP_DIR", "/app/backups"))
+
+
+def _safe_filepath(filename: str) -> Path | None:
+    """Resolve a request-supplied filename inside BACKUP_DIR, or None if unsafe.
+
+    Guards against path traversal ('../…') and absolute paths by validating the
+    filename shape and confirming the resolved path stays within the backup dir.
+    """
+    if not filename or not _SAFE_FILENAME_RE.match(filename):
+        return None
+    backup_path = _backup_dir()
+    filepath = (backup_path / filename).resolve()
+    try:
+        filepath.relative_to(backup_path.resolve())
+    except ValueError:
+        return None
+    return filepath
 
 
 async def backups_page(request: Request) -> HTMLResponse:
@@ -101,20 +125,25 @@ async def upload_backup(request: Request) -> RedirectResponse:
         return RedirectResponse(url="/backups?error=Only+.json+files+are+allowed", status_code=303)
 
     # Sanitise filename: keep only safe characters
-    safe_name = "".join(c for c in upload.filename if c.isalnum() or c in "._-")
+    safe_name = "".join(c for c in os.path.basename(upload.filename) if c.isalnum() or c in "._-")
     if not safe_name.endswith(".json"):
         safe_name += ".json"
 
-    backup_path = _backup_dir()
-    backup_path.mkdir(parents=True, exist_ok=True)
-    filepath = (backup_path / safe_name).resolve()
-
-    # Path traversal protection
-    if not str(filepath).startswith(str(backup_path.resolve())):
+    filepath = _safe_filepath(safe_name)
+    if filepath is None:
         return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
 
+    backup_path = _backup_dir()
+    backup_path.mkdir(parents=True, exist_ok=True)
+
     try:
-        contents = await upload.read()
+        # Bound the read so a giant upload can't exhaust memory.
+        contents = await upload.read(_MAX_BACKUP_FILE_SIZE + 1)
+        if len(contents) > _MAX_BACKUP_FILE_SIZE:
+            return RedirectResponse(
+                url=f"/backups?error=File+too+large+(max+{_MAX_BACKUP_FILE_SIZE // 1024 // 1024}+MB)",
+                status_code=303,
+            )
         # Validate it's actually JSON
         json.loads(contents)
 
@@ -136,7 +165,9 @@ async def upload_backup(request: Request) -> RedirectResponse:
 async def preview_restore(request: Request) -> HTMLResponse:
     """GET /backups/{filename}/preview — preview a restore operation."""
     filename = request.path_params["filename"]
-    filepath = _backup_dir() / filename
+    filepath = _safe_filepath(filename)
+    if filepath is None:
+        return HTMLResponse('<p class="empty-state">Invalid filename.</p>', status_code=400)
 
     if not filepath.exists():
         return HTMLResponse('<p class="empty-state">Backup file not found.</p>', status_code=404)
@@ -169,10 +200,8 @@ async def preview_restore(request: Request) -> HTMLResponse:
 async def download_backup(request: Request):
     """GET /backups/{filename}/download — download a backup file."""
     filename = request.path_params["filename"]
-    filepath = (_backup_dir() / filename).resolve()
-
-    # Path traversal protection
-    if not str(filepath).startswith(str(_backup_dir().resolve())):
+    filepath = _safe_filepath(filename)
+    if filepath is None:
         return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
 
     if not filepath.exists():
@@ -188,10 +217,8 @@ async def download_backup(request: Request):
 async def delete_backup(request: Request) -> RedirectResponse:
     """POST /backups/{filename}/delete — permanently delete a backup file."""
     filename = request.path_params["filename"]
-    filepath = (_backup_dir() / filename).resolve()
-
-    # Path traversal protection
-    if not str(filepath).startswith(str(_backup_dir().resolve())):
+    filepath = _safe_filepath(filename)
+    if filepath is None:
         return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
 
     if not filepath.exists():
@@ -209,25 +236,53 @@ async def delete_backup(request: Request) -> RedirectResponse:
 async def restore_backup(request: Request) -> RedirectResponse:
     """POST /backups/{filename}/restore — execute restore from backup."""
     filename = request.path_params["filename"]
-    filepath = _backup_dir() / filename
+    filepath = _safe_filepath(filename)
+    if filepath is None:
+        return RedirectResponse(url="/backups?error=Invalid+filename", status_code=303)
 
     if not filepath.exists():
         return RedirectResponse(url="/backups?error=Backup+file+not+found", status_code=303)
+
+    if filepath.stat().st_size > _MAX_BACKUP_FILE_SIZE:
+        return RedirectResponse(
+            url=f"/backups?error=Backup+too+large+(max+{_MAX_BACKUP_FILE_SIZE // 1024 // 1024}+MB)",
+            status_code=303,
+        )
 
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             backup = json.load(f)
 
         data = backup.get("data", {})
-        restored, skipped = deps.store.restore_all(data)
-        logger.info("Restored from %s: %d keys restored, %d skipped", filename, restored, skipped)
+        # restore_all returns (restored, skipped, restored_keys).
+        restored, skipped, restored_keys = deps.store.restore_all(data)
+
+        # Re-embed restored memories so they are searchable again — backups
+        # exclude the binary vector field, so restored hashes have no embedding
+        # until we regenerate it from content (mirrors the MCP restore tool).
+        re_embedded = 0
+        if deps.embedder:
+            for key in restored_keys:
+                if not key.startswith("mem:"):
+                    continue
+                content = data.get(key, {}).get("content", "")
+                if content:
+                    vector = deps.embedder.embed(content)
+                    namespace = key.split(":")[1]
+                    deps.store.upsert(namespace, key, {}, vector)
+                    re_embedded += 1
+
+        logger.info(
+            "Restored from %s: %d keys restored, %d skipped, %d re-embedded",
+            filename, restored, skipped, re_embedded,
+        )
         return RedirectResponse(
             url=f"/backups?message=Restored+{restored}+keys+from+{filename}+(skipped+{skipped})",
             status_code=303,
         )
     except Exception as exc:
         logger.error("Restore failed: %s", exc)
-        return RedirectResponse(url=f"/backups?error=Restore+failed:+{exc}", status_code=303)
+        return RedirectResponse(url="/backups?error=Restore+failed", status_code=303)
 
 
 routes = [

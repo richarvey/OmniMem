@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import html
 import logging
+import os
+import time
+from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
@@ -29,6 +32,49 @@ if TYPE_CHECKING:
     from oauth.provider import OmniMemOAuthProvider
 
 logger = logging.getLogger("omnimem.oauth")
+
+
+class _LoginRateLimiter:
+    """In-memory sliding-window limiter for failed logins, keyed by client IP.
+
+    The login form guards a single admin password, so an unthrottled endpoint is
+    a brute-force target. After ``max_attempts`` failures inside ``window``
+    seconds an IP is blocked until the window rolls off. A successful login
+    clears that IP. State is per-process (fine for a single-instance server);
+    behind a reverse proxy it keys on the connecting address.
+    """
+
+    def __init__(self, max_attempts: int, window_seconds: int) -> None:
+        self.max_attempts = max_attempts
+        self.window = window_seconds
+        self._failures: dict[str, deque[float]] = defaultdict(deque)
+
+    def _prune(self, ip: str, now: float) -> None:
+        bucket = self._failures[ip]
+        cutoff = now - self.window
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+
+    def is_blocked(self, ip: str) -> bool:
+        if self.max_attempts <= 0:
+            return False
+        now = time.time()
+        self._prune(ip, now)
+        return len(self._failures[ip]) >= self.max_attempts
+
+    def record_failure(self, ip: str) -> None:
+        now = time.time()
+        self._prune(ip, now)
+        self._failures[ip].append(now)
+
+    def reset(self, ip: str) -> None:
+        self._failures.pop(ip, None)
+
+
+_login_limiter = _LoginRateLimiter(
+    max_attempts=int(os.getenv("OAUTH_LOGIN_MAX_ATTEMPTS", "10")),
+    window_seconds=int(os.getenv("OAUTH_LOGIN_WINDOW_SECONDS", "900")),
+)
 
 LOGIN_PAGE = """\
 <!DOCTYPE html>
@@ -116,6 +162,17 @@ def register_oauth_routes(
             return HTMLResponse(_render_login(session))
 
         # POST — validate credentials
+        client_ip = request.client.host if request.client else "unknown"
+        if _login_limiter.is_blocked(client_ip):
+            logger.warning("Login rate limit hit for %s", client_ip)
+            return HTMLResponse(
+                _render_login(
+                    str((await request.form()).get("session", "")),
+                    error="Too many failed attempts. Please wait and try again.",
+                ),
+                status_code=429,
+            )
+
         form = await request.form()
         session = str(form.get("session", ""))
         username = str(form.get("username", ""))
@@ -128,12 +185,14 @@ def register_oauth_routes(
             )
 
         if not provider.verify_credentials(username, password):
-            logger.warning("Failed login attempt for user '%s'", username)
+            _login_limiter.record_failure(client_ip)
+            logger.warning("Failed login attempt for user '%s' from %s", username, client_ip)
             return HTMLResponse(
                 _render_login(session, error="Invalid username or password."),
                 status_code=401,
             )
 
+        _login_limiter.reset(client_ip)
         code, redirect_uri, state = provider.complete_authorize(session)
         logger.info("Authorised session %s…, redirecting to client", session[:8])
 

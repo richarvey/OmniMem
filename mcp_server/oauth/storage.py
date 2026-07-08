@@ -127,6 +127,7 @@ def _serialise_stored_token(token: _StoredTokenLike) -> str:
             "created_at": token.created_at,
             "expires_in": token.expires_in,
             "absolute_expires_at": getattr(token, "absolute_expires_at", None),
+            "rotated_to": getattr(token, "rotated_to", None),
         }
     )
 
@@ -140,6 +141,7 @@ def _deserialise_stored_token(raw: str, cls: type) -> _StoredTokenLike:
     obj.created_at = data["created_at"]
     obj.expires_in = data["expires_in"]
     obj.absolute_expires_at = data.get("absolute_expires_at")
+    obj.rotated_to = data.get("rotated_to")
     return obj
 
 

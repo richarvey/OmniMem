@@ -1,5 +1,6 @@
 """OmniMem MCP server entry point."""
 
+import hmac
 import logging
 import os
 import signal
@@ -42,7 +43,9 @@ if _auth_token:
             self._token = token
 
         async def verify_token(self, token: str) -> AccessToken | None:
-            if token == self._token:
+            # Constant-time compare so a timing side-channel can't be used to
+            # recover the token byte by byte.
+            if token and hmac.compare_digest(token, self._token):
                 return AccessToken(token=token, client_id="omnimem", scopes=[])
             return None
 
@@ -328,6 +331,18 @@ if __name__ == "__main__":
     port = int(os.getenv("MCP_PORT", "8765"))
     host = os.getenv("MCP_HOST", "127.0.0.1")
     transport = os.getenv("MCP_TRANSPORT", "sse")
+
+    # Fail closed: never expose an unauthenticated MCP endpoint on a
+    # non-loopback interface. Localhost-only dev without auth is still allowed.
+    _loopback_hosts = {"127.0.0.1", "localhost", "::1", ""}
+    if _auth is None and host not in _loopback_hosts:
+        logger.error(
+            "Refusing to start: MCP_HOST=%s is not loopback but no "
+            "authentication is configured. Set MCP_AUTH_TOKEN or OAUTH_ENABLED, "
+            "or bind MCP_HOST to 127.0.0.1.",
+            host,
+        )
+        sys.exit(1)
     if transport == "sse":
         logger.warning(
             "SSE transport is deprecated and will be removed in a future release. "

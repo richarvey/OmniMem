@@ -4,8 +4,10 @@ services:
     command: >
       valkey-server
       --loadmodule /usr/lib/valkey/libsearch.so
-      --requirepass ${VALKEY_PASSWORD}
+      --requirepass ${VALKEY_PASSWORD:?VALKEY_PASSWORD must be set in .env}
       --notify-keyspace-events AKE
+      --appendonly yes
+      --appendfsync everysec
     volumes:
       - valkey_data:/data
     environment:

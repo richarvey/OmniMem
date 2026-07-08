@@ -224,16 +224,80 @@ class TestRefreshToken:
         assert new_token.access_token != token.access_token
         assert new_token.refresh_token != token.refresh_token
 
-        # Old refresh token consumed (rotation)
-        assert _run(
+        # Rotation no longer hard-deletes the old token immediately: during the
+        # grace window it replays the same successor pair rather than minting a
+        # new one (see TestRefreshGraceWindow). It cannot be used to rotate to a
+        # *different* pair, which is the property that matters for security.
+        replay_stored = _run(
             provider.load_refresh_token(client, token.refresh_token)
-        ) is None
+        )
+        assert replay_stored is not None
+        replay = _run(provider.exchange_refresh_token(client, replay_stored, []))
+        assert replay.refresh_token == new_token.refresh_token
 
     def test_wrong_client_refresh(self, provider):
         client, token = _issue_tokens(provider)
         other = _make_client(client_id="other-client")
         assert _run(
             provider.load_refresh_token(other, token.refresh_token)
+        ) is None
+
+
+class TestRefreshGraceWindow:
+    """The old refresh token must keep working briefly after rotation so that
+    concurrent/retried refreshes from claude.ai replay the same pair instead of
+    triggering a re-authentication (invalid_grant)."""
+
+    def test_replay_within_grace_returns_same_pair(self, provider):
+        client, token = _issue_tokens(provider)
+
+        stored = _run(provider.load_refresh_token(client, token.refresh_token))
+        first = _run(provider.exchange_refresh_token(client, stored, []))
+
+        # Old token is still loadable during the grace window...
+        replay_stored = _run(
+            provider.load_refresh_token(client, token.refresh_token)
+        )
+        assert replay_stored is not None
+
+        # ...and exchanging it again returns the SAME successor pair.
+        replay = _run(provider.exchange_refresh_token(client, replay_stored, []))
+        assert replay.access_token == first.access_token
+        assert replay.refresh_token == first.refresh_token
+
+    def test_new_token_still_rotates_normally(self, provider):
+        client, token = _issue_tokens(provider)
+        stored = _run(provider.load_refresh_token(client, token.refresh_token))
+        first = _run(provider.exchange_refresh_token(client, stored, []))
+
+        # The freshly issued refresh token rotates to a genuinely new pair.
+        stored_new = _run(provider.load_refresh_token(client, first.refresh_token))
+        second = _run(provider.exchange_refresh_token(client, stored_new, []))
+        assert second.refresh_token != first.refresh_token
+        assert second.access_token != first.access_token
+
+    def test_old_token_dies_after_grace(self, provider):
+        client, token = _issue_tokens(provider)
+        stored = _run(provider.load_refresh_token(client, token.refresh_token))
+        _run(provider.exchange_refresh_token(client, stored, []))
+
+        # Simulate the grace window elapsing by ageing the retired record.
+        retired = provider._refresh_tokens[token.refresh_token]
+        retired.created_at = time.time() - retired.expires_in - 1
+        assert _run(
+            provider.load_refresh_token(client, token.refresh_token)
+        ) is None
+
+    def test_grace_disabled_hard_deletes(self, provider, monkeypatch):
+        monkeypatch.setenv("OAUTH_REFRESH_GRACE_SECONDS", "0")
+        client, token = _issue_tokens(provider)
+        stored = _run(provider.load_refresh_token(client, token.refresh_token))
+        _run(provider.exchange_refresh_token(client, stored, []))
+
+        # With the window disabled, the old token is gone immediately.
+        assert token.refresh_token not in provider._refresh_tokens
+        assert _run(
+            provider.load_refresh_token(client, token.refresh_token)
         ) is None
 
 
@@ -287,3 +351,45 @@ class TestRevocation:
         provider._access_tokens["tok123"] = stored
         _run(provider.revoke_token(stored))
         assert "tok123" not in provider._access_tokens
+
+
+class TestLoginRateLimiter:
+    def test_blocks_after_max_attempts(self):
+        from oauth.routes import _LoginRateLimiter
+
+        limiter = _LoginRateLimiter(max_attempts=3, window_seconds=900)
+        ip = "203.0.113.7"
+        assert not limiter.is_blocked(ip)
+        for _ in range(3):
+            limiter.record_failure(ip)
+        assert limiter.is_blocked(ip)
+
+    def test_success_resets(self):
+        from oauth.routes import _LoginRateLimiter
+
+        limiter = _LoginRateLimiter(max_attempts=2, window_seconds=900)
+        ip = "203.0.113.8"
+        limiter.record_failure(ip)
+        limiter.record_failure(ip)
+        assert limiter.is_blocked(ip)
+        limiter.reset(ip)
+        assert not limiter.is_blocked(ip)
+
+    def test_window_rolls_off(self):
+        from oauth.routes import _LoginRateLimiter
+
+        limiter = _LoginRateLimiter(max_attempts=2, window_seconds=900)
+        ip = "203.0.113.9"
+        # Simulate two failures that happened well outside the window.
+        old = time.time() - 1000
+        limiter._failures[ip].extend([old, old])
+        assert not limiter.is_blocked(ip)  # pruned as stale
+
+    def test_disabled_when_max_zero(self):
+        from oauth.routes import _LoginRateLimiter
+
+        limiter = _LoginRateLimiter(max_attempts=0, window_seconds=900)
+        ip = "203.0.113.10"
+        for _ in range(50):
+            limiter.record_failure(ip)
+        assert not limiter.is_blocked(ip)

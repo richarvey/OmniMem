@@ -114,7 +114,7 @@ class TestMeasureResponse:
 class TestToolTelemetryMiddleware:
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_records_metrics_on_success(self):
         from middleware.telemetry import ToolTelemetryMiddleware

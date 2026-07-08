@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_CONTENT_LENGTH = 500  # chars — below this we fetch the full page
 _PAGE_FETCH_TIMEOUT = 30
+_MAX_PAGE_BYTES = int(os.getenv("RSS_MAX_PAGE_BYTES", str(10 * 1024 * 1024)))  # 10 MB cap
 _EMBED_CHUNK_SIZE = 32  # embed + store in chunks to limit thread pressure
 _PAGE_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -82,7 +83,14 @@ def _fetch_page_content(url: str) -> str | None:
             "Accept-Language": "en-GB,en;q=0.9",
         })
         with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:  # nosec B310 — scheme validated above
-            html = resp.read().decode("utf-8", errors="replace")
+            # Cap the read so a huge or endless response can't exhaust memory.
+            raw = resp.read(_MAX_PAGE_BYTES + 1)
+            if len(raw) > _MAX_PAGE_BYTES:
+                logger.warning(
+                    "Page %s exceeded %d bytes, truncating", url, _MAX_PAGE_BYTES,
+                )
+                raw = raw[:_MAX_PAGE_BYTES]
+            html = raw.decode("utf-8", errors="replace")
 
         # Strip script and style blocks, then all tags
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL)

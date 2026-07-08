@@ -1,5 +1,6 @@
 """OmniMem Web UI — Starlette app with htmx + Jinja2."""
 
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -66,7 +67,8 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
-        if auth_header == f"Bearer {self.token}":
+        # Constant-time compare to avoid leaking the token via response timing.
+        if hmac.compare_digest(auth_header, f"Bearer {self.token}"):
             return await call_next(request)
 
         return PlainTextResponse("Unauthorised", status_code=401)

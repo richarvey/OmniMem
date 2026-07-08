@@ -25,6 +25,17 @@ AUTH_CODE_EXPIRY = 300  # 5 minutes
 _REFRESH_MAX_DAYS_DEFAULT = 30
 _REFRESH_MAX_DAYS_HARD_CAP = 90
 
+# Rotation grace window (seconds). After a refresh token is rotated, the old
+# token stays valid for this long and replays return the SAME successor pair
+# instead of failing. This stops claude.ai from being logged out when several
+# of its connections refresh the same token at once (or a request is retried):
+# strict single-use rotation would reject every refresh but the first with
+# invalid_grant, which claude.ai surfaces as a dropped connection and a
+# re-authentication prompt. Kept short so a leaked old token is only briefly
+# usable. Configurable via OAUTH_REFRESH_GRACE_SECONDS; 0 disables the window.
+_REFRESH_GRACE_SECONDS_DEFAULT = 120
+_REFRESH_GRACE_SECONDS_HARD_CAP = 3600
+
 
 def _refresh_max_seconds() -> int:
     raw = os.getenv("OAUTH_REFRESH_MAX_DAYS", str(_REFRESH_MAX_DAYS_DEFAULT))
@@ -47,6 +58,25 @@ def _refresh_max_seconds() -> int:
     return days * 24 * 3600
 
 
+def _refresh_grace_seconds() -> int:
+    raw = os.getenv(
+        "OAUTH_REFRESH_GRACE_SECONDS", str(_REFRESH_GRACE_SECONDS_DEFAULT)
+    )
+    try:
+        seconds = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid OAUTH_REFRESH_GRACE_SECONDS=%r, falling back to %d",
+            raw, _REFRESH_GRACE_SECONDS_DEFAULT,
+        )
+        seconds = _REFRESH_GRACE_SECONDS_DEFAULT
+    if seconds < 0:
+        seconds = 0
+    if seconds > _REFRESH_GRACE_SECONDS_HARD_CAP:
+        seconds = _REFRESH_GRACE_SECONDS_HARD_CAP
+    return seconds
+
+
 # Evaluated at import time for the module-level constant tests reference,
 # but the provider re-reads on each issue so env changes during a process
 # are picked up.
@@ -63,7 +93,7 @@ class _StoredToken:
 
     __slots__ = (
         "token", "client_id", "scopes", "created_at", "expires_in",
-        "absolute_expires_at",
+        "absolute_expires_at", "rotated_to",
     )
 
     def __init__(
@@ -73,6 +103,7 @@ class _StoredToken:
         scopes: list[str],
         expires_in: int,
         absolute_expires_at: float | None = None,
+        rotated_to: dict | None = None,
     ) -> None:
         self.token = token
         self.client_id = client_id
@@ -80,6 +111,10 @@ class _StoredToken:
         self.created_at = time.time()
         self.expires_in = expires_in
         self.absolute_expires_at = absolute_expires_at
+        # When this refresh token has been rotated, ``rotated_to`` holds the
+        # successor OAuthToken payload so replays within the grace window
+        # return the same pair instead of failing. None for live tokens.
+        self.rotated_to = rotated_to
 
     @property
     def expired(self) -> bool:
@@ -307,8 +342,18 @@ class OmniMemOAuthProvider(OAuthProvider):
         refresh_token: _StoredToken,
         scopes: list[str],
     ) -> OAuthToken:
-        # Rotate: revoke old refresh token, issue new pair
-        self._storage.delete_refresh(refresh_token.token)
+        # Idempotent replay: if this token has already been rotated and we are
+        # still inside the grace window, hand back the exact same successor pair
+        # rather than rotating again. This is what stops a burst of concurrent
+        # refreshes (or a retried request) from logging claude.ai out — every
+        # caller that presents the old token gets the same working tokens.
+        already_rotated = getattr(refresh_token, "rotated_to", None)
+        if already_rotated:
+            logger.info(
+                "Replaying rotated refresh token for client %s (grace window)",
+                client.client_id,
+            )
+            return OAuthToken(**already_rotated)
 
         effective_scopes = scopes or refresh_token.scopes
         new_access = secrets.token_urlsafe(32)
@@ -340,14 +385,29 @@ class OmniMemOAuthProvider(OAuthProvider):
             )
         )
 
+        new_token_payload = {
+            "access_token": new_access,
+            "token_type": "Bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRY,
+            "refresh_token": new_refresh,
+            "scope": " ".join(effective_scopes) if effective_scopes else None,
+        }
+
+        # Retire the old token with a short grace window instead of deleting it
+        # outright. During the window it stays loadable and replays the pair
+        # above. Once the TTL lapses the storage backend drops it, restoring
+        # strict single-use semantics. grace <= 0 falls back to hard deletion.
+        grace = _refresh_grace_seconds()
+        if grace <= 0:
+            self._storage.delete_refresh(refresh_token.token)
+        else:
+            refresh_token.rotated_to = dict(new_token_payload)
+            refresh_token.created_at = time.time()
+            refresh_token.expires_in = grace
+            self._storage.save_refresh(refresh_token)
+
         logger.info("Refreshed tokens for client %s", client.client_id)
-        return OAuthToken(
-            access_token=new_access,
-            token_type="Bearer",
-            expires_in=ACCESS_TOKEN_EXPIRY,
-            refresh_token=new_refresh,
-            scope=" ".join(effective_scopes) if effective_scopes else None,
-        )
+        return OAuthToken(**new_token_payload)
 
     # ------------------------------------------------------------------
     # Revocation (RFC 7009)
