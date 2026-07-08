@@ -87,7 +87,9 @@ def _recompute_metrics() -> bytes:
         if not keys:
             continue
 
-        all_data = deps.store.get_multi(keys)
+        all_data = deps.store.get_fields_multi(
+            keys, ("state", "recall_count", "last_recalled")
+        )
         state_counts: dict[str, int] = {}
         never_recalled = 0
 

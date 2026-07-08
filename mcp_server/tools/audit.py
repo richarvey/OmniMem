@@ -17,19 +17,33 @@ def _get_deps():
     return _store, _embedder
 
 
+_AUDIT_MAX_LIMIT = 500
+_AUDIT_DEFAULT_LIMIT = 100
+
+
 def memory_audit(
     project: str | None = None,
     namespace: str | None = None,
     include_archived: bool = False,
+    limit: int = _AUDIT_DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Summary of all memories grouped by state. Useful for cleanup.
+
+    The state counts always cover the whole store; the per-memory ``entries``
+    list is paginated so a large store doesn't return thousands of rows at once.
 
     Args:
         project: Filter to a project.
         namespace: Filter to 'episodic', 'project', or 'knowledge'.
         include_archived: Include archived memories (default False).
+        limit: Max entries to return (default 100, max 500).
+        offset: Entries to skip for pagination (default 0).
     """
     store, _ = _get_deps()
+
+    limit = max(1, min(int(limit), _AUDIT_MAX_LIMIT))
+    offset = max(0, int(offset))
 
     prefixes = []
     if namespace:
@@ -43,6 +57,7 @@ def memory_audit(
         prefixes.extend(["mem:episodic:", "mem:project:", "mem:knowledge:"])
 
     entries: list[dict[str, Any]] = []
+    matching_total = 0
     state_counts: dict[str, int] = {
         "active": 0,
         "deprioritised": 0,
@@ -55,8 +70,11 @@ def memory_audit(
         if not keys:
             continue
 
-        # Batch fetch all data for this prefix in one pipeline round-trip
-        all_data = store.get_multi(keys)
+        # One round-trip, only the audit fields (no vectors/large text fields).
+        all_data = store.get_fields_multi(
+            keys,
+            ("state", "content", "effort_score", "outcome", "project", "project_name"),
+        )
 
         for key, data in zip(keys, all_data):
             if data is None:
@@ -74,6 +92,12 @@ def memory_audit(
                     continue
 
             state_counts[state] = state_counts.get(state, 0) + 1
+
+            # Collect the entry only if it falls inside the requested page.
+            matching_total += 1
+            position = matching_total - 1
+            if position < offset or len(entries) >= limit:
+                continue
 
             effort_raw = data.get("effort_score")
             effort = None
@@ -95,6 +119,11 @@ def memory_audit(
     return {
         "summary": state_counts,
         "total": sum(state_counts.values()),
+        "matching_total": matching_total,
+        "offset": offset,
+        "limit": limit,
+        "returned": len(entries),
+        "has_more": offset + len(entries) < matching_total,
         "entries": entries,
     }
 

@@ -342,6 +342,33 @@ class ValkeyStore:
             results[key_idx] = data if data else None
         return results
 
+    def get_fields_multi(
+        self, keys: list[str], fields: tuple[str, ...] | list[str]
+    ) -> list[dict[str, Any] | None]:
+        """Batch-fetch a fixed projection of fields for many keys.
+
+        One pipelined HMGET per key in a single round-trip — half the trips of
+        get_multi (which first HKEYS then HMGET) — and only pulls the named
+        fields, so list/count/aggregate views don't drag back large fields like
+        content, breakthrough, gotchas or abandoned_approaches they never use.
+
+        Returns a list aligned with ``keys``; each entry is a dict of the
+        requested fields that were present, or None if the key had none.
+        """
+        if not keys:
+            return []
+        fields = list(fields)
+        pipe = self.client.pipeline(transaction=False)
+        for key in keys:
+            pipe.hmget(key, fields)
+        rows = pipe.execute()
+
+        results: list[dict[str, Any] | None] = []
+        for row in rows:
+            data = {f: v for f, v in zip(fields, row) if v is not None}
+            results.append(data if data else None)
+        return results
+
     def delete(self, key: str) -> None:
         """Hard delete a key."""
         self._validate_key(key)

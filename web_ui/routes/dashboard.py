@@ -15,6 +15,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     total = 0
     recent = []
 
+    candidates: list[dict] = []
     for ns in ("episodic", "project", "knowledge", "preference"):
         keys = deps.store.scan_prefix(f"mem:{ns}:")
         if not keys:
@@ -22,36 +23,40 @@ async def dashboard(request: Request) -> HTMLResponse:
             continue
 
         state_counts = {"active": 0, "deprioritised": 0, "archived": 0}
-        all_data = deps.store.get_multi(keys)
+        # Pass 1: pull only the small fields needed for counts + recency ranking.
+        # Content is fetched later for just the 10 winners, not every memory.
+        meta = deps.store.get_fields_multi(keys, ("state", "updated_at"))
 
-        for key, data in zip(keys, all_data):
-            if data is None:
-                continue
-            state = data.get("state", "active")
+        for key, data in zip(keys, meta):
+            state = (data or {}).get("state", "active")
             if state in state_counts:
                 state_counts[state] += 1
-            recent.append({
+            candidates.append({
                 "key": key,
                 "namespace": ns,
-                "content": (data.get("content") or "")[:100],
                 "state": state,
-                "project": data.get("project", ""),
-                "updated_at": float(data.get("updated_at", "0")),
+                "updated_at": float((data or {}).get("updated_at", "0")),
             })
 
         ns_stats[ns] = {"total": len(keys), "states": state_counts}
         total += len(keys)
 
-    # Sort once across all namespaces, keep top 10
-    recent.sort(key=lambda x: x["updated_at"], reverse=True)
-    recent = recent[:10]
-
-    for mem in recent:
-        ts = mem["updated_at"]
-        if ts > 0:
-            mem["updated_at_fmt"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
-        else:
-            mem["updated_at_fmt"] = "—"
+    # Rank across all namespaces, keep the 10 most recent, then hydrate only
+    # those with content/project (a couple of extra small reads, not thousands).
+    candidates.sort(key=lambda x: x["updated_at"], reverse=True)
+    recent = candidates[:10]
+    if recent:
+        detail = deps.store.get_fields_multi(
+            [m["key"] for m in recent], ("content", "project")
+        )
+        for mem, data in zip(recent, detail):
+            data = data or {}
+            mem["content"] = (data.get("content") or "")[:100]
+            mem["project"] = data.get("project", "")
+            ts = mem["updated_at"]
+            mem["updated_at_fmt"] = (
+                time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
+            )
 
     # Health check
     health = {"valkey": False, "model": False}

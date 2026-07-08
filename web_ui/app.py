@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Mount
@@ -83,9 +84,14 @@ async def lifespan(app: Starlette):
     logger.info("OmniMem Web UI shutting down")
 
 
+# gzip responses (dashboard/memories/telemetry HTML compress well). Outermost
+# so it wraps every route; tiny responses below the threshold are left alone.
+_middleware: list[Middleware] = [
+    Middleware(GZipMiddleware, minimum_size=500),
+]
+
 # Optional bearer token auth — only enabled when WEB_UI_AUTH_TOKEN is set
 _web_auth_token = os.getenv("WEB_UI_AUTH_TOKEN", "").strip()
-_middleware: list[Middleware] = []
 if _web_auth_token:
     _middleware.append(Middleware(BearerAuthMiddleware, token=_web_auth_token))
     logger.info("Bearer token authentication enabled for web UI")

@@ -236,8 +236,13 @@ def experience_summary(project: str | None = None) -> dict[str, Any]:
     all_abandoned: list[dict[str, Any]] = []
     breakthroughs: list[dict[str, Any]] = []
 
-    # Batch fetch all episodic memories in one pipeline round-trip
-    all_data = store.get_multi(keys)
+    # Fetch only the fields this summary needs, in one round-trip — avoids
+    # dragging back tags, gotchas, reinstate_hints, contradictions, vectors, etc.
+    all_data = store.get_fields_multi(
+        keys,
+        ("effort_score", "outcome", "content", "abandoned_approaches",
+         "breakthrough", "project"),
+    )
 
     for key, data in zip(keys, all_data):
         if data is None:

@@ -295,6 +295,15 @@ class FakeValkeyStore:
             results.append(self.get(key))
         return results
 
+    def get_fields_multi(self, keys, fields):
+        fields = list(fields)
+        results = []
+        for key in keys:
+            row = self._client.hmget(key, fields)
+            data = {f: v for f, v in zip(fields, row) if v is not None}
+            results.append(data if data else None)
+        return results
+
     def delete(self, key):
         self._client.delete(key)
 

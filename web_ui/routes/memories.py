@@ -24,7 +24,11 @@ def _get_all_memories(
         keys = deps.store.scan_prefix(f"mem:{ns}:")
         if not keys:
             continue
-        all_data = deps.store.get_multi(keys)
+        # Only the fields the list view renders/filters on — not vectors,
+        # breakthroughs, gotchas, abandoned lists, etc.
+        all_data = deps.store.get_fields_multi(
+            keys, ("content", "state", "project", "project_name", "updated_at")
+        )
         for key, data in zip(keys, all_data):
             if data is None:
                 continue

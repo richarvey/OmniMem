@@ -33,7 +33,11 @@ def _build_telemetry_data(project_filter: str | None = None) -> dict:
         if not keys:
             continue
 
-        all_data = deps.store.get_multi(keys)
+        all_data = deps.store.get_fields_multi(
+            keys,
+            ("state", "project", "project_name", "recall_count",
+             "last_recalled", "content", "created_at"),
+        )
 
         for key, data in zip(keys, all_data):
             if data is None:

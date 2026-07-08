@@ -33,7 +33,12 @@ def _scan_episodic_once(
     if not keys:
         return {"stale": [], "reinstate": [], "contradictions": []}
 
-    all_data = store.get_multi(keys)
+    # Session-start hot path — fetch only the fields this scan reads.
+    all_data = store.get_fields_multi(
+        keys,
+        ("state", "project", "project_name", "updated_at", "content",
+         "contradictions", "reinstate_hints", "deprioritised_reason"),
+    )
     for key, data in zip(keys, all_data):
         if data is None:
             continue
@@ -128,7 +133,9 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
     if not keys:
         return new_articles
 
-    all_data = store.get_multi(keys)
+    all_data = store.get_fields_multi(
+        keys, ("state", "created_at", "content", "source_url", "feed_name"),
+    )
     for key, data in zip(keys, all_data):
         if data is None:
             continue

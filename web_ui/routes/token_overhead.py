@@ -98,7 +98,9 @@ def _build_token_data(project_filter: str | None = None) -> dict:
         if not keys:
             continue
 
-        all_data = deps.store.get_multi(keys)
+        all_data = deps.store.get_fields_multi(
+            keys, ("state", "project", "project_name", "recall_count", "content"),
+        )
 
         for data in all_data:
             if data is None:

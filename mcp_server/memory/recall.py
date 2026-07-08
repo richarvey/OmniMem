@@ -391,8 +391,12 @@ class RecallPipeline:
             )
             keys = keys[:_MAX_ABANDONED_SCAN_KEYS]
 
-        # Batch-fetch all episodic memories in one pipeline round-trip
-        all_data = self.store.get_multi(keys)
+        # Fetch only the three fields this scan actually needs, in one
+        # round-trip. This runs on every recall, so pulling full memories
+        # (content, breakthrough, gotchas, …) here was pure waste.
+        all_data = self.store.get_fields_multi(
+            keys, ("abandoned_approaches", "effort_score", "project")
+        )
 
         for key, data in zip(keys, all_data):
             if data is None:
