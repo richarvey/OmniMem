@@ -16,7 +16,7 @@
       <th>Description</th>
       <th>Current State</th>
       <th>Updated</th>
-      <th style="width:5rem"></th>
+      <th style="width:12rem"></th>
     </tr>
   </thead>
   <tbody>
@@ -40,6 +40,15 @@
       </td>
       <td style="text-align:right">
         {% if p.has_context %}
+        {% if p.state == "deprioritised" %}
+        <form method="POST" action="/projects/{{ p.name }}/reinstate" style="display:inline" onsubmit="return confirm('Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.')">
+          <button type="submit" class="btn btn-secondary btn-sm">Reinstate</button>
+        </form>
+        {% else %}
+        <form method="POST" action="/projects/{{ p.name }}/deprioritise" style="display:inline" onsubmit="return confirm('Deprioritise project &quot;{{ p.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.')">
+          <button type="submit" class="btn btn-secondary btn-sm">Deprioritise</button>
+        </form>
+        {% endif %}
         <form method="POST" action="/projects/{{ p.name }}/delete" style="display:inline" onsubmit="return confirm('Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.')">
           <button type="submit" class="btn btn-danger btn-sm">Delete</button>
         </form>

@@ -358,6 +358,28 @@ class ValkeyStore:
         if mapping:
             self.client.hset(key, mapping=mapping)
 
+    def set_fields_multi(
+        self, keys: list[str], mapping: dict[str, Any], batch_size: int = 500
+    ) -> int:
+        """Apply the same field updates to many keys in pipelined batches.
+
+        One HSET per key, flushed every ``batch_size`` keys so a large bulk
+        update never builds an unbounded pipeline. Returns the number of keys
+        written. Mirrors delete_many's batching for bulk state transitions.
+        """
+        if not keys or not mapping:
+            return 0
+        written = 0
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i:i + batch_size]
+            pipe = self.client.pipeline(transaction=False)
+            for key in batch:
+                self._validate_key(key)
+                pipe.hset(key, mapping=mapping)
+            pipe.execute()
+            written += len(batch)
+        return written
+
     def get_multi(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Retrieve all text fields for multiple keys (excludes binary vectors)."""
         if not keys:

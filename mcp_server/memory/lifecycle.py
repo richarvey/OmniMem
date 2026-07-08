@@ -34,6 +34,79 @@ SURFACE_SCORES: dict[MemoryState, float] = {
 }
 
 
+_PROJECT_NAMESPACES = ("episodic", "project", "knowledge", "preference")
+
+
+def bulk_transition_project(
+    store: ValkeyStore,
+    project_name: str,
+    new_state: MemoryState,
+    *,
+    apply: bool,
+    reason: str | None = None,
+    include_context: bool = False,
+) -> dict[str, Any]:
+    """Transition every memory belonging to a project to ``new_state``.
+
+    Scans keys directly (like delete_project) so it catches everything recall
+    can't surface. Only memories whose current state permits the transition are
+    counted; the rest are reported under ``skipped`` (keyed by current state).
+
+    With ``apply=False`` this is a dry run — it returns the counts without
+    writing, so callers can show a preview. With ``apply=True`` it writes the
+    new state, surface score and updated_at in pipelined batches and returns the
+    number actually changed.
+
+    The project context entry (``mem:project:<name>``) is left alone unless
+    ``include_context=True``.
+    """
+    to_change: dict[str, list[str]] = {}
+    skipped: dict[str, int] = {}
+    context_key = f"mem:project:{project_name}"
+
+    for ns in _PROJECT_NAMESPACES:
+        keys = store.scan_prefix(f"mem:{ns}:")
+        if not keys:
+            continue
+        rows = store.get_fields_multi(keys, ("project", "project_name", "state"))
+        matched: list[str] = []
+        for key, row in zip(keys, rows):
+            if row is None:
+                continue
+            doc_project = row.get("project") or row.get("project_name")
+            if doc_project != project_name:
+                continue
+            if key == context_key and not include_context:
+                continue
+            try:
+                current = MemoryState(row.get("state") or MemoryState.ACTIVE.value)
+            except ValueError:
+                current = MemoryState.ACTIVE
+            if current == new_state or new_state not in ALLOWED_TRANSITIONS[current]:
+                skipped[current.value] = skipped.get(current.value, 0) + 1
+                continue
+            matched.append(key)
+        if matched:
+            to_change[ns] = matched
+
+    counts = {ns: len(v) for ns, v in to_change.items()}
+    total = sum(counts.values())
+
+    changed = 0
+    if apply and total:
+        updates: dict[str, Any] = {
+            "state": new_state.value,
+            "surface_score": str(SURFACE_SCORES[new_state]),
+            "updated_at": str(time.time()),
+        }
+        if new_state == MemoryState.DEPRIORITISED and reason:
+            updates["deprioritised_reason"] = reason
+        for keys in to_change.values():
+            changed += store.set_fields_multi(keys, updates)
+
+    return {"counts": counts, "total": total, "skipped": skipped, "changed": changed}
+
+
 class MemoryLifecycle:
     """Enforces state transitions and manages topic suppression."""
 

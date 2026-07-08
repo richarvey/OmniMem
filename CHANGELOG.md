@@ -4,6 +4,13 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-07-08
+### Added
+- **`deprioritise_project()` and `reinstate_project()` MCP tools**: bulk lifecycle control for a whole project, mirroring `delete_project()` but non-destructive. `deprioritise_project()` drops every active memory in a project to 0.2x recall visibility (the `DEPRIORITISED_WEIGHT` surface score) without deleting anything, so the memories stay stored and searchable, just heavily down-weighted; `reinstate_project()` is the inverse and lifts them back to active. Both scan keys directly rather than via semantic search (so they catch everything recall can't surface), default to a preview with per-namespace counts, need `confirm=True` to apply, and take `include_context` to also cover the project's context entry. Only memories whose current state permits the transition are touched — already-deprioritised or archived ones are reported back untouched. The shared `bulk_transition_project()` helper in `memory/lifecycle.py` backs both tools and the web UI, and `ValkeyStore.set_fields_multi()` applies the state change in pipelined batches
+- **Deprioritise / Reinstate button on the web UI projects page**: sits next to Delete and is state-aware — it shows "Deprioritise" for an active project and flips to "Reinstate" once the project is deprioritised, each behind a confirm dialog. Deprioritising here also covers the project context entry so the project's state reflects it in the list
+### Fixed
+- **Dashboard project count was showing records, not projects**: the project stat card reported every `mem:project:*` hash (context entries plus ULID project memories), so a store with 30 real projects read as 441. The card now headlines the distinct project count (deduplicated by name, matching the `/projects` page and `list_projects`) with the raw record count as a subtitle. The other namespace cards are unchanged
+
 ## [5.4.1] - 2026-07-08
 ### Changed
 - **Dashboard stats are cached in Valkey** ([#21](https://codeberg.org/ric_harvey/omnimem/issues/21)): the namespace/state counts and recent-activity list were recomputed by scanning the whole keyspace on every page load — an O(n) cost that made the dashboard crawl at benchmark-scale stores (26k+ memories, worse at 100k+). They're now cached under `meta:dashboard_stats` for `DASHBOARD_STATS_TTL` seconds (default 60, `0` disables), shared across web UI workers. The page shows when the stats were computed and offers a "refresh now" link that forces a recompute; the health and enrichment-queue indicators stay live since they're single cheap commands

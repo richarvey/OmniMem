@@ -25,12 +25,17 @@
   {% for ns, stats in ns_stats.items() %}
   <div class="stat-card">
     <h3 class="stat-ns">{{ ns }}</h3>
+    {% if ns == "project" and stats.distinct is defined %}
+    <div class="stat-total">{{ stats.distinct }}</div>
+    <div class="stat-label">{{ stats.total }} record{{ "" if stats.total == 1 else "s" }}</div>
+    {% else %}
     <div class="stat-total">{{ stats.total }}</div>
     <div class="stat-breakdown">
       <span class="badge active">{{ stats.states.active }} active</span>
       <span class="badge deprioritised">{{ stats.states.deprioritised }} depri</span>
       <span class="badge archived">{{ stats.states.archived }} arch</span>
     </div>
+    {% endif %}
   </div>
   {% endfor %}
   <div class="stat-card stat-card-highlight">

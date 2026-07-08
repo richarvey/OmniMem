@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from memory.lifecycle import MemoryState
+from memory.lifecycle import MemoryState, bulk_transition_project
 
 from .. import deps
 
@@ -227,11 +227,35 @@ async def project_delete(request: Request) -> RedirectResponse:
     return RedirectResponse(url="/projects", status_code=303)
 
 
+async def project_deprioritise(request: Request) -> RedirectResponse:
+    """POST /projects/{name}/deprioritise — bulk deprioritise every active memory."""
+    name = request.path_params["name"]
+    result = bulk_transition_project(
+        deps.store, name, MemoryState.DEPRIORITISED,
+        apply=True, reason="Deprioritised via web UI", include_context=True,
+    )
+    logger.info("Deprioritised project %s via web UI (%d memories)", name, result["changed"])
+    return RedirectResponse(url="/projects", status_code=303)
+
+
+async def project_reinstate(request: Request) -> RedirectResponse:
+    """POST /projects/{name}/reinstate — bulk reinstate memories to active."""
+    name = request.path_params["name"]
+    result = bulk_transition_project(
+        deps.store, name, MemoryState.ACTIVE,
+        apply=True, include_context=True,
+    )
+    logger.info("Reinstated project %s via web UI (%d memories)", name, result["changed"])
+    return RedirectResponse(url="/projects", status_code=303)
+
+
 routes = [
     Route("/projects", project_list),
     Route("/projects/new", project_create_form),
     Route("/projects/new", project_create, methods=["POST"]),
     Route("/projects/{name:path}/delete", project_delete, methods=["POST"]),
+    Route("/projects/{name:path}/deprioritise", project_deprioritise, methods=["POST"]),
+    Route("/projects/{name:path}/reinstate", project_reinstate, methods=["POST"]),
     Route("/projects/{name:path}/edit", project_edit_form),
     Route("/projects/{name:path}/edit", project_save, methods=["POST"]),
     Route("/projects/{name:path}", project_detail),

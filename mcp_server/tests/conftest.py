@@ -307,6 +307,13 @@ class FakeValkeyStore:
         if mapping:
             self._client.hset(key, mapping=mapping)
 
+    def set_fields_multi(self, keys, mapping, batch_size=500):
+        if not keys or not mapping:
+            return 0
+        for key in keys:
+            self._client.hset(key, mapping=mapping)
+        return len(keys)
+
     def get_multi(self, keys):
         results = []
         for key in keys:

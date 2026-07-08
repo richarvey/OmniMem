@@ -43,20 +43,37 @@ def _compute_stats(store) -> dict:
         state_counts = {"active": 0, "deprioritised": 0, "archived": 0}
         # Pass 1: pull only the small fields needed for counts + recency ranking.
         # Content is fetched later for just the 10 winners, not every memory.
-        meta = store.get_fields_multi(keys, ("state", "updated_at"))
+        # The project namespace additionally needs the name fields so we can
+        # report the distinct project count (the raw record count is misleading
+        # — it lumps context entries in with ULID project memories).
+        fields = (
+            ("state", "updated_at", "project_name", "project")
+            if ns == "project"
+            else ("state", "updated_at")
+        )
+        meta = store.get_fields_multi(keys, fields)
 
+        project_names: set[str] = set()
         for key, data in zip(keys, meta):
-            state = (data or {}).get("state", "active")
+            data = data or {}
+            state = data.get("state", "active")
             if state in state_counts:
                 state_counts[state] += 1
+            if ns == "project":
+                name = data.get("project_name") or data.get("project") or key.split(":")[-1]
+                project_names.add(name)
             candidates.append({
                 "key": key,
                 "namespace": ns,
                 "state": state,
-                "updated_at": float((data or {}).get("updated_at", "0")),
+                "updated_at": float(data.get("updated_at", "0")),
             })
 
         ns_stats[ns] = {"total": len(keys), "states": state_counts}
+        if ns == "project":
+            # Distinct projects, deduplicated by resolved name (matches the
+            # /projects page and list_projects).
+            ns_stats[ns]["distinct"] = len(project_names)
         total += len(keys)
 
     # Rank across all namespaces, keep the 10 most recent, then hydrate only

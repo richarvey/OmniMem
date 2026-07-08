@@ -28,6 +28,20 @@ class TestComputeStats:
         assert all("content" in m and "updated_at_fmt" in m for m in stats["recent"])
         assert stats["computed_at"] > 0
 
+    def test_project_distinct_count(self, fake_store, fake_embedder):
+        # Three project-namespace records spanning two distinct projects.
+        store_memory(fake_store, fake_embedder, "mem:project:alpha", "alpha ctx",
+                     namespace="project", project="alpha")
+        store_memory(fake_store, fake_embedder, "mem:project:01ALPHAMEM", "alpha note",
+                     namespace="project", project="alpha")
+        store_memory(fake_store, fake_embedder, "mem:project:beta", "beta ctx",
+                     namespace="project", project="beta")
+
+        stats = _compute_stats(fake_store)
+        proj = stats["ns_stats"]["project"]
+        assert proj["total"] == 3, "raw record count unchanged"
+        assert proj["distinct"] == 2, "deduplicated project count"
+
 
 class TestCache:
     def test_second_call_served_from_cache(self, fake_store, fake_embedder, monkeypatch):

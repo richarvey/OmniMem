@@ -265,6 +265,123 @@ def delete_project(
     }
 
 
+def deprioritise_project(
+    project_name: str,
+    confirm: bool = False,
+    reason: str | None = None,
+    include_context: bool = False,
+) -> dict[str, Any]:
+    """Bulk deprioritise every active memory in a project (0.2x recall visibility, reversible). Requires confirm=True; returns a preview otherwise.
+
+    Like delete_project but non-destructive: memories stay stored and searchable,
+    just heavily down-weighted in recall. Undo the whole project with
+    reinstate_project(). Only memories currently in the active state are changed;
+    already-deprioritised or archived ones are reported under `already_inactive`.
+
+    Args:
+        project_name: Project whose memories should be deprioritised.
+        confirm: Must be True to apply. False returns a preview with counts.
+        reason: Optional note stored on each memory explaining why.
+        include_context: Also deprioritise the project's context entry
+            (mem:project:<name>). Default False keeps it active.
+    """
+    store, _ = _get_deps()
+    _validate_project_name(project_name)
+
+    from memory.lifecycle import MemoryState, bulk_transition_project
+
+    result = bulk_transition_project(
+        store, project_name, MemoryState.DEPRIORITISED,
+        apply=confirm, reason=reason, include_context=include_context,
+    )
+
+    if result["total"] == 0:
+        status = "nothing_to_change" if result["skipped"] else "not_found"
+        return _compact({
+            "status": status,
+            "project_name": project_name,
+            "already_inactive": result["skipped"] or None,
+        })
+
+    if not confirm:
+        return _compact({
+            "status": "preview",
+            "project_name": project_name,
+            "would_deprioritise": result["counts"],
+            "total": result["total"],
+            "already_inactive": result["skipped"] or None,
+            "note": "Call again with confirm=True to deprioritise.",
+        })
+
+    logger.info(
+        "deprioritise_project('%s'): deprioritised %d memories (%s)",
+        project_name, result["changed"],
+        ", ".join(f"{ns}={n}" for ns, n in result["counts"].items()),
+    )
+    return _compact({
+        "status": "deprioritised",
+        "project_name": project_name,
+        "deprioritised": result["counts"],
+        "total": result["changed"],
+        "already_inactive": result["skipped"] or None,
+    })
+
+
+def reinstate_project(
+    project_name: str,
+    confirm: bool = False,
+    include_context: bool = False,
+) -> dict[str, Any]:
+    """Bulk reinstate every deprioritised or archived memory in a project back to active. Requires confirm=True; returns a preview otherwise. The inverse of deprioritise_project().
+
+    Args:
+        project_name: Project whose memories should be reactivated.
+        confirm: Must be True to apply. False returns a preview with counts.
+        include_context: Also reinstate the project's context entry
+            (mem:project:<name>). Default False leaves it as-is.
+    """
+    store, _ = _get_deps()
+    _validate_project_name(project_name)
+
+    from memory.lifecycle import MemoryState, bulk_transition_project
+
+    result = bulk_transition_project(
+        store, project_name, MemoryState.ACTIVE,
+        apply=confirm, include_context=include_context,
+    )
+
+    if result["total"] == 0:
+        status = "nothing_to_change" if result["skipped"] else "not_found"
+        return _compact({
+            "status": status,
+            "project_name": project_name,
+            "already_active": result["skipped"] or None,
+        })
+
+    if not confirm:
+        return _compact({
+            "status": "preview",
+            "project_name": project_name,
+            "would_reinstate": result["counts"],
+            "total": result["total"],
+            "already_active": result["skipped"] or None,
+            "note": "Call again with confirm=True to reinstate.",
+        })
+
+    logger.info(
+        "reinstate_project('%s'): reinstated %d memories (%s)",
+        project_name, result["changed"],
+        ", ".join(f"{ns}={n}" for ns, n in result["counts"].items()),
+    )
+    return _compact({
+        "status": "reinstated",
+        "project_name": project_name,
+        "reinstated": result["counts"],
+        "total": result["changed"],
+        "already_active": result["skipped"] or None,
+    })
+
+
 def compile_project_context(
     project_name: str,
     auto_save: bool = False,
