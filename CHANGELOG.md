@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-07-08
+### Added
+- **`delete_project()` MCP tool** ([#14](https://codeberg.org/ric_harvey/omnimem/issues/14)): bulk delete every memory belonging to a project in one call. Finds memories by scanning keys directly rather than by semantic search — the old workaround (recall then delete one by one) missed anything recall couldn't surface and took ~45 minutes for a 26,500-memory benchmark cleanup; the new `ValkeyStore.delete_many()` removes the same volume in well under a second via pipelined batches. Defaults to a preview with per-namespace counts; `confirm=True` deletes, `include_context=True` also removes the project's context entry. Deleting invalidates the abandoned-approach cache so removed dead ends stop surfacing immediately
+
 ## [5.3.1] - 2026-07-08
 ### Fixed
 - **Fact extraction now supplements verbatim content instead of competing with it** ([#20](https://codeberg.org/ric_harvey/omnimem/issues/20)): extracted facts were stored in the same namespace as their source chunks, so compact 1-2 sentence facts crowded the richer verbatim content out of the per-namespace KNN candidate budget — v5-full mode scored 33.6% on LongMemEval against v5-raw's 65.6%, with temporal reasoning collapsing to 7.5%. Four changes land together:

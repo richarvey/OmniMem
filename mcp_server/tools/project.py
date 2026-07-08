@@ -184,6 +184,87 @@ def update_project_state(
     return {"project_name": project_name}
 
 
+def delete_project(
+    project_name: str,
+    confirm: bool = False,
+    include_context: bool = False,
+) -> dict[str, Any]:
+    """Bulk delete every memory belonging to a project. Requires confirm=True; returns a preview otherwise.
+
+    Finds memories by scanning keys directly (no semantic search), so it
+    catches everything — including memories that recall can't surface.
+    Deletes in pipelined batches rather than one call per key.
+
+    Args:
+        project_name: Project whose memories should be deleted.
+        confirm: Must be True to delete. False returns a preview with counts.
+        include_context: Also delete the project's context entry
+            (mem:project:<name>). Default False keeps it.
+    """
+    store, _ = _get_deps()
+
+    _validate_project_name(project_name)
+
+    # Direct key scan across all namespaces — a project's memories carry
+    # either `project` (episodic/knowledge/preference and ULID project
+    # memories) or `project_name` (project context entries).
+    to_delete: dict[str, list[str]] = {}
+    for ns in ("episodic", "project", "knowledge", "preference"):
+        keys = store.scan_prefix(f"mem:{ns}:")
+        if not keys:
+            continue
+        rows = store.get_fields_multi(keys, ("project", "project_name"))
+        matched = []
+        for key, row in zip(keys, rows):
+            if row is None:
+                continue
+            doc_project = row.get("project") or row.get("project_name")
+            if doc_project != project_name:
+                continue
+            # The context entry is only deleted when explicitly requested.
+            if key == f"mem:project:{project_name}" and not include_context:
+                continue
+            matched.append(key)
+        if matched:
+            to_delete[ns] = matched
+
+    total = sum(len(v) for v in to_delete.values())
+    counts = {ns: len(v) for ns, v in to_delete.items()}
+
+    if total == 0:
+        return {"status": "not_found", "project_name": project_name}
+
+    if not confirm:
+        return {
+            "status": "preview",
+            "project_name": project_name,
+            "would_delete": counts,
+            "total": total,
+            "note": "Call again with confirm=True to delete.",
+        }
+
+    deleted = 0
+    for keys in to_delete.values():
+        deleted += store.delete_many(keys)
+
+    # Deleted memories may have carried abandoned-approach entries.
+    from tools import _pipeline
+    if _pipeline is not None:
+        _pipeline.invalidate_abandoned_cache()
+
+    logger.info(
+        "delete_project('%s'): deleted %d memories (%s)",
+        project_name, deleted,
+        ", ".join(f"{ns}={n}" for ns, n in counts.items()),
+    )
+    return {
+        "status": "deleted",
+        "project_name": project_name,
+        "deleted": counts,
+        "total": deleted,
+    }
+
+
 def compile_project_context(
     project_name: str,
     auto_save: bool = False,

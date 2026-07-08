@@ -422,6 +422,27 @@ class ValkeyStore:
         self.client.delete(key)
         logger.info("Deleted key %s", key)
 
+    def delete_many(self, keys: list[str], batch_size: int = 500) -> int:
+        """Hard delete many keys via pipelined batches.
+
+        Bulk cleanup (delete_project) needs this — deleting tens of
+        thousands of memories one MCP call at a time took ~45 minutes.
+
+        Returns the number of keys deleted.
+        """
+        deleted = 0
+        for key in keys:
+            self._validate_key(key)
+        for start in range(0, len(keys), batch_size):
+            batch = keys[start:start + batch_size]
+            pipe = self.client.pipeline(transaction=False)
+            for key in batch:
+                pipe.delete(key)
+            pipe.execute()
+            deleted += len(batch)
+        logger.info("Bulk deleted %d keys", deleted)
+        return deleted
+
     def count_records(self, namespace: str) -> int:
         """Count actual hash records for a namespace via SCAN.
 

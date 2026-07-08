@@ -130,6 +130,10 @@ class FakePipeline:
         self._commands.append(("expire", key, ttl))
         return self
 
+    def delete(self, key):
+        self._commands.append(("delete", key))
+        return self
+
     def execute(self):
         results = []
         for cmd in self._commands:
@@ -146,6 +150,9 @@ class FakePipeline:
                 results.append(self._client.hincrby(key, field, amount))
             elif cmd[0] == "expire":
                 results.append(True)
+            elif cmd[0] == "delete":
+                self._client.delete(cmd[1])
+                results.append(1)
         self._commands = []
         return results
 
@@ -318,6 +325,11 @@ class FakeValkeyStore:
 
     def delete(self, key):
         self._client.delete(key)
+
+    def delete_many(self, keys, batch_size=500):
+        for key in keys:
+            self._client.delete(key)
+        return len(keys)
 
     def scan_prefix(self, prefix):
         return [k for k in self._client._data if k.startswith(prefix)]

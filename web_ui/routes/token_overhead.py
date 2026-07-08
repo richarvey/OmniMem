@@ -15,9 +15,9 @@ _NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:p
 # Update if instructions change significantly.
 _INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "5600"))
 
-# Tool schema overhead — 32 tools (31 registered + health).
+# Tool schema overhead — 33 tools (32 registered + health).
 # Each tool contributes name + description + JSON parameter schema.
-_TOOL_COUNT = 32
+_TOOL_COUNT = 33
 _TOOL_SCHEMAS_CHARS = int(os.getenv("OMNIMEM_TOOL_SCHEMAS_CHARS", "5835"))
 
 # Deferred tool name overhead (mcp__omnimem__<name> listed in system prompt)

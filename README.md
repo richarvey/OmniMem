@@ -260,6 +260,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `update_project_state(name, current_state, notes?)` | Update state without re-embedding |
 | `compile_project_context(name, auto_save?)` | Auto-produce or refresh a project context from its episodic memories, tags, experience data, and abandoned approaches |
 | `list_projects()` | See all stored projects |
+| `delete_project(name, confirm?, include_context?)` | Bulk delete every memory belonging to a project by direct key scan (no semantic search, so nothing gets missed). Preview by default; `confirm=True` deletes in pipelined batches; `include_context=True` also removes the project context entry |
 
 ### Experience scoring
 
