@@ -15,6 +15,12 @@
   </div>
 </header>
 
+{% if stats_age is not none %}
+<p class="stats-meta" style="color:var(--text-muted,#94a3b8);font-size:.8rem;margin:0 0 .75rem;">
+  Stats updated {{ stats_age }}s ago · <a href="/?refresh=1">refresh now</a>
+</p>
+{% endif %}
+
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
   <div class="stat-card">

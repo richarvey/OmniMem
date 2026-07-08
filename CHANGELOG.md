@@ -4,6 +4,10 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.4.1] - 2026-07-08
+### Changed
+- **Dashboard stats are cached in Valkey** ([#21](https://codeberg.org/ric_harvey/omnimem/issues/21)): the namespace/state counts and recent-activity list were recomputed by scanning the whole keyspace on every page load — an O(n) cost that made the dashboard crawl at benchmark-scale stores (26k+ memories, worse at 100k+). They're now cached under `meta:dashboard_stats` for `DASHBOARD_STATS_TTL` seconds (default 60, `0` disables), shared across web UI workers. The page shows when the stats were computed and offers a "refresh now" link that forces a recompute; the health and enrichment-queue indicators stay live since they're single cheap commands
+
 ## [5.4.0] - 2026-07-08
 ### Added
 - **`delete_project()` MCP tool** ([#14](https://codeberg.org/ric_harvey/omnimem/issues/14)): bulk delete every memory belonging to a project in one call. Finds memories by scanning keys directly rather than by semantic search — the old workaround (recall then delete one by one) missed anything recall couldn't surface and took ~45 minutes for a 26,500-memory benchmark cleanup; the new `ValkeyStore.delete_many()` removes the same volume in well under a second via pipelined batches. Defaults to a preview with per-namespace counts; `confirm=True` deletes, `include_context=True` also removes the project's context entry. Deleting invalidates the abandoned-approach cache so removed dead ends stop surfacing immediately

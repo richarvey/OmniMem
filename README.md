@@ -314,6 +314,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | Sliding window for the failed-login limit |
 | `RSS_MAX_PAGE_BYTES` | `10485760` | Max bytes the RSS worker reads when fetching a full article page (10 MB), guarding against hostile or endless responses |
 | `ABANDONED_CACHE_TTL_SECONDS` | `60` | How long the recall pipeline caches the parsed abandoned-approach list between episodic rescans. Invalidated automatically on experience writes in the same process; set `0` to rescan on every recall |
+| `DASHBOARD_STATS_TTL` | `60` | How long the web UI caches dashboard stats (namespace counts + recent list) in Valkey, so the page doesn't rescan the keyspace on every load. The page shows when stats were computed and offers a refresh link; set `0` to recompute on every load |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
 | `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |

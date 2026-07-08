@@ -22,6 +22,15 @@ class FakeValkeyClient:
     def __init__(self):
         self._data: dict[str, dict[str, str]] = {}
         self._sets: dict[str, set[str]] = {}
+        self._strings: dict[str, str] = {}
+
+    # --- string commands ---
+    def set(self, key, value, ex=None):
+        self._strings[key] = value
+        return True
+
+    def get(self, key):
+        return self._strings.get(key)
 
     # --- hash commands ---
     def hset(self, key, field=None, value=None, mapping=None):
