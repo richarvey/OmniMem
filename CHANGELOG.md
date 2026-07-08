@@ -4,6 +4,22 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-07-08
+### Fixed
+- **claude.ai re-authenticating too often**: OAuth refresh-token rotation was strict single-use — the old token was deleted the instant it rotated. claude.ai keeps several connections open and can refresh the same token concurrently (or retry a request), so every refresh after the first failed with `invalid_grant`, which claude.ai surfaces as a dropped connection and a fresh sign-in prompt. `exchange_refresh_token()` now retires the old token with a short grace window instead: during the window it stays loadable and replays return the *same* successor pair, so concurrent/retried refreshes all succeed. Configurable via `OAUTH_REFRESH_GRACE_SECONDS` (default 120s, capped 3600, `0` restores strict single-use). The `rotated_to` marker is persisted in the Valkey storage backend so it survives restarts
+- **OAuth tokens could be lost on restart**: Valkey now runs with AOF persistence (`--appendonly yes --appendfsync everysec`) so tokens issued shortly before a `docker compose restart` are durable, rather than relying on periodic RDB snapshots
+- **Web UI restore was broken**: `restore_backup` unpacked `restore_all()` as a 2-tuple when it returns three values (crashing every restore), and didn't re-embed restored memories so they stayed invisible to search. Both fixed — it now mirrors the MCP `restore_from_file` tool
+### Security
+- **Constant-time token comparison**: MCP and web UI bearer tokens are compared with `hmac.compare_digest` instead of `==`, closing a timing side-channel
+- **Fail closed on exposure**: the MCP server refuses to start unauthenticated when `MCP_HOST` is a non-loopback address; Docker Compose refuses to start if `VALKEY_PASSWORD` is empty
+- **Path-traversal hardening**: web UI backup preview/restore/download/delete now validate the filename against a strict pattern and confirm the resolved path stays inside the backup directory (previously only download/delete did)
+- **Denial-of-service caps**: uploaded and restored backups are limited to 100 MB, and the RSS worker caps page fetches at 10 MB (`RSS_MAX_PAGE_BYTES`) so a hostile or endless response can't exhaust memory
+- **Login brute-force protection**: failed OAuth admin logins are rate-limited per client IP (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`)
+### Changed
+- **Projected batch fetches**: new `ValkeyStore.get_fields_multi(keys, fields)` does a single-round-trip HMGET of only the fields a view needs (half the round trips of `get_multi`, no large-field or vector payload). Applied to the scan-all hot paths — the recall abandoned-approach fast path (ran a full-field episodic scan on *every* recall), `briefing()` session-start scans, `experience_summary`, `memory_audit`, and the web UI dashboard, memories, telemetry, token-overhead and metrics pages
+- **memory_audit is paginated**: the per-memory `entries` list now takes `limit` (default 100, max 500) and `offset`; the state-count summary still covers the whole store. Stops a large store returning thousands of rows in one MCP response
+- **Web UI gzip**: responses are gzip-compressed, and the contradictions page batches its "other memory" lookups into one fetch instead of one-per-pair (N+1)
+
 ## [5.2.1] - 2026-04-09
 ### Added
 - **`queue_status()` MCP tool** ([#19](https://codeberg.org/ric_harvey/omnimem/issues/19)): returns the number of pending enrichment jobs in the Valkey queue. Benchmark runners can poll this between ingest and scoring phases to know when background fact extraction has completed

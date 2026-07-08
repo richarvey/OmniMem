@@ -134,7 +134,7 @@ claude.ai                    OmniMem
    |<---------------------------|
 ```
 
-Access tokens expire after 1 hour. claude.ai automatically refreshes them using the refresh token (valid for 30 days). Token rotation is enforced — each refresh issues a new refresh token and invalidates the old one.
+Access tokens expire after 1 hour. claude.ai automatically refreshes them using the refresh token (valid for 30 days by default, `OAUTH_REFRESH_MAX_DAYS`). Refresh tokens rotate on every use — each refresh issues a new pair — but the old token isn't invalidated the instant it rotates. It stays valid for a short grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s) during which replays return the same new pair. claude.ai holds several connections open and can refresh the same token from more than one at once; the grace window lets those concurrent refreshes all succeed instead of all-but-one failing and forcing you to sign in again.
 
 ## Using both OAuth and bearer tokens
 
@@ -150,8 +150,9 @@ This means your local development setup continues working exactly as before.
 
 - **Use a strong password** for `OAUTH_ADMIN_PASSWORD`. This is the only account that can authorise access to your entire memory store
 - **HTTPS is mandatory**. OAuth tokens must never travel over plain HTTP. The MCP spec requires TLS for all authorisation endpoints
-- **Tokens are stored in memory**. Registered clients, authorisation codes, and tokens live in the MCP server process. Restarting the server clears all active sessions — clients will need to re-authenticate
-- **Token rotation** is enforced on refresh. Each refresh token can only be used once, limiting the window for token theft
+- **Tokens are persisted in Valkey** (with AOF enabled) with TTLs matching their lifetimes. Restarting the MCP server no longer clears active sessions, so a `docker compose restart` won't log claude.ai out. If Valkey is unreachable at startup the provider falls back to in-memory storage, which *is* cleared on restart
+- **Token rotation** happens on every refresh, with a short reuse grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s, set `0` for strict single-use). Keeping the window small limits how long a leaked old token remains usable while still allowing claude.ai's concurrent refreshes to succeed
+- **The login form is rate-limited** per client IP (`OAUTH_LOGIN_MAX_ATTEMPTS` failures per `OAUTH_LOGIN_WINDOW_SECONDS`) to slow brute-force attempts on the admin password
 - **`OAUTH_BASE_URL` must match** the URL clients use to reach your server. If it does not match, redirects will fail
 
 ## Troubleshooting
@@ -163,4 +164,6 @@ This means your local development setup continues working exactly as before.
 | "OAUTH_BASE_URL is missing" in logs | Set `OAUTH_BASE_URL` to your externally-reachable HTTPS URL in `.env` |
 | Login works but tools don't appear | Check that `MCP_TRANSPORT=http` is set. claude.ai requires Streamable HTTP, not SSE |
 | "Connection refused" from claude.ai | Your server must be reachable from the public internet. Check your reverse proxy and firewall rules |
-| Tools stop working after server restart | Expected — in-memory tokens are cleared on restart. claude.ai will re-authenticate automatically when it detects the expired token |
+| Tools stop working after a server restart | Tokens persist in Valkey (with AOF), so a restart should not log you out. If it does, Valkey likely fell back to in-memory storage — check `docker compose logs mcp_server` for "falling back to in-memory storage" and confirm Valkey is healthy |
+| Prompted to re-authenticate every hour or two | You're on a version before the refresh-token grace window, or `OAUTH_REFRESH_GRACE_SECONDS=0`. Concurrent refreshes from claude.ai were racing to `invalid_grant`. Upgrade to 5.3.0+ and leave the grace window at its default |
+| "Too many failed attempts" on the login page | The per-IP login rate limit tripped (`OAUTH_LOGIN_MAX_ATTEMPTS` in `OAUTH_LOGIN_WINDOW_SECONDS`). Wait for the window to pass, or raise the limit |

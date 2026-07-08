@@ -282,7 +282,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 
 | Tool | What it does |
 |---|---|
-| `memory_audit(project?, namespace?)` | All memories by state with metadata |
+| `memory_audit(project?, namespace?, limit?, offset?)` | All memories by state; full state-count summary plus a paginated `entries` list (default 100, max 500) |
 | `explain_memory(key)` | Full history for a single memory |
 | `why_did_you_mention(query)` | Debug why something surfaced |
 | `dump_to_file(filename?)` | Export everything to a timestamped JSON file |
@@ -301,13 +301,17 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 |---|---|---|
 | `VALKEY_PASSWORD` | `changeme` | Please change this |
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
-| `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP SSE endpoint. When unset, no auth is required |
-| `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard. `/metrics` and static assets are exempt |
+| `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP endpoint (constant-time compared). When unset, no auth is required — but the server refuses to start unauthenticated on a non-loopback `MCP_HOST` |
+| `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard (constant-time compared). `/metrics` and static assets are exempt |
 | `OAUTH_ENABLED` | *(unset)* | Set to `true` to enable OAuth 2.1 authorisation server for claude.ai and other OAuth MCP clients |
 | `OAUTH_BASE_URL` | *(unset)* | Externally-reachable URL of your OmniMem instance (e.g. `https://mcp.example.com`). Required when OAuth is enabled |
 | `OAUTH_ADMIN_USER` | *(unset)* | Username for the OAuth admin account. Required when OAuth is enabled |
 | `OAUTH_ADMIN_PASSWORD` | *(unset)* | Password for the OAuth admin account. Required when OAuth is enabled |
 | `OAUTH_REFRESH_MAX_DAYS` | `30` | Absolute lifetime of an OAuth refresh-token chain. Each rotation silently re-issues tokens without re-prompting the user, until this cap is reached. Hard-capped at `90` |
+| `OAUTH_REFRESH_GRACE_SECONDS` | `120` | Grace window after a refresh token rotates. The old token keeps working for this long and replays return the same new pair, so claude.ai isn't logged out when several connections refresh at once. Capped at `3600`; set `0` for strict single-use rotation |
+| `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed admin logins per client IP before the login form is temporarily blocked. Set `0` to disable |
+| `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | Sliding window for the failed-login limit |
+| `RSS_MAX_PAGE_BYTES` | `10485760` | Max bytes the RSS worker reads when fetching a full article page (10 MB), guarding against hostile or endless responses |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
 | `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |
@@ -392,7 +396,7 @@ Update the MCP config URL to `https://omnimem.yourdomain.com/sse` (or `.../mcp` 
 
 You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
 
-Security checklist: strong `VALKEY_PASSWORD`, set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env`, TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet.
+Security checklist: strong `VALKEY_PASSWORD` (Compose now refuses to start if it's empty), set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env`, TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet. Bearer tokens are compared in constant time, the MCP server won't start unauthenticated on a non-loopback address, backup filenames are validated against path traversal, and uploaded/restored backups and fetched RSS pages are size-capped.
 
 ### OAuth 2.1 for claude.ai
 
@@ -413,6 +417,8 @@ When enabled, OmniMem acts as a full OAuth 2.1 authorisation server with:
 - **Token exchange and refresh** (`/token`) — 1-hour access tokens, 30-day refresh tokens with rotation
 
 Point claude.ai at your OmniMem URL and it handles the rest — discovery, registration, browser login, and token management all happen automatically.
+
+**Staying signed in.** Refresh tokens rotate on every use, but the old token isn't thrown away the instant it rotates — it stays valid for a short grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s) and replays during that window return the same new pair. claude.ai keeps several connections open and can refresh the same token from more than one at once; without the grace window, all but the first refresh would fail with `invalid_grant` and claude.ai would drop the connection and prompt you to sign in again. Token state is also persisted to Valkey with AOF enabled, so a `docker compose restart` doesn't lose sessions. If you still get logged out sooner than `OAUTH_REFRESH_MAX_DAYS`, that's the place to look. The login form is rate-limited per IP (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`) to blunt brute-force attempts on the admin password.
 
 OAuth works alongside bearer token auth. If you have both `OAUTH_ENABLED` and `MCP_AUTH_TOKEN` set, both authentication methods are accepted via `MultiAuth`. Local Claude Code instances can continue using bearer tokens while claude.ai uses OAuth.
 

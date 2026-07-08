@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature").
 
-**Version**: 5.1.0
+**Version**: 5.3.0
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -115,6 +115,9 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 
 ## Gotchas
 
+- **Batch reads use `store.get_fields_multi(keys, fields)`** for list/scan/aggregate views — one pipelined HMGET per key, only the named fields, no vector payload. `get_multi` (two round trips, all text fields) is for when you genuinely need the whole record. When adding a field to a list/telemetry/audit view, remember to add it to that view's projection tuple or it will silently read as `None`.
+- **OAuth refresh uses a rotation grace window**, not strict single-use. `exchange_refresh_token` retires the old token by re-saving it with a `rotated_to` marker and a short TTL (`OAUTH_REFRESH_GRACE_SECONDS`); replays inside the window return the same successor pair. This is what stops claude.ai's concurrent refreshes from racing to `invalid_grant`. Any change to token storage must round-trip `rotated_to` (see `_serialise_stored_token`).
+- **Valkey runs with AOF** (`--appendonly yes`) so OAuth tokens survive restarts; Compose refuses to start with an empty `VALKEY_PASSWORD`.
 - **PyTorch is the Alpine blocker** — not sentence-transformers or numpy. PyTorch only publishes manylinux (glibc) wheels. Any project using PyTorch (directly or transitively) cannot use Alpine. The ~2.2GB image size is mostly PyTorch, not the Debian base. Alpine with gcompat shim also fails (pip rejects at download/hash verification stage).
 - **inotify doesn't work for Docker bind mounts** — mtime polling (10s interval, configurable via `FEEDS_WATCH_INTERVAL`) is more portable. The RSS worker uses this for feeds.yml change detection.
 - **Projects without `set_project_context()`** only exist as ULID memories — the web UI detail view won't work for them until a proper context entry is created. Template conditionally disables links for these.
