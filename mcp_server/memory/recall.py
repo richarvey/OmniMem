@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +19,53 @@ from .temporal import parse_query_date, temporal_boost
 logger = logging.getLogger(__name__)
 
 NAMESPACES = ["episodic", "project", "knowledge", "preference"]
+
+# Push archived/deleted exclusion into the vector search so dead memories
+# don't consume KNN candidate slots. valkey-search quirk (verified live):
+# in-brace alternation {a|b} matches nothing — clause-level OR is required.
+_STATE_FILTER = "(@state:{active} | @state:{deprioritised})"
+
+# Project values are interpolated RAW into the tag filter. valkey-search
+# (unlike RediSearch docs) matches raw spaces/dots/hyphens and FAILS on
+# backslash-escaped or quoted values, so the only safe policy is: interpolate
+# unmodified, and only when the value matches the same character allowlist
+# the tools enforce for project names. Anything else skips push-down and
+# relies on the Python-side filter below.
+_TAG_VALUE_SAFE_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
+
+# Which indexed field carries the project scope, per namespace. knowledge has
+# no project field in its index, so it can't be pushed down (the Python-side
+# filter drops knowledge docs under project_filter, matching old behaviour).
+# The project namespace is excluded too: ULID-keyed docs written mid-session
+# may only carry `project` until the startup migration backfills project_name.
+_PROJECT_FILTER_FIELDS = {"episodic": "project", "preference": "project"}
+
+
+def _build_filter_expr(namespace: str, project_filter: str | None) -> str:
+    """Compose the FT.SEARCH filter for one namespace."""
+    clauses = [_STATE_FILTER]
+    if project_filter and _TAG_VALUE_SAFE_RE.match(project_filter):
+        tag_field = _PROJECT_FILTER_FIELDS.get(namespace)
+        if tag_field:
+            clauses.append(f"@{tag_field}:{{{project_filter}}}")
+    if len(clauses) == 1:
+        return clauses[0]
+    return "(" + " ".join(clauses) + ")"
+
+
+def _candidate_k(top_k: int, project_filter: str | None) -> int:
+    """How many KNN candidates to request per namespace.
+
+    Was hardcoded to 20, which starved results in two ways: a caller asking
+    for top_k > 20 in one namespace could never get more than 20, and with a
+    project filter the top 20 could easily contain zero matches for that
+    project even though matches exist further down. Over-fetch when filtering
+    so the Python-side filter still has candidates left after discarding.
+    """
+    k = max(20, top_k)
+    if project_filter:
+        k = max(k, 50)
+    return k
 
 
 def compute_experience_weight(effort_score: int, outcome: str) -> float:
@@ -66,6 +114,18 @@ class RecallPipeline:
         self.store = store
         self.embedder = embedder
         self.lifecycle = lifecycle
+        # Cached parse of every abandoned approach in the episodic namespace.
+        # warn_if_abandoned runs on EVERY recall, so rescanning the namespace
+        # each time is the single biggest fixed cost of the pipeline. The
+        # cache is invalidated on writes in this process (record_experience,
+        # log_abandoned, forget, restore) and expires by TTL to pick up
+        # writes from other processes (web UI vs MCP server).
+        self._abandoned_cache: list[dict[str, Any]] | None = None
+        self._abandoned_cache_at: float = 0.0
+
+    def invalidate_abandoned_cache(self) -> None:
+        """Drop the cached abandoned-approach list after a relevant write."""
+        self._abandoned_cache = None
 
     def recall(
         self,
@@ -128,13 +188,19 @@ class RecallPipeline:
         # temporal language — temporal_multiplier stays at 1.0 in that case.
         query_date = parse_query_date(query)
 
+        per_ns_k = _candidate_k(top_k, project_filter)
         for ns in namespaces:
-            raw_results = self.store.search(ns, query_vector, top_k=20)
+            raw_results = self.store.search(
+                ns, query_vector, top_k=per_ns_k,
+                filter_expr=_build_filter_expr(ns, project_filter),
+            )
 
             for doc in raw_results:
                 state_str = doc.get("state", "active")
 
-                # Step 4: Filter archived/deleted
+                # Step 4: Filter archived/deleted. Kept even though the
+                # query-side filter excludes them — it is the safety net when
+                # the filtered search fell back to unfiltered.
                 if state_str in (MemoryState.ARCHIVED.value, MemoryState.DELETED.value):
                     continue
 
@@ -258,6 +324,8 @@ class RecallPipeline:
                     suppressed_topics=suppressed_topics,
                     recency_decay_days=recency_decay_days,
                     now=now,
+                    top_k=top_k,
+                    query_date=query_date,
                 )
                 results.extend(variant_results)
             if variants:
@@ -289,17 +357,24 @@ class RecallPipeline:
         suppressed_topics: list[str],
         recency_decay_days: int,
         now: float,
+        top_k: int = 20,
+        query_date=None,
     ) -> list[RecallResult]:
         """Run vector search for one query variant. Used by query expansion.
 
         This intentionally mirrors the main per-namespace loop in recall() —
-        same scoring, same filters — but skips the abandoned fast-path and
-        recall logging which only run once per top-level call.
+        same scoring (including the temporal boost), same filters — but skips
+        the abandoned fast-path and recall logging which only run once per
+        top-level call.
         """
         out: list[RecallResult] = []
         query_vector = self.embedder.embed(variant)
+        per_ns_k = _candidate_k(top_k, project_filter)
         for ns in namespaces:
-            raw_results = self.store.search(ns, query_vector, top_k=20)
+            raw_results = self.store.search(
+                ns, query_vector, top_k=per_ns_k,
+                filter_expr=_build_filter_expr(ns, project_filter),
+            )
             for doc in raw_results:
                 state_str = doc.get("state", "active")
                 if state_str in (MemoryState.ARCHIVED.value, MemoryState.DELETED.value):
@@ -322,7 +397,25 @@ class RecallPipeline:
                     excess_periods = (age_days - recency_decay_days) / 30.0
                     recency_multiplier = max(1.0 - 0.05 * excess_periods, 0.3)
                 exp_weight = float(doc.get("experience_weight", "1.0"))
-                adjusted_score = raw_score * surface_score * recency_multiplier * exp_weight
+
+                # Temporal boost — parity with the main loop (was missing, so
+                # date-anchored memories ranked lower via variants than via
+                # the original query).
+                temporal_multiplier = 1.0
+                event_date_val: float | None = None
+                event_date_raw = doc.get("event_date")
+                if event_date_raw:
+                    try:
+                        event_date_val = float(event_date_raw)
+                    except (ValueError, TypeError):
+                        event_date_val = None
+                if query_date is not None and event_date_val is not None:
+                    temporal_multiplier = temporal_boost(query_date, event_date_val)
+
+                adjusted_score = (
+                    raw_score * surface_score * recency_multiplier
+                    * exp_weight * temporal_multiplier
+                )
 
                 tags_raw = doc.get("tags", "[]")
                 try:
@@ -365,25 +458,32 @@ class RecallPipeline:
                     result_type=result_type,
                     breakthrough=doc.get("breakthrough"),
                     contradictions=contradictions,
+                    event_date=event_date_val,
                 ))
         return out
 
-    def warn_if_abandoned(self, query: str) -> list[dict[str, Any]]:
-        """Keyword scan for abandoned approaches matching the query.
+    def _get_abandoned_entries(self) -> list[dict[str, Any]]:
+        """Parsed abandoned-approach entries across episodic, with caching.
 
-        Runs before embedding -- cheap keyword check. Uses pipelined batch
-        fetch instead of N+1 individual GET calls. Caps at 5000 keys to
-        prevent excessive memory/CPU usage on large datasets.
+        The scan is capped at 5000 keys and fetches only three fields, but it
+        still runs on every recall — so the parsed result is cached for
+        ABANDONED_CACHE_TTL_SECONDS (default 60, 0 disables). Writers in this
+        process call invalidate_abandoned_cache(); other processes are
+        covered by the TTL.
         """
-        matches: list[dict[str, Any]] = []
-        seen_keys: set[str] = set()
-        query_lower = query.lower()
+        ttl = int(os.getenv("ABANDONED_CACHE_TTL_SECONDS", "60"))
+        now = time.time()
+        if (
+            ttl > 0
+            and self._abandoned_cache is not None
+            and now - self._abandoned_cache_at < ttl
+        ):
+            return self._abandoned_cache
 
-        # Scan episodic memory keys, capped to prevent DoS on huge datasets
+        entries: list[dict[str, Any]] = []
+
         _MAX_ABANDONED_SCAN_KEYS = 5000
         keys = self.store.scan_prefix("mem:episodic:")
-        if not keys:
-            return matches
         if len(keys) > _MAX_ABANDONED_SCAN_KEYS:
             logger.warning(
                 "Abandoned scan capped at %d keys (total: %d)",
@@ -391,48 +491,73 @@ class RecallPipeline:
             )
             keys = keys[:_MAX_ABANDONED_SCAN_KEYS]
 
-        # Fetch only the three fields this scan actually needs, in one
-        # round-trip. This runs on every recall, so pulling full memories
-        # (content, breakthrough, gotchas, …) here was pure waste.
-        all_data = self.store.get_fields_multi(
-            keys, ("abandoned_approaches", "effort_score", "project")
-        )
-
-        for key, data in zip(keys, all_data):
-            if data is None:
-                continue
-
-            approaches_raw = data.get("abandoned_approaches", "[]")
-            try:
-                approaches = json.loads(approaches_raw)
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-            if not isinstance(approaches, list):
-                continue
-
-            for approach in approaches:
-                if not isinstance(approach, dict):
+        if keys:
+            all_data = self.store.get_fields_multi(
+                keys, ("abandoned_approaches", "effort_score", "project")
+            )
+            for key, data in zip(keys, all_data):
+                if data is None:
                     continue
-                name = approach.get("name", "").lower()
-                if name and (name in query_lower or query_lower in name):
-                    match_key = f"{key}:{name}"
-                    if match_key not in seen_keys:
-                        seen_keys.add(match_key)
-                        effort_raw = data.get("effort_score")
-                        effort = None
-                        if effort_raw is not None:
-                            try:
-                                effort = int(float(effort_raw))
-                            except (ValueError, TypeError):
-                                pass
-                        matches.append({
-                            "memory_key": key,
-                            "abandoned_name": approach.get("name", ""),
-                            "reason": approach.get("reason", ""),
-                            "effort_score": effort,
-                            "project": data.get("project"),
-                        })
+
+                approaches_raw = data.get("abandoned_approaches", "[]")
+                try:
+                    approaches = json.loads(approaches_raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if not isinstance(approaches, list):
+                    continue
+
+                effort_raw = data.get("effort_score")
+                effort = None
+                if effort_raw is not None:
+                    try:
+                        effort = int(float(effort_raw))
+                    except (ValueError, TypeError):
+                        pass
+
+                for approach in approaches:
+                    if not isinstance(approach, dict):
+                        continue
+                    name = approach.get("name", "")
+                    if not name:
+                        continue
+                    entries.append({
+                        "memory_key": key,
+                        "name_lower": name.lower(),
+                        "abandoned_name": name,
+                        "reason": approach.get("reason", ""),
+                        "effort_score": effort,
+                        "project": data.get("project"),
+                    })
+
+        self._abandoned_cache = entries
+        self._abandoned_cache_at = now
+        return entries
+
+    def warn_if_abandoned(self, query: str) -> list[dict[str, Any]]:
+        """Keyword scan for abandoned approaches matching the query.
+
+        Runs before embedding — cheap keyword check against the cached
+        abandoned-entry list (see _get_abandoned_entries).
+        """
+        matches: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
+        query_lower = query.lower()
+
+        for entry in self._get_abandoned_entries():
+            name = entry["name_lower"]
+            if name in query_lower or query_lower in name:
+                match_key = f"{entry['memory_key']}:{name}"
+                if match_key in seen_keys:
+                    continue
+                seen_keys.add(match_key)
+                matches.append({
+                    "memory_key": entry["memory_key"],
+                    "abandoned_name": entry["abandoned_name"],
+                    "reason": entry["reason"],
+                    "effort_score": entry["effort_score"],
+                    "project": entry["project"],
+                })
 
         return matches
 

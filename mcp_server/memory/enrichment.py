@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import ulid
 
+from .dedup import check_duplicate
 from .extraction import extract_facts, ExtractedFact
 from .lifecycle import MemoryState
 
@@ -119,10 +120,23 @@ class EnrichmentWorker:
         source_doc_id = payload.get("doc_id") or key
         stored = 0
         preferences = 0
+        duplicates = 0
 
         for fact in facts:
             target_ns = "preference" if fact.kind == "preference" else namespace
             vector = self._embedder.embed(fact.text)
+
+            # Skip near-duplicate facts. The synchronous extraction path used
+            # to do this via check_duplicate; the async queue migration lost
+            # it, so re-remembering similar content silently piled up
+            # duplicate fact memories.
+            dup = check_duplicate(
+                self._store, target_ns, vector, fact.text, project_filter=project
+            )
+            if dup is not None:
+                duplicates += 1
+                continue
+
             fact_key = f"mem:{target_ns}:{ulid.new().str}"
             fields = {
                 "content": fact.text,
@@ -147,8 +161,8 @@ class EnrichmentWorker:
                 preferences += 1
 
         logger.info(
-            "Enriched %s: %d facts (%d preferences) from %d extracted",
-            key, stored, preferences, len(facts),
+            "Enriched %s: %d facts (%d preferences, %d duplicates skipped) from %d extracted",
+            key, stored, preferences, duplicates, len(facts),
         )
 
 

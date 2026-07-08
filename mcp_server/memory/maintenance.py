@@ -43,7 +43,7 @@ def expire_knowledge_items(
     if not keys:
         return expired
 
-    all_data = store.get_multi(keys)
+    all_data = store.get_fields_multi(keys, ("state", "feed_name", "expires_at"))
     for key, data in zip(keys, all_data):
         if data is None:
             continue
@@ -133,7 +133,9 @@ def run_maintenance(
 
         keys = store.scan_prefix("mem:episodic:")
         if keys:
-            all_data = store.get_multi(keys)
+            all_data = store.get_fields_multi(
+                keys, ("state", "project", "project_name", "content")
+            )
             active_entries: list[tuple[str, dict[str, Any]]] = []
             for key, data in zip(keys, all_data):
                 if data is None:
@@ -148,10 +150,21 @@ def run_maintenance(
                     break
 
             if len(active_entries) >= 2:
-                # Embed all content and build similarity matrix
-                texts = [data.get("content", "") for _, data in active_entries]
-                vectors = embedder.embed_batch(texts)
-                vectors_array = np.array(vectors)
+                # Reuse stored embeddings; fall back to the model only for
+                # entries whose vector is missing. This runs inside briefing()
+                # on the auto-maintenance interval, so avoiding a 200-text
+                # model pass keeps session start responsive.
+                stored_vectors = store.get_vectors_multi(
+                    [k for k, _ in active_entries]
+                )
+                missing = [i for i, v in enumerate(stored_vectors) if v is None]
+                if missing:
+                    fallback = embedder.embed_batch(
+                        [active_entries[i][1].get("content", "") for i in missing]
+                    )
+                    for i, vec in zip(missing, fallback):
+                        stored_vectors[i] = vec
+                vectors_array = np.array(stored_vectors)
                 similarity_matrix = vectors_array @ vectors_array.T
 
                 # Only check negation on semantically similar pairs

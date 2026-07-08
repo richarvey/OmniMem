@@ -104,17 +104,20 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 
 ## Recall Pipeline (how scoring works)
 
-1. Abandoned fast-path: keyword scan on `abandoned_approaches` (no embedding needed)
-2. Vector search: embed query, search top 20 per namespace
+1. Abandoned fast-path: keyword scan on `abandoned_approaches` (no embedding needed; parsed entries cached for `ABANDONED_CACHE_TTL_SECONDS`, default 60, invalidated on experience/forget/restore writes)
+2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter). State and project filters are pushed into FT.SEARCH as tag filters so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net
 3. Apply multipliers in order:
    - Surface score (lifecycle state: active 1.0x, deprioritised 0.2x, archived 0.0x)
    - Recency decay (age penalty after `RECENCY_DECAY_DAYS`, default 90)
    - Experience weight (effort × outcome: succeeded 1.0x–1.8x, pivoted 0.7x, abandoned 0.1x)
+   - Temporal boost (1.0–1.5x when the query mentions a date and the memory has a close `event_date`; applied in both the main loop and query-expansion variants)
 4. Merge results from all namespaces, re-rank by adjusted_score
 5. Log recall event and increment per-memory `recall_count` + `last_recalled` counters
 
 ## Gotchas
 
+- **valkey-search FT.SEARCH tag filters diverge from the RediSearch docs** (verified live): raw tag values match — including spaces, dots and hyphens (`@project:{omni mem}` works as-is) — while backslash-escaped or quoted values match NOTHING. In-brace alternation `{a|b}` is also broken; use clause-level OR: `(@state:{a} | @state:{b})`. Interpolate values raw and only after allowlist validation (`_TAG_VALUE_SAFE_RE` in recall.py). `store.search()` retries unfiltered when a filtered query errors, so a bad filter degrades rather than returning [].
+- **Stored vectors are readable via `store.get_vectors_multi(keys)`** — a second binary-safe client (decode_responses=False) reads the `vector` field the main client can't. Dedup/maintenance/check_contradictions reuse stored embeddings instead of re-embedding namespaces; fall back to `embed_batch` only for entries whose vector is missing.
 - **Batch reads use `store.get_fields_multi(keys, fields)`** for list/scan/aggregate views — one pipelined HMGET per key, only the named fields, no vector payload. `get_multi` (two round trips, all text fields) is for when you genuinely need the whole record. When adding a field to a list/telemetry/audit view, remember to add it to that view's projection tuple or it will silently read as `None`.
 - **OAuth refresh uses a rotation grace window**, not strict single-use. `exchange_refresh_token` retires the old token by re-saving it with a `rotated_to` marker and a short TTL (`OAUTH_REFRESH_GRACE_SECONDS`); replays inside the window return the same successor pair. This is what stops claude.ai's concurrent refreshes from racing to `invalid_grant`. Any change to token storage must round-trip `rotated_to` (see `_serialise_stored_token`).
 - **Valkey runs with AOF** (`--appendonly yes`) so OAuth tokens survive restarts; Compose refuses to start with an empty `VALKEY_PASSWORD`.

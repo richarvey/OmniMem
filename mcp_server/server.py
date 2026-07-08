@@ -118,6 +118,28 @@ if _oauth_provider:
 _start_time = time.time()
 
 
+def _migrate_missing_state(store) -> None:
+    """Backfill state=active on memories that pre-date the state field.
+
+    Recall pushes a state tag filter into FT.SEARCH; a doc with no state
+    field would silently drop out of every filtered search even though the
+    Python-side default treats missing state as active. One-time backfill
+    keeps the two behaviours identical.
+    """
+    fixed = 0
+    for ns in ("episodic", "project", "knowledge", "preference"):
+        keys = store.scan_prefix(f"mem:{ns}:")
+        if not keys:
+            continue
+        rows = store.get_fields_multi(keys, ("state",))
+        for key, row in zip(keys, rows):
+            if row is None or not row.get("state"):
+                store.set_field(key, "state", "active")
+                fixed += 1
+    if fixed:
+        logger.info("Migration: backfilled state=active on %d memories", fixed)
+
+
 def _migrate_project_names(store) -> None:
     """Set project_name from project field on ULID-keyed project memories missing it."""
     keys = store.scan_prefix("mem:project:")
@@ -168,8 +190,11 @@ def _init() -> None:
     tools_pkg._lifecycle = lifecycle
     tools_pkg._pipeline = pipeline
 
-    # One-time migration: set project_name on ULID-keyed project memories
+    # One-time migrations: set project_name on ULID-keyed project memories,
+    # backfill state on pre-state-field memories (needed by the recall
+    # filter push-down).
     _migrate_project_names(store)
+    _migrate_missing_state(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker
@@ -281,6 +306,13 @@ def health() -> dict:
             store.client.ping()
             result["valkey_connected"] = True
 
+            # One SCAN of mem:* for all four namespaces instead of one full
+            # keyspace SCAN per namespace.
+            try:
+                actual_counts = store.count_all_records()
+            except Exception:
+                actual_counts = {}
+
             for namespace in ("episodic", "project", "knowledge", "preference"):
                 idx_name = f"idx:{namespace}"
                 num_docs: int | str
@@ -291,12 +323,12 @@ def health() -> dict:
                     num_docs = "unavailable"
                 result["indexes"][idx_name] = num_docs
 
-                try:
-                    actual = store.count_records(namespace)
+                if namespace in actual_counts:
+                    actual = actual_counts[namespace]
                     result["records"][namespace] = actual
                     if isinstance(num_docs, int) and num_docs != actual:
                         result["drift"][namespace] = num_docs - actual
-                except Exception:
+                else:
                     result["records"][namespace] = "unavailable"
     except Exception:
         result["valkey_error"] = "connection_failed"

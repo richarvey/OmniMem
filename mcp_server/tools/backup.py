@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 # Maximum backup file size to load (100 MB)
 _MAX_BACKUP_FILE_SIZE = 100 * 1024 * 1024
 
-# Allowed filename pattern: alphanumeric, underscores, hyphens, dots, ending in .json
-_SAFE_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
+# Allowed filename pattern: alphanumeric, underscores, hyphens, dots, ending
+# in .json. No path separators, so traversal is impossible; leading dots are
+# rejected so hidden files can't be created.
+_SAFE_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_.\-]*\.json$")
 
 
 def _get_deps():
@@ -88,7 +90,9 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
         return {"status": "error", "message": "Failed to export data from store"}
 
     # Count by namespace
-    ns_counts: dict[str, int] = {"episodic": 0, "project": 0, "knowledge": 0}
+    ns_counts: dict[str, int] = {
+        "episodic": 0, "project": 0, "knowledge": 0, "preference": 0,
+    }
     for key in all_data:
         if key.startswith("mem:episodic:"):
             ns_counts["episodic"] += 1
@@ -96,6 +100,8 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
             ns_counts["project"] += 1
         elif key.startswith("mem:knowledge:"):
             ns_counts["knowledge"] += 1
+        elif key.startswith("mem:preference:"):
+            ns_counts["preference"] += 1
 
     backup = {
         "metadata": {
@@ -167,8 +173,11 @@ def restore_from_file(
     if not isinstance(data, dict):
         return {"status": "error", "message": "Invalid backup data format"}
 
-    # Validate that all keys in the backup have expected prefixes
-    allowed_prefixes = ("mem:", "topics:", "log:recall:")
+    # Validate that all keys in the backup have expected prefixes.
+    # meta: must be allowed — dump_all() exports meta:* (tool metrics,
+    # maintenance counters), so rejecting it made every dump_to_file backup
+    # unrestorable through this tool.
+    allowed_prefixes = ("mem:", "topics:", "log:recall:", "meta:")
     for key in data:
         if not isinstance(key, str) or not key.startswith(allowed_prefixes):
             return {
@@ -202,6 +211,11 @@ def restore_from_file(
                 namespace = key.split(":")[1]
                 store.upsert(namespace, key, {}, vector)
                 re_embedded += 1
+
+    # Restored memories may include abandoned-approach entries.
+    from tools import _pipeline
+    if _pipeline is not None:
+        _pipeline.invalidate_abandoned_cache()
 
     logger.info(
         "Restored %d keys, skipped %d, re-embedded %d from %s",

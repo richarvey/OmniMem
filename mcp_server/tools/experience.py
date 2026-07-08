@@ -46,7 +46,7 @@ def record_experience(
         breakthrough: What finally worked.
         gotchas: Caveats to watch for.
     """
-    store, lifecycle, _ = _get_deps()
+    store, lifecycle, pipeline = _get_deps()
 
     _validate_memory_key(key)
 
@@ -91,6 +91,9 @@ def record_experience(
 
     store.set_fields(key, updates)
 
+    if abandoned_approaches and pipeline is not None:
+        pipeline.invalidate_abandoned_cache()
+
     # Auto-suppress abandoned approach names if high effort and abandoned
     auto_suppressed: list[str] = []
     if effort_score >= 4 and outcome == "abandoned" and abandoned_approaches:
@@ -131,7 +134,7 @@ def log_abandoned(
         type: 'library', 'approach', 'tool', 'pattern', or 'service'.
         reason: Why it was abandoned.
     """
-    store, _, _ = _get_deps()
+    store, _, pipeline = _get_deps()
 
     _validate_memory_key(key)
 
@@ -163,6 +166,9 @@ def log_abandoned(
         "abandoned_approaches": json.dumps(existing),
         "updated_at": str(time.time()),
     })
+
+    if pipeline is not None:
+        pipeline.invalidate_abandoned_cache()
 
     return {
         "key": key,

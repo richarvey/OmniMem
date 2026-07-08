@@ -119,9 +119,12 @@ def find_all_duplicates(
         )
         keys = keys[:max_keys]
 
-    all_data = store.get_multi(keys)
+    # Only the fields the cluster output needs — not full memories.
+    all_data = store.get_fields_multi(
+        keys, ("content", "state", "project", "project_name", "created_at")
+    )
 
-    # Filter and collect content for embedding
+    # Filter to live entries in scope
     valid_entries: list[tuple[str, dict[str, Any]]] = []
     for key, data in zip(keys, all_data):
         if data is None:
@@ -137,10 +140,22 @@ def find_all_duplicates(
     if len(valid_entries) < 2:
         return []
 
-    # Batch embed all content
-    texts = [data.get("content", "") for _, data in valid_entries]
-    vectors = embedder.embed_batch(texts)
-    vectors_array = np.array(vectors)
+    # Reuse the embeddings already stored with each memory — one pipelined
+    # read instead of re-running the model over the whole namespace (which
+    # made every dedup scan, including auto-maintenance during briefing(),
+    # take tens of seconds on large stores). Entries whose stored vector is
+    # missing/malformed are embedded as a fallback.
+    stored_vectors = store.get_vectors_multi([k for k, _ in valid_entries])
+    missing = [
+        i for i, v in enumerate(stored_vectors) if v is None
+    ]
+    if missing:
+        fallback = embedder.embed_batch(
+            [valid_entries[i][1].get("content", "") for i in missing]
+        )
+        for i, vec in zip(missing, fallback):
+            stored_vectors[i] = vec
+    vectors_array = np.array(stored_vectors)
 
     # Pairwise cosine similarity (vectors are normalised, so dot product = cosine)
     similarity_matrix = vectors_array @ vectors_array.T
@@ -160,16 +175,25 @@ def find_all_duplicates(
         if ra != rb:
             parent[ra] = rb
 
-    # Track max similarity per cluster root during union-find
+    # Vectorised pair extraction: pull only the above-threshold upper-triangle
+    # pairs out of numpy instead of looping n^2/2 times in Python (2M
+    # iterations at the 2000-key cap).
+    iu, ju = np.triu_indices(n, k=1)
+    sims = similarity_matrix[iu, ju]
+    over = sims >= threshold
+    pairs = list(zip(iu[over].tolist(), ju[over].tolist(), sims[over].tolist()))
+
+    for i, j, _ in pairs:
+        union(i, j)
+
+    # Record max similarity per FINAL root in a second pass — recording during
+    # union-find attributed the max to whatever the root was at that moment,
+    # which a later union could re-root, losing the value.
     cluster_max_sim: dict[int, float] = {}
-    for i in range(n):
-        for j in range(i + 1, n):
-            sim = float(similarity_matrix[i, j])
-            if sim >= threshold:
-                union(i, j)
-                root = find(i)
-                if sim > cluster_max_sim.get(root, 0.0):
-                    cluster_max_sim[root] = sim
+    for i, _, sim in pairs:
+        root = find(i)
+        if sim > cluster_max_sim.get(root, 0.0):
+            cluster_max_sim[root] = sim
 
     # Group into clusters
     clusters_map: dict[int, list[int]] = {}

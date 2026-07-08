@@ -116,8 +116,10 @@ def list_projects() -> dict[str, Any]:
 
     keys = store.scan_prefix("mem:project:")
 
-    # Batch fetch all project data in one pipeline round-trip
-    all_data = store.get_multi(keys)
+    # One round-trip, only the fields the listing shows
+    all_data = store.get_fields_multi(
+        keys, ("project_name", "project", "goals", "stack", "description", "state")
+    )
 
     # Group by resolved project name to deduplicate
     project_map: dict[str, dict[str, Any]] = {}

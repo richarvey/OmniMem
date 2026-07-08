@@ -137,6 +137,11 @@ class ValkeyStore:
 
     def __init__(self) -> None:
         self._client: valkey.Valkey | None = None
+        # Lazily-created second client with decode_responses=False, used only
+        # to read the binary vector field (the main client would try to UTF-8
+        # decode it). Lets dedup/maintenance reuse stored embeddings instead
+        # of re-embedding whole namespaces on every scan.
+        self._raw_client: valkey.Valkey | None = None
 
     def connect(self, max_retries: int = 10, retry_delay: float = 2.0) -> None:
         """Connect to Valkey with connection pooling and retry logic on startup."""
@@ -174,6 +179,20 @@ class ValkeyStore:
         if self._client is None:
             raise RuntimeError("ValkeyStore not connected. Call connect() first.")
         return self._client
+
+    @property
+    def raw_client(self) -> valkey.Valkey:
+        """Binary-safe client (decode_responses=False) for reading vectors."""
+        if self._raw_client is None:
+            pool = valkey.ConnectionPool(
+                host=os.getenv("VALKEY_HOST", "valkey"),
+                port=int(os.getenv("VALKEY_PORT", "6379")),
+                password=os.getenv("VALKEY_PASSWORD", ""),
+                decode_responses=False,
+                max_connections=int(os.getenv("VALKEY_RAW_MAX_CONNECTIONS", "4")),
+            )
+            self._raw_client = valkey.Valkey(connection_pool=pool)
+        return self._raw_client
 
     def _migrate_indexes(self) -> None:
         """Drop indexes whose field count doesn't match the definition.
@@ -263,18 +282,35 @@ class ValkeyStore:
             "created_at", "updated_at",
         ))
 
-        q = (
-            Query(query_str)
-            .return_fields(*return_fields)
-            .paging(0, top_k)
-            .dialect(2)
-        )
+        def _run(qstr: str):
+            q = (
+                Query(qstr)
+                .return_fields(*return_fields)
+                .paging(0, top_k)
+                .dialect(2)
+            )
+            return self.client.ft(idx_name).search(q, query_params={"vec": blob})
 
         try:
-            results = self.client.ft(idx_name).search(q, query_params={"vec": blob})
+            results = _run(query_str)
         except valkey.ResponseError as exc:
-            logger.error("Search failed on %s: %s", idx_name, exc)
-            return []
+            if filter_expr:
+                # A bad filter must degrade to an unfiltered search, not an
+                # empty result set — callers re-filter in Python anyway.
+                logger.warning(
+                    "Filtered search failed on %s (%s) — retrying unfiltered",
+                    idx_name, exc,
+                )
+                try:
+                    results = _run(
+                        f"(*)=>[KNN {top_k} @vector $vec AS similarity_score]"
+                    )
+                except valkey.ResponseError as exc2:
+                    logger.error("Search failed on %s: %s", idx_name, exc2)
+                    return []
+            else:
+                logger.error("Search failed on %s: %s", idx_name, exc)
+                return []
 
         output = []
         for doc in results.docs:
@@ -385,6 +421,43 @@ class ValkeyStore:
         if namespace not in _VALID_NAMESPACES:
             raise ValueError(f"Invalid namespace: {namespace}")
         return len(self.scan_prefix(f"mem:{namespace}:"))
+
+    def count_all_records(self) -> dict[str, int]:
+        """Record counts for every namespace from a single SCAN of mem:*.
+
+        One pass over the keyspace instead of one full SCAN per namespace —
+        health() uses this so its cost no longer scales with 4x the DB size.
+        """
+        counts = {ns: 0 for ns in _VALID_NAMESPACES}
+        for key in self.scan_prefix("mem:"):
+            parts = key.split(":", 2)
+            if len(parts) >= 2 and parts[1] in counts:
+                counts[parts[1]] += 1
+        return counts
+
+    def get_vectors_multi(self, keys: list[str]) -> list[np.ndarray | None]:
+        """Batch-read stored embedding vectors via the binary-safe client.
+
+        Returns float32 arrays aligned with ``keys`` (None where the key or
+        vector is missing/malformed). Reusing stored vectors is dramatically
+        cheaper than re-embedding content — dedup and maintenance scans went
+        from a full model pass over the namespace to a single pipeline read.
+        """
+        if not keys:
+            return []
+        pipe = self.raw_client.pipeline(transaction=False)
+        for key in keys:
+            pipe.hget(key, "vector")
+        rows = pipe.execute()
+
+        expected = VECTOR_DIM * 4  # float32
+        out: list[np.ndarray | None] = []
+        for raw in rows:
+            if raw is None or len(raw) != expected:
+                out.append(None)
+            else:
+                out.append(np.frombuffer(raw, dtype=np.float32))
+        return out
 
     def reindex_namespace(self, namespace: str) -> dict[str, int]:
         """Drop and recreate the search index for a namespace.

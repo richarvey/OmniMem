@@ -20,6 +20,25 @@ Format: [version] - date - description
 - **memory_audit is paginated**: the per-memory `entries` list now takes `limit` (default 100, max 500) and `offset`; the state-count summary still covers the whole store. Stops a large store returning thousands of rows in one MCP response
 - **Web UI gzip**: responses are gzip-compressed, and the contradictions page batches its "other memory" lookups into one fetch instead of one-per-pair (N+1)
 
+### Recall quality (full MCP server function audit)
+- **Project and state filters are pushed into the vector search**: recall previously fetched a fixed 20 KNN candidates per namespace and filtered by project/state in Python afterwards, so a busy store could fill all 20 slots with other projects' memories and return nothing for the one you asked about. `recall(project_filter=…)` now builds an FT.SEARCH tag filter (`@project:{name}` plus `(@state:{active} | @state:{deprioritised})`) so candidates are in-scope from the start. Syntax was validated against live valkey-search, which behaves differently from the RediSearch docs: raw tag values match (including spaces and dots) while backslash-escaped or quoted values match nothing, and in-brace `{a|b}` alternation is broken — clause-level OR works. Values are interpolated raw only when they match the project-name allowlist; a failed filtered search retries unfiltered so recall degrades instead of going dark
+- **Candidate over-fetch**: the per-namespace KNN candidate count now scales with the request (`max(20, top_k)`, min 50 under a project filter) — previously `recall(top_k=50)` in one namespace could never return more than 20 results
+- **Query-expansion variants score consistently**: variant searches now apply the temporal boost and carry `event_date`, matching the main query loop (date-anchored memories no longer rank lower when found via a variant)
+- **Abandoned-approach cache**: the per-recall episodic scan behind the abandoned-approach fast path is cached for `ABANDONED_CACHE_TTL_SECONDS` (default 60, 0 disables) and invalidated on `record_experience` / `log_abandoned` / `forget` / restore
+- **Startup migration** backfills `state=active` on memories that pre-date the state field so the query-side state filter can't hide legacy data
+
+### Fixed (function audit)
+- **`restore_from_file` rejected every backup made by `dump_to_file`**: dumps include `meta:*` keys (tool metrics exist as soon as telemetry records one call) but the restore validator didn't allow the `meta:` prefix, so round-tripping your own backup failed with "invalid key prefix". `meta:` is now allowed
+- **Async enrichment stored duplicate facts**: the v5.2.0 queue migration dropped the `check_duplicate` guard the synchronous extraction path had, so re-remembering similar content piled up duplicate fact memories. The worker dedups each extracted fact again; the dead synchronous helper was removed
+- **`check_contradictions` mass false positives**: the tool never received the 3.12.1 similarity-gating fix that auto-maintenance got, so its no-query path flagged *and cross-linked* unrelated memories sharing words like "use" or "works". It now gates pairs on ≥0.5 cosine similarity (using stored vectors), applies the same comparison/result caps, and its query path no longer links contradictions against archived memories
+- **Backup filename validation**: dotted names like `backup.v2.json` were rejected while the error message claimed dots were allowed; the dump metadata also omitted the `preference` namespace count
+- **`remember(namespace="project")`** now writes `project_name` at ingest so new project memories are correct immediately instead of after the next restart's migration
+- **Duplicate clusters could under-report `max_similarity`** when a later union re-rooted the cluster; the max is now computed against final roots
+
+### Performance (function audit)
+- **Dedup and maintenance reuse stored embeddings**: `find_all_duplicates` re-embedded every memory in the namespace on each scan (tens of seconds at the 2,000-key cap — inside `briefing()` whenever auto-maintenance fired). Both it and the maintenance contradiction scan now read the vectors already stored in Valkey via a new binary-safe client (`ValkeyStore.get_vectors_multi`), falling back to the model only for missing vectors. Pairwise comparison is vectorised in numpy instead of a 2M-iteration Python loop
+- **`recall_detail` batches** its key lookups (was one round trip per key); `health()` counts all namespaces in one keyspace SCAN instead of four; `list_projects`, `recent_knowledge` and knowledge expiry use projected fetches; deleting a memory no longer writes its fields first
+
 ## [5.2.1] - 2026-04-09
 ### Added
 - **`queue_status()` MCP tool** ([#19](https://codeberg.org/ric_harvey/omnimem/issues/19)): returns the number of pending enrichment jobs in the Valkey queue. Benchmark runners can poll this between ingest and scoring phases to know when background fact extraction has completed

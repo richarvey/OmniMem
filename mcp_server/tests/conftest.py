@@ -207,9 +207,11 @@ class FakeSearchIndex:
                 fields["similarity_score"] = "0.0"
             docs.append(FakeSearchDoc(key, fields))
 
-        # Sort by similarity_score ascending (closest first)
+        # Sort by similarity_score ascending (closest first). No cap here —
+        # FakeValkeyStore.search slices to the caller's top_k, mirroring the
+        # real KNN behaviour where top_k governs candidate count.
         docs.sort(key=lambda d: float(d.similarity_score))
-        return FakeSearchResult(docs[:20])
+        return FakeSearchResult(docs)
 
 
 class FakeEmbedder:
@@ -303,6 +305,16 @@ class FakeValkeyStore:
             data = {f: v for f, v in zip(fields, row) if v is not None}
             results.append(data if data else None)
         return results
+
+    def get_vectors_multi(self, keys):
+        out = []
+        for key in keys:
+            raw = self._client._data.get(key, {}).get("vector")
+            if isinstance(raw, bytes) and len(raw) == 384 * 4:
+                out.append(np.frombuffer(raw, dtype=np.float32))
+            else:
+                out.append(None)
+        return out
 
     def delete(self, key):
         self._client.delete(key)

@@ -39,7 +39,11 @@ def recent_knowledge(
     if not keys:
         return []
 
-    all_data = store.get_multi(keys)
+    all_data = store.get_fields_multi(
+        keys,
+        ("state", "created_at", "feed_name", "topics", "title", "content",
+         "source_url", "published_at", "expires_at"),
+    )
     results = []
     for key, data in zip(keys, all_data):
         if data is None:

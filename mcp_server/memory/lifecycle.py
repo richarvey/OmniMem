@@ -68,8 +68,11 @@ class MemoryLifecycle:
         if new_state == MemoryState.DEPRIORITISED and reason:
             updates["deprioritised_reason"] = reason
 
-        # Single round-trip instead of N individual set_field calls
-        self.store.set_fields(key, updates)
+        # DELETED removes the key below — writing the fields first is a
+        # wasted round-trip plus pointless index churn on a doomed hash.
+        if new_state != MemoryState.DELETED:
+            # Single round-trip instead of N individual set_field calls
+            self.store.set_fields(key, updates)
 
         result: dict[str, Any] = {
             "key": key,

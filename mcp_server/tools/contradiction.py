@@ -3,10 +3,17 @@
 import logging
 from typing import Any
 
+import numpy as np
+
 from memory.contradiction import (
+    _has_negation_pair,
     check_contradiction_api,
-    check_contradiction_heuristic,
     link_contradiction,
+)
+from memory.maintenance import (
+    _CONTRADICTION_COMPARISON_CAP,
+    _CONTRADICTION_RESULTS_CAP,
+    _CONTRADICTION_SIMILARITY_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,9 +43,19 @@ def check_contradictions(
     contradictions: list[dict[str, Any]] = []
 
     if query:
-        # Search for memories related to the query
+        # Search for memories related to the query. Filter out dead memories
+        # and out-of-project docs — the raw search doesn't, and this path
+        # cross-links whatever it flags.
         vector = embedder.embed(query)
-        results = store.search(namespace, vector, top_k=20)
+        results = []
+        for doc in store.search(namespace, vector, top_k=20):
+            if doc.get("state") in ("archived", "deleted"):
+                continue
+            if project_filter:
+                doc_project = doc.get("project") or doc.get("project_name")
+                if doc_project != project_filter:
+                    continue
+            results.append(doc)
     else:
         # Scan recent memories
         prefix = f"mem:{namespace}:"
@@ -47,7 +64,9 @@ def check_contradictions(
             return {"contradictions": []}
         # Limit scan size
         keys = keys[:200]
-        all_data = store.get_multi(keys)
+        all_data = store.get_fields_multi(
+            keys, ("state", "project", "project_name", "content")
+        )
         results = []
         for key, data in zip(keys, all_data):
             if data is None:
@@ -64,10 +83,31 @@ def check_contradictions(
     if not results:
         return {"contradictions": []}
 
-    # Pairwise comparison of results
+    # Gate pairwise checks on semantic similarity, mirroring the auto-
+    # maintenance scanner (3.12.1 fix): without it, unrelated memories that
+    # merely share common words ("use", "with", "works") get flagged AND
+    # cross-linked as contradictions. Stored vectors are reused; only entries
+    # missing a vector are re-embedded.
+    result_keys = [r.get("key", "") for r in results]
+    vectors = store.get_vectors_multi(result_keys)
+    missing = [i for i, v in enumerate(vectors) if v is None]
+    if missing:
+        fallback = embedder.embed_batch(
+            [results[i].get("content", "") for i in missing]
+        )
+        for i, vec in zip(missing, fallback):
+            vectors[i] = vec
+    similarity_matrix = np.array(vectors) @ np.array(vectors).T
+
+    # Pairwise comparison of results, capped like the maintenance scanner
     seen_pairs: set[str] = set()
+    comparisons = 0
 
     for i, doc_a in enumerate(results):
+        if comparisons >= _CONTRADICTION_COMPARISON_CAP:
+            break
+        if len(contradictions) >= _CONTRADICTION_RESULTS_CAP:
+            break
         key_a = doc_a.get("key", "")
         content_a = doc_a.get("content", "")
         if not content_a:
@@ -76,6 +116,10 @@ def check_contradictions(
         for j, doc_b in enumerate(results):
             if j <= i:
                 continue
+            if comparisons >= _CONTRADICTION_COMPARISON_CAP:
+                break
+            if len(contradictions) >= _CONTRADICTION_RESULTS_CAP:
+                break
             key_b = doc_b.get("key", "")
             content_b = doc_b.get("content", "")
             if not content_b:
@@ -85,9 +129,13 @@ def check_contradictions(
             if pair_key in seen_pairs:
                 continue
             seen_pairs.add(pair_key)
+            comparisons += 1
+
+            # Skip pairs that aren't semantically similar
+            if float(similarity_matrix[i, j]) < _CONTRADICTION_SIMILARITY_THRESHOLD:
+                continue
 
             # Tier 1: Heuristic check
-            from memory.contradiction import _has_negation_pair
             if not _has_negation_pair(content_a, content_b):
                 continue
 

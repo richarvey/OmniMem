@@ -13,7 +13,6 @@ from memory.chunking import chunk as chunk_content, VALID_STRATEGIES as CHUNK_ST
 from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
 from memory.enrichment import enqueue, enqueue_batch
-from memory.extraction import extract_facts, ExtractedFact
 from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.recall import RecallPipeline
@@ -101,46 +100,6 @@ def _resolve_mode(mode: str | None) -> str:
     return mode
 
 
-def _store_extracted_fact(
-    store, embedder, fact: ExtractedFact, *,
-    project: str | None,
-    tags: list[str] | None,
-    base_namespace: str,
-    source_doc_id: str | None,
-    now: str,
-) -> str | None:
-    """Store one ExtractedFact, routing preferences to the preference namespace.
-
-    Returns the new key, or None if a near-duplicate exists.
-    """
-    target_ns = "preference" if fact.kind == "preference" else base_namespace
-    vector = embedder.embed(fact.text)
-    dup = check_duplicate(store, target_ns, vector, fact.text, project_filter=project)
-    if dup is not None:
-        return None
-
-    key = f"mem:{target_ns}:{ulid.new().str}"
-    fields: dict[str, Any] = {
-        "content": fact.text,
-        "state": MemoryState.ACTIVE.value,
-        "surface_score": "1.0",
-        "experience_weight": "1.0",
-        "created_at": now,
-        "updated_at": now,
-        "tags": json.dumps(tags or []),
-    }
-    if project:
-        fields["project"] = project
-    if source_doc_id:
-        fields["source_doc_id"] = source_doc_id
-    if fact.event_date is not None:
-        fields["event_date"] = str(fact.event_date)
-    if target_ns == "preference":
-        fields["scope"] = "project" if project else "global"
-    store.upsert(target_ns, key, fields, vector)
-    return key
-
-
 def remember(
     content: str,
     project: str | None = None,
@@ -222,6 +181,11 @@ def remember(
     }
     if project:
         fields["project"] = project
+        # The project index/UI key on this namespace is project_name — set it
+        # at write time so new docs are correct immediately, instead of only
+        # after the next startup migration backfills it.
+        if namespace == "project":
+            fields["project_name"] = project
 
     store.upsert(namespace, key, fields, vector)
     logger.info("Stored memory %s in %s", key, namespace)
@@ -508,11 +472,11 @@ def recall_detail(
     if len(keys) > MAX_TOP_K:
         keys = keys[:MAX_TOP_K]
 
+    valid_keys = [k for k in keys if isinstance(k, str) and k.startswith("mem:")]
+    all_data = store.get_multi(valid_keys)
+
     output: list[dict[str, Any]] = []
-    for key in keys:
-        if not isinstance(key, str) or not key.startswith("mem:"):
-            continue
-        data = store.get(key)
+    for key, data in zip(valid_keys, all_data):
         if data is None:
             output.append({"key": key, "status": "not_found"})
             continue
@@ -674,6 +638,9 @@ def forget(
         except ValueError:
             store.delete(target["key"])
             deleted.append(target["key"])
+
+    # Deleted memories may have carried abandoned-approach entries.
+    pipeline.invalidate_abandoned_cache()
 
     return {"status": "deleted", "deleted_keys": deleted}
 
