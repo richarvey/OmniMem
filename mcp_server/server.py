@@ -385,5 +385,57 @@ if __name__ == "__main__":
             "Set MCP_TRANSPORT=http and update your client config to use "
             "type 'http' with URL http://<host>:<port>/mcp"
         )
+
+    # FastMCP 3.x guards both the Host and Origin headers (HostOriginGuardMiddleware).
+    # A host outside its allowlist (localhost + bind host) gets 421 Misdirected
+    # Request; a browser Origin outside its allowlist gets 403 Forbidden Origin.
+    # Behind a reverse proxy / tunnel (e.g. Tailscale funnel) neither the public
+    # hostname nor the https:// origin is trusted by default, so every request 421s
+    # and the browser login POST 403s. Worse, the proxy usually terminates TLS and
+    # forwards over http, so FastMCP's derived origin is http://host while the
+    # browser sends https://host — they never match. Fix both by deriving the
+    # allowlists from the public URLs we already know (OAUTH_BASE_URL /
+    # MCP_PUBLIC_URL), plus optional MCP_ALLOWED_HOSTS / MCP_ALLOWED_ORIGINS
+    # overrides, and feeding them into fastmcp.settings before mcp.run() picks up.
+    from urllib.parse import urlsplit
+
+    import fastmcp
+
+    _extra_hosts: list[str] = []
+    _extra_origins: list[str] = []
+    for _url_env in ("OAUTH_BASE_URL", "MCP_PUBLIC_URL"):
+        _url = os.getenv(_url_env, "").strip()
+        if not _url:
+            continue
+        _parts = urlsplit(_url)
+        if _parts.hostname:
+            _extra_hosts.append(_parts.hostname)
+        if _parts.scheme and _parts.netloc:
+            # netloc keeps any explicit port, so the origin matches the browser's
+            _extra_origins.append(f"{_parts.scheme}://{_parts.netloc}")
+    _extra_hosts += [
+        h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()
+    ]
+    _extra_origins += [
+        o.strip() for o in os.getenv("MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()
+    ]
+    if _extra_hosts:
+        # dedupe, preserve order; merge with anything already configured via env
+        _existing_hosts = fastmcp.settings.http_allowed_hosts or []
+        fastmcp.settings.http_allowed_hosts = list(
+            dict.fromkeys([*_existing_hosts, *_extra_hosts])
+        )
+    if _extra_origins:
+        _existing_origins = fastmcp.settings.http_allowed_origins or []
+        fastmcp.settings.http_allowed_origins = list(
+            dict.fromkeys([*_existing_origins, *_extra_origins])
+        )
+    if _extra_hosts or _extra_origins:
+        logger.info(
+            "Allowing reverse-proxy access — hosts: %s, origins: %s",
+            fastmcp.settings.http_allowed_hosts,
+            fastmcp.settings.http_allowed_origins,
+        )
+
     logger.info("Starting OmniMem MCP server on %s:%d (%s)", host, port, transport)
     mcp.run(transport=transport, host=host, port=port)

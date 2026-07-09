@@ -310,6 +310,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `OAUTH_ADMIN_PASSWORD` | *(unset)* | Password for the OAuth admin account. Required when OAuth is enabled |
 | `OAUTH_REFRESH_MAX_DAYS` | `30` | Absolute lifetime of an OAuth refresh-token chain. Each rotation silently re-issues tokens without re-prompting the user, until this cap is reached. Hard-capped at `90` |
 | `OAUTH_REFRESH_GRACE_SECONDS` | `120` | Grace window after a refresh token rotates. The old token keeps working for this long and replays return the same new pair, so claude.ai isn't logged out when several connections refresh at once. Capped at `3600`; set `0` for strict single-use rotation |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Comma-separated extra hostnames allowed in the `Host` header, on top of localhost and the `OAUTH_BASE_URL` host. Needed when serving behind a reverse proxy or tunnel under a hostname not already covered by `OAUTH_BASE_URL`, otherwise FastMCP 3.x returns `421 Misdirected Request`. See [Troubleshooting: 421 / 403 behind a proxy](#getting-421-misdirected-request-or-403-forbidden-origin-behind-a-proxy) |
+| `MCP_ALLOWED_ORIGINS` | *(unset)* | Comma-separated extra browser origins (full `scheme://host`) trusted for the login page, on top of the `OAUTH_BASE_URL` origin. Needed when the proxy terminates TLS and forwards over http, otherwise the browser login POST gets `403 Forbidden Origin`. See [Troubleshooting](#getting-421-misdirected-request-or-403-forbidden-origin-behind-a-proxy) |
 | `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed admin logins per client IP before the login form is temporarily blocked. Set `0` to disable |
 | `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | Sliding window for the failed-login limit |
 | `RSS_MAX_PAGE_BYTES` | `10485760` | Max bytes the RSS worker reads when fetching a full article page (10 MB), guarding against hostile or endless responses |
@@ -424,6 +426,29 @@ Point claude.ai at your OmniMem URL and it handles the rest — discovery, regis
 **Staying signed in.** Refresh tokens rotate on every use, but the old token isn't thrown away the instant it rotates — it stays valid for a short grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s) and replays during that window return the same new pair. claude.ai keeps several connections open and can refresh the same token from more than one at once; without the grace window, all but the first refresh would fail with `invalid_grant` and claude.ai would drop the connection and prompt you to sign in again. Token state is also persisted to Valkey with AOF enabled, so a `docker compose restart` doesn't lose sessions. If you still get logged out sooner than `OAUTH_REFRESH_MAX_DAYS`, that's the place to look. The login form is rate-limited per IP (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`) to blunt brute-force attempts on the admin password.
 
 OAuth works alongside bearer token auth. If you have both `OAUTH_ENABLED` and `MCP_AUTH_TOKEN` set, both authentication methods are accepted via `MultiAuth`. Local Claude Code instances can continue using bearer tokens while claude.ai uses OAuth.
+
+#### Getting `421 Misdirected Request` or `403 Forbidden Origin` behind a proxy
+
+If connecting through a reverse proxy or tunnel suddenly stops working, this is FastMCP 3.x's Host/Origin guard, not an OAuth problem — it just looks like one. There are two symptoms:
+
+- **`421 Misdirected Request`** on everything (e.g. `curl https://your-host/mcp` returns `421` where it used to return `401`). FastMCP rejects any `Host` header outside its allowlist, which defaults to just localhost plus the bind address. Your public hostname isn't on it, so every request 421s, including the `/.well-known/*` discovery endpoints claude.ai probes first. A local `curl` to `localhost` still works, which makes it easy to misread as an OAuth fault.
+- **`403 Forbidden Origin`** when you submit the login form. Most proxies terminate TLS and forward over plain http, so the server sees the request as `http://` while your browser sends `Origin: https://your-host`. FastMCP treats that scheme mismatch as an untrusted origin and blocks the login POST.
+
+The server allows the `OAUTH_BASE_URL` (and `MCP_PUBLIC_URL`) hostname **and** its https origin automatically, so with OAuth configured correctly both usually just work. If you serve under an additional hostname or origin, add them:
+
+```bash
+MCP_ALLOWED_HOSTS=mcp.example.com,alt.example.com
+MCP_ALLOWED_ORIGINS=https://mcp.example.com
+```
+
+You can also set FastMCP's raw knobs directly, but they're JSON arrays — a bare string won't parse:
+
+```bash
+FASTMCP_HTTP_ALLOWED_HOSTS=["mcp.example.com"]
+FASTMCP_HTTP_ALLOWED_ORIGINS=["https://mcp.example.com"]
+```
+
+Quick check: `curl -s -o /dev/null -w '%{http_code}\n' https://your-host/.well-known/oauth-authorization-server` should return `200`. A `421` means the hostname isn't allowlisted; a `403` on login means the origin isn't.
 
 ---
 

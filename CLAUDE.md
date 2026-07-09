@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature").
 
-**Version**: 5.5.0
+**Version**: 5.5.1
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -124,6 +124,11 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 - **Batch reads use `store.get_fields_multi(keys, fields)`** for list/scan/aggregate views — one pipelined HMGET per key, only the named fields, no vector payload. `get_multi` (two round trips, all text fields) is for when you genuinely need the whole record. When adding a field to a list/telemetry/audit view, remember to add it to that view's projection tuple or it will silently read as `None`.
 - **OAuth refresh uses a rotation grace window**, not strict single-use. `exchange_refresh_token` retires the old token by re-saving it with a `rotated_to` marker and a short TTL (`OAUTH_REFRESH_GRACE_SECONDS`); replays inside the window return the same successor pair. This is what stops claude.ai's concurrent refreshes from racing to `invalid_grant`. Any change to token storage must round-trip `rotated_to` (see `_serialise_stored_token`).
 - **Valkey runs with AOF** (`--appendonly yes`) so OAuth tokens survive restarts; Compose refuses to start with an empty `VALKEY_PASSWORD`.
+- **FastMCP 3.x guards the Host *and* Origin headers** (`HostOriginGuardMiddleware`, added in the 3.x upgrade). Two distinct failures behind a reverse proxy / tunnel (Traefik, Caddy, Tailscale funnel), both easy to misread as OAuth breakage:
+  - **`421 Misdirected Request`** — the `Host` isn't in the allowlist, which defaults to just localhost (`127.0.0.1`, `localhost`, `::1`) plus the bind host. The public hostname isn't on it, so **every** request 421s, including the `/.well-known/*` OAuth discovery endpoints. Local `curl` keeps working because `localhost` is allowed, so it's easy to misdiagnose. Symptom: `curl https://host/mcp` returns `421` where it used to return `401`.
+  - **`403 Forbidden Origin`** — hits the browser login POST to `/oauth/login` after Host is fixed. The proxy usually terminates TLS and forwards over http, so the ASGI scope scheme is `http` and FastMCP's derived origin is `http://host`, while the browser sends `Origin: https://host`. Scheme mismatch → 403. Fixing Host alone is not enough; the https origin must be trusted too.
+
+  `server.py` fixes both automatically: it derives the hostname and the full `scheme://host[:port]` origin from `OAUTH_BASE_URL` / `MCP_PUBLIC_URL` (plus optional comma-separated `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`) and writes `fastmcp.settings.http_allowed_hosts` and `http_allowed_origins` before `mcp.run()`. The underlying FastMCP knobs are `FASTMCP_HTTP_ALLOWED_HOSTS` / `FASTMCP_HTTP_ALLOWED_ORIGINS` — both pydantic `list[str]`, so values must be **JSON arrays** (`["mcp.example.com"]`, `["https://mcp.example.com"]`); a bare string fails to parse.
 - **PyTorch is the Alpine blocker** — not sentence-transformers or numpy. PyTorch only publishes manylinux (glibc) wheels. Any project using PyTorch (directly or transitively) cannot use Alpine. The ~2.2GB image size is mostly PyTorch, not the Debian base. Alpine with gcompat shim also fails (pip rejects at download/hash verification stage).
 - **inotify doesn't work for Docker bind mounts** — mtime polling (10s interval, configurable via `FEEDS_WATCH_INTERVAL`) is more portable. The RSS worker uses this for feeds.yml change detection.
 - **Projects without `set_project_context()`** only exist as ULID memories — the web UI detail view won't work for them until a proper context entry is created. Template conditionally disables links for these.
