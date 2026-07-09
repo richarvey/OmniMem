@@ -64,7 +64,7 @@ def _get_client():
 
 
 def _cache_key(query: str, n: int) -> str:
-    digest = hashlib.sha1(f"{n}|{query}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha1(f"{n}|{query}".encode("utf-8"), usedforsecurity=False).hexdigest()
     return f"qexp:{digest}"
 
 

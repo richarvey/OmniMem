@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [Unreleased]
 
+## [5.5.3] - 2026-07-09
+### Fixed
+- **bandit `B324` High-severity failure in the security pipeline**: `_cache_key()` in `mcp_server/memory/query_expansion.py` used `hashlib.sha1()` to fingerprint a query into a cache key, which bandit flags as a weak hash for security. The digest carries no security property (it's only a cache key), so the call now passes `usedforsecurity=False` — the idiomatic fix that clears the finding without a blanket `# nosec`
+
+## [5.5.2] - 2026-07-09
+### Fixed
+- **OAuth refresh raised `AttributeError` → 500 under FastMCP 3.x, breaking every client**: the newer MCP SDK bundled with FastMCP 3.x reads `refresh_token.expires_at` (absolute unix seconds) in its token handler, but `_StoredToken` only stored `created_at` + `expires_in`, so every refresh 500d and left desktop/claude.ai clients unable to get a token — every subsequent `/mcp` request then 401d. `_StoredToken` now exposes `expires_at` as a computed property (`created_at + expires_in`); storage already drops expired refresh tokens before the handler sees them, so any token reaching it is live
+
 ## [5.5.1] - 2026-07-09
 ### Fixed
 - **Public (native/desktop) OAuth clients were rejected at the token endpoint with `invalid_client` "Client secret is required"**: `register_client()` unconditionally stamped a generated `client_secret` on every dynamically-registered client, including public clients that register with `token_endpoint_auth_method="none"` and authenticate the token exchange with PKCE rather than a secret (e.g. the opendesign.ai desktop app, which does a fresh dynamic registration on every connect). Because a secret was stored against the client, the MCP SDK's token endpoint then demanded a secret the client never had. Registration now respects the declared auth method: public clients (`none`) get no secret, confidential clients get one generated only if they didn't supply their own. claude.ai and other confidential clients are unaffected. Existing mis-registered public client records had their stray secret cleared
