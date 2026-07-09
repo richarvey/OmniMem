@@ -302,6 +302,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | Variable | Default | Description |
 |---|---|---|
 | `VALKEY_PASSWORD` | `changeme` | Please change this |
+| `VALKEY_HOST` | `valkey` | Hostname of the Valkey server (the Compose service name; only change it if you point at an external Valkey) |
+| `VALKEY_PORT` | `6379` | Port of the Valkey server |
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
 | `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP endpoint (constant-time compared). When unset, no auth is required — but the server refuses to start unauthenticated on a non-loopback `MCP_HOST` |
 | `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard (constant-time compared). `/metrics` and static assets are exempt |
@@ -320,16 +322,24 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `DASHBOARD_STATS_TTL` | `60` | How long the web UI caches dashboard stats (namespace counts + recent list) in Valkey, so the page doesn't rescan the keyspace on every load. The page shows when stats were computed and offers a refresh link; set `0` to recompute on every load |
 | `MCP_PORT` | `8765` | Port the MCP server listens on |
 | `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
-| `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size |
+| `MCP_TRANSPORT` | `sse` | MCP transport: `http` (Streamable HTTP, recommended) or `sse` (deprecated default, will be removed in a future release) |
+| `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size for the MCP server and web UI (the RSS worker defaults to `50` when unset) |
+| `VALKEY_RAW_MAX_CONNECTIONS` | `4` | Pool size for the second binary-safe Valkey client that reads stored vectors (dedup, maintenance, contradiction checks) |
+| `OAUTH_VALKEY_MAX_CONNECTIONS` | `5` | Pool size for the OAuth token store's dedicated Valkey client |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local sentence-transformers model |
 | `RSS_SCHEDULE_HOURS` | `6` | How often feeds are ingested |
 | `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per cycle |
+| `RSS_MAX_DIGEST_ENTRIES` | `2` | Entries ingested per cycle for feeds set to `mode: digest` in feeds.yml |
+| `FEEDS_CONFIG_PATH` | `/app/feeds.yml` | Path to feeds.yml inside the RSS worker and web UI containers |
+| `FEEDS_WATCH_INTERVAL` | `10` | Seconds between mtime polls of feeds.yml for change detection (inotify doesn't work on Docker bind mounts) |
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |
 | `DEPRIORITISED_WEIGHT` | `0.2` | Surface score for deprioritised memories |
 | `RECENCY_DECAY_DAYS` | `90` | Days before the age penalty kicks in |
 | `INGEST_MODE` | `full` | `full` stores content verbatim then extracts atomic facts via Claude Haiku in the background — facts land in the knowledge namespace (preferences in the preference namespace) as supplements to the verbatim original, inheriting its timestamp so temporal recall works; `raw` stores verbatim only. Falls back to raw automatically when no API key is set |
+| `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for background fact extraction in `full` ingest mode |
 | `RECALL_EXPAND_QUERIES` | `false` | Globally enable query expansion on `recall()`. Generates alternative phrasings via Claude Haiku and unions the results |
 | `RECALL_EXPAND_COUNT` | `3` | Number of variant queries to generate when expansion is enabled |
+| `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Claude model used to generate query expansion variants |
 | `ENRICHMENT_BATCH_MODE` | `false` | When `true`, `remember_document()` sends all chunks as a single enrichment job so the background worker makes one Haiku API call instead of N. Faster for large documents and benchmark runs |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
@@ -338,6 +348,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
 | `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
+| `OMNIMEM_INSTRUCTIONS_CHARS` | `5600` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
+| `OMNIMEM_TOOL_SCHEMAS_CHARS` | `5835` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 
