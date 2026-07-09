@@ -64,7 +64,7 @@ jobs:
         run: |
           pip install pytest pytest-cov genbadge[coverage]
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy pydantic python-dotenv ulid-py valkey sentence-transformers
+          pip install -r mcp_server/requirements.txt -r web_ui/requirements.txt
 
       - name: Run tests with coverage
         working-directory: mcp_server
