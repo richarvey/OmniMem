@@ -345,6 +345,15 @@ class TestStoragePersistence:
         assert new_token.access_token != token.access_token
 
 
+class TestStoredToken:
+    def test_expires_at_is_absolute(self):
+        # The MCP SDK token handler (FastMCP 3.x) reads refresh_token.expires_at
+        # and compares it to time.time(); a missing attribute 500s every refresh.
+        stored = _StoredToken("tok123", "client-1", ["omnimem"], 3600)
+        assert stored.expires_at == pytest.approx(stored.created_at + 3600)
+        assert stored.expires_at > time.time()
+
+
 class TestRevocation:
     def test_revoke_access_token(self, provider):
         stored = _StoredToken("tok123", "client-1", ["omnimem"], 3600)

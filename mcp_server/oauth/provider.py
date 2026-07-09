@@ -120,6 +120,20 @@ class _StoredToken:
     def expired(self) -> bool:
         return time.time() - self.created_at > self.expires_in
 
+    @property
+    def expires_at(self) -> float:
+        """Absolute expiry (unix seconds).
+
+        The MCP SDK token handler (FastMCP 3.x / newer mcp) reads
+        ``refresh_token.expires_at`` on the object returned by
+        ``load_refresh_token`` and rejects it when it's in the past. We store
+        ``created_at`` + ``expires_in`` rather than an absolute timestamp, so
+        derive it here. Without this attribute the handler raises
+        AttributeError and every refresh 500s, which surfaces client-side as a
+        dropped connection and repeated 401s.
+        """
+        return self.created_at + self.expires_in
+
 
 class _PendingAuth:
     """Tracks an in-flight /authorize request while the user logs in.
