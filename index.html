@@ -65,7 +65,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=Ubuntu+Sans:ital,wght@0,300..800;1,300..800&family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #0b0e14;
@@ -86,9 +86,9 @@
       --success: #98c379;
       --warning: #e5c07b;
       --code-bg: #0d1117;
-      --font-display: 'Fraunces', 'Georgia', 'Iowan Old Style', serif;
-      --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --font-display: 'Ubuntu', 'Ubuntu Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-body: 'Ubuntu Sans', 'Ubuntu', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'Ubuntu Mono', ui-monospace, 'SFMono-Regular', monospace;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -922,6 +922,24 @@
       font-weight: 500;
     }
 
+    footer .footer-logo {
+      display: inline-block;
+      margin-top: 1.75rem;
+      text-decoration: none;
+      border: none;
+    }
+
+    footer .footer-logo img {
+      height: 44px;
+      width: auto;
+      opacity: 0.85;
+      transition: opacity 0.2s;
+    }
+
+    footer .footer-logo:hover img {
+      opacity: 1;
+    }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       section { padding: 5rem 0; }
@@ -1654,13 +1672,12 @@ cp .env.example .env
     <div class="footer-links">
       <a href="https://codeberg.org/ric_harvey/omnimem" target="_blank" rel="noopener">Source</a>
       <a href="https://codeberg.org/ric_harvey/omnimem/issues" target="_blank" rel="noopener">Issues</a>
-      <a href="https://squarecows.com" target="_blank" rel="noopener">SquareCows Ltd</a>
       <a rel="me" href="https://mastodon.squarecows.com/@Ric" target="_blank" rel="noopener" style="text-decoration: none; color: white;"><i class="fa-brands fa-mastodon"></i></a>
     </div>
-    <p>
-      MIT Licensed. Built by <a href="https://squarecows.com" target="_blank" rel="noopener">Ric Harvey @ SquareCows</a>
-      . An AI and automation consultancy for people who'd rather own their tools.
-    </p>
+    <p>MIT Licensed.</p>
+    <a class="footer-logo" href="https://squarecows.com" target="_blank" rel="noopener">
+      <img src="https://squarecows.com/logo.png" alt="SquareCows" loading="lazy">
+    </a>
   </div>
 </footer>
 
