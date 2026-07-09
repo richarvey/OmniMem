@@ -173,6 +173,7 @@ Connect your coding agent to OmniMem. The example below is for Claude Code — s
 | Agent | Guide | Transport |
 |-------|-------|-----------|
 | claude.ai | [guides/claude-ai.md](guides/claude-ai.md) | Streamable HTTP + OAuth 2.1 |
+| Open Design | [guides/open-design.md](guides/open-design.md) | Streamable HTTP + OAuth 2.1 (public/PKCE) |
 | Claude Code | [guides/claude-code.md](guides/claude-code.md) | SSE (default) / Streamable HTTP |
 | Claude Desktop | [guides/claude-desktop.md](guides/claude-desktop.md) | SSE / Streamable HTTP (via mcp-remote) |
 | GitHub Copilot | [guides/github-copilot.md](guides/github-copilot.md) | SSE (default) / Streamable HTTP |
