@@ -192,7 +192,17 @@ class OmniMemOAuthProvider(OAuthProvider):
     ) -> None:
         if not client_info.client_id:
             client_info.client_id = f"omnimem-{secrets.token_urlsafe(16)}"
-        client_info.client_secret = secrets.token_urlsafe(32)
+        # Respect the client's registered auth method. Native/desktop apps
+        # (e.g. opendesign.ai) register as PUBLIC clients with
+        # token_endpoint_auth_method="none" and authenticate the token exchange
+        # with PKCE, not a secret. Stamping a client_secret on them makes the
+        # token endpoint demand a secret they never had, failing with
+        # invalid_client "Client secret is required". Only confidential clients
+        # get a generated secret; public clients must have none.
+        if client_info.token_endpoint_auth_method == "none":
+            client_info.client_secret = None
+        elif not client_info.client_secret:
+            client_info.client_secret = secrets.token_urlsafe(32)
         client_info.client_id_issued_at = int(time.time())
         self._storage.save_client(client_info)
         logger.info(
