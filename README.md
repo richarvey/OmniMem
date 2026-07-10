@@ -122,6 +122,8 @@ Instead of making three separate calls at session start, a single `briefing(proj
 - **Contradiction warnings** — memories with unresolved contradictions
 - **Reinstate candidates** — deprioritised memories whose reinstate hints match current work
 - **Suppressed topics** — what is currently filtered out
+- **Skill suggestions** — compiled skills relevant to the current work, as a recommendation rather than an auto-load. On an ongoing project they sit below project context; on a greenfield project with no context yet they move to the top, because there the skill is the only thing carrying your conventions
+- **Skill updates** — one-line gists where a skill's source memories changed since it was last compiled, with prominence scaled to risk
 
 One tool call, one response, full context.
 
@@ -136,6 +138,23 @@ Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINT
 3. **Knowledge expiry** — archives RSS-ingested knowledge articles that have passed their `expires_at` timestamp (default 30 days after ingestion, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Manually stored knowledge items are never affected
 
 The results appear in the briefing response under `auto_maintenance` so you know what was cleaned up. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable. Manual `find_duplicates()` and `check_contradictions()` calls still work as before.
+
+### The skill compiler
+
+Memories tell an agent what happened. A skill tells it how you work.
+
+`compile_skill("python")` distils your accumulated experience in a domain — reinforced breakthroughs, recurring gotchas, the graveyard of dead ends — into a loadable `SKILL.md`: do this, watch out for that, never try X again because it cost you an afternoon on that other project. Each rule cites the memories it came from. Load it at the start of Python work (or Rust work, or blog writing) and the agent works your way from the first prompt, which matters most on greenfield projects where no project context exists yet.
+
+The design premise: a memory error is noise, ranked and diluted by recall, but a skill error is policy — the agent obeys it. So bad lessons cannot become policy silently:
+
+- **A pattern earns a rule, an episode doesn't.** Lessons must recur across `min_reinforcement` memories (default 2) before they compile. One strong lesson can jump the queue if you `bless()` it.
+- **Nothing writes silently.** `compile_skill` proposes a diff with a risk-classified change summary; you review it, then `mode="write"` commits exactly what you accepted. Recompiles that rewrite or remove an existing rule are flagged loudly; simple additions stay cheap.
+- **Derived-only, never hand-edited.** The raw memories are the source of truth and the skill is build output. To change the guidance, update the memories and recompile.
+- **Suggested, never auto-loaded.** The briefing recommends relevant skills; you and the agent decide.
+
+Every skill carries a fixed operating contract that instructs the agent to keep recording experience and dead ends while working under it. That closes the flywheel: the data pool compiles into a skill, the skill keeps feeding the pool, and a richer pool compiles a better skill next time.
+
+Skills live whole in Valkey (`mem:skill:gen:{domain}-{user}`) — discovery metadata is embedded and searchable, the body is retrieved intact, and `export_path` can mirror a copy to disk. Domains are free-form tags with a "did you mean" guard, so `py` resolves to `python` instead of silently scattering your lessons across tags that never reach the threshold.
 
 ---
 
@@ -273,6 +292,15 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `experience_summary(project?)` | Graveyard, breakthroughs, and effort stats |
 | `get_experience(key)` | Full experience data for one memory |
 
+### Skill compiler
+
+| Tool | What it does |
+|---|---|
+| `compile_skill(domain, mode?, min_reinforcement?, include_graveyard?, export_path?, description?)` | Compile a domain's experience and graveyard into a `SKILL.md`. `propose` (default) returns a reviewable diff and change summary; `write` commits only a previously proposed and accepted draft — no silent writes. `export_path` mirrors the file under `SKILL_EXPORT_DIR` |
+| `find_skills(query_or_domain)` | Ranked skill discovery over indexed metadata. Exact domain matches lead; a hand-authored skill outranks a generated one on the same domain |
+| `get_skill(skill_id)` | Load the whole skill body intact, by key (`mem:skill:gen:python-ric`), name (`python-ric`), or bare domain (`python`) |
+| `bless(memory_key)` | Promote one strong lesson to skill-eligible now, bypassing the reinforcement threshold at the next compile |
+
 ### Knowledge
 
 | Tool | What it does |
@@ -348,10 +376,16 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
 | `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
-| `OMNIMEM_INSTRUCTIONS_CHARS` | `5600` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
+| `OMNIMEM_INSTRUCTIONS_CHARS` | `10595` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
 | `OMNIMEM_TOOL_SCHEMAS_CHARS` | `5835` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
+| `OMNIMEM_USER` | `local` | Identity segment in generated skill keys (`mem:skill:gen:{domain}-{user}`) and the "How {user} works in..." description draft. Single-node label only — auth and org scoping are v7 |
+| `SKILL_CLUSTER_THRESHOLD` | `0.80` | Cosine similarity above which two lessons count as the same lesson for reinforcement. Looser than dedup's 0.92 because the same lesson is phrased differently across episodes |
+| `SKILL_DOMAIN_SUGGEST_THRESHOLD` | `0.60` | Similarity floor for the domain "did you mean" guard when a compile finds no candidates |
+| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill diff stays committable via `compile_skill(mode='write')` before it expires and must be re-proposed |
+| `SKILL_SUGGEST_MIN_SIMILARITY` | `0.30` | Similarity floor for skill suggestions in `briefing()` on projects that already have context |
+| `SKILL_EXPORT_DIR` | `/app/backups/skills` | Root directory for optional `export_path` mirrors of compiled skills. Valkey stays the canonical store |
 
 ---
 

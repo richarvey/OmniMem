@@ -13,7 +13,7 @@ _NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:p
 
 # MCP instructions text size (measured from instructions.py).
 # Update if instructions change significantly.
-_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "5600"))
+_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "10595"))
 
 # Tool schema overhead — 33 tools (32 registered + health).
 # Each tool contributes name + description + JSON parameter schema.

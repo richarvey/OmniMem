@@ -2,9 +2,9 @@
 
 ## What is this?
 
-Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature").
+Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
 
-**Version**: 5.5.3
+**Version**: 6.0.0
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -20,6 +20,7 @@ mcp_server/           # MCP server — FastMCP SSE transport
     dedup.py          # Cosine similarity duplicate detection (threshold 0.92)
     maintenance.py    # Auto-maintenance: dedup + contradiction scan on briefing interval
     contradiction.py  # Tier 1 heuristic + optional Tier 2 Claude Haiku API
+    skills.py         # v6 skill compiler engine: domain pools, lesson clustering, SKILL.md rendering, diffs
   tools/              # 30+ MCP tool implementations
     core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
     project.py        # set/get/update/compile project_context, list_projects, delete_project
@@ -29,6 +30,7 @@ mcp_server/           # MCP server — FastMCP SSE transport
     backup.py         # dump_to_file, restore_from_file, list_backups
     contradiction.py  # check_contradictions tool
     topics.py         # suppress/unsuppress/list_suppressions
+    skills.py         # compile_skill (propose/write gate), find_skills, get_skill, bless + briefing surfaces
   tests/              # pytest with in-memory fakes (no Docker needed)
     conftest.py       # FakeValkeyClient, FakeEmbedder, FakeStore fixtures
 
@@ -82,14 +84,18 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
 - **Index migration** on startup — `_migrate_indexes()` compares field count against definitions, drops stale indexes (data-safe) so they get recreated with new fields
 - **Per-memory recall counters** — `recall_count` and `last_recalled` updated via pipeline on each recall; `/telemetry` dashboard and `/metrics` Prometheus endpoint expose these
+- **Skills are whole document objects, never chunked** (v6) — canonical body lives in the `body` hash field at `mem:skill:gen:{domain}-{user}`; `idx:skill` embeds discovery metadata only (name + description + domain) and `body` is deliberately absent from `_NAMESPACE_RETURN_FIELDS["skill"]`. `get_skill` returns it intact by ID
+- **Skill writes are gated** (v6) — `compile_skill(mode="propose")` stashes the rendered draft in `meta:skill:proposal:{domain}-{user}` (TTL `SKILL_PROPOSAL_TTL_SECONDS`); `mode="write"` commits that stashed body verbatim (no recompile at write time), refuses if the stored skill's sha changed since the proposal, and refuses anything not flagged `generated: true`. Experience/graveyard writes stay ungated — that asymmetry is the design
+- **Skill compilation is deterministic** — same source memories render a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps into `render_skill_md()` or every recompile will propose noise diffs
 
 ## Validation Constraints
 
 - Project names: alphanumeric, hyphens, underscores, dots, spaces only
 - Content: max 50KB per memory
 - Tags: max 20 per memory, each ≤100 chars
-- Namespaces: `episodic`, `project`, or `knowledge` only
-- Key prefixes: `mem:episodic:`, `mem:project:`, `mem:knowledge:`
+- Namespaces: `episodic`, `project`, `knowledge`, or `preference` for `remember()`; `skill` exists as a search namespace but is only writable through the `compile_skill` gate
+- Key prefixes: `mem:episodic:`, `mem:project:`, `mem:knowledge:`, `mem:preference:`, `mem:skill:`
+- Skill domains: normalised to lowercase kebab-case, 1-64 chars of `[a-z0-9._-]`; aliases (`py`→`python` etc) resolve in `memory/skills.py DOMAIN_ALIASES`
 
 ## Docker Services
 

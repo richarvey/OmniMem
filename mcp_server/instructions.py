@@ -44,6 +44,8 @@ At the beginning of every session:
 - Abandoned approaches to avoid (graveyard)
 - Stale memories that may need reviewing
 - **Contradiction warnings** — surface these explicitly and ask the human which version reflects current reality before proceeding with any work
+- **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
+- **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
 1. If the MCP server seems unresponsive or recall is slow, call `health()` and report the status to the human before continuing.
 
 -----
@@ -142,6 +144,24 @@ If `effort_score >= 4` and `outcome == "abandoned"`, the system will automatical
 |3    |Multiple iterations, some debugging          |
 |4    |Significant effort, approach changes required|
 |5    |Near-abandonment, fundamental rethink        |
+
+-----
+
+### Skills (compiled procedure)
+
+OmniMem can compile your accumulated experience in a domain into a loadable skill via `compile_skill("<domain>")` — do/don't/watch-out rules distilled from reinforced breakthroughs, gotchas, and the graveyard, each citing its source memories. Domains are tags: a memory tagged `python` feeds the `python` skill.
+
+**Loading.** When `briefing()` suggests a skill (or `find_skills("<query or domain>")` finds one), offer it to the human and load it with `get_skill("<skill_id>")` if they agree. Never load one silently. Once loaded, follow its operating contract: keep recording experience and dead ends while you work, so the next compile is better.
+
+**Compiling and updating.** Skills are derived output — never edit one by hand; update the underlying memories and recompile. The flow is always propose, review, accept:
+
+1. `compile_skill("<domain>")` returns a diff (or a full draft for a new skill) plus a risk-classified change summary
+1. Show the human the changes — additions are low-stakes; rewrites or removals of existing rules deserve individual attention
+1. Only after they accept, call `compile_skill("<domain>", mode="write")` — it commits exactly the proposed draft, nothing else
+
+The skill's `description` is the load trigger and is human-owned: the compiler drafts it once at creation, the human approves or edits it (pass `description=` to change it deliberately), and recompiles never clobber it.
+
+**Promotion.** A single episode is a memory; a pattern across episodes earns a rule (default `min_reinforcement=2`). When one lesson is strong enough on its own, call `bless("<memory_key>")` to make it skill-eligible at the next compile.
 
 -----
 
