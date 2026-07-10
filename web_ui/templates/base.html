@@ -18,20 +18,30 @@
       </div>
       <ul class="nav-list">
         <li><a href="/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}">Dashboard</a></li>
-        <li><a href="/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}">Memories</a></li>
         <li><a href="/search" class="nav-link{% if current_page == 'search' %} active{% endif %}">Search</a></li>
         <li><a href="/create" class="nav-link{% if current_page == 'create' %} active{% endif %}">Create</a></li>
         <li class="nav-divider"></li>
+        <li class="nav-section-label">Memory</li>
+        <li><a href="/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}">Memories</a></li>
         <li><a href="/projects" class="nav-link{% if current_page == 'projects' %} active{% endif %}">Projects</a></li>
+        <li><a href="/memories?namespace=preference" class="nav-link{% if current_page == 'preferences' %} active{% endif %}">Preferences</a></li>
         <li><a href="/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}">Experience</a></li>
+        <li><a href="/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}">Graveyard</a></li>
+        <li class="nav-divider"></li>
+        <li class="nav-section-label">Skills</li>
+        <li><a href="/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}">Compiled Skills</a></li>
+        <li class="nav-divider"></li>
+        <li class="nav-section-label">Management</li>
         <li><a href="/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}">Duplicates</a></li>
         <li><a href="/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}">Contradictions</a></li>
         <li><a href="/suppressions" class="nav-link{% if current_page == 'suppressions' %} active{% endif %}">Suppressions</a></li>
-        <li><a href="/telemetry" class="nav-link{% if current_page == 'telemetry' or current_page == 'token_overhead' %} active{% endif %}">Telemetry</a></li>
         <li class="nav-divider"></li>
-        <li class="nav-section-label">Knowledge</li>
+        <li class="nav-section-label">Knowledge Management</li>
+        <li><a href="/memories?namespace=knowledge" class="nav-link{% if current_page == 'knowledge' %} active{% endif %}">Articles</a></li>
         <li><a href="/feeds" class="nav-link{% if current_page == 'feeds' %} active{% endif %}">RSS Feeds</a></li>
         <li class="nav-divider"></li>
+        <li class="nav-section-label">System Management</li>
+        <li><a href="/telemetry" class="nav-link{% if current_page == 'telemetry' or current_page == 'token_overhead' %} active{% endif %}">Telemetry</a></li>
         <li><a href="/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}">Backups</a></li>
       </ul>
     </nav>

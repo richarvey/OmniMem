@@ -20,6 +20,9 @@ _NAMESPACE_PREFIXES = {
     "episodic": "mem:episodic:",
     "project": "mem:project:",
     "knowledge": "mem:knowledge:",
+    "preference": "mem:preference:",
+    # get_skill() bumps recall_count, so skill loads surface in these gauges too
+    "skill": "mem:skill:",
 }
 
 # Dedicated registry to avoid default process/platform collectors

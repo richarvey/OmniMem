@@ -110,6 +110,12 @@ async def memories_list(request: Request) -> HTMLResponse:
     is_htmx = request.headers.get("HX-Request") == "true"
     template_name = "memories/_rows.html" if is_htmx else "memories/list.html"
 
+    # The sidebar's Preferences and Articles entries are namespace-filtered
+    # views of this page — highlight them instead of Memories when active.
+    nav_page = {"preference": "preferences", "knowledge": "knowledge"}.get(
+        namespace, "memories"
+    )
+
     template = request.app.state.templates.get_template(template_name)
     content = template.render(
         request=request,
@@ -124,7 +130,7 @@ async def memories_list(request: Request) -> HTMLResponse:
         total=total,
         extra_params=extra_params,
         base_url="/memories",
-        current_page="memories",
+        current_page=nav_page,
     )
     return HTMLResponse(content)
 

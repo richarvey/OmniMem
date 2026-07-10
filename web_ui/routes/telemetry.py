@@ -10,7 +10,12 @@ from starlette.routing import Route
 from .. import deps
 
 TELEMETRY_COLD_DAYS = int(os.getenv("TELEMETRY_COLD_DAYS", "60"))
-_NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:"]
+# Skills are included: get_skill() bumps the same recall_count/last_recalled
+# counters as memory recall, so skill load frequency shows up here for free.
+_NAMESPACE_PREFIXES = [
+    "mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:",
+    "mem:skill:",
+]
 
 
 def _build_telemetry_data(project_filter: str | None = None) -> dict:
@@ -36,7 +41,7 @@ def _build_telemetry_data(project_filter: str | None = None) -> dict:
         all_data = deps.store.get_fields_multi(
             keys,
             ("state", "project", "project_name", "recall_count",
-             "last_recalled", "content", "created_at"),
+             "last_recalled", "content", "created_at", "name", "description"),
         )
 
         for key, data in zip(keys, all_data):
@@ -55,12 +60,18 @@ def _build_telemetry_data(project_filter: str | None = None) -> dict:
             recall_count = int(data.get("recall_count") or 0)
             total_recalls += recall_count
             content = data.get("content", "")
+            if not content and namespace == "skill":
+                # Skills carry no content field — show discovery metadata.
+                content = " — ".join(
+                    part for part in (data.get("name"), data.get("description")) if part
+                )
             snippet = content[:80] + ("..." if len(content) > 80 else "")
             last_recalled_raw = data.get("last_recalled")
 
             entry = {
                 "key": key,
                 "namespace": namespace,
+                "url": f"/skills/{key}" if namespace == "skill" else f"/memory/{key}",
                 "content": snippet,
                 "project": mem_project or "",
                 "recall_count": recall_count,

@@ -21,12 +21,23 @@
 </p>
 {% endif %}
 
+{% set ns_links = {
+  "episodic": "/memories?namespace=episodic",
+  "project": "/projects",
+  "knowledge": "/memories?namespace=knowledge",
+  "preference": "/memories?namespace=preference",
+} %}
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
   <div class="stat-card">
-    <h3 class="stat-ns">{{ ns }}</h3>
-    {% if ns == "project" and stats.distinct is defined %}
+    <h3 class="stat-ns"><a href="{{ ns_links[ns] }}">{{ "projects" if ns == "project" else ns }}</a></h3>
+    {% if ns == "project" %}
     <div class="stat-total">{{ stats.distinct }}</div>
+    <div class="stat-breakdown">
+      <span class="badge active">{{ stats.projects.active }} active</span>
+      <span class="badge deprioritised">{{ stats.projects.deprioritised }} depri</span>
+      <span class="badge archived">{{ stats.projects.archived }} arch</span>
+    </div>
     <div class="stat-label">{{ stats.total }} record{{ "" if stats.total == 1 else "s" }}</div>
     {% else %}
     <div class="stat-total">{{ stats.total }}</div>
@@ -38,9 +49,22 @@
     {% endif %}
   </div>
   {% endfor %}
+  <div class="stat-card">
+    <h3 class="stat-ns"><a href="/skills">skills</a></h3>
+    <div class="stat-total">{{ skills.total }}</div>
+    <div class="stat-breakdown">
+      <span class="badge active">{{ skills.states.active }} active</span>
+      {% if skills.proposals > 0 %}
+      <span class="badge deprioritised">{{ skills.proposals }} proposal{{ "" if skills.proposals == 1 else "s" }} pending</span>
+      {% endif %}
+      {% if skills.states.deprioritised %}<span class="badge deprioritised">{{ skills.states.deprioritised }} depri</span>{% endif %}
+      {% if skills.states.archived %}<span class="badge archived">{{ skills.states.archived }} arch</span>{% endif %}
+    </div>
+  </div>
   <div class="stat-card stat-card-highlight">
     <h3 class="stat-ns">Total</h3>
     <div class="stat-total">{{ total }}</div>
+    <div class="stat-label">memories across all namespaces</div>
   </div>
 </section>
 
@@ -61,7 +85,7 @@
       {% for mem in recent %}
       <tr>
         <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+        <td class="content-cell"><a href="{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key }}">{{ mem.content }}</a></td>
         <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
         <td>{{ mem.project or "—" }}</td>
         <td class="mono">{{ mem.updated_at_fmt }}</td>

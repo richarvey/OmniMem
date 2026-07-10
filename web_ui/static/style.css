@@ -18,6 +18,7 @@
   --yellow: #fbbf24;
   --red: #f87171;
   --orange: #fb923c;
+  --cyan: #22d3ee;
   --radius: 6px;
   --sidebar-width: 220px;
 }
@@ -264,6 +265,15 @@ body {
   font-weight: 600;
 }
 
+.stat-ns a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat-ns a:hover {
+  color: var(--accent);
+}
+
 .stat-total {
   font-size: 2rem;
   font-weight: 700;
@@ -306,6 +316,13 @@ body {
 .badge.ns-project { background: rgba(52, 211, 153, 0.15); color: var(--green); }
 .badge.ns-knowledge { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
 .badge.ns-preference { background: rgba(244, 114, 182, 0.15); color: #f472b6; }
+.badge.ns-skill { background: rgba(34, 211, 238, 0.15); color: var(--cyan); }
+
+/* Skill badges */
+.badge.generated { background: rgba(34, 211, 238, 0.15); color: var(--cyan); }
+.badge.rule-do { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.badge.rule-watch { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+.badge.rule-dont { background: rgba(251, 146, 60, 0.15); color: var(--orange); }
 
 /* Tables */
 .data-table {
@@ -438,6 +455,39 @@ span.project-name {
   font-size: 0.75rem;
   color: var(--text-dim);
   font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+}
+
+/* Skills table */
+.skills-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.skills-table th:nth-child(1),
+.skills-table td:nth-child(1) { width: 18%; }
+.skills-table th:nth-child(2),
+.skills-table td:nth-child(2) { width: 12%; }
+.skills-table th:nth-child(3),
+.skills-table td:nth-child(3) { width: 36%; }
+.skills-table th:nth-child(4),
+.skills-table td:nth-child(4) { width: 10%; }
+.skills-table th:nth-child(5),
+.skills-table td:nth-child(5) { width: 16%; }
+.skills-table th:nth-child(6),
+.skills-table td:nth-child(6) { width: 8%; }
+
+/* SKILL.md body — the whole document, monospace, scrolls inside its own box */
+.skill-body {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }
 
 /* Feeds table */
@@ -856,4 +906,7 @@ span.project-name {
   .projects-table td:nth-child(3) { width: auto; }
   .projects-table th:nth-child(4),
   .projects-table td:nth-child(4) { width: auto; }
+
+  .skills-table { table-layout: auto; }
+  .skills-table th, .skills-table td { width: auto !important; }
 }

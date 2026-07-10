@@ -157,7 +157,7 @@ async def graveyard(request: Request) -> HTMLResponse:
     template = request.app.state.templates.get_template("experience/graveyard.html")
     content_html = template.render(
         request=request,
-        current_page="experience",
+        current_page="graveyard",
         abandoned=unique_abandoned,
         project=project,
     )

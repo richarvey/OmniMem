@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}{{ skill.name }} — Skills — OmniMem{% endblock %}
+
+{% block content %}
+<header class="detail-header">
+  <a href="/skills" class="btn btn-secondary btn-sm">&larr; Back</a>
+  <span class="badge ns-skill">skill</span>
+  <span class="badge {{ skill.state }}">{{ skill.state }}</span>
+  {% if skill.generated %}<span class="badge generated" title="Compiler output — never hand-edited">generated</span>{% endif %}
+  <span class="detail-key">{{ skill.key }}</span>
+</header>
+
+{% if skill.description %}
+<div class="detail-content" style="border-color:var(--accent)">{{ skill.description }}</div>
+{% endif %}
+
+<div class="meta-grid">
+  <div class="meta-item">
+    <div class="meta-label">Domain</div>
+    <div class="meta-value">{{ skill.domain or "—" }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">User</div>
+    <div class="meta-value">{{ skill.user or "—" }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Contract Version</div>
+    <div class="meta-value">{{ skill.contract_version or "—" }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Compiled</div>
+    <div class="meta-value mono">{{ skill.compiled_at }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Created</div>
+    <div class="meta-value mono">{{ skill.created_at }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Updated</div>
+    <div class="meta-value mono">{{ skill.updated_at }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Loads</div>
+    <div class="meta-value">{{ skill.recall_count }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">Last Loaded</div>
+    <div class="meta-value mono">{{ skill.last_recalled }}</div>
+  </div>
+</div>
+
+{% if skill.rules %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">
+    Rules
+    <span style="font-weight:400;text-transform:none;letter-spacing:0">
+      ({{ skill.rule_counts.do }} do · {{ skill.rule_counts.watch }} watch · {{ skill.rule_counts.dont }} don't)
+    </span>
+  </h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:8%">Kind</th>
+        <th>Rule</th>
+        <th style="width:12%">Backing</th>
+        <th style="width:24%">Sources</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in skill.rules %}
+      <tr>
+        <td><span class="badge rule-{{ r.kind }}">{{ "don't" if r.kind == "dont" else r.kind }}</span></td>
+        <td>{% if r.kind == "dont" and r.name %}<strong>Avoid {{ r.name }}.</strong> {% endif %}{{ r.text }}</td>
+        <td>
+          {% if r.blessed %}<span class="badge generated">blessed</span>
+          {% else %}<span class="score">x{{ r.reinforcement }}</span>{% endif %}
+        </td>
+        <td>
+          {% for src in r.sources %}
+          <a href="/memory/{{ src }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.7rem;display:block">{{ src }}</a>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">SKILL.md</h3>
+  {% if skill.body %}
+  <pre class="skill-body">{{ skill.body }}</pre>
+  {% else %}
+  <p class="empty-state">This skill has no body stored.</p>
+  {% endif %}
+</div>
+
+{% if skill.sources %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Source Manifest</h3>
+  <p class="section-note" style="margin-bottom:0.5rem">
+    The memories this skill was compiled from. Update these (or add new ones) and recompile to change the skill.
+  </p>
+  {% for src in skill.sources %}
+  <a href="/memory/{{ src }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.75rem;display:block;padding:0.15rem 0">{{ src }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

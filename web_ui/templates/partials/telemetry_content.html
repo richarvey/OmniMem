@@ -34,7 +34,7 @@
       {% for m in most_recalled %}
       <tr>
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ m.url }}">{{ m.content }}</a></td>
         <td>{{ m.project }}</td>
         <td><span class="recall-badge">{{ m.recall_count }}</span></td>
         <td class="mono">{{ m.last_recalled }}</td>
@@ -64,7 +64,7 @@
       {% for m in gone_cold %}
       <tr class="cold-row">
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ m.url }}">{{ m.content }}</a></td>
         <td>{{ m.project }}</td>
         <td><span class="recall-badge">{{ m.recall_count }}</span></td>
         <td class="mono">{{ m.last_recalled }}</td>
@@ -90,7 +90,7 @@
       {% for m in never_recalled_list %}
       <tr>
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ m.url }}">{{ m.content }}</a></td>
         <td>{{ m.project }}</td>
       </tr>
       {% endfor %}
