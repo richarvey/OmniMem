@@ -229,6 +229,7 @@ def _register_tools() -> None:
     from tools.briefing import briefing
     from tools.knowledge import recent_knowledge, promote_knowledge
     from tools.queue import queue_status
+    from tools.skills import compile_skill, find_skills, get_skill, bless
 
     # Core tools
     mcp.tool()(version)
@@ -271,6 +272,12 @@ def _register_tools() -> None:
 
     # Contradiction tools
     mcp.tool()(check_contradictions)
+
+    # Skill compiler tools (v6)
+    mcp.tool()(compile_skill)
+    mcp.tool()(find_skills)
+    mcp.tool()(get_skill)
+    mcp.tool()(bless)
 
     # Briefing tool
     mcp.tool()(briefing)
@@ -317,7 +324,7 @@ def health() -> dict:
             except Exception:
                 actual_counts = {}
 
-            for namespace in ("episodic", "project", "knowledge", "preference"):
+            for namespace in ("episodic", "project", "knowledge", "preference", "skill"):
                 idx_name = f"idx:{namespace}"
                 num_docs: int | str
                 try:

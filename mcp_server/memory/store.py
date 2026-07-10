@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 # Valid key prefixes to prevent writing to arbitrary Valkey keys
 _VALID_KEY_PREFIXES = (
     "mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:",
+    "mem:skill:",
     "topics:", "log:recall:", "meta:", "qexp:", "queue:",
 )
 
 # Valid namespace names for search index lookups
-_VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
+_VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference", "skill"}
 
 VECTOR_DIM = 384
 VECTOR_ALGORITHM = "HNSW"
@@ -57,6 +58,16 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "surface_score", "created_at", "updated_at", "tags",
         "recall_count", "last_recalled", "source_doc_id",
         "event_date", "enriched_from",
+    ),
+    # Skills are whole-document objects: search returns discovery metadata
+    # only, never the body. The canonical body is fetched intact by ID via
+    # get_skill() — chunking or projecting it through search would hand the
+    # agent a fragment of a procedure that only works whole.
+    "skill": (
+        "similarity_score", "name", "description", "domain", "user",
+        "state", "generated", "surface_score", "compiled_at",
+        "contract_version", "created_at", "updated_at",
+        "recall_count", "last_recalled",
     ),
 }
 
@@ -135,6 +146,29 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             TagField("state"),
             TagField("tags"),
             NumericField("surface_score"),
+            NumericField("created_at"),
+            NumericField("updated_at"),
+            NumericField("recall_count"),
+        ],
+    },
+    # Compiled skills (v6). The vector embeds discovery metadata (name +
+    # description + domain), not the body — find_skills and the briefing
+    # decide relevance from it, then get_skill returns the body intact.
+    "idx:skill": {
+        "prefix": "mem:skill:",
+        "fields": [
+            VectorField(
+                "vector",
+                VECTOR_ALGORITHM,
+                {"TYPE": "FLOAT32", "DIM": VECTOR_DIM, "DISTANCE_METRIC": DISTANCE_METRIC},
+            ),
+            TagField("domain"),
+            TagField("user"),
+            TagField("state"),
+            TagField("generated"),
+            NumericField("surface_score"),
+            NumericField("compiled_at"),
+            NumericField("contract_version"),
             NumericField("created_at"),
             NumericField("updated_at"),
             NumericField("recall_count"),

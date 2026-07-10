@@ -260,12 +260,23 @@ async def restore_backup(request: Request) -> RedirectResponse:
         # Re-embed restored memories so they are searchable again — backups
         # exclude the binary vector field, so restored hashes have no embedding
         # until we regenerate it from content (mirrors the MCP restore tool).
+        # Skills embed their discovery metadata instead — they carry no
+        # content field, and relevance search runs over name/description/domain.
+        from memory.skills import discovery_text
+
         re_embedded = 0
         if deps.embedder:
             for key in restored_keys:
                 if not key.startswith("mem:"):
                     continue
-                content = data.get(key, {}).get("content", "")
+                fields = data.get(key, {})
+                if key.startswith("mem:skill:"):
+                    content = discovery_text(
+                        fields.get("name", ""), fields.get("description", ""),
+                        fields.get("domain", ""),
+                    ) if fields.get("name") else ""
+                else:
+                    content = fields.get("content", "")
                 if content:
                     vector = deps.embedder.embed(content)
                     namespace = key.split(":")[1]
