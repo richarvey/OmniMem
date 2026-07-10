@@ -3,7 +3,14 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [Unreleased]
+### Added
+- **Ubuntu typeface throughout the web UI**: Ubuntu (400/500/700 + italic) for all text and Ubuntu Mono for keys, dates, scores, and SKILL.md bodies — matching the SquareCows brand. The woff2 files (latin + latin-ext, ~430KB total) are self-hosted under `web_ui/static/fonts/`, so nothing loads from Google Fonts at runtime and the UI stays fully offline-capable. The three main weights are preloaded to avoid a flash of fallback text
+- **Skip-to-content link**: the first focusable element on every page jumps keyboard users past the sidebar straight to the main content (WCAG 2.4.1)
+- **Collapsible sidebar**: a « button in the sidebar header hides it and hands the full width to the content area (max width grows from 1100px to 1400px); a floating » button brings it back. The choice persists in localStorage and is applied before first paint, so there is no flash of the wrong state on page loads
 ### Changed
+- **Sidebar logo is now `<OmniMem>`**: wrapped in accent-coloured angle brackets
+- **Dashboard stat cards are now whole-card links**: the entire episodic/projects/knowledge/preference/skills card is clickable (including the new Total card, which goes to the all-memories view), with no underline anywhere — hover lifts the card and tints the border instead. Cards get a proper keyboard focus ring, and the hover lift is disabled under `prefers-reduced-motion`
+- **Accessibility pass on the dark palette**: accent-coloured text (active nav item, episodic badges, project links, recall counts, info flashes) moved from `#6366f1` (4.2:1, below AA) to a lighter `--accent-text` (5.6:1+), and solid accent fills carrying white text (primary buttons, version badge, current page number) darkened to `--accent-strong` (5.0:1). Visible `:focus-visible` outlines everywhere, a stronger focus ring on form fields, brighter input borders, `color-scheme: dark` so native controls and scrollbars render dark, and a global reduced-motion override
 - **Version check now targets the latest stable release**: the web UI update indicator reads Codeberg's `/releases/latest` (which excludes drafts and pre-releases) instead of `releases?limit=1` (which includes them), so a beta cut on a version branch — like v6.1.0 marked pre-release — never nudges stable installs to upgrade
 
 ## [6.1.0] - 2026-07-10

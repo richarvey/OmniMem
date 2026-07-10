@@ -158,6 +158,9 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 ## Web UI Notes
 
 - htmx endpoints must return **partials**, not full page templates
+- **Fonts are self-hosted**: Ubuntu + Ubuntu Mono woff2 files live in `web_ui/static/fonts/` with `@font-face` rules at the top of `style.css` — never link out to Google Fonts, the UI must work offline. Monospace elements use `var(--font-mono)`
+- **Accent colour is split three ways for WCAG AA**: `--accent` (#6366f1) is for borders and translucent fills only, `--accent-text` (#818cf8) for accent-coloured text on dark surfaces, `--accent-strong` (#5b5ee8) for solid fills carrying white text. Don't put `--accent` behind small text — it fails 4.5:1 on the card and page backgrounds
+- **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected
 - Footers are full-width (not inside sidebar/container)
 - Optional bearer token auth via `WEB_UI_AUTH_TOKEN` env var; `/metrics` and `/static/` are exempt
 - Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, RSS feeds), System Management (telemetry, backups). Preferences and Articles are `/memories?namespace=...` views — `memories_list` maps the namespace filter to `current_page` so the right sidebar entry highlights

@@ -16,7 +16,7 @@
 </header>
 
 {% if stats_age is not none %}
-<p class="stats-meta" style="color:var(--text-muted,#94a3b8);font-size:.8rem;margin:0 0 .75rem;">
+<p class="stats-meta">
   Stats updated {{ stats_age }}s ago · <a href="/?refresh=1">refresh now</a>
 </p>
 {% endif %}
@@ -29,8 +29,8 @@
 } %}
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
-  <div class="stat-card">
-    <h3 class="stat-ns"><a href="{{ ns_links[ns] }}">{{ "projects" if ns == "project" else ns }}</a></h3>
+  <a class="stat-card" href="{{ ns_links[ns] }}">
+    <h3 class="stat-ns">{{ "projects" if ns == "project" else ns }}</h3>
     {% if ns == "project" %}
     <div class="stat-total">{{ stats.distinct }}</div>
     <div class="stat-breakdown">
@@ -47,10 +47,10 @@
       <span class="badge archived">{{ stats.states.archived }} arch</span>
     </div>
     {% endif %}
-  </div>
+  </a>
   {% endfor %}
-  <div class="stat-card">
-    <h3 class="stat-ns"><a href="/skills">skills</a></h3>
+  <a class="stat-card" href="/skills">
+    <h3 class="stat-ns">skills</h3>
     <div class="stat-total">{{ skills.total }}</div>
     <div class="stat-breakdown">
       <span class="badge active">{{ skills.states.active }} active</span>
@@ -60,12 +60,12 @@
       {% if skills.states.deprioritised %}<span class="badge deprioritised">{{ skills.states.deprioritised }} depri</span>{% endif %}
       {% if skills.states.archived %}<span class="badge archived">{{ skills.states.archived }} arch</span>{% endif %}
     </div>
-  </div>
-  <div class="stat-card stat-card-highlight">
+  </a>
+  <a class="stat-card stat-card-highlight" href="/memories">
     <h3 class="stat-ns">Total</h3>
     <div class="stat-total">{{ total }}</div>
     <div class="stat-label">memories across all namespaces</div>
-  </div>
+  </a>
 </section>
 
 <section class="recent-section">

@@ -4,17 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}OmniMem{% endblock %}</title>
+  <link rel="preload" href="/static/fonts/ubuntu-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ubuntu-500-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ubuntu-700-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
+  <script>if (localStorage.getItem('omnimem-sidebar-collapsed') === '1') document.documentElement.classList.add('sidebar-collapsed');</script>
   <link rel="me" href="https://mastodon.squarecows.com/@Ric">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <button type="button" class="sidebar-expand" data-sidebar-toggle aria-label="Show sidebar" aria-expanded="false">&raquo;</button>
   <div class="layout">
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="Main">
       <div class="sidebar-header">
-        <h1 class="logo">OmniMem</h1>
+        <h1 class="logo"><span class="logo-bracket">&lt;</span>OmniMem<span class="logo-bracket">&gt;</span></h1>
         <span class="version-badge">v{{ version }}</span>
         <span hx-get="/version-check" hx-trigger="load" hx-swap="innerHTML" style="line-height:1"></span>
+        <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Hide sidebar" aria-expanded="true">&laquo;</button>
       </div>
       <ul class="nav-list">
         <li><a href="/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}">Dashboard</a></li>
@@ -45,7 +52,7 @@
         <li><a href="/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}">Backups</a></li>
       </ul>
     </nav>
-    <main class="content">
+    <main class="content" id="main">
       <div id="flash-area">
         {% block flash %}{% endblock %}
       </div>
@@ -61,5 +68,24 @@
       <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
     </div>
   </footer>
+  <script>
+    (function () {
+      var KEY = 'omnimem-sidebar-collapsed';
+      var root = document.documentElement;
+      var toggles = document.querySelectorAll('[data-sidebar-toggle]');
+      function apply(collapsed) {
+        root.classList.toggle('sidebar-collapsed', collapsed);
+        toggles.forEach(function (btn) { btn.setAttribute('aria-expanded', String(!collapsed)); });
+      }
+      toggles.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var collapsed = !root.classList.contains('sidebar-collapsed');
+          try { localStorage.setItem(KEY, collapsed ? '1' : '0'); } catch (e) {}
+          apply(collapsed);
+        });
+      });
+      apply(root.classList.contains('sidebar-collapsed'));
+    })();
+  </script>
 </body>
 </html>
