@@ -3,6 +3,8 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [Unreleased]
+
+## [6.1.0] - 2026-07-10
 ### Added
 - **Skills section in the web UI**: new sidebar group with a `/skills` catalogue and a per-skill detail view. The list shows name, domain, description, state, compile time, and load count, plus a banner for any compile proposals still awaiting review (they are TTL'd, so anything shown is still committable). The detail view renders the rule manifest (do/watch/don't with reinforcement counts, blessed markers, and links to each source memory), the full SKILL.md body, and the source manifest. Deliberately read-only — no edit, no delete — because skill writes only happen through the `compile_skill` propose-and-accept gate; the pages link back to the raw memories, which are the things to change
 - **Skills on the dashboard**: a skills stat card (total, active count, pending proposal count) and compiled skills now appear in the recent activity feed (labelled by name and description, linking to `/skills/...`). Skills are counted separately from the memory total — they are build output, not memories
