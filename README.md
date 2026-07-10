@@ -143,6 +143,8 @@ The results appear in the briefing response under `auto_maintenance` so you know
 
 Memories tell an agent what happened. A skill tells it how you work.
 
+A skill in OmniMem is not a set list of instructions, and it is never finished. Skills are built the way you actually build a skill: by doing the work, failing at some of it, succeeding at the rest, and noticing which lessons keep coming back. OmniMem compiles them from exactly that record, the work you did and the outcomes it produced. And they keep developing. As new experience and new dead ends land in memory, the skill evolves over time with your input and approval, so the agent gets faster and more precise at helping you reach your outcomes and goals.
+
 `compile_skill("python")` distils your accumulated experience in a domain — reinforced breakthroughs, recurring gotchas, the graveyard of dead ends — into a loadable `SKILL.md`: do this, watch out for that, never try X again because it cost you an afternoon on that other project. Each rule cites the memories it came from. Load it at the start of Python work (or Rust work, or blog writing) and the agent works your way from the first prompt, which matters most on greenfield projects where no project context exists yet.
 
 The design premise: a memory error is noise, ranked and diluted by recall, but a skill error is policy — the agent obeys it. So bad lessons cannot become policy silently:
