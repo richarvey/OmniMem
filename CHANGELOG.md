@@ -3,6 +3,8 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [Unreleased]
+### Changed
+- **Version check now targets the latest stable release**: the web UI update indicator reads Codeberg's `/releases/latest` (which excludes drafts and pre-releases) instead of `releases?limit=1` (which includes them), so a beta cut on a version branch — like v6.1.0 marked pre-release — never nudges stable installs to upgrade
 
 ## [6.1.0] - 2026-07-10
 ### Added
