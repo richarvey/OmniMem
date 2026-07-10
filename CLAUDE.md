@@ -153,6 +153,8 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 
 Commit after each meaningful section of work for easy rollback. The repo is hosted on Codeberg — Forgejo MCP is connected to Codeberg and can be used for PRs and repo operations.
 
+**Branch policy**: version lines (v6, v7, ...) are developed AND released from their own branch — cut tags and Codeberg releases on the version branch. Never merge a version branch into main unless explicitly asked; main only moves when Ric says so.
+
 ## Web UI Notes
 
 - htmx endpoints must return **partials**, not full page templates
