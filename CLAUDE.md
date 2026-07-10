@@ -37,7 +37,7 @@ mcp_server/           # MCP server — FastMCP SSE transport
 web_ui/               # Starlette + Jinja2 + htmx dashboard
   app.py              # ASGI app setup, route mounting
   deps.py             # Shared init (mirrors server.py pattern)
-  routes/             # 16 route modules (memories, search, projects, feeds, telemetry, metrics, etc.)
+  routes/             # 17 route modules (memories, search, projects, skills, feeds, telemetry, metrics, etc.)
   templates/          # Jinja2 templates with htmx partials
   static/             # htmx.min.js, style.css
 
@@ -158,6 +158,10 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 - htmx endpoints must return **partials**, not full page templates
 - Footers are full-width (not inside sidebar/container)
 - Optional bearer token auth via `WEB_UI_AUTH_TOKEN` env var; `/metrics` and `/static/` are exempt
+- Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, RSS feeds), System Management (telemetry, backups). Preferences and Articles are `/memories?namespace=...` views — `memories_list` maps the namespace filter to `current_page` so the right sidebar entry highlights
+- `/skills` pages are **read-only by design** — no edit or delete. Skill writes only happen through the MCP `compile_skill` propose-and-accept gate; the UI links each rule and the source manifest back to `/memory/{key}` because the raw memories are what you change
+- The dashboard stats cache payload must carry the `skills` key — `_load_cached_stats` treats its absence as a stale (pre-v6.1) shape and recomputes. If you add fields the dashboard template requires, extend that shape check or upgrades will KeyError until the TTL expires
+- Skills count into telemetry/metrics via the shared `recall_count`/`last_recalled` counters (`get_skill` bumps them); telemetry substitutes name + description for their missing `content` field and links them to `/skills/...`
 
 ## Writing Style
 

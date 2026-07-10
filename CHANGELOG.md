@@ -3,6 +3,14 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [Unreleased]
+### Added
+- **Skills section in the web UI**: new sidebar group with a `/skills` catalogue and a per-skill detail view. The list shows name, domain, description, state, compile time, and load count, plus a banner for any compile proposals still awaiting review (they are TTL'd, so anything shown is still committable). The detail view renders the rule manifest (do/watch/don't with reinforcement counts, blessed markers, and links to each source memory), the full SKILL.md body, and the source manifest. Deliberately read-only — no edit, no delete — because skill writes only happen through the `compile_skill` propose-and-accept gate; the pages link back to the raw memories, which are the things to change
+- **Skills on the dashboard**: a skills stat card (total, active count, pending proposal count) and compiled skills now appear in the recent activity feed (labelled by name and description, linking to `/skills/...`). Skills are counted separately from the memory total — they are build output, not memories
+- **Skill loads in telemetry and metrics**: `/telemetry` now scans `mem:skill:*` so skill load counts surface in most recalled / gone cold / never recalled (with name and description standing in for the missing `content` field), and `/metrics` gains `namespace="skill"` and the previously missing `namespace="preference"` series on the memory gauges
+### Changed
+- **Dashboard projects card counts projects, not records, by state**: headlines the distinct project count with an active / deprioritised / archived breakdown of whole projects (a project's state comes from its context entry when it has one — that is what bulk transitions stamp — otherwise from the most-alive state among its memories), with the raw record count as a subtitle. Namespace card titles now link to their filtered views
+- **Sidebar regrouped**: Memory (memories, projects, preferences, experience, graveyard), Skills (compiled skills), Management (duplicates, contradictions, suppressions), Knowledge Management (articles, RSS feeds), and System Management (telemetry, backups). Preferences and Articles are namespace-filtered views of the memories page and highlight their own sidebar entries; the graveyard gets a direct link and its own highlight instead of hiding behind Experience
+- **Dashboard stats cache invalidates on shape change**: cached payloads from before the skills/projects card data are discarded rather than served, so the new cards cannot KeyError against a stale cache after upgrade
 
 ## [6.0.0] - 2026-07-10
 ### Added

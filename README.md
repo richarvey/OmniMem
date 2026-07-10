@@ -505,19 +505,22 @@ Quick check: `curl -s -o /dev/null -w '%{http_code}\n' https://your-host/.well-k
 
 OmniMem includes a browser-based management interface at `http://localhost:8080`. It connects directly to Valkey and does not depend on the MCP server running.
 
+The sidebar is organised into groups: **Memory** (memories, projects, preferences, experience, graveyard), **Skills** (compiled skills), **Management** (duplicates, contradictions, suppressions), **Knowledge Management** (articles, RSS feeds), and **System Management** (telemetry, backups).
+
 | Page | What it does |
 |---|---|
-| **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity |
-| **Memories** | Browse all memories with namespace, state, and project filters. Paginated, htmx-powered |
+| **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity. The projects card counts distinct projects by state (active, deprioritised, archived) and the skills card shows compiled skills plus any pending compile proposals |
+| **Memories** | Browse all memories with namespace, state, and project filters. Paginated, htmx-powered. The Preferences and Articles sidebar entries are namespace-filtered views of this page |
 | **Search** | Semantic search using the full recall pipeline. Abandoned warnings highlighted |
 | **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons |
 | **Create** | Store a new memory with duplicate detection shown inline |
 | **Projects** | List, view, edit, and create project contexts |
+| **Skills** | Browse compiled skills: rules with reinforcement counts and source citations, the full SKILL.md body, load counters, and the source manifest linking back to the memories each skill was compiled from. Read-only by design — skills only change through the `compile_skill` propose-and-accept flow |
 | **Experience** | Summary dashboard with effort stats, breakthroughs, and the abandoned approach graveyard |
 | **Duplicates** | Scan a namespace for near-identical memory clusters. Archive extras directly |
 | **Contradictions** | Side-by-side comparison of contradicting memories with resolve actions |
 | **Suppressions** | Add and remove suppressed topics inline |
-| **Telemetry** | Recall counters, most recalled, gone cold, never recalled. Filter by project |
+| **Telemetry** | Recall counters, most recalled, gone cold, never recalled. Filter by project. Includes skill load counts (`get_skill` bumps the same counters) |
 | **Token Overhead** | Measured tool call metrics since uptime: calls, avg duration, avg tokens, errors per tool. Static context cost breakdown |
 | **Backups** | Create backups, preview restore contents, and confirm restore |
 
@@ -529,8 +532,8 @@ Available gauges:
 
 | Metric | Labels | Description |
 |---|---|---|
-| `omnimem_memories_total` | `namespace`, `state` | Total memories by namespace and lifecycle state |
-| `omnimem_memories_never_recalled` | `namespace` | Active memories with zero recalls |
+| `omnimem_memories_total` | `namespace`, `state` | Total records by namespace (episodic, project, knowledge, preference, skill) and lifecycle state |
+| `omnimem_memories_never_recalled` | `namespace` | Active records with zero recalls |
 | `omnimem_recalls_total` | — | Sum of all recall counts across all memories |
 | `omnimem_memories_gone_cold` | — | Memories recalled before but not within the cold threshold |
 | `omnimem_tool_calls_total` | `tool` | Total MCP tool call count by tool name |
