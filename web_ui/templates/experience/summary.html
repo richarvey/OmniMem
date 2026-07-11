@@ -43,27 +43,26 @@
 </section>
 {% endif %}
 
-{% if effortful %}
+{% if count %}
 <section>
-  <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Most Effortful Memories</h3>
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Effort</th>
-        <th>Outcome</th>
-        <th>Content</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in effortful %}
-      <tr>
-        <td><span class="score">{{ m.effort_score }}/5</span></td>
-        <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'archived' }}">{{ m.outcome }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem">
+    <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright)">Most Effortful Memories</h3>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:var(--text-dim)">
+      Outcome
+      <input type="hidden" name="project" value="{{ project }}">
+      <select class="form-select" name="outcome" style="width:auto"
+              hx-get="/experience" hx-target="#results" hx-push-url="true"
+              hx-include="[name='project']">
+        <option value="">All</option>
+        <option value="succeeded"{% if outcome_filter == 'succeeded' %} selected{% endif %}>Succeeded</option>
+        <option value="pivoted"{% if outcome_filter == 'pivoted' %} selected{% endif %}>Pivoted</option>
+        <option value="abandoned"{% if outcome_filter == 'abandoned' %} selected{% endif %}>Abandoned</option>
+      </select>
+    </label>
+  </div>
+  <div id="results">
+    {% include "experience/_effortful.html" %}
+  </div>
 </section>
 {% endif %}
 
