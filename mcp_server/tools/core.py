@@ -17,6 +17,7 @@ from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
+from memory.tags import MAX_TAGS, MAX_TAG_LENGTH, retag_memory, validate_tags as _validate_tags
 
 from . import __version__, _compact
 
@@ -30,8 +31,6 @@ def version() -> dict[str, str]:
 VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
 MAX_CONTENT_LENGTH = 50_000
 MAX_TOP_K = 50
-MAX_TAG_LENGTH = 100
-MAX_TAGS = 20
 # Allowed characters for project names and tags: alphanumeric, hyphens, underscores, dots, spaces
 _SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
 
@@ -63,17 +62,6 @@ def _validate_content(content: str) -> None:
         raise ValueError("Content cannot be empty")
     if len(content) > MAX_CONTENT_LENGTH:
         raise ValueError(f"Content too long ({len(content)} chars). Maximum is {MAX_CONTENT_LENGTH}.")
-
-
-def _validate_tags(tags: list[str] | None) -> None:
-    """Validate tags list."""
-    if tags is None:
-        return
-    if len(tags) > MAX_TAGS:
-        raise ValueError(f"Too many tags ({len(tags)}). Maximum is {MAX_TAGS}.")
-    for tag in tags:
-        if not isinstance(tag, str) or len(tag) > MAX_TAG_LENGTH:
-            raise ValueError(f"Each tag must be a string of at most {MAX_TAG_LENGTH} characters")
 
 
 def _validate_top_k(top_k: int) -> int:
@@ -602,6 +590,28 @@ def reinstate(key_or_query: str) -> dict[str, Any]:
                     logger.warning("Cannot reinstate %s: %s", r.key, exc)
 
     return {"affected": affected}
+
+
+def retag(
+    key: str,
+    tags: list[str] | None = None,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+) -> dict[str, Any]:
+    """Replace or adjust the tags on a memory without re-embedding it.
+
+    Args:
+        key: Memory key (e.g. 'mem:episodic:...').
+        tags: Full replacement tag list; pass [] to clear all tags.
+            Mutually exclusive with add/remove.
+        add: Tags to add to the existing set (duplicates skipped).
+        remove: Tags to remove from the existing set (exact match).
+    """
+    store, _, _, _ = _get_deps()
+    result = retag_memory(store, key, tags=tags, add=add, remove=remove)
+    if result["status"] == "updated":
+        logger.info("Retagged %s: %s -> %s", key, result["previous_tags"], result["tags"])
+    return result
 
 
 def forget(

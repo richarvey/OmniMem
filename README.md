@@ -265,6 +265,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Soft-suppress without deleting |
 | `archive(key_or_query)` | Remove from recall but keep for history |
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
+| `retag(key, tags?, add?, remove?)` | Replace or adjust a memory's tags without re-embedding. Pass `tags` for a full replacement (`[]` clears), or `add`/`remove` to tweak the existing set |
 | `forget(key_or_query, confirm=True)` | Hard delete, requires explicit confirmation |
 | `suppress_topic(topic)` | Filter a topic from all future recalls |
 | `unsuppress_topic(topic)` | Remove a topic from the suppression list |
@@ -513,7 +514,7 @@ The sidebar is organised into groups: **Memory** (memories, projects, preference
 | **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity. The projects card counts distinct projects by state (active, deprioritised, archived) and the skills card shows compiled skills plus any pending compile proposals |
 | **Memories** | Browse all memories with namespace, state, and project filters, plus inline deprioritise/delete actions on each row. Paginated, htmx-powered. The Preferences, Articles, and Learned Knowledge sidebar entries are filtered views of this page |
 | **Search** | Semantic search using the full recall pipeline. Abandoned warnings highlighted |
-| **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons |
+| **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons, plus inline tag editing (comma-separated, same validation as the `retag` tool) |
 | **Create** | Store a new memory with duplicate detection shown inline |
 | **Projects** | List, view, edit, and create project contexts |
 | **Skills** | Browse compiled skills: rules with reinforcement counts and source citations, the full SKILL.md body, load counters, and the source manifest linking back to the memories each skill was compiled from. The New Skill modal compiles a draft for a domain through the same propose-and-accept gate as the MCP `compile_skill` tool — you review the draft in place and nothing is written until you accept it. Skills can be deleted (with confirmation) but never edited: to change one, update the underlying memories and recompile |

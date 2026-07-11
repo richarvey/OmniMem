@@ -172,7 +172,7 @@ def _register_tools() -> None:
     from tools.core import (
         version,
         remember, remember_document, recall, recall_index, recall_detail,
-        deprioritise, archive, reinstate, forget,
+        deprioritise, archive, reinstate, retag, forget,
         suppress_topic, unsuppress_topic, list_suppressions, find_duplicates,
     )
     from tools.project import (
@@ -202,6 +202,7 @@ def _register_tools() -> None:
     mcp.tool()(deprioritise)
     mcp.tool()(archive)
     mcp.tool()(reinstate)
+    mcp.tool()(retag)
     mcp.tool()(forget)
     mcp.tool()(suppress_topic)
     mcp.tool()(unsuppress_topic)

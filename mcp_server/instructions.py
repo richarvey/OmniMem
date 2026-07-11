@@ -88,6 +88,8 @@ Use this tagging vocabulary for consistency:
 
 Always include at least one stack tag and one intent tag.
 
+**If an existing memory is missing tags or tagged wrongly**, fix it with `retag()` — `retag(key, add=[...])` and `retag(key, remove=[...])` adjust the existing set, `retag(key, tags=[...])` replaces it outright. Tags feed recall filtering and skill compiler domains, so tidying them is worthwhile.
+
 **If the human says** something like "forget about X", "stop bringing up Y", or "I don't do that anymore":
 
 - Call `deprioritise()` with a clear reason
