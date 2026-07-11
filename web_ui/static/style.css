@@ -1115,6 +1115,21 @@ span.project-name {
   overflow-wrap: break-word;
 }
 
+/* Refresh feedback: dim the target while the request is in flight,
+   then fade the fresh content back in so a refresh is always visible
+   even when the numbers haven't changed */
+.refresh-target {
+  transition: opacity 0.25s ease;
+}
+
+.refresh-target.htmx-request {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-target { transition: none; }
+}
+
 /* Spinner for htmx loading */
 .htmx-indicator {
   display: none;
