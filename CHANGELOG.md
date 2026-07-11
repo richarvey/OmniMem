@@ -2,6 +2,12 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [Unreleased]
+### Added
+- **Retag memories from MCP and the web UI**: a new `retag(key, tags?, add?, remove?)` tool replaces a memory's tags outright (`tags=[...]`, with `[]` clearing them) or adjusts the existing set (`add`/`remove`), without re-embedding — tags are metadata, the vector comes from content alone. The memory detail page gains a matching inline editor: a comma-separated field pre-filled with the current tags, saved through the same shared `memory/tags.py` helper as the MCP tool so validation (20 tags max, 100 chars each, whitespace stripped, duplicates dropped) can't drift between the two paths. Skill entries are deliberately not retaggable — their metadata belongs to the compile gate. Changing tags bumps `updated_at`, so backup restores keep the retagged version
+### Fixed
+- **Refresh buttons on telemetry and token overhead now visibly respond**: the buttons always worked, but a refresh whose numbers hadn't changed gave no feedback at all and read as broken. The content pane now dims while the htmx request is in flight and fades back in when the fresh data lands (disabled under `prefers-reduced-motion`). The token overhead page's static figures were also brought up to date: 34 tools including `retag`, and a remeasured instructions size
+
 ## [6.1.2] - 2026-07-11
 ### Added
 - **Create skills from the web UI, through the same gate**: a New Skill button on `/skills` opens a modal — type a domain (python, rust, ...), compile a draft from that domain's experience and graveyard memories, review the full SKILL.md in place, and accept to write it. Nothing is written without the review step, and the modal refuses domains that already have a skill (recompiles stay on the MCP flow, which carries the diff review). The propose-and-accept logic moved from the MCP tool layer into the shared `memory/skill_compiler.py`, so the `compile_skill` tool and the web UI run the exact same flow rather than drifting copies
