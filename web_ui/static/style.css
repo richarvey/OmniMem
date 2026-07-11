@@ -688,15 +688,19 @@ span.project-name {
 }
 
 .skills-table th:nth-child(1),
-.skills-table td:nth-child(1) { width: 18%; }
+.skills-table td:nth-child(1) { width: 17%; }
 .skills-table th:nth-child(2),
-.skills-table td:nth-child(2) { width: 12%; }
+.skills-table td:nth-child(2) { width: 11%; }
 .skills-table th:nth-child(3),
-.skills-table td:nth-child(3) { width: 36%; }
+.skills-table td:nth-child(3) { width: 30%; }
 .skills-table th:nth-child(4),
 .skills-table td:nth-child(4) { width: 10%; }
 .skills-table th:nth-child(5),
-.skills-table td:nth-child(5) { width: 16%; }
+.skills-table td:nth-child(5) { width: 14%; }
+.skills-table th:nth-child(6),
+.skills-table td:nth-child(6) { width: 8%; }
+.skills-table th:nth-child(7),
+.skills-table td:nth-child(7) { width: 10%; }
 
 /* Graveyard table */
 .graveyard-table {
@@ -1089,6 +1093,26 @@ span.project-name {
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
+}
+
+/* Compile-skill modal: wide enough to review a SKILL.md draft */
+.modal-wide {
+  max-width: 720px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.skill-draft {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* Spinner for htmx loading */

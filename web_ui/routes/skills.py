@@ -1,18 +1,23 @@
-"""Compiled skills routes: list and detail views (read-only).
+"""Compiled skills routes: list, detail, gated create, and delete.
 
 Skills are build output — compiled from experience and graveyard memories
-through the MCP compile_skill propose-and-accept gate. The web UI deliberately
-offers no write path (not even delete): a memory error is noise, a skill error
-is policy, so the only way a skill changes is a reviewed proposal. To change
-one, update the underlying memories and recompile.
+through the compile_skill propose-and-accept gate. The web UI offers no edit
+path: a memory error is noise, a skill error is policy, so the only way a
+skill's content changes is a reviewed proposal. Creation here runs the exact
+same shared flow (memory/skill_compiler.py) — compile a draft, a human reviews
+it in the modal, accept commits it. Deletion is allowed with confirmation;
+to change a skill, update the underlying memories and recompile.
 """
 
 import json
 import time
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
+
+from memory.skill_compiler import compile_skill_flow
+from memory.skills import generated_skill_key, resolve_domain, validate_domain
 
 from .. import deps
 
@@ -151,7 +156,81 @@ async def skill_detail(request: Request) -> HTMLResponse:
     return HTMLResponse(content)
 
 
+def _render_compile_result(request: Request, result: dict) -> HTMLResponse:
+    template = request.app.state.templates.get_template("skills/_compile_result.html")
+    return HTMLResponse(template.render(request=request, result=result))
+
+
+async def skill_compile(request: Request) -> HTMLResponse:
+    """POST /skills/compile — propose a draft skill for a domain (htmx partial).
+
+    Creation only: an existing skill for the domain is refused here so the
+    modal can't silently become a recompile UI — recompiles carry a diff
+    review and stay on the MCP flow.
+    """
+    form = await request.form()
+    domain = (form.get("domain") or "").strip()
+    if not domain:
+        return _render_compile_result(request, {
+            "status": "error", "reason": "Enter a domain, e.g. python.",
+        })
+
+    canonical, _ = resolve_domain(domain)
+    try:
+        validate_domain(canonical)
+    except ValueError as exc:
+        return _render_compile_result(request, {"status": "error", "reason": str(exc)})
+
+    skill_id = generated_skill_key(canonical)
+    existing = deps.store.get(skill_id)
+    if existing is not None:
+        return _render_compile_result(request, {
+            "status": "exists",
+            "skill_id": skill_id,
+            "name": existing.get("name") or skill_id.rsplit(":", 1)[-1],
+            "domain": canonical,
+        })
+
+    result = compile_skill_flow(deps.store, deps.embedder, canonical, mode="propose")
+    return _render_compile_result(request, result)
+
+
+async def skill_commit(request: Request) -> HTMLResponse:
+    """POST /skills/commit — commit the reviewed proposal (htmx partial)."""
+    form = await request.form()
+    domain = (form.get("domain") or "").strip()
+    if not domain:
+        return _render_compile_result(request, {
+            "status": "error", "reason": "Missing domain.",
+        })
+
+    canonical, _ = resolve_domain(domain)
+    try:
+        validate_domain(canonical)
+    except ValueError as exc:
+        return _render_compile_result(request, {"status": "error", "reason": str(exc)})
+
+    result = compile_skill_flow(deps.store, deps.embedder, canonical, mode="write")
+    if result.get("status") == "written":
+        # htmx follows HX-Redirect to the freshly written skill.
+        return HTMLResponse("", headers={"HX-Redirect": f"/skills/{result['skill_id']}"})
+    return _render_compile_result(request, result)
+
+
+async def skill_delete(request: Request):
+    """POST /skills/delete — delete a compiled skill (confirmed client-side)."""
+    form = await request.form()
+    key = (form.get("key") or "").strip()
+    if not key.startswith(_SKILL_PREFIX) or deps.store.get(key) is None:
+        return HTMLResponse('<p class="empty-state">Skill not found.</p>', status_code=404)
+    deps.store.delete(key)
+    return RedirectResponse("/skills", status_code=303)
+
+
 routes = [
     Route("/skills", skills_list),
+    Route("/skills/compile", skill_compile, methods=["POST"]),
+    Route("/skills/commit", skill_commit, methods=["POST"]),
+    Route("/skills/delete", skill_delete, methods=["POST"]),
     Route("/skills/{key:path}", skill_detail),
 ]

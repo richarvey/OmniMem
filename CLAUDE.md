@@ -21,6 +21,7 @@ mcp_server/           # MCP server — FastMCP SSE transport
     maintenance.py    # Auto-maintenance: dedup + contradiction scan on briefing interval
     contradiction.py  # Tier 1 heuristic + optional Tier 2 Claude Haiku API
     skills.py         # v6 skill compiler engine: domain pools, lesson clustering, SKILL.md rendering, diffs
+    skill_compiler.py # Shared propose-and-accept compile flow (used by MCP compile_skill AND the web UI)
   tools/              # 30+ MCP tool implementations
     core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
     project.py        # set/get/update/compile project_context, list_projects, delete_project
@@ -166,7 +167,7 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 - Optional bearer token auth via `WEB_UI_AUTH_TOKEN` env var; `/metrics` and `/static/` are exempt
 - Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, learned knowledge, RSS feeds), System Management (telemetry, backups). Preferences, Articles, and Learned Knowledge are filtered `/memories` views — `memories_list` maps namespace + `source` (`rss` = has `feed_name`, `learned` = doesn't) to `current_page` so the right sidebar entry highlights
 - Memory list rows carry Deprioritise/Delete buttons posting to `/lifecycle/*` with a `next` field for the return redirect — same-site paths only (see `_redirect_target`)
-- `/skills` pages are **read-only by design** — no edit or delete. Skill writes only happen through the MCP `compile_skill` propose-and-accept gate; the UI links each rule and the source manifest back to `/memory/{key}` because the raw memories are what you change
+- `/skills` pages allow **create and delete, never edit**. The New Skill modal runs the same propose-and-accept gate as MCP (`memory/skill_compiler.py compile_skill_flow` — shared so the two paths can't drift): compile a draft, review it in the modal, accept commits it. It refuses domains whose skill already exists (recompiles stay on the MCP flow, which carries the diff review). Delete asks for confirmation; the source memories survive, so recompiling the domain can recreate the skill. The UI links each rule and the source manifest back to `/memory/{key}` because the raw memories are what you change
 - The dashboard stats cache payload must carry the `skills` key and recent entries must carry `updated_date` — `_load_cached_stats` treats older shapes as stale and recomputes. If you add fields the dashboard template requires, extend that shape check or upgrades will KeyError until the TTL expires
 - Skills count into telemetry/metrics via the shared `recall_count`/`last_recalled` counters (`get_skill` bumps them); telemetry substitutes name + description for their missing `content` field and links them to `/skills/...`
 

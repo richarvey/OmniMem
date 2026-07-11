@@ -1,0 +1,72 @@
+{% set st = result.status %}
+{% if st == "proposal" %}
+<div class="flash flash-info">
+  <span>
+    Draft compiled for <strong>{{ result.domain }}</strong>
+    {%- if result.rules %} —
+    {% for kind, n in result.rules.items() %}{{ n }} {{ kind }}{% if not loop.last %}, {% endif %}{% endfor %}
+    rule{{ "" if result.rules.values()|sum == 1 else "s" }}{% endif %}.
+    Nothing is written until you accept it below.
+  </span>
+</div>
+{% if result.description %}
+<p class="section-note">Description: {{ result.description }}</p>
+{% endif %}
+<pre class="skill-draft">{{ result.draft or result.diff }}</pre>
+{% if result.held_back %}
+<p class="section-note">
+  Held back (not enough reinforcement yet):
+  {% for h in result.held_back %}{{ h.rule }}{% if not loop.last %}; {% endif %}{% endfor %}
+</p>
+{% endif %}
+<form hx-post="/skills/commit" hx-target="#compile-result" style="margin-top:0.75rem;text-align:right">
+  <input type="hidden" name="domain" value="{{ result.domain }}">
+  <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
+</form>
+
+{% elif st == "exists" %}
+<div class="flash flash-warning">
+  <span>
+    A skill for <strong>{{ result.domain }}</strong> already exists:
+    <a href="/skills/{{ result.skill_id }}">{{ result.name }}</a>.
+    Skills can't be edited — update the underlying memories and recompile via
+    <code>compile_skill('{{ result.domain }}')</code>, or delete the skill first.
+  </span>
+</div>
+
+{% elif st == "no_candidates" %}
+<div class="flash flash-warning">
+  <span>
+    No active episodic memories are tagged <strong>{{ result.domain }}</strong>.
+    Domains are tags — tag memories at remember() time.
+    {% if result.did_you_mean %}Did you mean <strong>{{ result.did_you_mean.domain }}</strong>?{% endif %}
+  </span>
+</div>
+{% if result.known_domains %}
+<p class="section-note">
+  Known domains:
+  {% for d in result.known_domains %}{{ d.domain }} ({{ d.memories }}){% if not loop.last %}, {% endif %}{% endfor %}
+</p>
+{% endif %}
+
+{% elif st == "insufficient_reinforcement" %}
+<div class="flash flash-warning">
+  <span>
+    {{ result.pool_size }} memor{{ "y" if result.pool_size == 1 else "ies" }} found for
+    <strong>{{ result.domain }}</strong>, but no lesson recurs across
+    {{ result.min_reinforcement }}+ of them. A single episode is a memory; a pattern
+    earns a skill rule. bless() a strong lesson via MCP to promote it.
+  </span>
+</div>
+{% if result.held_back %}
+<p class="section-note">
+  Held back:
+  {% for h in result.held_back %}{{ h.rule }} ({{ h.reinforcement }}x){% if not loop.last %}; {% endif %}{% endfor %}
+</p>
+{% endif %}
+
+{% else %}
+<div class="flash flash-error">
+  <span>{{ result.note or result.reason or "Compile failed with status: " ~ st }}</span>
+</div>
+{% endif %}
