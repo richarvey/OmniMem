@@ -4,12 +4,16 @@ import os
 import time
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from .. import deps
 
 _NAMESPACE_PREFIXES = ["mem:episodic:", "mem:project:", "mem:knowledge:", "mem:preference:"]
+
+# When the tool usage counters were last reset (hash with a reset_at field).
+# Deliberately no trailing colon so scan_prefix("meta:tool_metrics:") skips it.
+_METRICS_RESET_KEY = "meta:tool_metrics_reset"
 
 # MCP instructions text size (measured from instructions.py).
 # Update if instructions change significantly.
@@ -135,6 +139,9 @@ def _build_token_data(project_filter: str | None = None) -> dict:
     total_tool_tokens = sum(m["total_response_tokens"] for m in measured.values())
     total_tool_errors = sum(m["error_count"] for m in measured.values())
 
+    reset_data = deps.store.get(_METRICS_RESET_KEY)
+    metrics_since = _fmt_ts(reset_data.get("reset_at")) if reset_data else ""
+
     return {
         # Static
         "instructions_chars": _INSTRUCTIONS_CHARS,
@@ -160,6 +167,7 @@ def _build_token_data(project_filter: str | None = None) -> dict:
         "total_tool_calls": total_tool_calls,
         "total_tool_tokens": total_tool_tokens,
         "total_tool_errors": total_tool_errors,
+        "metrics_since": metrics_since,
         # Filter
         "project_filter": project_filter or "",
     }
@@ -192,7 +200,17 @@ async def token_overhead_refresh(request: Request) -> HTMLResponse:
     return HTMLResponse(content)
 
 
+async def token_overhead_reset(request: Request) -> RedirectResponse:
+    """POST /token-overhead/reset — flush measured tool usage counters."""
+    keys = deps.store.scan_prefix("meta:tool_metrics:")
+    if keys:
+        deps.store.delete_many(keys)
+    deps.store.set_field(_METRICS_RESET_KEY, "reset_at", time.time())
+    return RedirectResponse("/token-overhead", status_code=303)
+
+
 routes = [
     Route("/token-overhead", token_overhead_page),
     Route("/token-overhead/refresh", token_overhead_refresh),
+    Route("/token-overhead/reset", token_overhead_reset, methods=["POST"]),
 ]
