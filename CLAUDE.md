@@ -164,9 +164,10 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 - **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected
 - Footers are full-width (not inside sidebar/container)
 - Optional bearer token auth via `WEB_UI_AUTH_TOKEN` env var; `/metrics` and `/static/` are exempt
-- Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, RSS feeds), System Management (telemetry, backups). Preferences and Articles are `/memories?namespace=...` views — `memories_list` maps the namespace filter to `current_page` so the right sidebar entry highlights
+- Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, learned knowledge, RSS feeds), System Management (telemetry, backups). Preferences, Articles, and Learned Knowledge are filtered `/memories` views — `memories_list` maps namespace + `source` (`rss` = has `feed_name`, `learned` = doesn't) to `current_page` so the right sidebar entry highlights
+- Memory list rows carry Deprioritise/Delete buttons posting to `/lifecycle/*` with a `next` field for the return redirect — same-site paths only (see `_redirect_target`)
 - `/skills` pages are **read-only by design** — no edit or delete. Skill writes only happen through the MCP `compile_skill` propose-and-accept gate; the UI links each rule and the source manifest back to `/memory/{key}` because the raw memories are what you change
-- The dashboard stats cache payload must carry the `skills` key — `_load_cached_stats` treats its absence as a stale (pre-v6.1) shape and recomputes. If you add fields the dashboard template requires, extend that shape check or upgrades will KeyError until the TTL expires
+- The dashboard stats cache payload must carry the `skills` key and recent entries must carry `updated_date` — `_load_cached_stats` treats older shapes as stale and recomputes. If you add fields the dashboard template requires, extend that shape check or upgrades will KeyError until the TTL expires
 - Skills count into telemetry/metrics via the shared `recall_count`/`last_recalled` counters (`get_skill` bumps them); telemetry substitutes name + description for their missing `content` field and links them to `/skills/...`
 
 ## Writing Style

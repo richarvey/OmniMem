@@ -152,9 +152,13 @@ def _compute_stats(store) -> dict:
                 mem["content"] = (data.get("content") or "")[:100]
             mem["project"] = data.get("project", "")
             ts = mem["updated_at"]
-            mem["updated_at_fmt"] = (
-                time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
-            )
+            if ts > 0:
+                lt = time.localtime(ts)
+                mem["updated_date"] = time.strftime("%-d %b %Y", lt)
+                mem["updated_time"] = time.strftime("%H:%M", lt)
+            else:
+                mem["updated_date"] = "—"
+                mem["updated_time"] = ""
 
     return {
         "ns_stats": ns_stats,
@@ -179,6 +183,13 @@ def _load_cached_stats(store) -> dict | None:
     # Requiring "skills" too invalidates cache entries written by older
     # versions whose payload predates the skills/projects card data.
     if not isinstance(stats, dict) or "ns_stats" not in stats or "skills" not in stats:
+        return None
+    # Recent entries gained split date fields (updated_date/updated_time);
+    # a payload with the old updated_at_fmt shape would KeyError the template.
+    recent = stats.get("recent")
+    if not isinstance(recent, list) or any(
+        not isinstance(m, dict) or "updated_date" not in m for m in recent
+    ):
         return None
     return stats
 

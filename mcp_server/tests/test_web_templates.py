@@ -63,10 +63,11 @@ class TestDashboardTemplate:
             },
             recent=[
                 {"key": "mem:episodic:01A", "namespace": "episodic", "state": "active",
-                 "content": "a memory", "project": "omnimem", "updated_at_fmt": "2026-07-10 12:00"},
+                 "content": "a memory", "project": "omnimem",
+                 "updated_date": "10 Jul 2026", "updated_time": "12:00"},
                 {"key": "mem:skill:gen:python-local", "namespace": "skill", "state": "active",
                  "content": "python-local — distilled procedure", "project": "",
-                 "updated_at_fmt": "2026-07-10 12:01"},
+                 "updated_date": "10 Jul 2026", "updated_time": "12:01"},
             ],
             stats_age=12,
             health={"valkey": True, "model": True},
@@ -153,6 +154,32 @@ class TestNavigation:
         assert 'href="/memories?namespace=preference" class="nav-link active"' in html
         html = env.get_template("base.html").render(current_page="graveyard")
         assert 'href="/experience/graveyard" class="nav-link active"' in html
+        html = env.get_template("base.html").render(current_page="articles")
+        assert 'href="/memories?namespace=knowledge&amp;source=rss" class="nav-link active"' in html
+        html = env.get_template("base.html").render(current_page="learned")
+        assert 'href="/memories?namespace=knowledge&amp;source=learned" class="nav-link active"' in html
+
+
+class TestMemoriesRows:
+    def test_rows_have_lifecycle_actions(self, env):
+        html = env.get_template("memories/_rows.html").render(
+            memories=[
+                {"key": "mem:knowledge:a1", "namespace": "knowledge", "state": "active",
+                 "content": "An article", "project": "RSS",
+                 "updated_date": "11 Jul 2026", "updated_time": "10:00"},
+                {"key": "mem:knowledge:a2", "namespace": "knowledge", "state": "deprioritised",
+                 "content": "Old article", "project": "RSS",
+                 "updated_date": "11 Jul 2026", "updated_time": "09:00"},
+            ],
+            back_url="/memories?namespace=knowledge&source=rss",
+            page=1, total_pages=1, total=2, extra_params="", base_url="/memories",
+        )
+        assert 'action="/lifecycle/deprioritise"' in html
+        assert 'action="/lifecycle/delete"' in html
+        assert 'name="next" value="/memories?namespace=knowledge&amp;source=rss"' in html
+        # Deprioritise is only offered on active memories; delete on all.
+        assert html.count('action="/lifecycle/deprioritise"') == 1
+        assert html.count('action="/lifecycle/delete"') == 2
 
 
 class TestTelemetryPartial:

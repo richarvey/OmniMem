@@ -27,7 +27,10 @@ class TestComputeStats:
         assert stats["ns_stats"]["episodic"]["states"]["archived"] == 1
         assert stats["ns_stats"]["knowledge"]["states"]["active"] == 1
         assert len(stats["recent"]) == 3
-        assert all("content" in m and "updated_at_fmt" in m for m in stats["recent"])
+        assert all(
+            "content" in m and "updated_date" in m and "updated_time" in m
+            for m in stats["recent"]
+        )
         assert stats["computed_at"] > 0
 
     def test_project_distinct_count(self, fake_store, fake_embedder):
@@ -161,3 +164,17 @@ class TestCache:
         stats = get_dashboard_stats(fake_store)
         assert stats["total"] == 1
         assert "skills" in stats
+
+    def test_pre_split_date_cache_shape_recomputed(self, fake_store, fake_embedder, monkeypatch):
+        # Recent entries switched from updated_at_fmt to updated_date /
+        # updated_time; a cached payload with the old shape must be discarded.
+        monkeypatch.setenv("DASHBOARD_STATS_TTL", "60")
+        store_memory(fake_store, fake_embedder, "mem:episodic:h9", "content")
+        fake_store.client.set(_CACHE_KEY, json.dumps({
+            "ns_stats": {}, "total": 0, "skills": {"total": 0},
+            "recent": [{"key": "mem:episodic:old", "updated_at_fmt": "2026-07-10 12:00"}],
+            "computed_at": time.time(),
+        }))
+        stats = get_dashboard_stats(fake_store)
+        assert stats["total"] == 1
+        assert all("updated_date" in m for m in stats["recent"])

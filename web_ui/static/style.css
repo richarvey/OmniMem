@@ -609,7 +609,9 @@ a.stat-card:hover .stat-ns {
 .projects-table th:nth-child(4),
 .projects-table td:nth-child(4) { width: 16%; }
 
-/* Memories table */
+/* Memories table — six columns; the dashboard's five-column recent activity
+   table reuses this, and the missing Actions column's share redistributes
+   across its columns. */
 .memories-table {
   table-layout: fixed;
   width: 100%;
@@ -619,16 +621,19 @@ a.stat-card:hover .stat-ns {
 .memories-table td:nth-child(1) { width: 10%; }
 
 .memories-table th:nth-child(2),
-.memories-table td:nth-child(2) { width: 44%; }
+.memories-table td:nth-child(2) { width: 38%; }
 
 .memories-table th:nth-child(3),
-.memories-table td:nth-child(3) { width: 12%; }
+.memories-table td:nth-child(3) { width: 11%; }
 
 .memories-table th:nth-child(4),
-.memories-table td:nth-child(4) { width: 16%; }
+.memories-table td:nth-child(4) { width: 13%; }
 
 .memories-table th:nth-child(5),
-.memories-table td:nth-child(5) { width: 18%; }
+.memories-table td:nth-child(5) { width: 14%; }
+
+.memories-table th:nth-child(6),
+.memories-table td:nth-child(6) { width: 14%; }
 
 .name-cell {
   white-space: nowrap;
@@ -709,16 +714,18 @@ span.project-name {
   overflow-x: auto;
 }
 
-/* Feeds table */
+/* Feeds table — five columns: Name, URL, Topics, Mode, Actions */
 .feeds-table { table-layout: fixed; }
 .feeds-table th:nth-child(1),
-.feeds-table td:nth-child(1) { width: 20%; }
+.feeds-table td:nth-child(1) { width: 18%; }
 .feeds-table th:nth-child(2),
-.feeds-table td:nth-child(2) { width: 38%; }
+.feeds-table td:nth-child(2) { width: 34%; }
 .feeds-table th:nth-child(3),
 .feeds-table td:nth-child(3) { width: 22%; }
 .feeds-table th:nth-child(4),
-.feeds-table td:nth-child(4) { width: 20%; white-space: nowrap; }
+.feeds-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+.feeds-table th:nth-child(5),
+.feeds-table td:nth-child(5) { width: 16%; }
 
 .actions-cell {
   display: flex;

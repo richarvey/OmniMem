@@ -14,8 +14,14 @@ PAGE_SIZE = 25
 
 def _get_all_memories(
     namespace: str | None, state: str | None, project: str | None,
+    source: str | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """Fetch and filter memories, returning (memories, distinct_projects) in a single pass."""
+    """Fetch and filter memories, returning (memories, distinct_projects) in a single pass.
+
+    source splits knowledge by provenance: "rss" keeps only RSS-ingested
+    articles (they carry a feed_name field), "learned" keeps everything
+    else — extracted facts and remember() writes never have one.
+    """
     ns_list = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
     memories = []
     projects = set()
@@ -27,7 +33,7 @@ def _get_all_memories(
         # Only the fields the list view renders/filters on — not vectors,
         # breakthroughs, gotchas, abandoned lists, etc.
         all_data = deps.store.get_fields_multi(
-            keys, ("content", "state", "project", "project_name", "updated_at")
+            keys, ("content", "state", "project", "project_name", "updated_at", "feed_name")
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -42,6 +48,10 @@ def _get_all_memories(
             if state and mem_state != state:
                 continue
             if project and mem_project != project:
+                continue
+            if source == "rss" and not data.get("feed_name"):
+                continue
+            if source == "learned" and data.get("feed_name"):
                 continue
 
             memories.append({
@@ -61,6 +71,9 @@ async def memories_list(request: Request) -> HTMLResponse:
     namespace = request.query_params.get("namespace", "")
     state = request.query_params.get("state", "")
     project = request.query_params.get("project", "")
+    source = request.query_params.get("source", "")
+    if source not in ("rss", "learned"):
+        source = ""
     sort = request.query_params.get("sort", "newest")
     page = max(1, int(request.query_params.get("page", "1")))
 
@@ -68,6 +81,7 @@ async def memories_list(request: Request) -> HTMLResponse:
         namespace=namespace or None,
         state=state or None,
         project=project or None,
+        source=source or None,
     )
 
     # Sort
@@ -102,6 +116,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         params.append(f"&state={state}")
     if project:
         params.append(f"&project={project}")
+    if source:
+        params.append(f"&source={source}")
     if sort != "newest":
         params.append(f"&sort={sort}")
     extra_params = "".join(params)
@@ -110,11 +126,19 @@ async def memories_list(request: Request) -> HTMLResponse:
     is_htmx = request.headers.get("HX-Request") == "true"
     template_name = "memories/_rows.html" if is_htmx else "memories/list.html"
 
-    # The sidebar's Preferences and Articles entries are namespace-filtered
-    # views of this page — highlight them instead of Memories when active.
-    nav_page = {"preference": "preferences", "knowledge": "knowledge"}.get(
-        namespace, "memories"
-    )
+    # The sidebar's Preferences, Articles, and Learned Knowledge entries are
+    # filtered views of this page — highlight them instead of Memories.
+    if namespace == "preference":
+        nav_page = "preferences"
+    elif namespace == "knowledge":
+        nav_page = "learned" if source == "learned" else "articles"
+    else:
+        nav_page = "memories"
+
+    # Row actions redirect back to this exact view (filters + page intact).
+    back_url = request.url.path
+    if request.url.query:
+        back_url += "?" + request.url.query
 
     template = request.app.state.templates.get_template(template_name)
     content = template.render(
@@ -123,6 +147,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         namespace=namespace,
         state=state,
         project=project,
+        source=source,
+        back_url=back_url,
         sort=sort,
         projects=projects,
         page=page,
