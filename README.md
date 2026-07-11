@@ -408,9 +408,10 @@ feeds:
   - url: https://blog.n8n.io/rss/
     name: n8n Blog
     topics: [automation, workflow, n8n]
+    project: automation-research   # optional, defaults to "RSS"
 ```
 
-Each article gets fetched, stripped of HTML, summarised to a couple of sentences by Claude Haiku, embedded, and stored in the `knowledge` namespace with an `expires_at` timestamp (default 30 days, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Expired articles are auto-archived during maintenance. If an article turns out to be genuinely useful, call `promote_knowledge(key)` to clear its expiry and keep it permanently. Duplicates are skipped by URL. The worker runs once on startup and then on whatever schedule you set in `RSS_SCHEDULE_HOURS`.
+Each article gets fetched, stripped of HTML, summarised to a couple of sentences by Claude Haiku, embedded, and stored in the `knowledge` namespace with an `expires_at` timestamp (default 30 days, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Articles are labelled with the project `RSS` (or the feed's own `project:` label if you set one) so ingested content stays separable from knowledge captured in conversation — filter by project in the web UI, or pass `project="RSS"` to `recall()` to search only articles. Expired articles are auto-archived during maintenance. If an article turns out to be genuinely useful, call `promote_knowledge(key)` to clear its expiry and keep it permanently. Duplicates are skipped by URL. The worker runs once on startup and then on whatever schedule you set in `RSS_SCHEDULE_HOURS`.
 
 ---
 

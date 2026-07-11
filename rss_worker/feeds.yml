@@ -1,3 +1,6 @@
+# Each feed takes: url (required), name, topics, mode (summary|digest), and
+# project — the project label stamped on ingested articles so they can be
+# separated from conversation-sourced knowledge. Defaults to "RSS".
 feeds:
   # Rust & systems programming
   - url: https://blog.rust-lang.org/feed.xml

@@ -118,52 +118,6 @@ if _oauth_provider:
 _start_time = time.time()
 
 
-def _migrate_missing_state(store) -> None:
-    """Backfill state=active on memories that pre-date the state field.
-
-    Recall pushes a state tag filter into FT.SEARCH; a doc with no state
-    field would silently drop out of every filtered search even though the
-    Python-side default treats missing state as active. One-time backfill
-    keeps the two behaviours identical.
-    """
-    fixed = 0
-    for ns in ("episodic", "project", "knowledge", "preference"):
-        keys = store.scan_prefix(f"mem:{ns}:")
-        if not keys:
-            continue
-        rows = store.get_fields_multi(keys, ("state",))
-        for key, row in zip(keys, rows):
-            if row is None or not row.get("state"):
-                store.set_field(key, "state", "active")
-                fixed += 1
-    if fixed:
-        logger.info("Migration: backfilled state=active on %d memories", fixed)
-
-
-def _migrate_project_names(store) -> None:
-    """Set project_name from project field on ULID-keyed project memories missing it."""
-    keys = store.scan_prefix("mem:project:")
-    if not keys:
-        return
-
-    all_data = store.get_multi(keys)
-    fixed = 0
-    for key, data in zip(keys, all_data):
-        if not data:
-            continue
-        # Skip entries that already have project_name set
-        if data.get("project_name"):
-            continue
-        # Use the project field if available
-        project = data.get("project")
-        if project:
-            store.set_field(key, "project_name", project)
-            fixed += 1
-
-    if fixed:
-        logger.info("Migration: set project_name on %d project memories", fixed)
-
-
 def _init() -> None:
     """Initialise shared dependencies: Valkey store, embedder, lifecycle, pipeline."""
     from memory.embedder import Embedder
@@ -192,9 +146,16 @@ def _init() -> None:
 
     # One-time migrations: set project_name on ULID-keyed project memories,
     # backfill state on pre-state-field memories (needed by the recall
-    # filter push-down).
-    _migrate_project_names(store)
-    _migrate_missing_state(store)
+    # filter push-down), and label pre-existing RSS articles with a project.
+    from memory.migrations import (
+        migrate_missing_state,
+        migrate_project_names,
+        migrate_rss_article_projects,
+    )
+
+    migrate_project_names(store)
+    migrate_missing_state(store)
+    migrate_rss_article_projects(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker

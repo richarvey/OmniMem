@@ -45,7 +45,7 @@ rss_worker/           # Background RSS ingestion
   worker.py           # APScheduler entry + feeds.yml file watcher
   ingester.py         # Fetch → strip HTML → summarise → embed → store
   summariser.py       # Claude Haiku summaries or truncation fallback
-  feeds.yml           # Feed definitions (url, name, topics)
+  feeds.yml           # Feed definitions (url, name, topics, optional project label)
 
 claude_config/        # CLAUDE.md template for end-users to copy into their projects
 scripts/              # health_check.sh, restore_backup.sh
@@ -84,6 +84,7 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
 - **Index migration** on startup — `_migrate_indexes()` compares field count against definitions, drops stale indexes (data-safe) so they get recreated with new fields
 - **Per-memory recall counters** — `recall_count` and `last_recalled` updated via pipeline on each recall; `/telemetry` dashboard and `/metrics` Prometheus endpoint expose these
+- **RSS articles carry a project label** (v6.1.1) — default `RSS`, per-feed override via `project:` in feeds.yml, backfilled by a startup migration (`memory/migrations.py`), so ingested articles stay separable from conversation-sourced knowledge. Articles are identified by `feed_name`; the label must satisfy the project-name charset or the ingester falls back to `RSS`. It does not create a pseudo-project: projects pages/tools only count `mem:project:*` keys
 - **Skills are whole document objects, never chunked** (v6) — canonical body lives in the `body` hash field at `mem:skill:gen:{domain}-{user}`; `idx:skill` embeds discovery metadata only (name + description + domain) and `body` is deliberately absent from `_NAMESPACE_RETURN_FIELDS["skill"]`. `get_skill` returns it intact by ID
 - **Skill writes are gated** (v6) — `compile_skill(mode="propose")` stashes the rendered draft in `meta:skill:proposal:{domain}-{user}` (TTL `SKILL_PROPOSAL_TTL_SECONDS`); `mode="write"` commits that stashed body verbatim (no recompile at write time), refuses if the stored skill's sha changed since the proposal, and refuses anything not flagged `generated: true`. Experience/graveyard writes stay ungated — that asymmetry is the design
 - **Skill compilation is deterministic** — same source memories render a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps into `render_skill_md()` or every recompile will propose noise diffs

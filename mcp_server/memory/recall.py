@@ -35,8 +35,9 @@ _TAG_VALUE_SAFE_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
 
 # Which indexed field carries the project scope, per namespace. knowledge
 # gained an indexed project tag in v5.3.1 — extracted facts live there scoped
-# to a project (issue #20); RSS articles have no project field and so drop
-# out under a project filter, same as the Python-side filter always did.
+# to a project (issue #20); RSS articles carry a feed-level label since
+# v6.1.1 (default "RSS", per-feed override in feeds.yml) so they still drop
+# out under a real project's filter, and project="RSS" recalls only them.
 # The project namespace is excluded: ULID-keyed docs written mid-session
 # may only carry `project` until the startup migration backfills project_name.
 _PROJECT_FILTER_FIELDS = {
