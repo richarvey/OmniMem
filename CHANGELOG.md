@@ -2,7 +2,7 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [Unreleased]
+## [6.1.3] - 2026-07-11
 ### Added
 - **Retag memories from MCP and the web UI**: a new `retag(key, tags?, add?, remove?)` tool replaces a memory's tags outright (`tags=[...]`, with `[]` clearing them) or adjusts the existing set (`add`/`remove`), without re-embedding — tags are metadata, the vector comes from content alone. The memory detail page gains a matching inline editor: a comma-separated field pre-filled with the current tags, saved through the same shared `memory/tags.py` helper as the MCP tool so validation (20 tags max, 100 chars each, whitespace stripped, duplicates dropped) can't drift between the two paths. Skill entries are deliberately not retaggable — their metadata belongs to the compile gate. Changing tags bumps `updated_at`, so backup restores keep the retagged version
 ### Fixed
