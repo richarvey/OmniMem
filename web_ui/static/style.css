@@ -697,6 +697,25 @@ span.project-name {
 .skills-table td:nth-child(4) { width: 10%; }
 .skills-table th:nth-child(5),
 .skills-table td:nth-child(5) { width: 16%; }
+
+/* Graveyard table */
+.graveyard-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.graveyard-table td { overflow-wrap: break-word; }
+
+.graveyard-table th:nth-child(1),
+.graveyard-table td:nth-child(1) { width: 24%; }
+.graveyard-table th:nth-child(2),
+.graveyard-table td:nth-child(2) { width: 12%; }
+.graveyard-table th:nth-child(3),
+.graveyard-table td:nth-child(3) { width: 44%; }
+.graveyard-table th:nth-child(4),
+.graveyard-table td:nth-child(4) { width: 9%; }
+.graveyard-table th:nth-child(5),
+.graveyard-table td:nth-child(5) { width: 11%; }
 .skills-table th:nth-child(6),
 .skills-table td:nth-child(6) { width: 8%; }
 
@@ -1149,4 +1168,7 @@ span.project-name {
 
   .skills-table { table-layout: auto; }
   .skills-table th, .skills-table td { width: auto !important; }
+
+  .graveyard-table { table-layout: auto; }
+  .graveyard-table th, .graveyard-table td { width: auto !important; }
 }
