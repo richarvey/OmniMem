@@ -105,7 +105,7 @@ def gather_skill(store, key: str) -> dict | None:
         return None
 
     rules = [r for r in _parse_json_list(data.get("rule_manifest")) if isinstance(r, dict)]
-    rule_counts = {"do": 0, "watch": 0, "dont": 0}
+    rule_counts = {"do": 0, "watch": 0, "dont": 0, "ref": 0}
     for rule in rules:
         kind = rule.get("kind")
         if kind in rule_counts:

@@ -1,7 +1,7 @@
 """Skill compiler: distils domain procedure into loadable SKILL.md documents.
 
-The raw memories (experience, graveyard) are the source of truth; a compiled
-skill is build output, like a binary. Compilation is deterministic — the same
+The raw memories (experience, graveyard, promoted knowledge) are the source
+of truth; a compiled skill is build output, like a binary. Compilation is deterministic — the same
 source memories always render the same body (bar the compiled_at stamp) — so
 propose-mode diffs show real changes, not rendering noise, and the
 accept-to-write gate stays reviewable. No LLM in the loop: rule text is lifted
@@ -86,6 +86,11 @@ _POOL_FIELDS = (
     "content", "state", "project", "tags", "effort_score", "outcome",
     "breakthrough", "gotchas", "abandoned_approaches", "blessed",
     "created_at", "updated_at",
+)
+
+_KNOWLEDGE_POOL_FIELDS = (
+    "content", "title", "state", "skill_domains", "feed_name",
+    "source_url", "created_at", "updated_at", "promoted_at",
 )
 
 _MAX_POOL_KEYS = 5000
@@ -246,6 +251,65 @@ def gather_domain_pools(
     return pools
 
 
+def parse_skill_domains(raw: Any) -> list[str]:
+    """Domains a knowledge item has been promoted to (skill_domains field)."""
+    return [d.lower() for d in _parse_tags(raw)]
+
+
+def gather_promoted_knowledge(
+    store, domains: Iterable[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Active knowledge items promoted to each domain — the compiler's
+    reference input.
+
+    Promotion (promote_knowledge with a domain) is the vetting step: unlike
+    experience, an article carries no outcome or effort signal, so a human
+    marking it skill-eligible is what substitutes for reinforcement. Only
+    promoted items ever reach a skill; ordinary knowledge stays lookup-only.
+    """
+    pools: dict[str, list[dict[str, Any]]] = {d: [] for d in domains}
+    if not pools:
+        return pools
+
+    keys = store.scan_prefix("mem:knowledge:")
+    if not keys:
+        return pools
+    if len(keys) > _MAX_POOL_KEYS:
+        logger.warning(
+            "Promoted-knowledge scan capped at %d keys (total: %d)",
+            _MAX_POOL_KEYS, len(keys),
+        )
+        keys = keys[:_MAX_POOL_KEYS]
+
+    rows = store.get_fields_multi(keys, _KNOWLEDGE_POOL_FIELDS)
+    for key, row in zip(keys, rows):
+        if row is None:
+            continue
+        if row.get("state") not in ("active", None):
+            continue
+        promoted_to = parse_skill_domains(row.get("skill_domains"))
+        matched = [d for d in pools if d in promoted_to]
+        if not matched:
+            continue
+
+        entry = {
+            "key": key,
+            "content": row.get("content", ""),
+            "title": row.get("title", ""),
+            "feed_name": row.get("feed_name", ""),
+            "source_url": row.get("source_url", ""),
+            "created_at": _safe_float(row.get("created_at")),
+            "updated_at": _safe_float(row.get("updated_at")),
+            "promoted_at": _safe_float(row.get("promoted_at")),
+        }
+        for d in matched:
+            pools[d].append(entry)
+
+    for pool in pools.values():
+        pool.sort(key=lambda m: m["key"])  # ULIDs sort chronologically
+    return pools
+
+
 def lesson_bearing(mem: dict[str, Any]) -> bool:
     """Would extract_lessons() get anything out of this pool entry?
 
@@ -281,7 +345,7 @@ class Lesson:
 class Rule:
     """A lesson pattern that cleared the promotion gate."""
 
-    kind: str
+    kind: str                    # "do" | "watch" | "dont" | "ref"
     text: str
     sources: list[str]           # distinct memory keys, chronological
     reinforcement: int           # distinct source memories backing this rule
@@ -289,6 +353,7 @@ class Rule:
     name: str | None = None      # dont only
     approach_type: str = ""      # dont only
     projects: list[str] = field(default_factory=list)
+    url: str = ""                # ref only: the article's source URL
 
     @property
     def primary_source(self) -> str:
@@ -305,6 +370,8 @@ class Rule:
             d["blessed"] = True
         if self.name:
             d["name"] = self.name
+        if self.url:
+            d["url"] = self.url
         return d
 
 
@@ -487,6 +554,34 @@ def build_rules(
     return eligible, held_back
 
 
+def build_reference_rules(promoted: list[dict[str, Any]]) -> list[Rule]:
+    """One ref rule per promoted knowledge item, in key (chronological) order.
+
+    No clustering and no reinforcement gate: promotion was the human vetting
+    step, so each article stands alone — the same logic that lets bless()
+    carry a single strong lesson past the threshold.
+    """
+    rules: list[Rule] = []
+    for item in sorted(promoted, key=lambda m: m["key"]):
+        title = (item.get("title") or "").strip()
+        content = (item.get("content") or "").strip()
+        if title and content and not content.lower().startswith(title.lower()):
+            text = _one_line(f"{title}: {content}")
+        else:
+            text = _one_line(content or title)
+        if not text:
+            continue
+        rules.append(Rule(
+            kind="ref",
+            text=text,
+            sources=[item["key"]],
+            reinforcement=1,
+            name=title or None,
+            url=item.get("source_url", ""),
+        ))
+    return rules
+
+
 def draft_description(domain: str, user: str) -> str:
     """Compiler draft of the load trigger, in the structured cue format.
 
@@ -511,6 +606,8 @@ def _manifest_annotations(rules: list[Rule]) -> list[tuple[str, str]]:
                 continue
             if rule.kind == "dont":
                 seen[source] = f"graveyard: {rule.name}"
+            elif rule.kind == "ref":
+                seen[source] = "promoted reference"
             elif rule.blessed and rule.reinforcement < 2:
                 seen[source] = "blessed"
             else:
@@ -527,6 +624,13 @@ def _rule_bullet(rule: Rule) -> str:
             reason += "."
         tried = f" Tried on {', '.join(rule.projects)}, abandoned." if rule.projects else ""
         line = f"- Avoid {rule.name}{type_part}. {reason}{tried}"
+    elif rule.kind == "ref":
+        text = rule.text
+        if not text.endswith((".", "!", "?", "…")):
+            text += "."
+        line = f"- {text}"
+        if rule.url:
+            line += f" ({rule.url})"
     else:
         text = rule.text
         if not text.endswith((".", "!", "?", "…")):
@@ -557,6 +661,7 @@ def render_skill_md(
     do_rules = [r for r in rules if r.kind == "do"]
     watch_rules = [r for r in rules if r.kind == "watch"]
     dont_rules = [r for r in rules if r.kind == "dont"]
+    ref_rules = [r for r in rules if r.kind == "ref"]
     exp_sources = sorted({s for r in do_rules + watch_rules for s in r.sources})
 
     lines: list[str] = ["---"]
@@ -609,19 +714,41 @@ def render_skill_md(
         lines.append("")
         lines.extend(_rule_bullet(r) for r in dont_rules)
 
+    if ref_rules:
+        lines.append("")
+        lines.append("## Reference  (promoted knowledge)")
+        lines.append("")
+        lines.append(
+            "Curated reference material promoted from the knowledge "
+            "namespace (promote_knowledge). These are vetted pointers, not "
+            "lived experience — check the cited article for the full text "
+            "before treating one as procedure."
+        )
+        lines.append("")
+        lines.extend(_rule_bullet(r) for r in ref_rules)
+
     lines.append("")
     lines.append("## Provenance")
     lines.append("")
-    lines.append(
+    provenance = (
         f"Compiled from {len(exp_sources)} experience "
         f"{'memory' if len(exp_sources) == 1 else 'memories'} "
         f"(min {min_reinforcement} "
         f"{'reinforcement' if min_reinforcement == 1 else 'reinforcements'}) and "
         f"{len(dont_rules)} graveyard "
         f"{'entry' if len(dont_rules) == 1 else 'entries'}. "
+    )
+    if ref_rules:
+        provenance += (
+            f"Plus {len(ref_rules)} promoted reference "
+            f"{'article' if len(ref_rules) == 1 else 'articles'} from the "
+            "knowledge namespace. "
+        )
+    provenance += (
         "Full source manifest in frontmatter. Operating contract at "
         f"contract_version {contract_version}."
     )
+    lines.append(provenance)
     lines.append("")
     return "\n".join(lines)
 
@@ -673,8 +800,8 @@ def summarise_rule_changes(
     reported.
 
     Matching is by approach name for graveyard rules and by shared source
-    memories (falling back to identical text) for do/watch rules — the same
-    identities the compiler itself clusters on.
+    memories (falling back to identical text) for do/watch/ref rules — the
+    same identities the compiler itself clusters on.
     """
     changes: list[dict[str, Any]] = []
 
@@ -692,7 +819,7 @@ def summarise_rule_changes(
             entry["was"] = _gist(was)
         changes.append(entry)
 
-    for kind in ("do", "watch", "dont"):
+    for kind in ("do", "watch", "dont", "ref"):
         olds = [r for r in old_rules if r.get("kind") == kind]
         news = [r for r in new_rules if r.get("kind") == kind]
 

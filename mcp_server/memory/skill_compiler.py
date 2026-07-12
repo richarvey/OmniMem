@@ -23,11 +23,13 @@ from .skills import (
     Rule,
     body_sha,
     bodies_equivalent,
+    build_reference_rules,
     build_rules,
     discovery_text,
     draft_description,
     extract_lessons,
     gather_domain_pool,
+    gather_promoted_knowledge,
     generated_skill_key,
     known_domains,
     normalise_domain,
@@ -191,8 +193,10 @@ def _propose(
     aliased_from: str | None,
 ) -> dict[str, Any]:
     pool = gather_domain_pool(store, domain)
+    promoted = gather_promoted_knowledge(store, [domain])[domain]
+    ref_rules = build_reference_rules(promoted)
 
-    if not pool:
+    if not pool and not ref_rules:
         domains = known_domains(store)
         suggestion = suggest_similar_domain(embedder, domain, domains.keys())
         top_domains = sorted(domains.items(), key=lambda kv: -kv[1])[:10]
@@ -206,12 +210,14 @@ def _propose(
             "known_domains": [
                 {"domain": d, "memories": n} for d, n in top_domains
             ],
-            "note": "No active episodic memories are tagged with this domain. "
-                    "Domains are tags — tag memories at remember() time.",
+            "note": "No active episodic memories are tagged with this domain "
+                    "and no knowledge is promoted to it. Domains are tags — "
+                    "tag memories at remember() time, or promote_knowledge("
+                    "key, domain=...) to feed reference material in.",
         })
 
     lessons = extract_lessons(pool, include_graveyard=include_graveyard)
-    if not lessons:
+    if not lessons and not ref_rules:
         return {
             "status": "no_lessons",
             "domain": domain,
@@ -222,7 +228,7 @@ def _propose(
         }
 
     eligible, held_back = build_rules(embedder, lessons, min_reinforcement)
-    if not eligible:
+    if not eligible and not ref_rules:
         return _compact({
             "status": "insufficient_reinforcement",
             "domain": domain,
@@ -233,6 +239,9 @@ def _propose(
                     "A single episode is a memory; a pattern earns a skill "
                     "rule. Lower min_reinforcement or bless() a strong lesson.",
         })
+    # Promoted references join after the gate: promotion is the vetting, so
+    # they neither need reinforcement nor consume it.
+    eligible = eligible + ref_rules
 
     # Description: human-owned and pinned. An explicit override is the
     # strongest ownership signal; otherwise the stored one survives

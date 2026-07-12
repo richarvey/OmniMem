@@ -541,6 +541,7 @@ a.stat-card:hover .stat-ns {
 .badge.rule-do { background: rgba(52, 211, 153, 0.15); color: var(--green); }
 .badge.rule-watch { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
 .badge.rule-dont { background: rgba(251, 146, 60, 0.15); color: var(--orange); }
+.badge.rule-ref { background: rgba(34, 211, 238, 0.15); color: var(--cyan); }
 
 /* Tables */
 .data-table {

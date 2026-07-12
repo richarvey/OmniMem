@@ -13,14 +13,19 @@ import os
 import time
 from typing import Any
 
+import numpy as np
+
+from memory.contradiction import _has_negation_pair
 from memory.skill_compiler import compile_skill_flow
 from memory.skills import (
     GENERATED_SKILL_PREFIX,
     SKILL_KEY_PREFIX,
     gather_domain_pools,
+    gather_promoted_knowledge,
     generated_skill_key,
     lesson_bearing,
     normalise_domain,
+    parse_skill_domains,
     resolve_domain,
 )
 
@@ -361,8 +366,11 @@ def pending_skill_updates(store) -> list[dict[str, Any]]:
     if not skills:
         return []
 
-    # One episodic scan covers new-lesson detection for every skill.
-    pools = gather_domain_pools(store, {row["domain"] for _, row in skills})
+    # One episodic scan covers new-lesson detection for every skill; one
+    # knowledge scan covers newly promoted references the same way.
+    domains = {row["domain"] for _, row in skills}
+    pools = gather_domain_pools(store, domains)
+    promoted_pools = gather_promoted_knowledge(store, domains)
 
     updates: list[dict[str, Any]] = []
     for key, row in skills:
@@ -431,6 +439,25 @@ def pending_skill_updates(store) -> list[dict[str, Any]]:
                 "gist": f"+{len(fresh) - 3} more new lesson-bearing memories",
             })
 
+        fresh_refs = [
+            item for item in promoted_pools.get(domain, [])
+            if item["key"] not in manifest_set
+            and item["promoted_at"] > compiled_at
+        ]
+        for item in fresh_refs[:3]:
+            changes.append({
+                "change": "new_reference",
+                "risk": "low",
+                "source": item["key"],
+                "gist": (item.get("title") or item.get("content", ""))[:60],
+            })
+        if len(fresh_refs) > 3:
+            changes.append({
+                "change": "new_reference",
+                "risk": "low",
+                "gist": f"+{len(fresh_refs) - 3} more promoted articles",
+            })
+
         if changes:
             updates.append({
                 "skill_id": key,
@@ -442,3 +469,119 @@ def pending_skill_updates(store) -> list[dict[str, Any]]:
             })
 
     return updates
+
+
+def knowledge_watch(store) -> list[dict[str, Any]]:
+    """Recent knowledge articles that look relevant to a compiled skill.
+
+    The awareness layer between lookup-only knowledge and skill-eligible
+    promotion: nothing here changes a skill. Recent articles are compared
+    against each skill's stored discovery vector (both vectors already sit in
+    Valkey — no re-embedding on the briefing hot path), and a match is
+    upgraded to a possible contradiction when the tier-1 negation heuristic
+    fires against one of the skill's rules — the feed acting as an early
+    warning that the world may have moved under a rule. Promoting the article
+    (promote_knowledge with the domain) or letting it age out of the watch
+    window clears the flag.
+    """
+    watch_days = int(os.getenv("SKILL_KNOWLEDGE_WATCH_DAYS", "14"))
+    threshold = float(os.getenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.35"))
+    if watch_days <= 0:
+        return []
+
+    skill_keys = store.scan_prefix(SKILL_KEY_PREFIX)
+    if not skill_keys:
+        return []
+    skill_rows = store.get_fields_multi(
+        skill_keys,
+        ("name", "domain", "state", "compiled_at", "rule_manifest",
+         "source_manifest"),
+    )
+    skills = [
+        (key, row) for key, row in zip(skill_keys, skill_rows)
+        if row and row.get("state", "active") == "active" and row.get("domain")
+    ]
+    if not skills:
+        return []
+
+    cutoff = time.time() - watch_days * 86400
+    knowledge_keys = store.scan_prefix("mem:knowledge:")
+    if not knowledge_keys:
+        return []
+    knowledge_rows = store.get_fields_multi(
+        knowledge_keys,
+        ("state", "created_at", "content", "title", "feed_name",
+         "source_url", "skill_domains"),
+    )
+    recent: list[tuple[str, dict[str, Any]]] = []
+    for key, row in zip(knowledge_keys, knowledge_rows):
+        if row is None or row.get("state") != "active":
+            continue
+        try:
+            created_at = float(row.get("created_at", "0"))
+        except (TypeError, ValueError):
+            continue
+        if created_at >= cutoff:
+            recent.append((key, row))
+    if not recent:
+        return []
+
+    article_vectors = store.get_vectors_multi([k for k, _ in recent])
+    skill_vectors = store.get_vectors_multi([k for k, _ in skills])
+
+    watch: list[dict[str, Any]] = []
+    for (skill_key, skill_row), skill_vec in zip(skills, skill_vectors):
+        if skill_vec is None:
+            continue
+        domain = skill_row["domain"]
+        try:
+            manifest = set(json.loads(skill_row.get("source_manifest", "[]")))
+        except (json.JSONDecodeError, TypeError):
+            manifest = set()
+        try:
+            rules = json.loads(skill_row.get("rule_manifest", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            rules = []
+
+        matches: list[dict[str, Any]] = []
+        for (article_key, article), article_vec in zip(recent, article_vectors):
+            if article_vec is None or article_key in manifest:
+                continue
+            if domain in parse_skill_domains(article.get("skill_domains")):
+                continue  # already promoted — it's in the compile pool now
+            similarity = float(np.dot(skill_vec, article_vec))
+            if similarity < threshold:
+                continue
+
+            content = article.get("content", "")
+            conflicts = [
+                (rule.get("text") or "")[:60]
+                for rule in rules
+                if isinstance(rule, dict) and rule.get("text")
+                and _has_negation_pair(content, rule["text"])
+            ]
+            matches.append(_compact({
+                "key": article_key,
+                "gist": (article.get("title") or content)[:80],
+                "feed_name": article.get("feed_name"),
+                "source_url": article.get("source_url"),
+                "similarity": round(similarity, 4),
+                "possible_contradiction": bool(conflicts) or None,
+                "conflicts_with_rules": conflicts,
+            }))
+
+        if matches:
+            matches.sort(key=lambda m: (
+                not m.get("possible_contradiction"), -m["similarity"],
+            ))
+            watch.append({
+                "skill_id": skill_key,
+                "name": skill_row.get("name", ""),
+                "domain": domain,
+                "articles": matches[:3],
+                "note": "Relevant recent knowledge — review, and "
+                        f"promote_knowledge(key, domain='{domain}') to compile "
+                        "an article into the skill's Reference section.",
+            })
+
+    return watch

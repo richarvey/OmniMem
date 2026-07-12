@@ -82,7 +82,7 @@ class TestGatherSkill:
         assert skill["generated"] is True
         assert skill["body"].startswith("---")
         assert skill["sources"] == ["mem:episodic:01A", "mem:episodic:01B"]
-        assert skill["rule_counts"] == {"do": 1, "watch": 0, "dont": 1}
+        assert skill["rule_counts"] == {"do": 1, "watch": 0, "dont": 1, "ref": 0}
         assert skill["rules"][0]["reinforcement"] == 2
         assert skill["recall_count"] == 3
         assert skill["last_recalled"] == "Never"
@@ -102,7 +102,7 @@ class TestGatherSkill:
         skill = gather_skill(fake_store, key)
         assert skill["sources"] == []
         assert skill["rules"] == []
-        assert skill["rule_counts"] == {"do": 0, "watch": 0, "dont": 0}
+        assert skill["rule_counts"] == {"do": 0, "watch": 0, "dont": 0, "ref": 0}
 
 
 class TestTelemetryIncludesSkills:

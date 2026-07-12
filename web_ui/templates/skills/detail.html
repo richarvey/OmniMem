@@ -55,7 +55,7 @@
   <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">
     Rules
     <span style="font-weight:400;text-transform:none;letter-spacing:0">
-      ({{ skill.rule_counts.do }} do · {{ skill.rule_counts.watch }} watch · {{ skill.rule_counts.dont }} don't)
+      ({{ skill.rule_counts.do }} do · {{ skill.rule_counts.watch }} watch · {{ skill.rule_counts.dont }} don't{% if skill.rule_counts.ref %} · {{ skill.rule_counts.ref }} ref{% endif %})
     </span>
   </h3>
   <table class="data-table">
@@ -73,7 +73,8 @@
         <td><span class="badge rule-{{ r.kind }}">{{ "don't" if r.kind == "dont" else r.kind }}</span></td>
         <td>{% if r.kind == "dont" and r.name %}<strong>Avoid {{ r.name }}.</strong> {% endif %}{{ r.text }}</td>
         <td>
-          {% if r.blessed %}<span class="badge generated">blessed</span>
+          {% if r.kind == "ref" %}<span class="badge generated">promoted</span>
+          {% elif r.blessed %}<span class="badge generated">blessed</span>
           {% else %}<span class="score">x{{ r.reinforcement }}</span>{% endif %}
         </td>
         <td>

@@ -238,7 +238,11 @@ def briefing(
     # are recommendations only — loading is the agent's and human's call.
     if project:
         try:
-            from .skills import pending_skill_updates, suggest_skills_for_briefing
+            from .skills import (
+                knowledge_watch,
+                pending_skill_updates,
+                suggest_skills_for_briefing,
+            )
 
             greenfield = project_data is None
             context_text = None
@@ -270,6 +274,12 @@ def briefing(
             updates = pending_skill_updates(store)
             if updates:
                 result["skill_updates"] = updates
+
+            # Fresh knowledge semantically close to a compiled skill —
+            # awareness only; promoting an article is a deliberate call.
+            watch = knowledge_watch(store)
+            if watch:
+                result["skill_knowledge_watch"] = watch
         except Exception as exc:
             logger.error("Skill briefing sections failed: %s", exc)
 
