@@ -89,9 +89,15 @@ _POOL_FIELDS = (
 )
 
 _KNOWLEDGE_POOL_FIELDS = (
-    "content", "title", "state", "skill_domains", "feed_name",
+    "content", "title", "state", "skill_domains", "skill_rules", "feed_name",
     "source_url", "created_at", "updated_at", "promoted_at",
 )
+
+# Extracted reference rules stored on a promoted article. "note" is for
+# neutral statements of fact; the rest render with a stance prefix.
+REFERENCE_RULE_KINDS = ("do", "watch", "dont", "note")
+_MAX_REFERENCE_RULES = 20
+_MAX_REFERENCE_RULE_CHARS = 400
 
 _MAX_POOL_KEYS = 5000
 
@@ -256,6 +262,48 @@ def parse_skill_domains(raw: Any) -> list[str]:
     return [d.lower() for d in _parse_tags(raw)]
 
 
+def validate_reference_rules(raw: Any) -> list[dict[str, str]]:
+    """Validate extracted reference rules supplied at promotion time.
+
+    Extraction happens once, at promotion, under human review — never at
+    compile time — so the compiler stays deterministic: the stored list is
+    the source of truth until the article is re-promoted with a new one.
+    """
+    if not isinstance(raw, list):
+        raise ValueError("rules must be a list of {kind, text} objects")
+    if len(raw) > _MAX_REFERENCE_RULES:
+        raise ValueError(f"rules: max {_MAX_REFERENCE_RULES} per article")
+    validated: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("rules entries must be {kind, text} objects")
+        kind = str(item.get("kind", "")).strip().lower()
+        text = str(item.get("text", "")).strip()
+        if kind not in REFERENCE_RULE_KINDS:
+            raise ValueError(
+                f"rules kind must be one of {'/'.join(REFERENCE_RULE_KINDS)}, "
+                f"got '{kind}'"
+            )
+        if not text:
+            raise ValueError("rules entries need non-empty text")
+        if len(text) > _MAX_REFERENCE_RULE_CHARS:
+            raise ValueError(
+                f"rules text max {_MAX_REFERENCE_RULE_CHARS} chars"
+            )
+        validated.append({"kind": kind, "text": text})
+    return validated
+
+
+def parse_reference_rules(raw: Any) -> list[dict[str, str]]:
+    """Stored skill_rules field back to a validated list; [] on any damage."""
+    if not raw:
+        return []
+    try:
+        return validate_reference_rules(json.loads(raw))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
 def gather_promoted_knowledge(
     store, domains: Iterable[str]
 ) -> dict[str, list[dict[str, Any]]]:
@@ -298,6 +346,7 @@ def gather_promoted_knowledge(
             "title": row.get("title", ""),
             "feed_name": row.get("feed_name", ""),
             "source_url": row.get("source_url", ""),
+            "skill_rules": parse_reference_rules(row.get("skill_rules")),
             "created_at": _safe_float(row.get("created_at")),
             "updated_at": _safe_float(row.get("updated_at")),
             "promoted_at": _safe_float(row.get("promoted_at")),
@@ -554,16 +603,48 @@ def build_rules(
     return eligible, held_back
 
 
+# Stance prefixes for extracted reference rules. "note" renders bare.
+_REFERENCE_RULE_PREFIXES = {
+    "do": "Do: ",
+    "watch": "Watch out: ",
+    "dont": "Avoid: ",
+    "note": "",
+}
+
+
 def build_reference_rules(promoted: list[dict[str, Any]]) -> list[Rule]:
-    """One ref rule per promoted knowledge item, in key (chronological) order.
+    """Ref rules for promoted knowledge items, in key (chronological) order.
 
     No clustering and no reinforcement gate: promotion was the human vetting
     step, so each article stands alone — the same logic that lets bless()
     carry a single strong lesson past the threshold.
+
+    An article promoted with extracted rules (skill_rules) contributes one
+    ref rule per extracted item, stance-prefixed, in stored order; otherwise
+    it contributes a single summary rule. Extracted rules stay in the
+    Reference section rather than joining Do/Don't — read is not lived, and
+    that provenance line stays visible.
     """
     rules: list[Rule] = []
     for item in sorted(promoted, key=lambda m: m["key"]):
         title = (item.get("title") or "").strip()
+        url = item.get("source_url", "")
+
+        extracted = item.get("skill_rules") or []
+        if extracted:
+            for entry in extracted:
+                rules.append(Rule(
+                    kind="ref",
+                    text=_one_line(
+                        f"{_REFERENCE_RULE_PREFIXES[entry['kind']]}{entry['text']}"
+                    ),
+                    sources=[item["key"]],
+                    reinforcement=1,
+                    name=title or None,
+                    url=url,
+                ))
+            continue
+
         content = (item.get("content") or "").strip()
         if title and content and not content.lower().startswith(title.lower()):
             text = _one_line(f"{title}: {content}")
@@ -577,7 +658,7 @@ def build_reference_rules(promoted: list[dict[str, Any]]) -> list[Rule]:
             sources=[item["key"]],
             reinforcement=1,
             name=title or None,
-            url=item.get("source_url", ""),
+            url=url,
         ))
     return rules
 

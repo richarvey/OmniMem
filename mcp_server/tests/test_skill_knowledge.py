@@ -205,6 +205,90 @@ class TestCompileWithReferences:
         assert removed[0]["rule_kind"] == "ref"
 
 
+class TestExtractedReferenceRules:
+    FIVE = [
+        {"kind": "dont", "text": "Rely on colour alone to convey state"},
+        {"kind": "dont", "text": "Remove focus outlines without a replacement"},
+        {"kind": "dont", "text": "Use placeholder text as the only label"},
+        {"kind": "do", "text": "Meet 4.5:1 contrast for body text"},
+        {"kind": "note", "text": "WCAG 2.2 AA is the baseline these map to"},
+    ]
+
+    def _article(self, fake_store, fake_embedder):
+        store_article(fake_store, fake_embedder, "mem:knowledge:k01",
+                      "Five common accessibility mistakes and how to avoid them",
+                      title="5 things to avoid for accessible websites",
+                      source_url="https://example.com/a11y-5")
+
+    def test_promotion_stores_and_returns_rules(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        result = promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                                   rules=self.FIVE)
+        assert result["reference_rules"] == self.FIVE
+        stored = json.loads(fake_store.get("mem:knowledge:k01")["skill_rules"])
+        assert stored == self.FIVE
+
+    def test_invalid_kind_errors(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        result = promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                                   rules=[{"kind": "never", "text": "x"}])
+        assert "error" in result
+
+    def test_rules_without_domain_errors(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        result = promote_knowledge("mem:knowledge:k01", rules=self.FIVE)
+        assert "error" in result
+
+    def test_rules_with_demote_errors(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        promote_knowledge("mem:knowledge:k01", domain="accessibility")
+        result = promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                                   demote=True, rules=self.FIVE)
+        assert "error" in result
+
+    def test_compile_renders_one_bullet_per_rule(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                          rules=self.FIVE)
+        proposal, _ = _accept(domain="accessibility")
+        assert proposal["rules"] == {"ref": 5}
+        body = get_skill(generated_skill_key("accessibility", "local"))["body"]
+        assert "- Avoid: Rely on colour alone to convey state." in body
+        assert "- Do: Meet 4.5:1 contrast for body text." in body
+        assert "- WCAG 2.2 AA is the baseline these map to." in body
+        assert body.count("mem:knowledge:k01") >= 6  # 5 bullets + manifest
+
+    def test_recompile_stable_with_extracted_rules(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                          rules=self.FIVE)
+        _accept(domain="accessibility")
+        result = compile_skill("accessibility", mode="propose")
+        assert result["status"] == "unchanged"
+
+    def test_repromote_with_edited_rules_proposes_diff(
+            self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                          rules=self.FIVE)
+        _accept(domain="accessibility")
+        promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                          rules=self.FIVE[:3])
+        result = compile_skill("accessibility", mode="propose")
+        assert result["status"] == "proposal"
+        assert any(c["change"] == "removed" for c in result["changes"])
+
+    def test_empty_rules_reverts_to_summary(self, fake_store, fake_embedder):
+        self._article(fake_store, fake_embedder)
+        promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                          rules=self.FIVE)
+        result = promote_knowledge("mem:knowledge:k01", domain="accessibility",
+                                   rules=[])
+        assert "reverts" in result["note"]
+        proposal = compile_skill("accessibility", mode="propose")
+        assert proposal["rules"] == {"ref": 1}
+
+
 class TestSummariseRefChanges:
     def test_added_ref_is_low_risk(self):
         changes = summarise_rule_changes([], [

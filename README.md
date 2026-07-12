@@ -153,7 +153,7 @@ The design premise: a memory error is noise, ranked and diluted by recall, but a
 - **Nothing writes silently.** `compile_skill` proposes a diff with a risk-classified change summary; you review it, then `mode="write"` commits exactly what you accepted. Recompiles that rewrite or remove an existing rule are flagged loudly; simple additions stay cheap.
 - **Derived-only, never hand-edited.** The raw memories are the source of truth and the skill is build output. To change the guidance, update the memories and recompile.
 - **Suggested, never auto-loaded.** The briefing recommends relevant skills; you and the agent decide.
-- **Reference material is promoted, never absorbed.** Knowledge articles only reach a skill through `promote_knowledge(key, domain=...)` — a deliberate act that substitutes for the reinforcement an article can't earn. Promoted articles compile into a distinct Reference section, each citing its source. Volatile facts (version numbers, latest releases) should stay in the knowledge namespace and be looked up with `recall()` instead.
+- **Reference material is promoted, never absorbed.** Knowledge articles only reach a skill through `promote_knowledge(key, domain=...)` — a deliberate act that substitutes for the reinforcement an article can't earn. Promoted articles compile into a distinct Reference section, each citing its source. An article with discrete guidance (a "5 things to avoid" list) can be promoted with `rules=[{kind, text}, ...]` — the agent reads it, drafts the items, you approve them, and each becomes its own Avoid/Do/Watch bullet rather than one summary line. Extraction happens at promotion under review, never at compile, so compilation stays deterministic. Volatile facts (version numbers, latest releases) should stay in the knowledge namespace and be looked up with `recall()` instead.
 
 Every skill carries a fixed operating contract that instructs the agent to keep recording experience and dead ends while working under it. That closes the flywheel: the data pool compiles into a skill, the skill keeps feeding the pool, and a richer pool compiles a better skill next time.
 
@@ -312,7 +312,7 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | Tool | What it does |
 |---|---|
 | `recent_knowledge(days?, feed_name?, topics?, limit?)` | Query recent RSS articles with optional filters, sorted newest first |
-| `promote_knowledge(key, domain?, demote?)` | Mark an article as permanently useful by clearing its expiry. With `domain`, also mark it skill-eligible: the next `compile_skill()` for that domain renders it in the skill's Reference section. `demote=True` removes a domain again |
+| `promote_knowledge(key, domain?, demote?, rules?)` | Mark an article as permanently useful by clearing its expiry. With `domain`, also mark it skill-eligible: the next `compile_skill()` for that domain renders it in the skill's Reference section. Pass `rules=[{kind, text}, ...]` to extract an article's discrete guidance into individual stance-prefixed Reference rules (reviewed at promotion, so compiles stay deterministic). `demote=True` removes a domain again |
 
 ### Audit and backup
 
@@ -382,8 +382,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
 | `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
-| `OMNIMEM_INSTRUCTIONS_CHARS` | `11808` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
-| `OMNIMEM_TOOL_SCHEMAS_CHARS` | `6890` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
+| `OMNIMEM_INSTRUCTIONS_CHARS` | `12512` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
+| `OMNIMEM_TOOL_SCHEMAS_CHARS` | `7620` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
 | `OMNIMEM_USER` | `local` | Identity segment in generated skill keys (`mem:skill:gen:{domain}-{user}`) and the "How {user} works in..." description draft. Single-node label only — auth and org scoping are v7 |

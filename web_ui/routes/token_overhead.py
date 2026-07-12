@@ -17,12 +17,12 @@ _METRICS_RESET_KEY = "meta:tool_metrics_reset"
 
 # MCP instructions text size (measured from instructions.py).
 # Update if instructions change significantly.
-_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "11808"))
+_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "12512"))
 
 # Tool schema overhead — 34 tools (33 registered + health).
 # Each tool contributes name + description + JSON parameter schema.
 _TOOL_COUNT = 34
-_TOOL_SCHEMAS_CHARS = int(os.getenv("OMNIMEM_TOOL_SCHEMAS_CHARS", "6890"))
+_TOOL_SCHEMAS_CHARS = int(os.getenv("OMNIMEM_TOOL_SCHEMAS_CHARS", "7620"))
 
 # Deferred tool name overhead (mcp__omnimem__<name> listed in system prompt)
 _DEFERRED_NAMES_CHARS = _TOOL_COUNT * 25  # ~25 chars per entry

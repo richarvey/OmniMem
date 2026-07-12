@@ -161,6 +161,8 @@ The skill's `description` is the load trigger and is human-owned: the compiler d
 
 **Reference material.** Knowledge articles can feed a skill too, but only deliberately: `promote_knowledge(key, domain="<domain>")` marks an article skill-eligible, and the next compile renders it in a distinct Reference section citing the article. Promotion is the vetting step — never promote without the human agreeing the article belongs in the skill. Use it for durable reference (a spec, a canonical how-to), not volatile facts like version numbers; those stay in the knowledge namespace and are looked up with `recall()` at need. `demote=True` reverses a promotion.
 
+**Extracting rules from an article.** When an article contains discrete guidance (a "5 things to avoid" list, a best-practice post), don't settle for the one-line summary: read the article (`recall_detail` on its key), draft one rule per item as `{"kind": "do"|"watch"|"dont"|"note", "text": "..."}`, show the human the list, and pass the approved set as `promote_knowledge(key, domain="<domain>", rules=[...])`. Each becomes its own stance-prefixed bullet in the skill's Reference section ("Avoid: ...", "Do: ..."), all citing the article. Extraction happens at promotion under human review — never at compile — so re-promote with an edited list to revise, or `rules=[]` to revert to the summary line.
+
 -----
 
 ### Session End
