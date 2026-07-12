@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
 
-**Version**: 6.1.3
+**Version**: 6.2.0
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -88,6 +88,7 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **RSS articles carry a project label** (v6.1.1) — default `RSS`, per-feed override via `project:` in feeds.yml, backfilled by a startup migration (`memory/migrations.py`), so ingested articles stay separable from conversation-sourced knowledge. Articles are identified by `feed_name`; the label must satisfy the project-name charset or the ingester falls back to `RSS`. It does not create a pseudo-project: projects pages/tools only count `mem:project:*` keys
 - **Skills are whole document objects, never chunked** (v6) — canonical body lives in the `body` hash field at `mem:skill:gen:{domain}-{user}`; `idx:skill` embeds discovery metadata only (name + description + domain) and `body` is deliberately absent from `_NAMESPACE_RETURN_FIELDS["skill"]`. `get_skill` returns it intact by ID
 - **Skill writes are gated** (v6) — `compile_skill(mode="propose")` stashes the rendered draft in `meta:skill:proposal:{domain}-{user}` (TTL `SKILL_PROPOSAL_TTL_SECONDS`); `mode="write"` commits that stashed body verbatim (no recompile at write time), refuses if the stored skill's sha changed since the proposal, and refuses anything not flagged `generated: true`. Experience/graveyard writes stay ungated — that asymmetry is the design
+- **Promoted knowledge feeds skills, ordinary knowledge doesn't** (v6.2) — `promote_knowledge(key, domain=...)` sets `skill_domains` + `promoted_at` on the article (and clears expiry); `gather_promoted_knowledge()` pools those into `compile_skill`, rendered as `ref` rules in a separate Reference section. Promotion substitutes for reinforcement (same logic as `bless`), so refs bypass the gate but never count toward it. The briefing's `knowledge_watch()` (tools/skills.py) is the awareness layer: recent unpromoted articles vs skill discovery vectors (both read via `get_vectors_multi`, no re-embedding), with the tier-1 negation heuristic upgrading matches to `possible_contradiction`. Tunables: `SKILL_KNOWLEDGE_WATCH_DAYS` (14, 0 disables), `SKILL_KNOWLEDGE_WATCH_THRESHOLD` (0.35)
 - **Skill compilation is deterministic** — same source memories render a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps into `render_skill_md()` or every recompile will propose noise diffs
 
 ## Validation Constraints

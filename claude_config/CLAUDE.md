@@ -39,6 +39,7 @@ At the beginning of every session:
 - **Contradiction warnings** — surface these explicitly and ask the human which version reflects current reality before proceeding with any work
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
+- **Knowledge watch** — if the briefing includes `skill_knowledge_watch`, recent articles look relevant to a compiled skill; entries flagged `possible_contradiction` may mean the world moved under a rule. Surface them and, if the human agrees an article belongs in the skill, call `promote_knowledge(key, domain="<domain>")` then recompile
 1. If the MCP server seems unresponsive or recall is slow, call `health()` and report the status to the human before continuing.
 
 -----
@@ -157,6 +158,8 @@ OmniMem can compile your accumulated experience in a domain into a loadable skil
 The skill's `description` is the load trigger and is human-owned: the compiler drafts it once at creation, the human approves or edits it (pass `description=` to change it deliberately), and recompiles never clobber it.
 
 **Promotion.** A single episode is a memory; a pattern across episodes earns a rule (default `min_reinforcement=2`). When one lesson is strong enough on its own, call `bless("<memory_key>")` to make it skill-eligible at the next compile.
+
+**Reference material.** Knowledge articles can feed a skill too, but only deliberately: `promote_knowledge(key, domain="<domain>")` marks an article skill-eligible, and the next compile renders it in a distinct Reference section citing the article. Promotion is the vetting step — never promote without the human agreeing the article belongs in the skill. Use it for durable reference (a spec, a canonical how-to), not volatile facts like version numbers; those stay in the knowledge namespace and are looked up with `recall()` at need. `demote=True` reverses a promotion.
 
 -----
 
