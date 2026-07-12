@@ -11,7 +11,7 @@
     {% for m in effortful %}
     <tr>
       <td><span class="score">{{ m.effort_score }}/5</span></td>
-      <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'archived' }}">{{ m.outcome }}</span></td>
+      <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'abandoned' }}">{{ m.outcome }}</span></td>
       <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
     </tr>
     {% endfor %}
