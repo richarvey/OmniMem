@@ -9,6 +9,8 @@ Format: [version] - date - description
 - **Articles with discrete guidance extract into individual rules**: `promote_knowledge(key, domain=..., rules=[{"kind": "dont", "text": "..."}, ...])` turns a "5 things to avoid" article into five stance-prefixed Reference bullets (Avoid: / Do: / Watch out: / bare notes), each citing the article, instead of one summary line. The extraction intelligence is the agent already in the session: it reads the article, drafts the items, the human approves the list, and the approved set is stored on the article — so extraction happens once at promotion under review, never at compile time, and compilation stays deterministic (no LLM in the compile path, no new dependencies). Re-promote with an edited list to revise a rule; `rules=[]` reverts to the summary. Max 20 rules per article, 400 chars each
 - **Pending skill updates notice promoted articles**: an article promoted to a compiled skill's domain after its last compile shows up in the briefing's `skill_updates` as a low-risk `new_reference` change, batch-accept eligible alongside new lesson-bearing memories
 - **Web UI renders Reference rules**: the skill detail page shows `ref` rules with their own badge and a "promoted" backing label, and the rule counts line includes them. Source manifest links to knowledge memories work as before
+### Fixed
+- **Abandoned outcomes are red in the Most Effortful Memories table**: the table fell back to the grey archived badge for any outcome that wasn't succeeded or pivoted, so abandoned read as neutral while the Outcomes card above showed it red. A shared `.badge.abandoned` class now carries the red style in both places, so they can't drift apart again
 
 ## [6.1.3] - 2026-07-11
 ### Added
