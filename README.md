@@ -512,12 +512,14 @@ Quick check: `curl -s -o /dev/null -w '%{http_code}\n' https://your-host/.well-k
 
 OmniMem includes a browser-based management interface at `http://localhost:8080`. It connects directly to Valkey and does not depend on the MCP server running.
 
+The UI wears the SquareCows palette in two themes: dark (brand navy with orange accents, the default) and a warm paper light theme, switched from a button in the footer. Your first visit follows the browser's colour scheme preference; after that the choice sticks in localStorage. Both themes hold WCAG 2.2 AA contrast throughout, and everything — including the self-hosted Ubuntu fonts — works fully offline.
+
 The sidebar is organised into groups: **Memory** (memories, projects, preferences, experience, graveyard), **Skills** (compiled skills), **Management** (duplicates, contradictions, suppressions), **Knowledge Management** (articles, learned knowledge, RSS feeds), and **System Management** (telemetry, backups).
 
 | Page | What it does |
 |---|---|
-| **Dashboard** | Namespace counts, state breakdowns, health indicators, recent activity. The projects card counts distinct projects by state (active, deprioritised, archived) and the skills card shows compiled skills plus any pending compile proposals |
-| **Memories** | Browse all memories with namespace, state, and project filters, plus inline deprioritise/delete actions on each row. Paginated, htmx-powered. The Preferences, Articles, and Learned Knowledge sidebar entries are filtered views of this page |
+| **Dashboard** | A composition bar showing each namespace's share of the corpus, namespace cards with state breakdowns, health indicators, recent activity. The projects card counts distinct projects by state (active, deprioritised, archived) and the skills card shows compiled skills plus any pending compile proposals |
+| **Memories** | Browse all memories with namespace, state, and project filters, plus inline deprioritise/delete actions on each row. A recall-heat rule on each row fades with time since the memory last surfaced in recall. Paginated, htmx-powered. The Preferences, Articles, and Learned Knowledge sidebar entries are filtered views of this page |
 | **Search** | Semantic search using the full recall pipeline. Abandoned warnings highlighted |
 | **Detail** | Full memory content, metadata, tags, experience data, contradictions. Lifecycle action buttons, plus inline tag editing (comma-separated, same validation as the `retag` tool) |
 | **Create** | Store a new memory with duplicate detection shown inline |
