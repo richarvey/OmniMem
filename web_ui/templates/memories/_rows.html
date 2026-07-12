@@ -12,7 +12,7 @@
   </thead>
   <tbody>
     {% for mem in memories %}
-    <tr>
+    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
       <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
@@ -42,5 +42,5 @@
 
 {% include "partials/pagination.html" %}
 {% else %}
-<p class="empty-state">No memories match the current filters.</p>
+<p class="empty-state">No memories match the current filters — <a href="/memories">clear the filters</a> to see everything.</p>
 {% endif %}

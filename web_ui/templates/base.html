@@ -7,9 +7,20 @@
   <link rel="preload" href="/static/fonts/ubuntu-400-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/ubuntu-500-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/ubuntu-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2300101D'/%3E%3Ctext x='32' y='47' font-family='monospace' font-size='40' font-weight='700' fill='%23FF8E01' text-anchor='middle'%3E%26lt;%26gt;%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
-  <script>if (localStorage.getItem('omnimem-sidebar-collapsed') === '1') document.documentElement.classList.add('sidebar-collapsed');</script>
+  <script>
+    if (localStorage.getItem('omnimem-sidebar-collapsed') === '1') document.documentElement.classList.add('sidebar-collapsed');
+    (function () {
+      var theme;
+      try { theme = localStorage.getItem('omnimem-theme'); } catch (e) {}
+      if (theme !== 'light' && theme !== 'dark') {
+        theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
   <link rel="me" href="https://mastodon.squarecows.com/@Ric">
 </head>
 <body>
@@ -27,27 +38,22 @@
         <li><a href="/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}">Dashboard</a></li>
         <li><a href="/search" class="nav-link{% if current_page == 'search' %} active{% endif %}">Search</a></li>
         <li><a href="/create" class="nav-link{% if current_page == 'create' %} active{% endif %}">Create</a></li>
-        <li class="nav-divider"></li>
         <li class="nav-section-label">Memory</li>
         <li><a href="/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}">Memories</a></li>
         <li><a href="/projects" class="nav-link{% if current_page == 'projects' %} active{% endif %}">Projects</a></li>
         <li><a href="/memories?namespace=preference" class="nav-link{% if current_page == 'preferences' %} active{% endif %}">Preferences</a></li>
         <li><a href="/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}">Experience</a></li>
         <li><a href="/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}">Graveyard</a></li>
-        <li class="nav-divider"></li>
         <li class="nav-section-label">Skills</li>
         <li><a href="/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}">Compiled Skills</a></li>
-        <li class="nav-divider"></li>
         <li class="nav-section-label">Management</li>
         <li><a href="/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}">Duplicates</a></li>
         <li><a href="/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}">Contradictions</a></li>
         <li><a href="/suppressions" class="nav-link{% if current_page == 'suppressions' %} active{% endif %}">Suppressions</a></li>
-        <li class="nav-divider"></li>
         <li class="nav-section-label">Knowledge Management</li>
         <li><a href="/memories?namespace=knowledge&amp;source=rss" class="nav-link{% if current_page == 'articles' %} active{% endif %}">Articles</a></li>
         <li><a href="/memories?namespace=knowledge&amp;source=learned" class="nav-link{% if current_page == 'learned' %} active{% endif %}">Learned Knowledge</a></li>
         <li><a href="/feeds" class="nav-link{% if current_page == 'feeds' %} active{% endif %}">RSS Feeds</a></li>
-        <li class="nav-divider"></li>
         <li class="nav-section-label">System Management</li>
         <li><a href="/telemetry" class="nav-link{% if current_page == 'telemetry' or current_page == 'token_overhead' %} active{% endif %}">Telemetry</a></li>
         <li><a href="/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}">Backups</a></li>
@@ -67,6 +73,8 @@
       <a href="https://omnimem.org" class="footer-link" target="_blank" rel="noopener">omnimem.org</a>
       <span class="footer-sep"></span>
       <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
+      <span class="footer-sep"></span>
+      <button type="button" class="theme-toggle" data-theme-toggle></button>
     </div>
   </footer>
   <script>
@@ -86,6 +94,24 @@
         });
       });
       apply(root.classList.contains('sidebar-collapsed'));
+    })();
+    (function () {
+      var KEY = 'omnimem-theme';
+      var root = document.documentElement;
+      var btn = document.querySelector('[data-theme-toggle]');
+      if (!btn) return;
+      function label() {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        btn.textContent = next === 'light' ? 'Light theme' : 'Dark theme';
+        btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+      }
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch (e) {}
+        label();
+      });
+      label();
     })();
   </script>
 </body>

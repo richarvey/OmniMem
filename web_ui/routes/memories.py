@@ -33,7 +33,9 @@ def _get_all_memories(
         # Only the fields the list view renders/filters on — not vectors,
         # breakthroughs, gotchas, abandoned lists, etc.
         all_data = deps.store.get_fields_multi(
-            keys, ("content", "state", "project", "project_name", "updated_at", "feed_name")
+            keys,
+            ("content", "state", "project", "project_name", "updated_at",
+             "feed_name", "last_recalled"),
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -61,9 +63,28 @@ def _get_all_memories(
                 "state": mem_state,
                 "project": mem_project,
                 "updated_at": float(data.get("updated_at", "0")),
+                "heat": _recall_heat(data.get("last_recalled")),
             })
 
     return memories, sorted(projects)
+
+
+def _recall_heat(last_recalled: str | None) -> str:
+    """Bucket time-since-last-recall for the row's fading left rule."""
+    try:
+        ts = float(last_recalled or 0)
+    except (TypeError, ValueError):
+        ts = 0.0
+    if ts <= 0:
+        return ""
+    days = (time.time() - ts) / 86400
+    if days < 7:
+        return "hot"
+    if days < 30:
+        return "warm"
+    if days < 90:
+        return "cool"
+    return ""
 
 
 async def memories_list(request: Request) -> HTMLResponse:

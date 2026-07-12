@@ -27,6 +27,27 @@
   "knowledge": "/memories?namespace=knowledge",
   "preference": "/memories?namespace=preference",
 } %}
+{% if total > 0 %}
+<section class="composition" aria-label="Memory composition by namespace">
+  <a class="composition-total" href="/memories">
+    <span class="composition-num">{{ total }}</span>
+    <span class="composition-label">memories across all namespaces</span>
+  </a>
+  <div class="composition-main">
+    <div class="composition-bar" role="img"
+         aria-label="{% for ns, stats in ns_stats.items() %}{{ stats.total }} {{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}">
+      {%- for ns, stats in ns_stats.items() %}{% if stats.total > 0 -%}
+      <div class="composition-seg ns-{{ ns }}" style="width: {{ '%.2f' % (stats.total / total * 100) }}%"></div>
+      {%- endif %}{% endfor -%}
+    </div>
+    <div class="composition-legend" aria-hidden="true">
+      {% for ns, stats in ns_stats.items() %}
+      <span class="badge ns-{{ ns }}">{{ ns }} <span class="count">{{ stats.total }}</span></span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
   <a class="stat-card" href="{{ ns_links[ns] }}">
@@ -60,11 +81,6 @@
       {% if skills.states.archived %}<span class="badge archived">{{ skills.states.archived }} arch</span>{% endif %}
     </div>
   </a>
-  <a class="stat-card stat-card-highlight" href="/memories">
-    <h3 class="stat-ns">Total</h3>
-    <div class="stat-total">{{ total }}</div>
-    <div class="stat-label">memories across all namespaces</div>
-  </a>
 </section>
 
 <section class="recent-section">
@@ -96,7 +112,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No memories stored yet.</p>
+  <p class="empty-state">No memories yet — <a href="/create">create one</a>, or connect a Claude session and it will start remembering.</p>
   {% endif %}
 </section>
 {% endblock %}
