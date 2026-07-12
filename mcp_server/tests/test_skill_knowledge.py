@@ -341,7 +341,7 @@ class TestKnowledgeWatch:
         _accept()
 
     def test_nearby_article_surfaces(self, fake_store, fake_embedder, monkeypatch):
-        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.05")
+        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "-1")
         self._compiled_skill(fake_store, fake_embedder)
         store_article(fake_store, fake_embedder, "mem:knowledge:k01",
                       "python packaging work and python dependency management experience",
@@ -360,7 +360,7 @@ class TestKnowledgeWatch:
         assert knowledge_watch(fake_store) == []
 
     def test_promoted_article_excluded(self, fake_store, fake_embedder, monkeypatch):
-        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.05")
+        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "-1")
         self._compiled_skill(fake_store, fake_embedder)
         store_article(fake_store, fake_embedder, "mem:knowledge:k01",
                       "python packaging work and python dependency management experience")
@@ -368,7 +368,7 @@ class TestKnowledgeWatch:
         assert knowledge_watch(fake_store) == []
 
     def test_old_article_excluded(self, fake_store, fake_embedder, monkeypatch):
-        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.05")
+        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "-1")
         self._compiled_skill(fake_store, fake_embedder)
         store_article(fake_store, fake_embedder, "mem:knowledge:k01",
                       "python packaging work and python dependency management experience",
@@ -377,7 +377,7 @@ class TestKnowledgeWatch:
 
     def test_negation_flags_possible_contradiction(
             self, fake_store, fake_embedder, monkeypatch):
-        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.05")
+        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "-1")
         self._compiled_skill(fake_store, fake_embedder)
         store_article(fake_store, fake_embedder, "mem:knowledge:k01",
                       "uv deprecated: don't use uv for python dependency management")
@@ -398,7 +398,7 @@ class TestKnowledgeWatch:
 class TestBriefingSurface:
     def test_briefing_carries_knowledge_watch(
             self, fake_store, fake_embedder, monkeypatch):
-        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "0.05")
+        monkeypatch.setenv("SKILL_KNOWLEDGE_WATCH_THRESHOLD", "-1")
         _reinforced_pool(fake_store, fake_embedder)
         _accept()
         store_article(fake_store, fake_embedder, "mem:knowledge:k01",
