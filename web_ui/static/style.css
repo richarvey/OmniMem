@@ -1398,3 +1398,52 @@ a.composition-total:hover .composition-num { color: var(--accent-text); }
   .graveyard-table { table-layout: auto; }
   .graveyard-table th, .graveyard-table td { width: auto !important; }
 }
+
+/* Login page — standalone card, no sidebar or footer */
+.login-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1rem;
+  margin: 0;
+}
+
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-logo {
+  text-align: center;
+  margin: 0 0 0.25rem;
+}
+
+.login-sub {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* Sign out — a form-wrapped button styled like the other footer links */
+.logout-form {
+  display: inline-flex;
+}
+
+button.footer-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}

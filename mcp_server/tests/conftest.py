@@ -54,6 +54,7 @@ class FakeValkeyClient:
 
     def delete(self, key):
         self._data.pop(key, None)
+        self._strings.pop(key, None)
 
     def ping(self):
         return True

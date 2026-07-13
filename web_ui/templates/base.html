@@ -75,6 +75,12 @@
       <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
       <span class="footer-sep"></span>
       <button type="button" class="theme-toggle" data-theme-toggle></button>
+      {% if login_enabled %}
+      <span class="footer-sep"></span>
+      <form method="post" action="/logout" class="logout-form">
+        <button type="submit" class="footer-link">Sign out</button>
+      </form>
+      {% endif %}
     </div>
   </footer>
   <script>

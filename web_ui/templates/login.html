@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — OmniMem</title>
+  <link rel="preload" href="/static/fonts/ubuntu-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ubuntu-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2300101D'/%3E%3Ctext x='32' y='47' font-family='monospace' font-size='40' font-weight='700' fill='%23FF8E01' text-anchor='middle'%3E%26lt;%26gt;%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script>
+    (function () {
+      var theme;
+      try { theme = localStorage.getItem('omnimem-theme'); } catch (e) {}
+      if (theme !== 'light' && theme !== 'dark') {
+        theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1 class="logo login-logo"><span class="logo-bracket">&lt;</span>OmniMem<span class="logo-bracket">&gt;</span></h1>
+    <p class="login-sub">Sign in to the dashboard</p>
+    {% if error %}
+    <div class="flash flash-error" role="alert">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input class="form-input" id="username" name="username" type="text" required autocomplete="username" {% if error %}aria-invalid="true"{% endif %}>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input class="form-input" id="password" name="password" type="password" required autocomplete="current-password" {% if error %}aria-invalid="true"{% endif %}>
+      </div>
+      <button type="submit" class="btn btn-primary login-submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>
