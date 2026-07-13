@@ -2,6 +2,10 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [6.3.1] - 2026-07-13
+### Added
+- **The web UI has a login page**: when `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` are set — the same pair that guards the MCP OAuth flow — the dashboard now asks you to sign in with them, so one set of credentials covers both doors. A successful login stores an opaque session token in Valkey (7 days by default, `WEB_UI_SESSION_HOURS` to change it) behind an HttpOnly cookie, and the footer gains a Sign out button that revokes the session server-side, not just in the browser. Failed attempts are rate limited per IP with the same knobs as the OAuth form (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`). The login page follows the theme switch and plays nicely with password managers (proper `autocomplete` attributes). Set `WEB_UI_LOGIN_ENABLED=false` to keep the old behaviour. `WEB_UI_AUTH_TOKEN` bearer auth still works alongside it for scripts and monitoring, and `/metrics` and static assets stay exempt. Expired sessions bounce htmx requests to the login page whole, not into a page fragment
+
 ## [6.3.0] - 2026-07-12
 ### Added
 - **Light theme and a theme switch**: the web UI now ships a warm paper light theme alongside the dark one, toggled from a button in the footer. First visit follows the browser's `prefers-color-scheme`; the choice persists in localStorage and is applied before first paint, so there is no flash of the wrong theme. Native controls and scrollbars follow via `color-scheme`

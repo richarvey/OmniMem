@@ -341,6 +341,8 @@ If you want to customise the instructions or use OmniMem with a setup that does 
 | `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
 | `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP endpoint (constant-time compared). When unset, no auth is required — but the server refuses to start unauthenticated on a non-loopback `MCP_HOST` |
 | `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard (constant-time compared). `/metrics` and static assets are exempt |
+| `WEB_UI_LOGIN_ENABLED` | *(auto)* | The web dashboard shows a login page whenever `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` are set — the same credentials as the OAuth flow. Set to `false` to opt out |
+| `WEB_UI_SESSION_HOURS` | `168` | Dashboard session lifetime. Sessions are opaque tokens stored in Valkey, revoked server-side on sign out |
 | `OAUTH_ENABLED` | *(unset)* | Set to `true` to enable OAuth 2.1 authorisation server for claude.ai and other OAuth MCP clients |
 | `OAUTH_BASE_URL` | *(unset)* | Externally-reachable URL of your OmniMem instance (e.g. `https://mcp.example.com`). Required when OAuth is enabled |
 | `OAUTH_ADMIN_USER` | *(unset)* | Username for the OAuth admin account. Required when OAuth is enabled |
@@ -455,9 +457,9 @@ labels:
 
 Update the MCP config URL to `https://omnimem.yourdomain.com/sse` (or `.../mcp` if using Streamable HTTP) and every machine you work from shares the same memory, the same graveyard, and the same project context. See the [connection guides](guides/) for how to configure each coding agent.
 
-You can expose the web UI the same way — add a route for `WEB_PORT` with basic auth middleware. See `docs/reverse-proxy.md` for Traefik and Caddy examples.
+You can expose the web UI the same way — add a route for `WEB_PORT`. With `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` set, the dashboard's own login page guards it with the same credentials as the OAuth flow; `docs/reverse-proxy.md` has Traefik and Caddy examples if you'd rather (or additionally) gate it at the proxy.
 
-Security checklist: strong `VALKEY_PASSWORD` (Compose now refuses to start if it's empty), set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env`, TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet. Bearer tokens are compared in constant time, the MCP server won't start unauthenticated on a non-loopback address, backup filenames are validated against path traversal, and uploaded/restored backups and fetched RSS pages are size-capped.
+Security checklist: strong `VALKEY_PASSWORD` (Compose now refuses to start if it's empty), set `MCP_AUTH_TOKEN` in your `.env` (with OAuth credentials configured the web dashboard requires a login automatically; add `WEB_UI_AUTH_TOKEN` if scripts need bearer access), TLS on the proxy if exposing publicly, and keep the Valkey port off the public internet. Bearer tokens are compared in constant time, the MCP server won't start unauthenticated on a non-loopback address, backup filenames are validated against path traversal, and uploaded/restored backups and fetched RSS pages are size-capped.
 
 ### OAuth 2.1 for claude.ai
 
@@ -550,7 +552,7 @@ Available gauges:
 
 Metrics are cached for 60 seconds (configurable via `METRICS_CACHE_TTL`) to avoid scanning all memories on every scrape.
 
-The web UI supports optional bearer token authentication via the `WEB_UI_AUTH_TOKEN` environment variable. The `/metrics` endpoint is exempt so Prometheus can scrape without credentials. For additional security options (TLS, IP allowlisting, SSO), see `docs/reverse-proxy.md`.
+The web UI asks for a login whenever the OAuth admin credentials (`OAUTH_ADMIN_USER` / `OAUTH_ADMIN_PASSWORD`) are set — one set of credentials for both the MCP OAuth flow and the dashboard. Sessions are opaque tokens in Valkey (`WEB_UI_SESSION_HOURS`, default 7 days) behind an HttpOnly cookie, revoked server-side by the footer's Sign out button, with failed attempts rate limited per IP. Set `WEB_UI_LOGIN_ENABLED=false` to opt out. Bearer token authentication via `WEB_UI_AUTH_TOKEN` works alongside it for scripts. The `/metrics` endpoint is exempt so Prometheus can scrape without credentials. For additional security options (TLS, IP allowlisting, SSO), see `docs/reverse-proxy.md`.
 
 ---
 
