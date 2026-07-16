@@ -5,18 +5,18 @@
 #
 # Works on macOS and Linux. Run it directly:
 #
-#   curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/v6/install.sh | bash
+#   curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
 #
 # or download it first and run `bash install.sh`.
 #
 # Overrides (set as environment variables before running):
 #   OMNIMEM_DIR       install directory            (default: ./omnimem)
-#   OMNIMEM_BRANCH    repo branch to fetch from    (default: v6)
+#   OMNIMEM_BRANCH    repo branch to fetch from    (default: main)
 #   OMNIMEM_RAW_BASE  base URL for raw files       (default: Codeberg raw URL)
 
 set -euo pipefail
 
-BRANCH="${OMNIMEM_BRANCH:-v6}"
+BRANCH="${OMNIMEM_BRANCH:-main}"
 RAW_BASE="${OMNIMEM_RAW_BASE:-https://codeberg.org/ric_harvey/omnimem/raw/branch/${BRANCH}}"
 COMPOSE_FILE_NAME="docker-compose.hub.yml"
 
