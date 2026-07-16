@@ -63,6 +63,47 @@ Promotion marks an article permanently useful and, with a domain, skill-eligible
 
 Promotion substitutes for reinforcement (the same reasoning as `bless()`): promoted references bypass the skill compiler's reinforcement gate but never count toward it, and they render in a separate Reference section, never in Do/Don't. Read is not lived experience.
 
+## Calling the tools
+
+RSS articles and extracted facts are written by their workers, not by tool calls. The callable surface is manual writes and promotion:
+
+```python
+# Store knowledge directly. Never expires, never queued for enrichment.
+remember(
+    content="valkey-search tag filters need raw values, not escaped ones",
+    namespace="knowledge",          # routes the write here instead of episodic
+    project="omnimem",              # default None
+    tags=["valkey"],                # default None
+    force=False,                    # default; True skips the dedup check
+    mode="raw",                     # knowledge writes are never enriched, so 'raw' and
+)                                   # 'full' behave the same here
+
+# Keep an article forever (clears expires_at). Only key is required.
+promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718")
+
+# Also make it skill-eligible: the next compile_skill("python") renders it
+# as one summary rule in the Reference section.
+promote_knowledge(
+    key="mem:knowledge:a1b2c3d4e5f60718",
+    domain="python",                # default None — promotion without skill eligibility
+    demote=False,                   # default; True removes the domain again (next recompile
+)                                   # flags the dropped rule as a high-risk removal)
+
+# Articles with discrete guidance: extract the items at promotion, under review.
+# Each becomes its own stance-prefixed Reference bullet. Max 20 rules, 400 chars each.
+promote_knowledge(
+    key="mem:knowledge:a1b2c3d4e5f60718",
+    domain="python",
+    rules=[                         # default None; kind: 'do', 'dont', 'watch', or 'note'
+        {"kind": "dont", "text": "Never mutate a list while iterating it"},
+        {"kind": "do", "text": "Prefer pathlib over os.path for new code"},
+    ],
+)
+
+# Re-promote with rules=[] to drop the extracted rules and revert to the summary form.
+promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python", rules=[])
+```
+
 ## Indexed fields
 
 `idx:knowledge` indexes: `vector` (HNSW cosine), `feed_name` (tag), `topics` (tag), `state` (tag), `project` (tag), `published_at`, `surface_score`, `created_at`, `updated_at`, `recall_count`, `expires_at` (numeric).

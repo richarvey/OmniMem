@@ -75,6 +75,62 @@ Recording an `abandoned` outcome with `effort_score >= 4` auto-suppresses each a
 
 Blessing does not write to any skill; the propose-and-accept gate still applies at compile time.
 
+## Calling the tools
+
+Every option shown, with its default where one exists.
+
+```python
+# Store a memory. Only content is required.
+remember(
+    content="Fixed the arm64 build by switching to tonistiigi/binfmt",  # required, max 50KB
+    project="omnimem",              # default None — unscoped
+    tags=["docker", "arm64"],       # default None → stored as []; max 20, 100 chars each
+    namespace="episodic",           # default; also accepts 'project', 'knowledge', 'preference'
+    force=False,                    # default; True skips dedup (cosine 0.92), the
+                                    # contradiction check, and enrichment (raw bypass write)
+    mode="full",                    # default follows INGEST_MODE env var; 'raw' stores verbatim,
+)                                   # 'full' also queues fact extraction via Claude
+
+# Index a long document as chunks sharing one doc_id.
+remember_document(
+    content=long_transcript,        # required, max 50KB
+    chunk_strategy="paragraphs",    # default; also 'turn_pairs' (User:/Assistant: transcripts),
+                                    # 'sentences', 'fixed_tokens'
+    project="omnimem",              # default None
+    tags=["meeting"],               # default None; applied to every chunk
+    namespace="episodic",           # default; also 'project' or 'knowledge' (not 'preference')
+    chunk_size=200,                 # words per chunk, fixed_tokens only (default 200)
+    mode="full",                    # as on remember()
+)
+
+# Attach effort and outcome to an existing memory.
+record_experience(
+    key="mem:episodic:01KQ...",     # required
+    effort_score=4,                 # required, 1-5 (1=trivial, 5=battle-hardened)
+    outcome="succeeded",            # required: 'succeeded', 'pivoted', or 'abandoned'
+    iterations=3,                   # default 1
+    abandoned_approaches=[          # default None; appended to the graveyard, never replaces
+        {"name": "qemu-user-static", "type": "docker-image",
+         "reason": "amd64-only, exec format error on arm64"},
+    ],                              # type: 'library', 'approach', 'tool', 'pattern', 'service'
+    breakthrough="tonistiigi/binfmt registers handlers on arm64 hosts",  # default None
+    gotchas="needs --privileged on first run",                           # default None
+)
+
+# Append one dead end without re-recording the whole experience. All four required.
+log_abandoned(
+    key="mem:episodic:01KQ...",
+    name="Alpine base image",
+    type="approach",                # 'library', 'approach', 'tool', 'pattern', or 'service'
+    reason="PyTorch has no musllinux wheels",
+)
+
+# Mark a single strong lesson skill-eligible (bypasses the reinforcement gate).
+bless(memory_key="mem:episodic:01KQ...")   # episodic keys only
+```
+
+`record_experience(outcome="abandoned", effort_score=4)` (or 5) also auto-suppresses each abandoned approach name as a topic.
+
 ## Indexed fields
 
 `idx:episodic` indexes: `vector` (HNSW cosine), `project` (tag), `state` (tag), `tags` (tag), `outcome` (tag), `surface_score`, `created_at`, `updated_at`, `effort_score`, `iterations`, `experience_weight`, `recall_count` (numeric).

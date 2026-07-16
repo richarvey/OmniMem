@@ -34,6 +34,60 @@ One per project, keyed by name: `mem:project:omnimem`. Created and fully replace
 | `project` | string | The project scope, as on other namespaces. |
 | `project_name` | string | Set to the same value at write time so the project index and UI (which key on `project_name`) see the memory immediately. A startup migration backfills older records that only carried `project`. |
 
+## Calling the tools
+
+```python
+# Create or fully replace a project's context entry. Everything except notes is required.
+set_project_context(
+    project_name="omnimem",         # 1-200 chars: alphanumeric, hyphens, underscores, dots, spaces
+    description="Self-hosted semantic memory MCP server for Claude Code",
+    stack="Python 3.12, FastMCP, Valkey, sentence-transformers",
+    goals="Ship v6.3.1; keep coverage above 90%",
+    current_state="v6 branch, skills compiler and web UI login shipped",
+    notes="Recompile the python skill after the next round of fixes",  # default None
+)
+
+# Patch state and notes without re-embedding (the vector lags until the next full save).
+update_project_state(
+    project_name="omnimem",         # required
+    current_state="Changelog updated for 6.3.1",  # required
+    notes="Docs examples still to review",        # default None
+)
+
+# Draft (or refresh) the context entry from the project's episodic memories.
+compile_project_context(
+    project_name="omnimem",         # required
+    auto_save=False,                # default — returns the draft for review;
+)                                   # True saves it straight to mem:project:{name}
+
+# Fetch the full context entry (description, goals, current_state, notes included —
+# vector search only returns the whitelisted subset).
+get_project_context(project_name="omnimem")
+
+# Store a project-scoped ULID memory (gets both project and project_name fields).
+remember(
+    content="The web UI detail view needs a context entry to enable links",
+    namespace="project",
+    project="omnimem",
+    tags=["web-ui"],
+)
+
+# Bulk lifecycle over every memory matching the project. All three share the same shape:
+# confirm=False (default) returns a preview with counts; include_context=False (default)
+# leaves the mem:project:{name} context entry untouched.
+delete_project(project_name="omnimem", confirm=True, include_context=False)
+deprioritise_project(
+    project_name="omnimem",
+    confirm=True,
+    reason="Parked until autumn",   # default None; delete_project has no reason arg
+    include_context=False,
+)
+reinstate_project(project_name="omnimem", confirm=True, include_context=False)
+
+# List every known project (context entries and ULID-only projects, deduplicated by name).
+list_projects()
+```
+
 ## Indexed fields
 
 `idx:project` indexes: `vector` (HNSW cosine), `project_name` (tag), `stack` (tag), `state` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).

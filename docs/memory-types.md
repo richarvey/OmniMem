@@ -58,6 +58,42 @@ Defined in `memory/lifecycle.py`. Allowed transitions:
 
 Deprioritising with a reason writes `deprioritised_reason`; reinstating clears it and resets `surface_score` to 1.0. `reinstate_hints` (JSON array of keywords) flags a deprioritised memory as a reinstate candidate when a recall query matches one of the hints.
 
+## Calling the cross-namespace tools
+
+Writers are shown in each namespace's spec. These work on any memory regardless of type:
+
+```python
+# Semantic search across namespaces.
+recall(
+    query="docker arm64 build failures",  # required
+    top_k=5,                        # default; max results after ranking
+    namespaces=["episodic", "knowledge"],  # default None — episodic, project, knowledge,
+                                    # and preference (skill discovery goes via find_skills)
+    project_filter="omnimem",       # default None — no project restriction
+    expand_queries=False,           # default follows RECALL_EXPAND_QUERIES env var;
+)                                   # True unions alternative phrasings via Claude Haiku
+
+# Replace or adjust tags without re-embedding. tags is mutually exclusive with add/remove.
+retag(key="mem:episodic:01KQ...", tags=["docker", "arm64"])   # full replacement; [] clears
+retag(key="mem:episodic:01KQ...", add=["ci"], remove=["wip"]) # adjust the existing set
+
+# Lifecycle transitions. Each accepts a key or a natural-language query — a query
+# resolves via recall and transitions the confident matches (top 3).
+deprioritise(
+    key_or_query="mem:episodic:01KQ...",   # required
+    reason="Superseded by the v6 approach",  # required
+    reinstate_hints=["binfmt", "arm64"],   # default None; keywords that flag it as a
+)                                          # reinstate candidate in future queries
+archive(
+    key_or_query="mem:episodic:01KQ...",   # required
+    reason="Historical only",              # default None
+)
+reinstate(key_or_query="mem:episodic:01KQ...")  # back to active, surface_score 1.0
+
+# Permanent deletion. confirm=False (default) returns a preview of what would go.
+forget(key_or_query="mem:episodic:01KQ...", confirm=True)
+```
+
 ## Search indexes
 
 Each namespace has one HNSW vector index (`idx:episodic`, `idx:project`, `idx:knowledge`, `idx:preference`, `idx:skill`) with cosine distance over the 384-dim vector, plus the tag and numeric fields listed in each spec. Index definitions live in `INDEX_DEFINITIONS` in `memory/store.py`; a startup migration drops and recreates any index whose field count no longer matches.

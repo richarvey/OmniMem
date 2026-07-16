@@ -31,6 +31,25 @@ Preferences are prescriptive rules about how to work: "always update the README 
 
 Extracted preferences are dedup-checked (cosine 0.92, project-scoped) before writing, so re-remembering similar conversations does not pile up duplicates.
 
+## Calling the tools
+
+Extracted preferences arrive via the enrichment worker; the direct path is `remember()`:
+
+```python
+# Store a preference verbatim (surface_score 1.0, no scope field).
+remember(
+    content="Always update the README in the same change as a new feature",
+    namespace="preference",         # routes the write here
+    project="omnimem",              # default None — omit for a global preference
+    tags=["workflow"],              # default None
+    force=False,                    # default; True skips dedup, the contradiction
+                                    # check, and enrichment (raw bypass write)
+    mode="raw",                     # 'raw' stores verbatim; 'full' (the INGEST_MODE
+)                                   # default) also queues the write for fact extraction
+```
+
+The enrichment path needs no call: with `INGEST_MODE=full`, any `remember()` whose extracted facts classify as preferences routes those facts here automatically, at `surface_score` 0.5 with `scope`, `enriched_from`, and `event_date` set.
+
 ## Indexed fields
 
 `idx:preference` indexes: `vector` (HNSW cosine), `project` (tag), `scope` (tag), `state` (tag), `tags` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).

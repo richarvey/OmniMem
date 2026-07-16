@@ -73,6 +73,46 @@ Experience and graveyard writes flow freely; the gate sits only at compile-to-sk
 | `min_reinforcement` | Gate setting used. |
 | `rule_manifest`, `source_manifest` | JSON, copied onto the skill at commit. |
 
+## Calling the tools
+
+```python
+# Step 1: propose. Gathers the pool, renders the draft, stashes it, returns the
+# full body (new skill) or a unified diff with a risk-classified change list (recompile).
+compile_skill(
+    domain="python",                # required; aliases resolve ('py' → 'python'),
+                                    # near-misses get a "did you mean" suggestion
+    mode="propose",                 # default
+    min_reinforcement=2,            # default; clamped 1-10 — distinct source memories
+                                    # a lesson needs to become a rule
+    include_graveyard=True,         # default; False drops the Don't section inputs
+    description="Python lessons learned on OmniMem",  # default None — drafted for a new
+)                                   # skill, kept from the stored skill on recompile
+
+# Step 2: review the draft/diff with the human, then commit it verbatim.
+compile_skill(
+    domain="python",
+    mode="write",                   # refuses without a live proposal, on a stale
+                                    # proposal (body SHA changed since propose), or
+                                    # if the stored record isn't generated: true
+    export_path="python.md",        # default None; also mirrors the body to a file
+)                                   # under SKILL_EXPORT_DIR (traversal-guarded)
+
+# Search skills by relevance — matches the discovery metadata (name, description,
+# domain), never the body.
+find_skills(query_or_domain="asyncio event loops")
+
+# Fetch the whole SKILL.md body (bumps recall_count / last_recalled). Accepts the
+# full key, the name ('python-local'), or a bare domain ('python' — aliases resolve).
+get_skill(skill_id="mem:skill:gen:python-local")
+
+# Feed the compiler: mark one strong episodic lesson skill-eligible…
+bless(memory_key="mem:episodic:01KQ...")
+
+# …or vet a knowledge article into the Reference section (see memory-knowledge.md
+# for the full promote_knowledge() options, including per-rule extraction).
+promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python")
+```
+
 ## Rule inputs and gates, summarised
 
 | Input | Becomes | Gate |
