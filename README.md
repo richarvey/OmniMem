@@ -183,6 +183,16 @@ Expose the MCP port through Traefik and every machine you work from shares the s
 
 ## Quick start
 
+The fastest route is the installer, which uses the pre-built Docker Hub images. It checks Docker is installed, generates secure passwords, asks whether the MCP server should be reachable from your network, writes a sensible `.env`, and starts everything:
+
+```bash
+curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/v6/install.sh | bash
+```
+
+Works on macOS and Linux. See [guides/docker-hub.md](guides/docker-hub.md) for the manual version of the same setup.
+
+Or build from source instead:
+
 ```bash
 git clone https://codeberg.org/ric_harvey/omnimem.git && cd omnimem
 cp .env.example .env

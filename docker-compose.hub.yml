@@ -1,0 +1,73 @@
+# OmniMem — pre-built Docker Hub images (richarvey/omnimem-*:latest).
+# Fetched by install.sh, but works standalone too: save as docker-compose.yml
+# next to a .env file (see .env.example) and run `docker compose up -d`.
+#
+# MCP_BIND / WEB_BIND control the host interface each port binds to:
+# 127.0.0.1 (default) keeps it local, 0.0.0.0 opens it to the network.
+
+services:
+  valkey:
+    image: valkey/valkey-extension:latest
+    command: >
+      valkey-server
+      --loadmodule /usr/lib/valkey/libsearch.so
+      --requirepass ${VALKEY_PASSWORD:?VALKEY_PASSWORD must be set in .env}
+      --notify-keyspace-events AKE
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - valkey_data:/data
+    environment:
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mcp_server:
+    image: richarvey/omnimem-mcp:latest
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
+    volumes:
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    environment:
+      - MCP_HOST=0.0.0.0
+    restart: unless-stopped
+
+  rss_worker:
+    image: richarvey/omnimem-rss:latest
+    depends_on:
+      valkey:
+        condition: service_healthy
+    volumes:
+      - ./feeds.yml:/app/feeds.yml
+    env_file:
+      - .env
+    environment:
+      - OMP_NUM_THREADS=1
+      - TOKENIZERS_PARALLELISM=false
+    restart: unless-stopped
+
+  web_ui:
+    image: richarvey/omnimem-web:latest
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    volumes:
+      - ./backups:/app/backups
+      - ./feeds.yml:/app/feeds.yml
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  valkey_data:
