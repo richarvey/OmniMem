@@ -1,6 +1,7 @@
 """Shared test fixtures: in-memory fakes for ValkeyStore and Embedder."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -8,6 +9,20 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+# load_dotenv() walks up the directory tree, so on a machine that also runs
+# OmniMem it can find a production .env and pull real credentials into the
+# test process — enabling the web UI auth middleware at import time and, far
+# worse, letting recall/extraction tests make real Anthropic API calls.
+# Neutralise it for the whole session: conftest imports before every test
+# module, so any `from dotenv import load_dotenv` binds this stub.
+import dotenv
+
+dotenv.load_dotenv = lambda *args, **kwargs: False
+
+# Belt and braces for the import-time middleware decision in web_ui.app.
+os.environ["WEB_UI_LOGIN_ENABLED"] = "false"
+os.environ["WEB_UI_AUTH_TOKEN"] = ""
 
 # Ensure mcp_server is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -390,6 +405,36 @@ class FakeValkeyStore:
                 restored += 1
                 restored_keys.append(key)
         return restored, skipped, restored_keys
+
+
+@pytest.fixture
+def web_client(fake_store, fake_embedder, monkeypatch):
+    """Starlette TestClient over the real web UI app, backed by the fakes.
+
+    The auth middleware is decided at first import of web_ui.app, so the
+    login/bearer env vars are forced off before the import — later tests
+    reuse the already-imported module and stay unauthenticated.
+    """
+    monkeypatch.setenv("WEB_UI_LOGIN_ENABLED", "false")
+    monkeypatch.setenv("WEB_UI_AUTH_TOKEN", "")
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from starlette.testclient import TestClient
+
+    from web_ui import deps as web_deps
+    from web_ui.app import app
+
+    lifecycle = MemoryLifecycle(fake_store)
+    monkeypatch.setattr(web_deps, "init", lambda: None)
+    monkeypatch.setattr(web_deps, "store", fake_store)
+    monkeypatch.setattr(web_deps, "embedder", fake_embedder)
+    monkeypatch.setattr(web_deps, "lifecycle", lifecycle)
+    monkeypatch.setattr(
+        web_deps, "pipeline", RecallPipeline(fake_store, fake_embedder, lifecycle)
+    )
+
+    with TestClient(app) as client:
+        yield client
 
 
 @pytest.fixture

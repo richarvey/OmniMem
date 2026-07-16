@@ -33,7 +33,9 @@ mcp_server/           # MCP server — FastMCP SSE transport
     topics.py         # suppress/unsuppress/list_suppressions
     skills.py         # compile_skill (propose/write gate), find_skills, get_skill, bless + briefing surfaces
   tests/              # pytest with in-memory fakes (no Docker needed)
-    conftest.py       # FakeValkeyClient, FakeEmbedder, FakeStore fixtures
+    conftest.py       # FakeValkeyClient, FakeEmbedder, FakeStore fixtures + web_client
+                      # (TestClient over the real web_ui app; neutralises load_dotenv so
+                      # a production .env further up the tree can't leak into tests)
 
 web_ui/               # Starlette + Jinja2 + htmx dashboard
   app.py              # ASGI app setup, route mounting
