@@ -2,9 +2,13 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [6.3.1] - 2026-07-13
+## [6.3.1] - 2026-07-16
 ### Added
 - **The web UI has a login page**: when `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` are set — the same pair that guards the MCP OAuth flow — the dashboard now asks you to sign in with them, so one set of credentials covers both doors. A successful login stores an opaque session token in Valkey (7 days by default, `WEB_UI_SESSION_HOURS` to change it) behind an HttpOnly cookie, and the footer gains a Sign out button that revokes the session server-side, not just in the browser. Failed attempts are rate limited per IP with the same knobs as the OAuth form (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`). The login page follows the theme switch and plays nicely with password managers (proper `autocomplete` attributes). Set `WEB_UI_LOGIN_ENABLED=false` to keep the old behaviour. `WEB_UI_AUTH_TOKEN` bearer auth still works alongside it for scripts and monitoring, and `/metrics` and static assets stay exempt. Expired sessions bounce htmx requests to the login page whole, not into a page fragment
+- **One-line installer**: `install.sh` gets a full stack running without cloning the repo — it checks for Docker and Compose, downloads a `docker-compose.hub.yml` that pulls the public `richarvey/omnimem-*` images from Docker Hub, generates secure passwords, asks whether the MCP port should be reachable from the network (localhost-only by default, via a new `MCP_BIND` variable in the port mapping), writes a `.env` with sensible defaults, and offers to start the stack there and then. Works on macOS and Linux, and copes with being piped through `curl | bash` with or without a terminal attached
+- **Per-namespace memory type specifications**: six new documents under `docs/` — a shared overview of the storage model, lifecycle states, and indexes, plus one spec per memory type (episodic, project, knowledge, preference, skill) covering every stored field, its format, what writes it, and which gates apply
+### Changed
+- **Test coverage rose from 79% to 90%**: 129 new tests drive the web UI's search, suppressions, duplicates, contradictions, create, detail, projects, experience, metrics, backup, and feeds routes through the real Starlette app (handlers, templates, and redirects exercised together), and cover the RSS worker's summariser (retries, refusal detection, fallback) and ingester (summary and digest modes, dedup, error paths) with faked Anthropic and Valkey clients. The test conftest also neutralises `load_dotenv` for the whole session — on a host that also runs OmniMem, tests were picking up a production `.env` further up the tree, switching on the auth middleware and making real Anthropic API calls; with that gone the suite runs in roughly half the time
 
 ## [6.3.0] - 2026-07-12
 ### Added
