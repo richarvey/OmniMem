@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation placeholder tokens in the deployment guides"
+regexes = ['''your-mcp-token''']
