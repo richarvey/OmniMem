@@ -1,4 +1,4 @@
-# \<OmniMem\> <sub>[omnimem.org](https://omnimem.org)</sub>
+# \<OmniMem\><br><sub><sub>[omnimem.org](https://omnimem.org)</sub></sub>
 
 [![Security Scans](https://codeberg.org/ric_harvey/omnimem/badges/workflows/security.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
 [![Docker Build](https://codeberg.org/ric_harvey/omnimem/badges/workflows/docker.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
