@@ -177,6 +177,7 @@ The full walkthrough, including auth tokens, permission settings, and the other 
 | [Architecture](docs/architecture.md) | Containers, recall pipeline, design decisions |
 | [Memory type specs](docs/memory-types.md) | The storage model, field by field |
 | [Connection guides](guides/) | Per-agent setup |
+| Deployment guides | [macOS](guides/omnimem-setup-macos.md) · [Raspberry Pi](guides/omnimem-setup-raspberry-pi.md) · [AWS](guides/omnimem-setup-aws-linux.md) · [GCP](guides/omnimem-setup-gcp-linux.md) · [Linux + Tailscale Funnel](guides/omnimem-setup-linux-tailscale.md) |
 
 Per-namespace storage specifications, if you want to know exactly what gets written to Valkey and by whom: [overview](docs/memory-types.md) · [episodic](docs/memory-episodic.md) · [project](docs/memory-project.md) · [knowledge](docs/memory-knowledge.md) · [preference](docs/memory-preference.md) · [skill](docs/memory-skill.md)
 

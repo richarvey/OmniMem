@@ -23,6 +23,8 @@ Everything that used to live in one very long README, now in sensible pieces. St
 - [Memory types overview](memory-types.md) — the storage model shared by all five namespaces
   - [Episodic](memory-episodic.md) · [Project](memory-project.md) · [Knowledge](memory-knowledge.md) · [Preference](memory-preference.md) · [Skill](memory-skill.md)
 
-## Connection guides
+## Connection and deployment guides
 
 Per-agent setup lives in [../guides/](../guides/): claude.ai, Claude Code, Claude Desktop, Cursor, GitHub Copilot, GitLab Duo, AWS Kiro, OpenCode, OpenAI Codex CLI, Open Design, and the Docker Hub images.
+
+Platform deployment guides live there too: [macOS](../guides/omnimem-setup-macos.md), [Raspberry Pi](../guides/omnimem-setup-raspberry-pi.md), [AWS (Linux)](../guides/omnimem-setup-aws-linux.md), [GCP (Linux)](../guides/omnimem-setup-gcp-linux.md), and [Linux with Tailscale Funnel](../guides/omnimem-setup-linux-tailscale.md).
