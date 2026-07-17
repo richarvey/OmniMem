@@ -185,7 +185,7 @@ Per-namespace storage specifications, if you want to know exactly what gets writ
 
 ## Contributing
 
-Issues and PRs are welcome. OmniMem is designed to be extended and the scoring pipeline is structured so new multipliers can be added without touching the core. New MCP tools, additional namespace types, and alternative embedding backends are all reasonable directions.
+Issues and PRs are welcome. Development happens on [Codeberg](https://codeberg.org/ric_harvey/omnimem) — issues and PRs there please. OmniMem is designed to be extended and the scoring pipeline is structured so new multipliers can be added without touching the core. New MCP tools, additional namespace types, and alternative embedding backends are all reasonable directions.
 
 ---
 
