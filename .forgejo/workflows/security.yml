@@ -11,7 +11,7 @@ on:
 jobs:
   bandit:
     name: Bandit SAST
-    runs-on: codeberg-small
+    runs-on: sqcows
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +28,7 @@ jobs:
 
   pip-audit:
     name: Dependency Audit (${{ matrix.service }})
-    runs-on: codeberg-small
+    runs-on: sqcows
     strategy:
       matrix:
         service:
@@ -51,7 +51,7 @@ jobs:
 
   coverage:
     name: Test Coverage
-    runs-on: codeberg-small
+    runs-on: sqcows
     steps:
       - uses: actions/checkout@v4
 
@@ -93,7 +93,7 @@ jobs:
 
   gitleaks:
     name: Secret Scan
-    runs-on: codeberg-small
+    runs-on: sqcows
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,7 +103,11 @@ jobs:
         env:
           GITLEAKS_VERSION: "8.30.1"
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz
+          case "$(uname -m)" in
+            aarch64) ARCH=arm64 ;;
+            *) ARCH=x64 ;;
+          esac
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${ARCH}.tar.gz" | tar xz
           chmod +x gitleaks
 
       - name: Run Gitleaks

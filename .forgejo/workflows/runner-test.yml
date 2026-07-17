@@ -8,11 +8,13 @@ jobs:
     name: Probe sqcows runner
     runs-on: sqcows
     steps:
+      - uses: actions/checkout@v4
+
       - name: Environment probe
         run: |
           echo "uname: $(uname -a)"
-          echo "user: $(id)"
-          echo "PATH: $PATH"
-          echo "which docker: $(which docker || echo 'not found')"
-          /usr/bin/docker version || echo "/usr/bin/docker failed"
+          echo "node: $(node --version 2>&1 || echo 'not found')"
+          echo "python3: $(python3 --version 2>&1 || echo 'not found')"
+          /usr/bin/docker version --format 'docker: {{.Server.Version}}' || echo "/usr/bin/docker failed"
+          /usr/bin/docker buildx version || echo "buildx missing"
           df -h / | tail -1
