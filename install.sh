@@ -34,20 +34,40 @@ note() { printf '%s\n' "    $*"; }
 warn() { printf '%s\n' "${YELLOW}warning:${RESET} $*" >&2; }
 die()  { printf '%s\n' "${RED}error:${RESET} $*" >&2; exit 1; }
 
-# When piped through `curl | bash`, stdin is the script itself — reattach
-# prompts to the terminal so `read` still works. Probe in a subshell first:
-# a failed redirection on `exec` would kill the script outright.
-if [ ! -t 0 ] && (exec < /dev/tty) 2>/dev/null; then
-  exec < /dev/tty
-fi
+STEP=0
+STEP_TOTAL=6
+step() {
+  STEP=$((STEP + 1))
+  printf '\n%s\n' "${GREEN}==>${RESET} ${BOLD}[${STEP}/${STEP_TOTAL}] $*${RESET}"
+}
+
+# When piped through `curl | bash`, stdin is the script itself, and bash is
+# still reading it — NEVER `exec < /dev/tty` here, or bash starts reading the
+# rest of the script from the keyboard and appears to hang. Instead, each
+# prompt reads from /dev/tty directly, leaving the script stream alone.
 INTERACTIVE=0
-[ -t 0 ] && INTERACTIVE=1
+PROMPT_TTY=""
+if [ -t 0 ]; then
+  INTERACTIVE=1
+elif (exec < /dev/tty) 2>/dev/null; then   # probe only, in a subshell
+  INTERACTIVE=1
+  PROMPT_TTY="/dev/tty"
+fi
+
+# prompt_read "prompt text" varname — read a reply from the terminal
+prompt_read() {
+  if [ -n "$PROMPT_TTY" ]; then
+    read -r -p "$1" "$2" < "$PROMPT_TTY"
+  else
+    read -r -p "$1" "$2"
+  fi
+}
 
 # ask "question" "default" -> echoes the answer
 ask() {
-  local question="$1" default="$2" answer
+  local question="$1" default="$2" answer=""
   if [ "$INTERACTIVE" -eq 1 ]; then
-    read -r -p "${question} [${default}]: " answer || answer=""
+    prompt_read "${question} [${default}]: " answer || answer=""
     printf '%s' "${answer:-$default}"
   else
     printf '%s' "$default"
@@ -56,12 +76,10 @@ ask() {
 
 # confirm "question" "y"|"n" -> returns 0 for yes
 confirm() {
-  local question="$1" default="$2" hint answer
+  local question="$1" default="$2" hint answer=""
   if [ "$default" = "y" ]; then hint="Y/n"; else hint="y/N"; fi
   if [ "$INTERACTIVE" -eq 1 ]; then
-    read -r -p "${question} [${hint}]: " answer || answer=""
-  else
-    answer=""
+    prompt_read "${question} [${hint}]: " answer || answer=""
   fi
   answer="${answer:-$default}"
   case "$answer" in
@@ -97,6 +115,36 @@ fetch() {
   fi
 }
 
+# wait_for_url <label> <url> — poll until the URL answers HTTP at all (any
+# status code counts: 401/406 still means the service is up), printing a dot
+# every 2s so there's visible progress. Times out after ~5 minutes.
+wait_for_url() {
+  local label="$1" url="$2" tries=150 rc code
+  printf '    %s ' "$label"
+  while [ "$tries" -gt 0 ]; do
+    if command -v curl >/dev/null 2>&1; then
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$url" 2>/dev/null || true)"
+      if [ "$code" != "000" ] && [ -n "$code" ]; then
+        printf ' %sready%s\n' "$GREEN" "$RESET"
+        return 0
+      fi
+    else
+      rc=0
+      wget -q -T 2 -t 1 -O /dev/null "$url" 2>/dev/null || rc=$?
+      # 0 = OK, 8 = server answered with an error status — either way it's up
+      if [ "$rc" -eq 0 ] || [ "$rc" -eq 8 ]; then
+        printf ' %sready%s\n' "$GREEN" "$RESET"
+        return 0
+      fi
+    fi
+    printf '.'
+    sleep 2
+    tries=$((tries - 1))
+  done
+  printf ' %sstill starting%s\n' "$YELLOW" "$RESET"
+  return 1
+}
+
 # --------------------------------------------------------------- checks ----
 
 OS="$(uname -s)"
@@ -107,6 +155,8 @@ case "$OS" in
 esac
 
 say "OmniMem installer (${OS_NAME})"
+
+step "Checking prerequisites"
 
 if ! command -v docker >/dev/null 2>&1; then
   warn "Docker is not installed."
@@ -147,24 +197,30 @@ note "Docker and Compose found: $(docker --version)"
 
 # ------------------------------------------------------------ directory ----
 
+step "Choosing an install directory"
+
 INSTALL_DIR="$(ask 'Where should OmniMem be installed?' "${OMNIMEM_DIR:-./omnimem}")"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 INSTALL_DIR="$(pwd)"
-say "Installing into ${INSTALL_DIR}"
+note "Installing into ${INSTALL_DIR}"
 
 # --------------------------------------------------------- compose file ----
 
+step "Fetching configuration files"
+
 if [ -f docker-compose.yml ]; then
   if confirm "docker-compose.yml already exists — overwrite it?" "n"; then
+    note "Downloading docker-compose.yml from ${RAW_BASE} ..."
     fetch "${RAW_BASE}/${COMPOSE_FILE_NAME}" docker-compose.yml
-    say "Refreshed docker-compose.yml"
+    note "Refreshed docker-compose.yml"
   else
     note "Keeping the existing docker-compose.yml"
   fi
 else
+  note "Downloading docker-compose.yml from ${RAW_BASE} ..."
   fetch "${RAW_BASE}/${COMPOSE_FILE_NAME}" docker-compose.yml
-  say "Downloaded docker-compose.yml (Docker Hub images, :latest tag)"
+  note "Downloaded docker-compose.yml (Docker Hub images, :latest tag)"
 fi
 
 mkdir -p backups
@@ -183,6 +239,8 @@ fi
 
 # ------------------------------------------------------------- questions ----
 
+step "Configuration"
+
 if [ -f .env ]; then
   if ! confirm ".env already exists — overwrite it with fresh settings?" "n"; then
     note "Keeping the existing .env — configuration questions skipped"
@@ -195,8 +253,6 @@ else
 fi
 
 if [ "$KEEP_ENV" -eq 0 ]; then
-  say "Configuration"
-
   # Valkey password — required, so generate unless the user wants their own.
   if confirm "Generate a secure Valkey database password?" "y"; then
     VALKEY_PASSWORD="$(gen_secret 32)"
@@ -279,19 +335,46 @@ AUTO_MAINTENANCE_INTERVAL=10
 BACKUP_DIR=/app/backups
 EOF
   chmod 600 .env
-  say "Wrote .env (permissions 600)"
+  note "Wrote .env (permissions 600)"
 fi
 
 # ----------------------------------------------------------------- start ----
 
+step "Pulling images and starting services"
+
 if confirm "Pull the images and start OmniMem now?" "y"; then
-  say "Pulling images (first pull is ~2 GB, mostly PyTorch — grab a coffee)"
-  "${COMPOSE[@]}" pull
-  say "Starting services"
-  "${COMPOSE[@]}" up -d
+  note "Pulling images (first pull is ~2 GB, mostly PyTorch — grab a coffee)"
+  "${COMPOSE[@]}" pull < /dev/null
+  note "Starting services ..."
+  "${COMPOSE[@]}" up -d < /dev/null
   STARTED=1
 else
+  note "Skipped — start later with: cd ${INSTALL_DIR} && ${COMPOSE[*]} up -d"
   STARTED=0
+fi
+
+# ------------------------------------------------------------- readiness ----
+
+step "Waiting for services to come up"
+
+if [ "$STARTED" -eq 1 ]; then
+  # Ports may come from an existing .env the user chose to keep.
+  MCP_PORT_VAL="$(sed -n 's/^MCP_PORT=//p' .env 2>/dev/null | tail -1)"
+  WEB_PORT_VAL="$(sed -n 's/^WEB_PORT=//p' .env 2>/dev/null | tail -1)"
+  MCP_PORT_VAL="${MCP_PORT_VAL:-8765}"
+  WEB_PORT_VAL="${WEB_PORT_VAL:-8080}"
+
+  note "First start downloads the embedding model inside the containers,"
+  note "so this can take a few minutes. Each dot is a health check:"
+  ALL_READY=1
+  if ! wait_for_url "MCP server    " "http://localhost:${MCP_PORT_VAL}/mcp"; then ALL_READY=0; fi
+  if ! wait_for_url "Web dashboard " "http://localhost:${WEB_PORT_VAL}/"; then ALL_READY=0; fi
+  if [ "$ALL_READY" -eq 0 ]; then
+    warn "some services are still starting — watch their logs with:"
+    note "  cd ${INSTALL_DIR} && ${COMPOSE[*]} logs -f"
+  fi
+else
+  note "Skipped — services were not started"
 fi
 
 # --------------------------------------------------------------- summary ----
