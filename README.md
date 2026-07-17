@@ -29,13 +29,14 @@ That warning came from memory, not luck. The mistake you already paid for does n
 
 ## Get going quickly
 
-One command gets the full stack running from the pre-built Docker Hub images:
-
-```bash
-curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
-```
-
-Then point your agent at it — the [quick start](docs/quick-start.md) walks through the rest, or jump to the fuller [quick start section](#quick-start) below.
+> [!TIP]
+> One command gets the full stack running from the pre-built Docker Hub images:
+>
+> ```bash
+> curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
+> ```
+>
+> Then point your agent at it — the [quick start](docs/quick-start.md) walks through the rest, or jump to the fuller [quick start section](#quick-start) below.
 
 ---
 
