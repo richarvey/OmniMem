@@ -18,8 +18,9 @@ jobs:
 
       - name: Set up Docker Buildx
         run: |
-          /usr/bin/docker buildx create --name multiarch --driver docker-container --use || true
-          /usr/bin/docker buildx inspect --bootstrap
+          /usr/bin/docker buildx inspect multiarch >/dev/null 2>&1 || \
+            /usr/bin/docker buildx create --name multiarch --driver docker-container
+          /usr/bin/docker buildx inspect --bootstrap --builder multiarch
 
       - name: Login to Docker Hub
         run: |
@@ -29,6 +30,7 @@ jobs:
       - name: Build and push
         run: |
           /usr/bin/docker buildx build \
+            --builder multiarch \
             --platform linux/amd64,linux/arm64 \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:${{ github.ref_name }}" \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-mcp:latest" \
@@ -46,8 +48,9 @@ jobs:
 
       - name: Set up Docker Buildx
         run: |
-          /usr/bin/docker buildx create --name multiarch --driver docker-container --use || true
-          /usr/bin/docker buildx inspect --bootstrap
+          /usr/bin/docker buildx inspect multiarch >/dev/null 2>&1 || \
+            /usr/bin/docker buildx create --name multiarch --driver docker-container
+          /usr/bin/docker buildx inspect --bootstrap --builder multiarch
 
       - name: Login to Docker Hub
         run: |
@@ -57,6 +60,7 @@ jobs:
       - name: Build and push
         run: |
           /usr/bin/docker buildx build \
+            --builder multiarch \
             --platform linux/amd64,linux/arm64 \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:${{ github.ref_name }}" \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-web:latest" \
@@ -75,8 +79,9 @@ jobs:
 
       - name: Set up Docker Buildx
         run: |
-          /usr/bin/docker buildx create --name multiarch --driver docker-container --use || true
-          /usr/bin/docker buildx inspect --bootstrap
+          /usr/bin/docker buildx inspect multiarch >/dev/null 2>&1 || \
+            /usr/bin/docker buildx create --name multiarch --driver docker-container
+          /usr/bin/docker buildx inspect --bootstrap --builder multiarch
 
       - name: Login to Docker Hub
         run: |
@@ -86,6 +91,7 @@ jobs:
       - name: Build and push
         run: |
           /usr/bin/docker buildx build \
+            --builder multiarch \
             --platform linux/amd64,linux/arm64 \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:${{ github.ref_name }}" \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:latest" \
