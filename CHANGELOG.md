@@ -3,9 +3,13 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [6.3.2] - 2026-07-17
+### Added
+- **Five platform deployment guides**: step-by-step setup for macOS (Docker Desktop, Apple Silicon and Intel), Raspberry Pi (64-bit OS, native arm64), AWS EC2 (Linux), GCP Compute Engine (Linux), and any Linux server with Tailscale Funnel for a public HTTPS endpoint without a domain or port forwarding. All linked from the README's documentation table and the docs index
+- **Skill demo playbook**: `scripts/skill_demo_playbook.md` walks a self-contained demo of the skill compiler — fictional moo-reports memories in, reinforcement gate visibly excluding a one-off lesson, propose-and-accept compile, a report written under the skill, knowledge watch flagging a contradicting article, and full cleanup. The seeded wordings and thresholds are verified against a live server (lesson texts cluster at 0.80; the watch trigger clears the 0.35 discovery-similarity floor)
 ### Changed
 - **The README became a front door and the manual moved to `docs/`**: the README had grown to over 600 lines of everything at once. It now reads like the [omnimem.org](https://omnimem.org) landing page — the problem, what OmniMem remembers, what makes it different, a quick start, and links out for the rest — while the detail moved into nine focused pages under `docs/`: quick start, features in depth, the skill compiler, the MCP tool reference, the configuration reference, RSS and knowledge, remote access (reverse proxy, OAuth, the 421/403 troubleshooting guide), the web UI tour, and architecture. A new `docs/README.md` indexes the lot, including the existing memory type specs and connection guides
 - **The architecture diagram is Mermaid now**: the ASCII box drawing gave way to a rendered Mermaid diagram in both the README and `docs/architecture.md`, which also gains a Mermaid recall-pipeline flowchart; the memory lifecycle in `docs/features.md` picked up a state diagram to match. Forgejo renders all three natively
+- **README front-door polish**: the omnimem.org link sits directly under the title, the Codeberg notice moved below the badges in small print (and is repeated in the contributing section), a get-going-quickly installer one-liner appears above the fold in a tip callout, the per-namespace memory specs are linked from the documentation section, and the long-obsolete SSE deprecation warning is gone
 
 ## [6.3.1] - 2026-07-16
 ### Added
