@@ -2,6 +2,11 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [6.3.2] - 2026-07-17
+### Changed
+- **The README became a front door and the manual moved to `docs/`**: the README had grown to over 600 lines of everything at once. It now reads like the [omnimem.org](https://omnimem.org) landing page — the problem, what OmniMem remembers, what makes it different, a quick start, and links out for the rest — while the detail moved into nine focused pages under `docs/`: quick start, features in depth, the skill compiler, the MCP tool reference, the configuration reference, RSS and knowledge, remote access (reverse proxy, OAuth, the 421/403 troubleshooting guide), the web UI tour, and architecture. A new `docs/README.md` indexes the lot, including the existing memory type specs and connection guides
+- **The architecture diagram is Mermaid now**: the ASCII box drawing gave way to a rendered Mermaid diagram in both the README and `docs/architecture.md`, which also gains a Mermaid recall-pipeline flowchart; the memory lifecycle in `docs/features.md` picked up a state diagram to match. Forgejo renders all three natively
+
 ## [6.3.1] - 2026-07-16
 ### Added
 - **The web UI has a login page**: when `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` are set — the same pair that guards the MCP OAuth flow — the dashboard now asks you to sign in with them, so one set of credentials covers both doors. A successful login stores an opaque session token in Valkey (7 days by default, `WEB_UI_SESSION_HOURS` to change it) behind an HttpOnly cookie, and the footer gains a Sign out button that revokes the session server-side, not just in the browser. Failed attempts are rate limited per IP with the same knobs as the OAuth form (`OAUTH_LOGIN_MAX_ATTEMPTS` / `OAUTH_LOGIN_WINDOW_SECONDS`). The login page follows the theme switch and plays nicely with password managers (proper `autocomplete` attributes). Set `WEB_UI_LOGIN_ENABLED=false` to keep the old behaviour. `WEB_UI_AUTH_TOKEN` bearer auth still works alongside it for scripts and monitoring, and `/metrics` and static assets stay exempt. Expired sessions bounce htmx requests to the login page whole, not into a page fragment
