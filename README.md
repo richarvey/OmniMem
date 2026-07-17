@@ -8,11 +8,6 @@ Development happens on Codeberg (https://codeberg.org/ric_harvey/omnimem) — is
 [![Docker Build](https://codeberg.org/ric_harvey/omnimem/badges/workflows/docker.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
 [![Coverage](https://codeberg.org/ric_harvey/omnimem/raw/branch/badges/coverage-badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
 
-> [!WARNING]
-> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but now supports Streamable HTTP via `MCP_TRANSPORT=http`. SSE will be removed in a future release. To migrate: set `MCP_TRANSPORT=http` in your `.env` and update your client config to use `"type": "http"` with URL `.../mcp` instead of `.../sse`. See the [connection guides](guides/) for updated examples.
->
-> Streamable HTTP support is a community contribution from [@timstoop](https://codeberg.org/timstoop) — thanks!
-
 **Stop living the same session twice.**
 
 Every Claude Code session starts from zero. No memory of your project. No memory of what failed last week. No memory that you spent three hours last Tuesday discovering why `onnxruntime` explodes on Alpine before finding something that actually works.
