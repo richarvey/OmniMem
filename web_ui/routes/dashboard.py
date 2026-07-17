@@ -28,6 +28,18 @@ def _stats_ttl() -> int:
     return int(os.getenv("DASHBOARD_STATS_TTL", "60"))
 
 
+def _resolve_project_state(context_state: str | None, member_states: list[str]) -> str:
+    """One state per project: the context entry's when it has one (that's what
+    bulk transitions stamp), otherwise the most-alive state among its memories."""
+    if context_state:
+        return context_state
+    if "active" in member_states:
+        return "active"
+    if "deprioritised" in member_states:
+        return "deprioritised"
+    return "archived"
+
+
 def _compute_stats(store) -> dict:
     """Scan the keyspace and build namespace/state counts + the recent list."""
     ns_stats = {}
@@ -38,6 +50,9 @@ def _compute_stats(store) -> dict:
         keys = store.scan_prefix(f"mem:{ns}:")
         if not keys:
             ns_stats[ns] = {"total": 0, "states": {"active": 0, "deprioritised": 0, "archived": 0}}
+            if ns == "project":
+                ns_stats[ns]["distinct"] = 0
+                ns_stats[ns]["projects"] = {"active": 0, "deprioritised": 0, "archived": 0}
             continue
 
         state_counts = {"active": 0, "deprioritised": 0, "archived": 0}
@@ -53,7 +68,9 @@ def _compute_stats(store) -> dict:
         )
         meta = store.get_fields_multi(keys, fields)
 
-        project_names: set[str] = set()
+        # name -> {"context_state": ..., "member_states": [...]} for the
+        # per-project state rollup on the Projects card.
+        project_map: dict[str, dict] = {}
         for key, data in zip(keys, meta):
             data = data or {}
             state = data.get("state", "active")
@@ -61,7 +78,13 @@ def _compute_stats(store) -> dict:
                 state_counts[state] += 1
             if ns == "project":
                 name = data.get("project_name") or data.get("project") or key.split(":")[-1]
-                project_names.add(name)
+                entry = project_map.setdefault(name, {"context_state": None, "member_states": []})
+                # Context entries live at mem:project:{name}; everything else
+                # under this prefix is a ULID project memory.
+                if key == f"mem:project:{name}":
+                    entry["context_state"] = state
+                else:
+                    entry["member_states"].append(state)
             candidates.append({
                 "key": key,
                 "namespace": ns,
@@ -72,9 +95,42 @@ def _compute_stats(store) -> dict:
         ns_stats[ns] = {"total": len(keys), "states": state_counts}
         if ns == "project":
             # Distinct projects, deduplicated by resolved name (matches the
-            # /projects page and list_projects).
-            ns_stats[ns]["distinct"] = len(project_names)
+            # /projects page and list_projects), broken down by project state.
+            project_states = {"active": 0, "deprioritised": 0, "archived": 0}
+            for entry in project_map.values():
+                resolved = _resolve_project_state(
+                    entry["context_state"], entry["member_states"]
+                )
+                if resolved in project_states:
+                    project_states[resolved] += 1
+            ns_stats[ns]["distinct"] = len(project_map)
+            ns_stats[ns]["projects"] = project_states
         total += len(keys)
+
+    # Compiled skills (v6) — counted separately from the memory total: they are
+    # build output derived from memories, not memories themselves.
+    skills = {
+        "total": 0,
+        "states": {"active": 0, "deprioritised": 0, "archived": 0},
+        "proposals": 0,
+    }
+    skill_keys = store.scan_prefix("mem:skill:")
+    if skill_keys:
+        skills["total"] = len(skill_keys)
+        skill_meta = store.get_fields_multi(skill_keys, ("state", "updated_at"))
+        for key, data in zip(skill_keys, skill_meta):
+            data = data or {}
+            state = data.get("state", "active")
+            if state in skills["states"]:
+                skills["states"][state] += 1
+            candidates.append({
+                "key": key,
+                "namespace": "skill",
+                "state": state,
+                "updated_at": float(data.get("updated_at", "0")),
+            })
+    # Proposals are TTL'd hashes, so anything found is still awaiting review.
+    skills["proposals"] = len(store.scan_prefix("meta:skill:proposal:"))
 
     # Rank across all namespaces, keep the 10 most recent, then hydrate only
     # those with content/project (a couple of extra small reads, not thousands).
@@ -82,20 +138,32 @@ def _compute_stats(store) -> dict:
     recent = candidates[:10]
     if recent:
         detail = store.get_fields_multi(
-            [m["key"] for m in recent], ("content", "project")
+            [m["key"] for m in recent], ("content", "project", "name", "description")
         )
         for mem, data in zip(recent, detail):
             data = data or {}
-            mem["content"] = (data.get("content") or "")[:100]
+            if mem["namespace"] == "skill":
+                # Skills carry no content field — show their discovery metadata.
+                label = " — ".join(
+                    part for part in (data.get("name"), data.get("description")) if part
+                )
+                mem["content"] = label[:100]
+            else:
+                mem["content"] = (data.get("content") or "")[:100]
             mem["project"] = data.get("project", "")
             ts = mem["updated_at"]
-            mem["updated_at_fmt"] = (
-                time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "—"
-            )
+            if ts > 0:
+                lt = time.localtime(ts)
+                mem["updated_date"] = time.strftime("%-d %b %Y", lt)
+                mem["updated_time"] = time.strftime("%H:%M", lt)
+            else:
+                mem["updated_date"] = "—"
+                mem["updated_time"] = ""
 
     return {
         "ns_stats": ns_stats,
         "total": total,
+        "skills": skills,
         "recent": recent,
         "computed_at": time.time(),
     }
@@ -112,7 +180,18 @@ def _load_cached_stats(store) -> dict | None:
         stats = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return None
-    return stats if isinstance(stats, dict) and "ns_stats" in stats else None
+    # Requiring "skills" too invalidates cache entries written by older
+    # versions whose payload predates the skills/projects card data.
+    if not isinstance(stats, dict) or "ns_stats" not in stats or "skills" not in stats:
+        return None
+    # Recent entries gained split date fields (updated_date/updated_time);
+    # a payload with the old updated_at_fmt shape would KeyError the template.
+    recent = stats.get("recent")
+    if not isinstance(recent, list) or any(
+        not isinstance(m, dict) or "updated_date" not in m for m in recent
+    ):
+        return None
+    return stats
 
 
 def _save_stats(store, stats: dict) -> None:
@@ -165,6 +244,7 @@ async def dashboard(request: Request) -> HTMLResponse:
         request=request,
         ns_stats=stats["ns_stats"],
         total=stats["total"],
+        skills=stats["skills"],
         recent=stats["recent"],
         stats_age=stats_age,
         health=health,

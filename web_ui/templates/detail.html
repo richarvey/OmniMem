@@ -79,7 +79,29 @@
   {% endif %}
 </div>
 
-{% if memory.tags %}
+{% if memory.namespace != 'skill' %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Tags</h3>
+  {% if memory.tags %}
+  <div style="margin-bottom:0.5rem">
+    {% for tag in memory.tags %}
+    <span class="badge" style="background:var(--bg-input);color:var(--text-dim);margin-right:0.25rem">{{ tag }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <form method="POST" action="/memory/{{ memory.key }}/tags" style="max-width:40rem">
+    <label for="tags-input" style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.25rem">Edit tags (comma-separated)</label>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <input type="text" id="tags-input" name="tags" class="form-input" style="flex:1;min-width:12rem"
+             value="{{ memory.tags | join(', ') }}" placeholder="e.g. python, bug-fix, working">
+      <button type="submit" class="btn btn-secondary btn-sm">Save tags</button>
+    </div>
+  </form>
+  {% if tag_error %}
+  <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ tag_error }}</p>
+  {% endif %}
+</div>
+{% elif memory.tags %}
 <div style="margin-bottom:1.5rem">
   <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Tags</h3>
   {% for tag in memory.tags %}

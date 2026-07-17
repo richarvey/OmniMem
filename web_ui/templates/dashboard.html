@@ -16,18 +16,49 @@
 </header>
 
 {% if stats_age is not none %}
-<p class="stats-meta" style="color:var(--text-muted,#94a3b8);font-size:.8rem;margin:0 0 .75rem;">
+<p class="stats-meta">
   Stats updated {{ stats_age }}s ago · <a href="/?refresh=1">refresh now</a>
 </p>
 {% endif %}
 
+{% set ns_links = {
+  "episodic": "/memories?namespace=episodic",
+  "project": "/projects",
+  "knowledge": "/memories?namespace=knowledge",
+  "preference": "/memories?namespace=preference",
+} %}
+{% if total > 0 %}
+<section class="composition" aria-label="Memory composition by namespace">
+  <a class="composition-total" href="/memories">
+    <span class="composition-num">{{ total }}</span>
+    <span class="composition-label">memories across all namespaces</span>
+  </a>
+  <div class="composition-main">
+    <div class="composition-bar" role="img"
+         aria-label="{% for ns, stats in ns_stats.items() %}{{ stats.total }} {{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}">
+      {%- for ns, stats in ns_stats.items() %}{% if stats.total > 0 -%}
+      <div class="composition-seg ns-{{ ns }}" style="width: {{ '%.2f' % (stats.total / total * 100) }}%"></div>
+      {%- endif %}{% endfor -%}
+    </div>
+    <div class="composition-legend" aria-hidden="true">
+      {% for ns, stats in ns_stats.items() %}
+      <span class="badge ns-{{ ns }}">{{ ns }} <span class="count">{{ stats.total }}</span></span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
-  <div class="stat-card">
-    <h3 class="stat-ns">{{ ns }}</h3>
-    {% if ns == "project" and stats.distinct is defined %}
+  <a class="stat-card" href="{{ ns_links[ns] }}">
+    <h3 class="stat-ns">{{ "projects" if ns == "project" else ns }}</h3>
+    {% if ns == "project" %}
     <div class="stat-total">{{ stats.distinct }}</div>
-    <div class="stat-label">{{ stats.total }} record{{ "" if stats.total == 1 else "s" }}</div>
+    <div class="stat-breakdown">
+      <span class="badge active">{{ stats.projects.active }} active</span>
+      <span class="badge deprioritised">{{ stats.projects.deprioritised }} depri</span>
+      <span class="badge archived">{{ stats.projects.archived }} arch</span>
+    </div>
     {% else %}
     <div class="stat-total">{{ stats.total }}</div>
     <div class="stat-breakdown">
@@ -36,18 +67,26 @@
       <span class="badge archived">{{ stats.states.archived }} arch</span>
     </div>
     {% endif %}
-  </div>
+  </a>
   {% endfor %}
-  <div class="stat-card stat-card-highlight">
-    <h3 class="stat-ns">Total</h3>
-    <div class="stat-total">{{ total }}</div>
-  </div>
+  <a class="stat-card" href="/skills">
+    <h3 class="stat-ns">skills</h3>
+    <div class="stat-total">{{ skills.total }}</div>
+    <div class="stat-breakdown">
+      <span class="badge active">{{ skills.states.active }} active</span>
+      {% if skills.proposals > 0 %}
+      <span class="badge deprioritised">{{ skills.proposals }} proposal{{ "" if skills.proposals == 1 else "s" }} pending</span>
+      {% endif %}
+      {% if skills.states.deprioritised %}<span class="badge deprioritised">{{ skills.states.deprioritised }} depri</span>{% endif %}
+      {% if skills.states.archived %}<span class="badge archived">{{ skills.states.archived }} arch</span>{% endif %}
+    </div>
+  </a>
 </section>
 
 <section class="recent-section">
   <h3>Recent Activity</h3>
   {% if recent %}
-  <table class="data-table">
+  <table class="data-table memories-table">
     <thead>
       <tr>
         <th>Namespace</th>
@@ -61,16 +100,19 @@
       {% for mem in recent %}
       <tr>
         <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-        <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+        <td class="content-cell"><a href="{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key }}">{{ mem.content }}</a></td>
         <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
-        <td>{{ mem.project or "—" }}</td>
-        <td class="mono">{{ mem.updated_at_fmt }}</td>
+        <td class="content-cell">{{ mem.project or "—" }}</td>
+        <td class="date-cell">
+          <span class="date-main">{{ mem.updated_date }}</span>
+          <span class="date-time">{{ mem.updated_time }}</span>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No memories stored yet.</p>
+  <p class="empty-state">No memories yet — <a href="/create">create one</a>, or connect a Claude session and it will start remembering.</p>
   {% endif %}
 </section>
 {% endblock %}

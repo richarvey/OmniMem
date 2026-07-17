@@ -92,6 +92,7 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
     # Count by namespace
     ns_counts: dict[str, int] = {
         "episodic": 0, "project": 0, "knowledge": 0, "preference": 0,
+        "skill": 0,
     }
     for key in all_data:
         if key.startswith("mem:episodic:"):
@@ -102,6 +103,8 @@ def dump_to_file(filename: str | None = None) -> dict[str, Any]:
             ns_counts["knowledge"] += 1
         elif key.startswith("mem:preference:"):
             ns_counts["preference"] += 1
+        elif key.startswith("mem:skill:"):
+            ns_counts["skill"] += 1
 
     backup = {
         "metadata": {
@@ -201,11 +204,22 @@ def restore_from_file(
     # Re-embed restored memories so they are immediately searchable.
     # Backups exclude binary vector data (decode_responses=True prevents
     # round-tripping raw bytes), so we regenerate embeddings from content.
+    # Skills embed their discovery metadata, not the body — they have no
+    # content field, and relevance search runs over name/description/domain.
+    from memory.skills import discovery_text
+
     re_embedded = 0
     if embedder:
         mem_keys = [k for k in restored_keys if k.startswith("mem:")]
         for key in mem_keys:
-            content = data.get(key, {}).get("content", "")
+            fields = data.get(key, {})
+            if key.startswith("mem:skill:"):
+                content = discovery_text(
+                    fields.get("name", ""), fields.get("description", ""),
+                    fields.get("domain", ""),
+                ) if fields.get("name") else ""
+            else:
+                content = fields.get("content", "")
             if content:
                 vector = embedder.embed(content)
                 namespace = key.split(":")[1]

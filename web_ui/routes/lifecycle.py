@@ -13,6 +13,18 @@ from .. import deps
 logger = logging.getLogger(__name__)
 
 
+def _redirect_target(form, fallback: str) -> str:
+    """Where to land after the action: a local `next` path, or the fallback.
+
+    Only same-site paths are honoured (must start with a single "/") so a
+    crafted form can't turn this into an open redirect.
+    """
+    next_url = form.get("next", "")
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return fallback
+
+
 async def deprioritise(request: Request) -> RedirectResponse:
     """POST /lifecycle/deprioritise — deprioritise a memory."""
     form = await request.form()
@@ -24,7 +36,7 @@ async def deprioritise(request: Request) -> RedirectResponse:
     except ValueError as exc:
         logger.warning("Failed to deprioritise %s: %s", key, exc)
 
-    return RedirectResponse(url=f"/memory/{key}", status_code=303)
+    return RedirectResponse(url=_redirect_target(form, f"/memory/{key}"), status_code=303)
 
 
 async def archive(request: Request) -> RedirectResponse:
@@ -37,7 +49,7 @@ async def archive(request: Request) -> RedirectResponse:
     except ValueError as exc:
         logger.warning("Failed to archive %s: %s", key, exc)
 
-    return RedirectResponse(url=f"/memory/{key}", status_code=303)
+    return RedirectResponse(url=_redirect_target(form, f"/memory/{key}"), status_code=303)
 
 
 async def reinstate(request: Request) -> RedirectResponse:
@@ -51,7 +63,7 @@ async def reinstate(request: Request) -> RedirectResponse:
     except ValueError as exc:
         logger.warning("Failed to reinstate %s: %s", key, exc)
 
-    return RedirectResponse(url=f"/memory/{key}", status_code=303)
+    return RedirectResponse(url=_redirect_target(form, f"/memory/{key}"), status_code=303)
 
 
 async def delete(request: Request) -> RedirectResponse:
@@ -68,7 +80,7 @@ async def delete(request: Request) -> RedirectResponse:
         except Exception as exc:
             logger.warning("Failed to delete %s: %s", key, exc)
 
-    return RedirectResponse(url="/memories", status_code=303)
+    return RedirectResponse(url=_redirect_target(form, "/memories"), status_code=303)
 
 
 routes = [

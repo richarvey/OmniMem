@@ -1,6 +1,7 @@
 """Experience tracking routes: summary dashboard and abandoned approach graveyard."""
 
 import json
+import math
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
@@ -9,9 +10,19 @@ from starlette.routing import Route
 from .. import deps
 
 
+EFFORTFUL_PAGE_SIZE = 10
+
+
 async def experience_summary(request: Request) -> HTMLResponse:
     """GET /experience — experience summary dashboard."""
     project = request.query_params.get("project", "")
+    outcome_filter = request.query_params.get("outcome", "")
+    if outcome_filter not in ("succeeded", "pivoted", "abandoned"):
+        outcome_filter = ""
+    try:
+        page = max(1, int(request.query_params.get("page", "1")))
+    except ValueError:
+        page = 1
 
     keys = deps.store.scan_prefix("mem:episodic:")
     all_data = deps.store.get_multi(keys) if keys else []
@@ -95,14 +106,36 @@ async def experience_summary(request: Request) -> HTMLResponse:
 
     avg_effort = round(total_effort / count_with_experience, 2) if count_with_experience else 0
 
-    template = request.app.state.templates.get_template("experience/summary.html")
+    # Filter + paginate the effortful table
+    if outcome_filter:
+        effortful = [m for m in effortful if m["outcome"] == outcome_filter]
+    total_pages = max(1, math.ceil(len(effortful) / EFFORTFUL_PAGE_SIZE))
+    page = min(page, total_pages)
+    start = (page - 1) * EFFORTFUL_PAGE_SIZE
+    page_effortful = effortful[start:start + EFFORTFUL_PAGE_SIZE]
+
+    extra_params = ""
+    if outcome_filter:
+        extra_params += f"&outcome={outcome_filter}"
+    if project:
+        extra_params += f"&project={project}"
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    template_name = "experience/_effortful.html" if is_htmx else "experience/summary.html"
+
+    template = request.app.state.templates.get_template(template_name)
     content_html = template.render(
         request=request,
         current_page="experience",
         count=count_with_experience,
         avg_effort=avg_effort,
         outcomes=outcome_counts,
-        effortful=effortful[:10],
+        effortful=page_effortful,
+        outcome_filter=outcome_filter,
+        page=page,
+        total_pages=total_pages,
+        base_url="/experience",
+        extra_params=extra_params,
         breakthroughs=breakthroughs[:5],
         project=project,
     )
@@ -157,7 +190,7 @@ async def graveyard(request: Request) -> HTMLResponse:
     template = request.app.state.templates.get_template("experience/graveyard.html")
     content_html = template.render(
         request=request,
-        current_page="experience",
+        current_page="graveyard",
         abandoned=unique_abandoned,
         project=project,
     )

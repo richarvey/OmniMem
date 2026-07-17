@@ -2,10 +2,13 @@
 
 import json
 import time
+from urllib.parse import quote
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
+
+from memory.tags import retag_memory
 
 from .. import deps
 
@@ -103,11 +106,30 @@ async def memory_detail(request: Request) -> HTMLResponse:
     content = template.render(
         request=request,
         memory=memory,
+        tag_error=request.query_params.get("tag_error", ""),
         current_page="memories",
     )
     return HTMLResponse(content)
 
 
+async def memory_retag(request: Request) -> RedirectResponse:
+    """POST /memory/{key:path}/tags — replace a memory's tags from a comma-separated field."""
+    key = request.path_params["key"]
+    form = await request.form()
+    raw = form.get("tags", "")
+    tags = [t.strip() for t in raw.split(",") if t.strip()]
+
+    try:
+        retag_memory(deps.store, key, tags=tags)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/memory/{key}?tag_error={quote(str(exc))}", status_code=303
+        )
+    return RedirectResponse(url=f"/memory/{key}", status_code=303)
+
+
 routes = [
+    # Must precede the greedy {key:path} detail route
+    Route("/memory/{key:path}/tags", memory_retag, methods=["POST"]),
     Route("/memory/{key:path}", memory_detail),
 ]

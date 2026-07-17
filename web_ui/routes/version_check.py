@@ -13,8 +13,11 @@ from memory.version import __version__
 
 logger = logging.getLogger("omnimem.web.version_check")
 
+# /releases/latest excludes drafts and pre-releases, so a beta cut on a
+# version branch (e.g. v6.1.0 marked pre-release) never nudges stable
+# installs — the indicator only points at the latest stable release.
 CODEBERG_API_URL = (
-    "https://codeberg.org/api/v1/repos/ric_harvey/omnimem/releases?limit=1"
+    "https://codeberg.org/api/v1/repos/ric_harvey/omnimem/releases/latest"
 )
 CACHE_TTL = 3600  # Cache for 1 hour
 
@@ -36,8 +39,8 @@ def _fetch_latest_version() -> str | None:
         req = Request(CODEBERG_API_URL, headers={"Accept": "application/json"})
         with urlopen(req, timeout=5) as resp:  # nosec B310 — scheme is validated above
             data = json.loads(resp.read())
-            if data and isinstance(data, list) and data[0].get("tag_name"):
-                tag = data[0]["tag_name"].lstrip("v")
+            if isinstance(data, dict) and data.get("tag_name"):
+                tag = data["tag_name"].lstrip("v")
                 _cache["latest"] = tag
                 _cache["checked_at"] = now
                 return tag

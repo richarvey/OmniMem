@@ -29,6 +29,31 @@ _PAGE_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
+# Every ingested article is labelled with a project so it can be separated
+# from conversation-sourced knowledge. Feeds can override the default with a
+# `project:` key in feeds.yml. Must match RSS_PROJECT_LABEL in
+# mcp_server/memory/migrations.py, which backfills pre-existing articles.
+_DEFAULT_PROJECT = "RSS"
+# Same allowlist as the MCP tools' project-name validation and recall's
+# _TAG_VALUE_SAFE_RE — a label outside it would silently skip the FT.SEARCH
+# tag-filter push-down, so fall back to the default instead.
+_PROJECT_SAFE_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
+
+
+def _resolve_project(feed_config: dict[str, Any]) -> str:
+    """Project label for a feed's articles: feeds.yml override or the default."""
+    project = str(feed_config.get("project") or "").strip()
+    if not project:
+        return _DEFAULT_PROJECT
+    if not _PROJECT_SAFE_RE.match(project):
+        logger.warning(
+            "Feed %s: project label %r has unsupported characters, using %r",
+            feed_config.get("name", feed_config.get("url", "?")),
+            project, _DEFAULT_PROJECT,
+        )
+        return _DEFAULT_PROJECT
+    return project
+
 _embedder: SentenceTransformer | None = None
 _valkey_client: valkey.Valkey | None = None
 
@@ -182,6 +207,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     name = feed_config.get("name", url)
     topics = feed_config.get("topics", [])
     mode = feed_config.get("mode", "summary")
+    project = _resolve_project(feed_config)
     max_articles = int(os.getenv("RSS_MAX_ARTICLES_PER_FEED", "20"))
     max_digest = int(os.getenv("RSS_MAX_DIGEST_ENTRIES", "2"))
 
@@ -307,6 +333,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
                 "title": article["title"],
                 "source_url": article["article_url"],
                 "feed_name": name,
+                "project": project,
                 "published_at": article["published_at"],
                 "topics": topics_json,
                 "state": "active",

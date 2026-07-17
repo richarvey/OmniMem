@@ -1,6 +1,5 @@
 """OmniMem Web UI — Starlette app with htmx + Jinja2."""
 
-import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -10,15 +9,14 @@ from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
 from . import deps
+from .auth import AuthMiddleware, login_enabled
 from memory.version import __version__
+from .routes.auth import routes as auth_routes
 from .routes.dashboard import routes as dashboard_routes
 from .routes.memories import routes as memories_routes
 from .routes.search import routes as search_routes
@@ -26,6 +24,7 @@ from .routes.detail import routes as detail_routes
 from .routes.lifecycle import routes as lifecycle_routes
 from .routes.create import routes as create_routes
 from .routes.projects import routes as project_routes
+from .routes.skills import routes as skill_routes
 from .routes.experience import routes as experience_routes
 from .routes.duplicates import routes as duplicate_routes
 from .routes.contradictions import routes as contradiction_routes
@@ -47,33 +46,6 @@ logger = logging.getLogger("omnimem.web")
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Paths that bypass auth (Prometheus scraping, static assets)
-_AUTH_EXEMPT_PREFIXES = ("/metrics", "/static/")
-
-
-class BearerAuthMiddleware(BaseHTTPMiddleware):
-    """Reject requests without a valid Bearer token.
-
-    Exempts paths in _AUTH_EXEMPT_PREFIXES so Prometheus can scrape /metrics
-    and static assets load without credentials.
-    """
-
-    def __init__(self, app, token: str) -> None:
-        super().__init__(app)
-        self.token = token
-
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if any(path.startswith(p) for p in _AUTH_EXEMPT_PREFIXES):
-            return await call_next(request)
-
-        auth_header = request.headers.get("Authorization", "")
-        # Constant-time compare to avoid leaking the token via response timing.
-        if hmac.compare_digest(auth_header, f"Bearer {self.token}"):
-            return await call_next(request)
-
-        return PlainTextResponse("Unauthorised", status_code=401)
-
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
@@ -90,15 +62,24 @@ _middleware: list[Middleware] = [
     Middleware(GZipMiddleware, minimum_size=500),
 ]
 
-# Optional bearer token auth — only enabled when WEB_UI_AUTH_TOKEN is set
+# Auth — session login when the OAuth admin credentials are set (opt out via
+# WEB_UI_LOGIN_ENABLED=false), bearer token when WEB_UI_AUTH_TOKEN is set.
+# Either credential satisfies the middleware when both are configured.
 _web_auth_token = os.getenv("WEB_UI_AUTH_TOKEN", "").strip()
-if _web_auth_token:
-    _middleware.append(Middleware(BearerAuthMiddleware, token=_web_auth_token))
-    logger.info("Bearer token authentication enabled for web UI")
+_login_enabled = login_enabled()
+if _web_auth_token or _login_enabled:
+    _middleware.append(
+        Middleware(AuthMiddleware, bearer_token=_web_auth_token, login=_login_enabled)
+    )
+    if _login_enabled:
+        logger.info("Session login enabled for web UI (OAuth admin credentials)")
+    if _web_auth_token:
+        logger.info("Bearer token authentication enabled for web UI")
 
 app = Starlette(
     routes=[
         Mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static"),
+        *auth_routes,
         *dashboard_routes,
         *memories_routes,
         *search_routes,
@@ -106,6 +87,7 @@ app = Starlette(
         *lifecycle_routes,
         *create_routes,
         *project_routes,
+        *skill_routes,
         *experience_routes,
         *duplicate_routes,
         *contradiction_routes,
@@ -127,3 +109,4 @@ app.state.templates = Environment(
     autoescape=True,
 )
 app.state.templates.globals["version"] = __version__
+app.state.templates.globals["login_enabled"] = _login_enabled

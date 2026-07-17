@@ -13,14 +13,15 @@
     <button class="btn btn-secondary btn-sm"
             hx-get="/telemetry/refresh{% if project_filter %}?project={{ project_filter }}{% endif %}"
             hx-target="#telemetry-content"
-            hx-swap="innerHTML">
+            hx-indicator="#telemetry-content"
+            hx-swap="innerHTML swap:150ms">
       Refresh
     </button>
     <a href="/token-overhead" class="btn btn-secondary btn-sm">Token Overhead</a>
   </div>
 </div>
 
-<div id="telemetry-content">
+<div id="telemetry-content" class="refresh-target">
   {% include "partials/telemetry_content.html" %}
 </div>
 {% endblock %}

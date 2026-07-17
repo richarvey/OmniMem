@@ -1,4 +1,4 @@
-<p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls since server start. Tokens estimated at ~4 chars/token.</p>
+<p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls{% if metrics_since %} since the last reset{% endif %}. Tokens estimated at ~4 chars/token.</p>
 
 <div class="stats-grid">
   <div class="stat-card">
@@ -9,12 +9,12 @@
   <div class="stat-card">
     <div class="stat-ns">Total Tool Calls</div>
     <div class="stat-total">{{ "{:,}".format(total_tool_calls) }}</div>
-    <div class="stat-label">since uptime</div>
+    <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card stat-card-highlight">
     <div class="stat-ns">Total Tool Tokens</div>
     <div class="stat-total">~{{ "{:,}".format(total_tool_tokens) }}</div>
-    <div class="stat-label">since uptime</div>
+    <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Stored Memories</div>
@@ -61,8 +61,8 @@
 
 {% if tool_metrics %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage Since Uptime</h3>
-  <p class="section-note">Measured from actual MCP tool calls.</p>
+  <h3>Tool Usage</h3>
+  <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
@@ -101,8 +101,8 @@
 </div>
 {% else %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage Since Uptime</h3>
-  <p class="empty-state">No tool calls recorded yet. Metrics will appear here once the MCP server starts processing requests.</p>
+  <h3>Tool Usage</h3>
+  <p class="empty-state">No tool calls recorded{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} yet{% endif %}. Metrics will appear here once the MCP server processes requests.</p>
 </div>
 {% endif %}
 

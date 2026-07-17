@@ -1,33 +1,223 @@
 /* OmniMem Web UI — functional, clean, responsive */
 
+/* Ubuntu + Ubuntu Mono, self-hosted (latin + latin-ext subsets) */
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-400-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-400-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-700-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-mono-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-mono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-mono-700-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/fonts/ubuntu-mono-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* SquareCows palette — dark theme (default): brand navy surfaces, orange accent.
+   Contrast notes (WCAG AA): #FF8E01 text on #00101D is 8.35:1 and on the card
+   7.2:1, so orange may carry text on dark surfaces. Text placed ON an orange
+   fill must be navy (--on-accent), never white (2.3:1). */
 :root {
-  --bg: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-sidebar: #141620;
-  --bg-input: #232636;
-  --border: #2a2d3a;
-  --border-focus: #6366f1;
-  --text: #e2e4eb;
-  --text-dim: #8b8fa3;
-  --text-bright: #f8f9fc;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
+  --bg: #00101d;
+  --bg-card: #0a2033;
+  --bg-sidebar: #041724;
+  --bg-input: #10293e;
+  --border: #1c3a52;
+  --border-strong: #2e5573;
+  --border-focus: #ff8e01;
+  --text: #d9e2ea;
+  --text-dim: #8ca3b5;
+  --text-bright: #fbf7f0;
+  --accent: #ff8e01;        /* borders, translucent fills, non-text uses */
+  --accent-strong: #ff8e01; /* solid fills — always paired with --on-accent text */
+  --accent-text: #ff8e01;   /* accent-coloured text on dark surfaces (8.35:1) */
+  --accent-hover: #ffa733;
+  --accent-fill-hover: #e37a00; /* hover for solid orange fills (navy text: 6.4:1) */
+  --on-accent: #00101d;     /* text on orange fills (8.35:1 AAA) */
+  --accent-soft: rgba(255, 142, 1, 0.12); /* translucent orange washes */
   --green: #34d399;
   --yellow: #fbbf24;
   --red: #f87171;
   --orange: #fb923c;
+  --cyan: #22d3ee;
+  --pink: #f472b6;
+  /* Namespace hues — dots, bar segments (non-text, always beside a label) */
+  --ns-episodic: #ff8e01;
+  --ns-project: #34d399;
+  --ns-knowledge: #fbbf24;
+  --ns-preference: #f472b6;
+  --ns-skill: #22d3ee;
   --radius: 6px;
   --sidebar-width: 220px;
+  --font-mono: 'Ubuntu Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
 }
 
+/* Light theme: warm paper surfaces, navy ink. Orange #FF8E01 fails as text on
+   paper (2.16:1) — per the brand guidelines it is reserved for large fills and
+   accents here; text-carrying accent roles drop to burnt orange (#9a5a00, 5.1:1). */
+html[data-theme="light"] {
+  --bg: #fbf7f0;
+  --bg-card: #ffffff;
+  --bg-sidebar: #f3ecdf;
+  --bg-input: #ffffff;
+  --border: #e3daca;
+  --border-strong: #c2b69e;
+  --border-focus: #9a5a00;
+  --text: #20323d;
+  --text-dim: #5c6f7d;
+  --text-bright: #00101d;
+  --accent: #c25e00;        /* borders and boundaries (4.0:1 on paper) */
+  --accent-strong: #ff8e01; /* solid fills keep brand orange, navy text */
+  --accent-text: #9a5a00;   /* accent-coloured text (5.1:1 on paper) */
+  --accent-hover: #7c4a00;
+  --accent-fill-hover: #e37a00;
+  --on-accent: #00101d;
+  --accent-soft: rgba(255, 142, 1, 0.14);
+  --green: #3d7a1e;
+  --yellow: #8f5700;
+  --red: #b2432c;
+  --orange: #9c4a00;
+  --cyan: #0e7490;
+  --pink: #a61e64;
+  --ns-episodic: #ff8e01;
+  --ns-project: #3d7a1e;
+  --ns-knowledge: #c87a00;
+  --ns-preference: #a61e64;
+  --ns-skill: #0e7490;
+}
+
+html { color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: 'Ubuntu', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
   font-size: 14px;
+}
+
+::selection { background: rgba(255, 142, 1, 0.35); }
+
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* Skip link — first focusable element, visible only on keyboard focus */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  background: var(--accent-strong);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 var(--radius) var(--radius);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 1rem;
 }
 
 /* Layout */
@@ -61,15 +251,72 @@ body {
   font-weight: 700;
   color: var(--text-bright);
   letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.logo-bracket {
+  color: var(--accent-text);
+}
+
+/* Sidebar collapse toggle (in the sidebar header) */
+.sidebar-toggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius);
+  transition: color 0.15s, background 0.15s;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+/* Floating expand button, only visible while the sidebar is collapsed */
+.sidebar-expand {
+  display: none;
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 60;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--radius);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-expand:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+html.sidebar-collapsed .sidebar { display: none; }
+html.sidebar-collapsed .sidebar-expand { display: inline-flex; }
+
+html.sidebar-collapsed .content {
+  margin-left: 0;
+  max-width: 1400px;
+  padding-left: 3.5rem;
 }
 
 .version-badge {
   font-size: 0.65rem;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-strong);
+  color: var(--on-accent);
   padding: 0.1rem 0.4rem;
   border-radius: 99px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .version-update-wrapper {
@@ -113,7 +360,8 @@ body {
 
 .nav-link {
   display: block;
-  padding: 0.45rem 1.25rem;
+  padding: 0.45rem 1.25rem 0.45rem calc(1.25rem - 2px);
+  border-left: 2px solid transparent;
   color: var(--text-dim);
   text-decoration: none;
   font-size: 0.85rem;
@@ -123,13 +371,13 @@ body {
 
 .nav-link:hover {
   color: var(--text);
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(255, 142, 1, 0.07);
 }
 
 .nav-link.active {
-  color: var(--accent);
-  background: rgba(99, 102, 241, 0.12);
-  border-right: 2px solid var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
 }
 
 .nav-divider {
@@ -145,6 +393,7 @@ body {
   letter-spacing: 0.08em;
   color: var(--text-dim);
   padding: 0.25rem 1.25rem 0;
+  margin-top: 0.9rem;
   list-style: none;
 }
 
@@ -183,7 +432,7 @@ body {
 }
 
 .footer-link:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .content {
@@ -202,8 +451,9 @@ body {
 }
 
 .page-header h2 {
-  font-size: 1.35rem;
+  font-size: 1.75rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-bright);
 }
 
@@ -250,9 +500,27 @@ body {
   padding: 1.25rem;
 }
 
+/* Whole-card links on the dashboard — clickable, never underlined */
+a.stat-card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+a.stat-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+a.stat-card:hover .stat-ns {
+  color: var(--accent-text);
+}
+
 .stat-card-highlight {
   border-color: var(--accent);
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(255, 142, 1, 0.06);
 }
 
 .stat-ns {
@@ -262,14 +530,27 @@ body {
   color: var(--text-dim);
   margin-bottom: 0.5rem;
   font-weight: 600;
+  transition: color 0.15s;
 }
 
 .stat-total {
-  font-size: 2rem;
+  font-family: var(--font-mono);
+  font-size: 2.1rem;
   font-weight: 700;
   color: var(--text-bright);
   line-height: 1;
   margin-bottom: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-meta {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+}
+
+.stats-meta a {
+  color: var(--accent-text);
 }
 
 .stat-breakdown {
@@ -302,10 +583,46 @@ body {
   color: var(--text-dim);
 }
 
-.badge.ns-episodic { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
-.badge.ns-project { background: rgba(52, 211, 153, 0.15); color: var(--green); }
-.badge.ns-knowledge { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
-.badge.ns-preference { background: rgba(244, 114, 182, 0.15); color: #f472b6; }
+.badge.abandoned {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+}
+
+/* Namespace markers — a coloured dot beside plain text, not another pill.
+   Pills stay reserved for lifecycle state, the actionable badge. The dot is
+   decorative (the namespace name sits right next to it), so it carries no
+   contrast requirement of its own. */
+.badge.ns-episodic, .badge.ns-project, .badge.ns-knowledge,
+.badge.ns-preference, .badge.ns-skill {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.badge.ns-episodic::before, .badge.ns-project::before, .badge.ns-knowledge::before,
+.badge.ns-preference::before, .badge.ns-skill::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+}
+
+.badge.ns-episodic::before { background: var(--ns-episodic); }
+.badge.ns-project::before { background: var(--ns-project); }
+.badge.ns-knowledge::before { background: var(--ns-knowledge); }
+.badge.ns-preference::before { background: var(--ns-preference); }
+.badge.ns-skill::before { background: var(--ns-skill); }
+
+/* Skill badges */
+.badge.generated { background: rgba(34, 211, 238, 0.15); color: var(--cyan); }
+.badge.rule-do { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.badge.rule-watch { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+.badge.rule-dont { background: rgba(251, 146, 60, 0.15); color: var(--orange); }
+.badge.rule-ref { background: rgba(34, 211, 238, 0.15); color: var(--cyan); }
 
 /* Tables */
 .data-table {
@@ -332,7 +649,7 @@ body {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(99, 102, 241, 0.04);
+  background: rgba(255, 142, 1, 0.04);
 }
 
 .content-cell {
@@ -347,12 +664,13 @@ body {
 }
 
 .content-cell a:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .mono {
-  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Projects table */
@@ -373,7 +691,9 @@ body {
 .projects-table th:nth-child(4),
 .projects-table td:nth-child(4) { width: 16%; }
 
-/* Memories table */
+/* Memories table — six columns; the dashboard's five-column recent activity
+   table reuses this, and the missing Actions column's share redistributes
+   across its columns. */
 .memories-table {
   table-layout: fixed;
   width: 100%;
@@ -383,16 +703,19 @@ body {
 .memories-table td:nth-child(1) { width: 10%; }
 
 .memories-table th:nth-child(2),
-.memories-table td:nth-child(2) { width: 44%; }
+.memories-table td:nth-child(2) { width: 38%; }
 
 .memories-table th:nth-child(3),
-.memories-table td:nth-child(3) { width: 12%; }
+.memories-table td:nth-child(3) { width: 11%; }
 
 .memories-table th:nth-child(4),
-.memories-table td:nth-child(4) { width: 16%; }
+.memories-table td:nth-child(4) { width: 13%; }
 
 .memories-table th:nth-child(5),
-.memories-table td:nth-child(5) { width: 18%; }
+.memories-table td:nth-child(5) { width: 14%; }
+
+.memories-table th:nth-child(6),
+.memories-table td:nth-child(6) { width: 14%; }
 
 .name-cell {
   white-space: nowrap;
@@ -403,7 +726,7 @@ body {
 
 .project-name {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 
@@ -415,8 +738,9 @@ span.project-name {
   display: inline-block;
   margin-left: 0.4rem;
   font-size: 0.7rem;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-strong);
+  color: var(--on-accent);
+  font-weight: 600;
   border-radius: 9999px;
   padding: 0.1rem 0.45rem;
   vertical-align: middle;
@@ -437,19 +761,77 @@ span.project-name {
   display: block;
   font-size: 0.75rem;
   color: var(--text-dim);
-  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-family: var(--font-mono);
 }
 
-/* Feeds table */
+/* Skills table */
+.skills-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.skills-table th:nth-child(1),
+.skills-table td:nth-child(1) { width: 17%; }
+.skills-table th:nth-child(2),
+.skills-table td:nth-child(2) { width: 11%; }
+.skills-table th:nth-child(3),
+.skills-table td:nth-child(3) { width: 30%; }
+.skills-table th:nth-child(4),
+.skills-table td:nth-child(4) { width: 10%; }
+.skills-table th:nth-child(5),
+.skills-table td:nth-child(5) { width: 14%; }
+.skills-table th:nth-child(6),
+.skills-table td:nth-child(6) { width: 8%; }
+.skills-table th:nth-child(7),
+.skills-table td:nth-child(7) { width: 10%; }
+
+/* Graveyard table */
+.graveyard-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.graveyard-table td { overflow-wrap: break-word; }
+
+.graveyard-table th:nth-child(1),
+.graveyard-table td:nth-child(1) { width: 24%; }
+.graveyard-table th:nth-child(2),
+.graveyard-table td:nth-child(2) { width: 12%; }
+.graveyard-table th:nth-child(3),
+.graveyard-table td:nth-child(3) { width: 44%; }
+.graveyard-table th:nth-child(4),
+.graveyard-table td:nth-child(4) { width: 9%; }
+.graveyard-table th:nth-child(5),
+.graveyard-table td:nth-child(5) { width: 11%; }
+.skills-table th:nth-child(6),
+.skills-table td:nth-child(6) { width: 8%; }
+
+/* SKILL.md body — the whole document, monospace, scrolls inside its own box */
+.skill-body {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* Feeds table — five columns: Name, URL, Topics, Mode, Actions */
 .feeds-table { table-layout: fixed; }
 .feeds-table th:nth-child(1),
-.feeds-table td:nth-child(1) { width: 20%; }
+.feeds-table td:nth-child(1) { width: 18%; }
 .feeds-table th:nth-child(2),
-.feeds-table td:nth-child(2) { width: 38%; }
+.feeds-table td:nth-child(2) { width: 34%; }
 .feeds-table th:nth-child(3),
 .feeds-table td:nth-child(3) { width: 22%; }
 .feeds-table th:nth-child(4),
-.feeds-table td:nth-child(4) { width: 20%; white-space: nowrap; }
+.feeds-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+.feeds-table th:nth-child(5),
+.feeds-table td:nth-child(5) { width: 16%; }
 
 .actions-cell {
   display: flex;
@@ -504,11 +886,11 @@ span.project-name {
 
 .recall-badge {
   display: inline-block;
-  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 600;
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
   padding: 0.1rem 0.5rem;
   border-radius: 99px;
   min-width: 1.8rem;
@@ -531,8 +913,9 @@ span.project-name {
   color: var(--text-dim);
   padding: 2rem;
   text-align: center;
-  font-style: italic;
 }
+
+.empty-state a { color: var(--accent-text); }
 
 /* Flash messages */
 .flash {
@@ -548,7 +931,7 @@ span.project-name {
 .flash-success { background: rgba(52, 211, 153, 0.12); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.3); }
 .flash-error { background: rgba(248, 113, 113, 0.12); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.3); }
 .flash-warning { background: rgba(251, 191, 36, 0.12); color: var(--yellow); border: 1px solid rgba(251, 191, 36, 0.3); }
-.flash-info { background: rgba(99, 102, 241, 0.12); color: var(--accent); border: 1px solid rgba(99, 102, 241, 0.3); }
+.flash-info { background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(255, 142, 1, 0.35); }
 
 .flash-close {
   background: none;
@@ -581,7 +964,7 @@ span.project-name {
 }
 
 .page-link:hover { color: var(--text); border-color: var(--accent); }
-.page-link.current { background: var(--accent); color: white; border-color: var(--accent); }
+.page-link.current { background: var(--accent-strong); color: var(--on-accent); border-color: var(--accent-strong); font-weight: 600; }
 .page-link.ellipsis { border: none; background: none; }
 
 /* Forms */
@@ -591,9 +974,7 @@ span.project-name {
 
 .form-group label {
   display: block;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.8rem;
   color: var(--text-dim);
   margin-bottom: 0.35rem;
   font-weight: 600;
@@ -603,7 +984,7 @@ span.project-name {
   width: 100%;
   padding: 0.5rem 0.75rem;
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   color: var(--text);
   font-size: 0.85rem;
@@ -616,6 +997,7 @@ span.project-name {
 .form-input:focus, .form-select:focus, .form-textarea:focus {
   outline: none;
   border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
 }
 
 .form-textarea {
@@ -639,8 +1021,8 @@ span.project-name {
   text-decoration: none;
 }
 
-.btn-primary { background: var(--accent); color: white; }
-.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary { background: var(--accent-strong); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-fill-hover); }
 
 .btn-secondary { background: var(--bg-card); color: var(--text); border-color: var(--border); }
 .btn-secondary:hover { border-color: var(--accent); }
@@ -672,8 +1054,8 @@ span.project-name {
 }
 
 .detail-key {
-  font-family: "SF Mono", "Cascadia Code", monospace;
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
   color: var(--text-dim);
 }
 
@@ -704,9 +1086,7 @@ span.project-name {
 }
 
 .meta-label {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.75rem;
   color: var(--text-dim);
   margin-bottom: 0.25rem;
   font-weight: 600;
@@ -725,7 +1105,7 @@ span.project-name {
 
 /* Score badge */
 .score {
-  font-family: "SF Mono", "Cascadia Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   background: var(--bg-input);
   padding: 0.1rem 0.4rem;
@@ -742,7 +1122,7 @@ span.project-name {
 }
 
 .search-result:hover {
-  border-color: rgba(99, 102, 241, 0.3);
+  border-color: rgba(255, 142, 1, 0.4);
 }
 
 .search-result-header {
@@ -795,6 +1175,41 @@ span.project-name {
   justify-content: flex-end;
 }
 
+/* Compile-skill modal: wide enough to review a SKILL.md draft */
+.modal-wide {
+  max-width: 720px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.skill-draft {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* Refresh feedback: dim the target while the request is in flight,
+   then fade the fresh content back in so a refresh is always visible
+   even when the numbers haven't changed */
+.refresh-target {
+  transition: opacity 0.25s ease;
+}
+
+.refresh-target.htmx-request {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-target { transition: none; }
+}
+
 /* Spinner for htmx loading */
 .htmx-indicator {
   display: none;
@@ -818,6 +1233,125 @@ span.project-name {
   to { transform: rotate(360deg); }
 }
 
+/* Composition bar — the dashboard hero: what the memory corpus is made of.
+   Segment widths are proportional to namespace counts; each namespace's dot
+   colour repeats in the legend and the table markers, so the bar, legend and
+   rows read as one system. */
+.composition {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.composition-total {
+  text-decoration: none;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.composition-num {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+a.composition-total:hover .composition-num { color: var(--accent-text); }
+
+.composition-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 0.3rem;
+}
+
+.composition-main { flex: 1; min-width: 0; }
+
+.composition-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--bg-input);
+}
+
+.composition-seg { min-width: 3px; }
+.composition-seg + .composition-seg { margin-left: 2px; }
+
+.composition-seg.ns-episodic { background: var(--ns-episodic); }
+.composition-seg.ns-project { background: var(--ns-project); }
+.composition-seg.ns-knowledge { background: var(--ns-knowledge); }
+.composition-seg.ns-preference { background: var(--ns-preference); }
+
+.composition-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin-top: 0.7rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.composition-legend .count {
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recall heat — memories fade in the UI the way they fade in the ranking.
+   The left rule dims with time since the memory last surfaced in recall; the
+   Updated column still carries the same information as text. */
+.heat-hot td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.heat-warm td:first-child { box-shadow: inset 3px 0 0 rgba(255, 142, 1, 0.55); }
+.heat-cool td:first-child { box-shadow: inset 3px 0 0 rgba(255, 142, 1, 0.25); }
+
+/* Deprioritised memories drop one ink step (still AA on all surfaces) */
+.row-deprioritised .content-cell a,
+.row-deprioritised .content-cell,
+.row-deprioritised .date-main {
+  color: var(--text-dim);
+}
+
+/* Theme toggle — lives in the footer, labelled in text */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.7rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.theme-toggle:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* Reduced motion — kill transitions, animations and hover lift */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  a.stat-card:hover {
+    transform: none;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
@@ -830,6 +1364,7 @@ span.project-name {
   .layout { flex-direction: column; }
   .content { margin-left: 0; padding: 1rem 1rem 3rem; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .composition { flex-direction: column; align-items: stretch; gap: 1rem; }
   .nav-list { display: flex; flex-wrap: wrap; gap: 0; padding: 0.5rem 1rem; }
   .nav-link { padding: 0.35rem 0.75rem; }
   .nav-divider { display: none; }
@@ -856,4 +1391,59 @@ span.project-name {
   .projects-table td:nth-child(3) { width: auto; }
   .projects-table th:nth-child(4),
   .projects-table td:nth-child(4) { width: auto; }
+
+  .skills-table { table-layout: auto; }
+  .skills-table th, .skills-table td { width: auto !important; }
+
+  .graveyard-table { table-layout: auto; }
+  .graveyard-table th, .graveyard-table td { width: auto !important; }
+}
+
+/* Login page — standalone card, no sidebar or footer */
+.login-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1rem;
+  margin: 0;
+}
+
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-logo {
+  text-align: center;
+  margin: 0 0 0.25rem;
+}
+
+.login-sub {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* Sign out — a form-wrapped button styled like the other footer links */
+.logout-form {
+  display: inline-flex;
+}
+
+button.footer-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
 }

@@ -170,6 +170,7 @@ def briefing(
     result: dict[str, Any] = {}
 
     # 1. Project context
+    project_data = None
     if project:
         project_key = f"mem:project:{project}"
         project_data = store.get(project_key)
@@ -232,5 +233,54 @@ def briefing(
                     })
         except Exception as exc:
             logger.error("Auto-maintenance failed for project %s: %s", project, exc)
+
+    # 9. Compiled skill suggestions and pending update diffs (v6). Suggestions
+    # are recommendations only — loading is the agent's and human's call.
+    if project:
+        try:
+            from .skills import (
+                knowledge_watch,
+                pending_skill_updates,
+                suggest_skills_for_briefing,
+            )
+
+            greenfield = project_data is None
+            context_text = None
+            if not greenfield:
+                context_text = " ".join(
+                    str(project_data.get(f, "")) for f in
+                    ("description", "stack", "goals", "current_state")
+                ).strip() or project
+            suggestions = suggest_skills_for_briefing(
+                store, embedder, None if greenfield else context_text,
+            )
+            if suggestions:
+                if greenfield:
+                    # No project context to lead with, so the skills move to
+                    # the top: they are the only thing carrying the user's
+                    # conventions on a greenfield project.
+                    result = {
+                        "skill_suggestions": {
+                            "note": "Greenfield project (no context yet). A "
+                                    "compiled skill carries your conventions — "
+                                    "pick by description and load with get_skill().",
+                            "skills": suggestions,
+                        },
+                        **result,
+                    }
+                else:
+                    result["skill_suggestions"] = {"skills": suggestions}
+
+            updates = pending_skill_updates(store)
+            if updates:
+                result["skill_updates"] = updates
+
+            # Fresh knowledge semantically close to a compiled skill —
+            # awareness only; promoting an article is a deliberate call.
+            watch = knowledge_watch(store)
+            if watch:
+                result["skill_knowledge_watch"] = watch
+        except Exception as exc:
+            logger.error("Skill briefing sections failed: %s", exc)
 
     return result

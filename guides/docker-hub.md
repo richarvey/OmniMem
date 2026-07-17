@@ -2,6 +2,15 @@
 
 Pre-built Docker images are available on Docker Hub. This is the quickest way to get OmniMem running without building from source.
 
+> [!TIP]
+> The installer script automates everything on this page — it checks for Docker, generates passwords, writes the `.env` and compose file, and starts the stack:
+>
+> ```bash
+> curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
+> ```
+>
+> The rest of this guide is the manual version of the same setup.
+
 ## Images
 
 | Image | Service | Description |

@@ -13,14 +13,18 @@
     <button class="btn btn-secondary btn-sm"
             hx-get="/token-overhead/refresh{% if project_filter %}?project={{ project_filter }}{% endif %}"
             hx-target="#token-overhead-content"
-            hx-swap="innerHTML">
+            hx-indicator="#token-overhead-content"
+            hx-swap="innerHTML swap:150ms">
       Refresh
     </button>
+    <form method="POST" action="/token-overhead/reset" style="display:inline" onsubmit="return confirm('Reset tool usage counters? This deletes all measured call metrics from Valkey. Static overhead and memory store figures are unaffected.')">
+      <button type="submit" class="btn btn-danger btn-sm">Reset Counters</button>
+    </form>
     <a href="/telemetry" class="btn btn-secondary btn-sm">Back to Telemetry</a>
   </div>
 </div>
 
-<div id="token-overhead-content">
+<div id="token-overhead-content" class="refresh-target">
   {% include "partials/token_overhead_content.html" %}
 </div>
 {% endblock %}

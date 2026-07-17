@@ -7,11 +7,12 @@
       <th>State</th>
       <th>Project</th>
       <th>Updated</th>
+      <th>Actions</th>
     </tr>
   </thead>
   <tbody>
     {% for mem in memories %}
-    <tr>
+    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
       <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
@@ -20,6 +21,20 @@
         <span class="date-main">{{ mem.updated_date }}</span>
         <span class="date-time">{{ mem.updated_time }}</span>
       </td>
+      <td class="actions-cell">
+        {% if mem.state == 'active' %}
+        <form method="POST" action="/lifecycle/deprioritise">
+          <input type="hidden" name="key" value="{{ mem.key }}">
+          <input type="hidden" name="next" value="{{ back_url }}">
+          <button type="submit" class="btn btn-secondary btn-sm" title="Deprioritise — stops surfacing in recall (0.2x)">Depri</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="/lifecycle/delete" onsubmit="return confirm('Permanently delete this memory? This cannot be undone.')">
+          <input type="hidden" name="key" value="{{ mem.key }}">
+          <input type="hidden" name="next" value="{{ back_url }}">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      </td>
     </tr>
     {% endfor %}
   </tbody>
@@ -27,5 +42,5 @@
 
 {% include "partials/pagination.html" %}
 {% else %}
-<p class="empty-state">No memories match the current filters.</p>
+<p class="empty-state">No memories match the current filters — <a href="/memories">clear the filters</a> to see everything.</p>
 {% endif %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Skills — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Compiled Skills <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+  <div style="display:flex;gap:0.75rem;align-items:center">
+    <div class="health-indicators">
+      <span class="indicator ok">{{ states.active }} active</span>
+      {% if states.deprioritised %}<span class="indicator warn">{{ states.deprioritised }} deprioritised</span>{% endif %}
+      {% if states.archived %}<span class="indicator warn">{{ states.archived }} archived</span>{% endif %}
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('compile-modal').style.display='flex'">New Skill</button>
+  </div>
+</header>
+
+<p class="section-note">
+  Skills are compiled from experience and graveyard memories via the
+  <code>compile_skill</code> propose-and-accept flow. They can't be edited —
+  to change one, update the underlying memories and recompile.
+</p>
+
+<div id="compile-modal" class="modal-backdrop" style="display:none">
+  <div class="modal modal-wide">
+    <h3>Compile a New Skill</h3>
+    <p>
+      Distils lessons from episodic memories tagged with a domain into a
+      SKILL.md. You review the draft here first — nothing is written until you
+      accept it.
+    </p>
+    <form hx-post="/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+      <input type="text" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Compile Draft</button>
+    </form>
+    <div id="compile-result"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('compile-modal').style.display='none';document.getElementById('compile-result').innerHTML=''">Close</button>
+    </div>
+  </div>
+</div>
+
+{% if proposals %}
+<div class="flash flash-info">
+  <span>
+    {{ proposals|length }} pending proposal{{ "" if proposals|length == 1 else "s" }} awaiting review:
+    {% for p in proposals %}<strong>{{ p.domain }}</strong> (proposed {{ p.created_at }}){% if not loop.last %}, {% endif %}{% endfor %}
+    — commit with <code>compile_skill(domain, mode="write")</code> before the proposal expires.
+  </span>
+</div>
+{% endif %}
+
+{% if skills %}
+<table class="data-table skills-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Domain</th>
+      <th>Description</th>
+      <th>State</th>
+      <th>Compiled</th>
+      <th>Loads</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in skills %}
+    <tr>
+      <td class="name-cell">
+        <a href="/skills/{{ s.key }}" class="project-name">{{ s.name }}</a>
+        {% if s.generated %}<span class="badge generated" title="Compiler output — never hand-edited">gen</span>{% endif %}
+      </td>
+      <td><span class="badge ns-skill">{{ s.domain or "—" }}</span></td>
+      <td class="content-cell" title="{{ s.description }}">{{ s.description }}</td>
+      <td><span class="badge {{ s.state }}">{{ s.state }}</span></td>
+      <td class="mono">{{ s.compiled_at }}</td>
+      <td><span class="recall-badge">{{ s.recall_count }}</span></td>
+      <td style="text-align:right">
+        <form method="POST" action="/skills/delete" style="display:inline" onsubmit="return confirm('Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.')">
+          <input type="hidden" name="key" value="{{ s.key }}">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">
+  No skills compiled yet. Tag episodic memories with a domain, then use the
+  New Skill button (or compile_skill via MCP) to distil them into a SKILL.md.
+</p>
+{% endif %}
+{% endblock %}
