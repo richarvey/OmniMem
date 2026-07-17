@@ -172,6 +172,8 @@ The full walkthrough, including auth tokens, permission settings, and the other 
 | [Memory type specs](docs/memory-types.md) | The storage model, field by field |
 | [Connection guides](guides/) | Per-agent setup |
 
+Per-namespace storage specifications, if you want to know exactly what gets written to Valkey and by whom: [overview](docs/memory-types.md) · [episodic](docs/memory-episodic.md) · [project](docs/memory-project.md) · [knowledge](docs/memory-knowledge.md) · [preference](docs/memory-preference.md) · [skill](docs/memory-skill.md)
+
 ---
 
 ## Contributing
