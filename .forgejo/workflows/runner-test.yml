@@ -1,0 +1,18 @@
+name: Runner Diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Probe sqcows runner
+    runs-on: sqcows
+    steps:
+      - name: Environment probe
+        run: |
+          echo "uname: $(uname -a)"
+          echo "user: $(id)"
+          echo "PATH: $PATH"
+          echo "which docker: $(which docker || echo 'not found')"
+          /usr/bin/docker version || echo "/usr/bin/docker failed"
+          df -h / | tail -1
