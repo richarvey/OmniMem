@@ -1,0 +1,16 @@
+# OmniMem
+
+> OmniMem is a self-hosted AI memory server — an MCP (Model Context Protocol) server that gives AI agents persistent semantic memory across sessions, projects, and machines. Open source, MIT licensed, free forever.
+
+OmniMem stores episodic memories, project context, knowledge articles, preferences, and compiled skills in Valkey with HNSW vector search. It features a memory lifecycle (active → deprioritised → archived → deleted), an abandoned-approach graveyard, experience scoring, contradiction detection, semantic deduplication, and RSS knowledge ingestion. It works with any MCP-capable agent: Claude Code, Claude Desktop, Codex, OpenCode, Kiro, GitHub Copilot, GitLab Duo, and Cursor.
+
+## Docs
+
+- [Source repository](https://codeberg.org/ric_harvey/omnimem): full README, manual, and deployment guides
+- [Install](https://omnimem.org/#quickstart): `curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash`
+
+## Key facts
+
+- Self-hosted via Docker Compose (four containers: Valkey with vector search, MCP server, RSS worker, web dashboard)
+- Python 3.12, FastMCP, sentence-transformers embeddings, Prometheus /metrics
+- No SaaS, no telemetry to third parties, MIT licensed
