@@ -483,7 +483,7 @@ class TestServerMain:
         assert server_runtime["settings"].http_allowed_origins is None
 
     def test_refuses_unauthenticated_non_loopback_bind(self, monkeypatch, server_runtime):
-        _set_server_env(monkeypatch, {"MCP_HOST": "0.0.0.0"})
+        _set_server_env(monkeypatch, {"MCP_HOST": "0.0.0.0"})  # nosec B104
 
         with pytest.raises(SystemExit) as excinfo:
             _run_server_as_main()
@@ -496,7 +496,7 @@ class TestServerMain:
             monkeypatch,
             {
                 "MCP_AUTH_TOKEN": "sekrit",  # auth present, non-loopback bind allowed
-                "MCP_HOST": "0.0.0.0",
+                "MCP_HOST": "0.0.0.0",  # nosec B104
                 "MCP_PORT": "9000",
                 "MCP_TRANSPORT": "http",
                 "OAUTH_BASE_URL": "https://mcp.example.com",
@@ -513,7 +513,7 @@ class TestServerMain:
         _run_server_as_main()
 
         assert server_runtime["run_calls"] == [
-            {"transport": "http", "host": "0.0.0.0", "port": 9000}
+            {"transport": "http", "host": "0.0.0.0", "port": 9000}  # nosec B104
         ]
         # Order preserved, duplicates collapsed, preset kept first.
         assert server_runtime["settings"].http_allowed_hosts == [

@@ -37,7 +37,7 @@ def _fetch_latest_version() -> str | None:
 
     try:
         req = Request(CODEBERG_API_URL, headers={"Accept": "application/json"})
-        with urlopen(req, timeout=5) as resp:  # nosec B310 — scheme is validated above
+        with urlopen(req, timeout=5) as resp:  # scheme is validated above  # nosec B310
             data = json.loads(resp.read())
             if isinstance(data, dict) and data.get("tag_name"):
                 tag = data["tag_name"].lstrip("v")
