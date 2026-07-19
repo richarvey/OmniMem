@@ -38,6 +38,17 @@ The full field-by-field storage spec is in [memory-skill.md](memory-skill.md).
 | `bless(memory_key)` | Promote one strong lesson to skill-eligible now, bypassing the reinforcement threshold at the next compile |
 | `promote_knowledge(key, domain?, demote?, rules?)` | Feed a knowledge article into a domain's compiled skill as reference material (see [rss-knowledge.md](rss-knowledge.md)) |
 
+## The auto skill scan
+
+You don't have to notice that a skill is waiting to exist. At most once per `SKILL_SCAN_INTERVAL_HOURS` (default 24), a `briefing()` runs a scan across all projects that does two things:
+
+- **New skills.** It looks for domains with no compiled skill whose episodic pool already carries rules that would clear the reinforcement gate — by default only when a rule spans two or more projects, because a lesson that recurs across projects is the strongest signal it deserves to become policy. Qualifying domains get a draft proposed automatically.
+- **Changed skills.** Where the briefing's update detection shows a skill's sources have moved (new lessons, rewritten or removed sources), the scan compiles a fresh draft so the diff is ready to review.
+
+Everything it produces is a proposal stash — exactly what `compile_skill(mode="propose")` creates — so the write gate is untouched: a human still reviews and accepts every draft, and nothing is ever written to a skill silently. Results appear in the briefing's `auto_proposed_skills` section and on the web UI's skills page as pending proposals.
+
+Ignoring a draft declines it: the proposal expires on its TTL, and a per-domain marker remembers what was proposed so the identical draft is not raised again. Only when the underlying lessons actually change does the domain come back around.
+
 ## Tuning
 
-The relevant environment variables, all covered in the [configuration reference](configuration.md): `OMNIMEM_USER`, `SKILL_CLUSTER_THRESHOLD`, `SKILL_DOMAIN_SUGGEST_THRESHOLD`, `SKILL_PROPOSAL_TTL_SECONDS`, `SKILL_SUGGEST_MIN_SIMILARITY`, `SKILL_EXPORT_DIR`, `SKILL_KNOWLEDGE_WATCH_DAYS`, `SKILL_KNOWLEDGE_WATCH_THRESHOLD`.
+The relevant environment variables, all covered in the [configuration reference](configuration.md): `OMNIMEM_USER`, `SKILL_CLUSTER_THRESHOLD`, `SKILL_DOMAIN_SUGGEST_THRESHOLD`, `SKILL_PROPOSAL_TTL_SECONDS`, `SKILL_SUGGEST_MIN_SIMILARITY`, `SKILL_EXPORT_DIR`, `SKILL_KNOWLEDGE_WATCH_DAYS`, `SKILL_KNOWLEDGE_WATCH_THRESHOLD`, `SKILL_SCAN_INTERVAL_HOURS`, `SKILL_SCAN_MIN_POOL`, `SKILL_SCAN_CROSS_PROJECT`, `SKILL_SCAN_MAX_PROPOSALS`.

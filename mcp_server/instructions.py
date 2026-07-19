@@ -47,6 +47,7 @@ At the beginning of every session:
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
 - **Knowledge watch** — if the briefing includes `skill_knowledge_watch`, recent articles look relevant to a compiled skill; entries flagged `possible_contradiction` may mean the world moved under a rule. Surface them and, if the human agrees an article belongs in the skill, call `promote_knowledge(key, domain="<domain>")` then recompile
+- **Auto-proposed skills** — if the briefing includes `auto_proposed_skills`, the server's periodic scan found recurring cross-project lessons worth a new skill (or a changed skill worth a fresh draft) and has already stashed the proposal. Surface each one to the human; review with `compile_skill(domain, mode="propose")` and only accept with `mode="write"` if they agree. Never accept one silently — an ignored draft simply expires, and the scan will not re-propose it until the underlying lessons change
 1. If the MCP server seems unresponsive or recall is slow, call `health()` and report the status to the human before continuing.
 
 -----
@@ -107,6 +108,8 @@ Always include at least one stack tag and one intent tag.
 - Runs a heuristic contradiction scan on active project memories
 
 When maintenance runs, the briefing response includes an `auto_maintenance` section showing what was cleaned up. You can still call `find_duplicates()` and `check_contradictions()` manually at any time. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable.
+
+**Auto skill scan** — at most once per `SKILL_SCAN_INTERVAL_HOURS` (default 24, 0 disables), a briefing also scans all projects for domains whose lessons recur strongly enough to earn a skill, and drafts proposals for changed skills. It only ever creates proposal stashes — the same thing `compile_skill(mode="propose")` creates — so every draft still needs a human accept via `mode="write"`. Results arrive in the briefing's `auto_proposed_skills` section.
 
 -----
 

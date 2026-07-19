@@ -114,6 +114,7 @@ Instead of making three separate calls at session start, a single `briefing(proj
 - **Suppressed topics** — what is currently filtered out
 - **Skill suggestions** — compiled skills relevant to the current work, as a recommendation rather than an auto-load. On an ongoing project they sit below project context; on a greenfield project with no context yet they move to the top, because there the skill is the only thing carrying your conventions
 - **Skill updates** — one-line gists where a skill's source memories changed since it was last compiled, with prominence scaled to risk
+- **Auto-proposed skills** — at most once per `SKILL_SCAN_INTERVAL_HOURS` (default 24), a scan across all projects proposes drafts for domains whose lessons recur strongly enough to earn a skill (cross-project patterns by default) and for changed skills. Proposals only — a human still reviews and accepts every draft, and an ignored draft is not raised again until the lessons change
 
 One tool call, one response, full context.
 

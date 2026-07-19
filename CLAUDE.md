@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
 
-**Version**: 6.4.0
+**Version**: 6.4.1
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -23,6 +23,7 @@ mcp_server/           # MCP server — FastMCP SSE transport
     skills.py         # v6 skill compiler engine: domain pools, lesson clustering, SKILL.md rendering, diffs
     skill_compiler.py # Shared propose-and-accept compile flow (used by MCP compile_skill AND the web UI)
     skill_transfer.py # v6.4 skill export/import: checksummed zip bundles (skill + source memories), strictly additive import
+    skill_scan.py     # v6.4.1 auto skill scan: time-gated in briefing, proposes drafts (stash only) for cross-project patterns + changed skills
   tools/              # 30+ MCP tool implementations
     core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
     project.py        # set/get/update/compile project_context, list_projects, delete_project
@@ -86,6 +87,7 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **Debian-slim Docker base** — Alpine doesn't work (PyTorch has no musllinux wheels)
 - **In-memory fakes** for testing (no Docker-in-tests complexity)
 - **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
+- **Auto skill scan** (v6.4.1) — time-gated in `briefing()` (`meta:skill_scan:last_run`, `SKILL_SCAN_INTERVAL_HOURS` default 24, 0 disables): proposes new skills for domains whose lessons clear the reinforcement gate (cross-project by default, `SKILL_SCAN_CROSS_PROJECT`) and drafts for changed skills (fed the `pending_skill_updates` domains so change detection runs once). Stash-only — the propose-and-accept gate is untouched. Noise gate: `meta:skill_scan:seen:{domain}-{user}` holds the last auto-proposed body sha (volatile-stripped), so an ignored/expired draft is never re-proposed until the compiled output changes; the scan withdraws its own stash when the sha matches. Domains with any live proposal stash (human or auto) are skipped entirely
 - **Index migration** on startup — `_migrate_indexes()` compares field count against definitions, drops stale indexes (data-safe) so they get recreated with new fields
 - **Per-memory recall counters** — `recall_count` and `last_recalled` updated via pipeline on each recall; `/telemetry` dashboard and `/metrics` Prometheus endpoint expose these
 - **RSS articles carry a project label** (v6.1.1) — default `RSS`, per-feed override via `project:` in feeds.yml, backfilled by a startup migration (`memory/migrations.py`), so ingested articles stay separable from conversation-sourced knowledge. Articles are identified by `feed_name`; the label must satisfy the project-name charset or the ingester falls back to `RSS`. It does not create a pseudo-project: projects pages/tools only count `mem:project:*` keys
