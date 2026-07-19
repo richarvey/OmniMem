@@ -107,7 +107,7 @@
       <td><span class="badge {{ s.state }}">{{ s.state }}</span></td>
       <td class="mono">{{ s.compiled_at }}</td>
       <td><span class="recall-badge">{{ s.recall_count }}</span></td>
-      <td style="text-align:right;white-space:nowrap">
+      <td class="skill-actions">
         <a href="/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
         <form method="POST" action="/skills/delete" style="display:inline" onsubmit="return confirm('Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.')">
           <input type="hidden" name="key" value="{{ s.key }}">
