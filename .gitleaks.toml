@@ -2,5 +2,11 @@
 useDefault = true
 
 [allowlist]
-description = "Documentation placeholder tokens in the deployment guides"
-regexes = ['''your-mcp-token''']
+description = "Documentation placeholders and known false positives"
+regexes = [
+  # Placeholder tokens in the deployment guides
+  '''your-mcp-token''',
+  # generic-api-key matches "key" inside "valkey" and then flags an adjacent
+  # Python kwarg as the secret (e.g. expand_queries=True in test code)
+  '''^expand_queries=''',
+]
