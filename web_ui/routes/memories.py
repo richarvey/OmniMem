@@ -56,13 +56,19 @@ def _get_all_memories(
             if source == "learned" and data.get("feed_name"):
                 continue
 
+            try:
+                updated_at = float(data.get("updated_at", "0"))
+            except (TypeError, ValueError):
+                # One malformed timestamp must not 500 the whole listing.
+                updated_at = 0.0
+
             memories.append({
                 "key": key,
                 "namespace": ns,
                 "content": (data.get("content") or "")[:120],
                 "state": mem_state,
                 "project": mem_project,
-                "updated_at": float(data.get("updated_at", "0")),
+                "updated_at": updated_at,
                 "heat": _recall_heat(data.get("last_recalled")),
             })
 
