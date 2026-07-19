@@ -68,6 +68,7 @@ def _get_all_memories(
                 "content": (data.get("content") or "")[:120],
                 "state": mem_state,
                 "project": mem_project,
+                "feed_name": data.get("feed_name") or "",
                 "updated_at": updated_at,
                 "heat": _recall_heat(data.get("last_recalled")),
             })

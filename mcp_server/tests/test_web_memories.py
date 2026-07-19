@@ -31,6 +31,7 @@ class TestSourceFilter:
             namespace="knowledge", state=None, project=None, source="rss",
         )
         assert [m["key"] for m in memories] == ["mem:knowledge:article1"]
+        assert memories[0]["feed_name"] == "Rust Official Blog"
 
     def test_learned_source_excludes_articles(self, fake_store, fake_embedder, monkeypatch):
         monkeypatch.setattr(deps, "store", fake_store)
@@ -49,6 +50,25 @@ class TestSourceFilter:
             namespace="knowledge", state=None, project=None,
         )
         assert len(memories) == 2
+
+
+class TestArticlesFeedColumn:
+    def test_articles_view_shows_feed_not_project(self, web_client, fake_store, fake_embedder):
+        _seed_knowledge(fake_store, fake_embedder)
+
+        resp = web_client.get("/memories?namespace=knowledge&source=rss")
+        assert resp.status_code == 200
+        assert "<th>Feed</th>" in resp.text
+        assert "<th>Project</th>" not in resp.text
+        assert "Rust Official Blog" in resp.text
+
+    def test_other_views_keep_project_column(self, web_client, fake_store, fake_embedder):
+        _seed_knowledge(fake_store, fake_embedder)
+
+        resp = web_client.get("/memories?namespace=knowledge&source=learned")
+        assert resp.status_code == 200
+        assert "<th>Project</th>" in resp.text
+        assert "<th>Feed</th>" not in resp.text
 
 
 class TestLifecycleRedirect:
