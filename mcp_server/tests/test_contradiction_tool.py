@@ -53,47 +53,60 @@ class TestCheckContradictions:
 
     def test_project_filter(self, fake_store, fake_embedder):
         store_memory(
-            fake_store, fake_embedder, "mem:episodic:01A", "Use Redis for caching",
+            fake_store, fake_embedder, "mem:episodic:01A", "Always use Redis for caching",
             project="projA",
         )
         store_memory(
-            fake_store, fake_embedder, "mem:episodic:01B", "Do not use Redis for caching",
+            fake_store, fake_embedder, "mem:episodic:01B", "Never use Redis for caching",
             project="projA",
         )
         store_memory(
-            fake_store, fake_embedder, "mem:episodic:01C", "Use Memcached",
+            fake_store, fake_embedder, "mem:episodic:01C", "Always use Memcached",
             project="projB",
         )
         store_memory(
-            fake_store, fake_embedder, "mem:episodic:01D", "Do not use Memcached",
+            fake_store, fake_embedder, "mem:episodic:01D", "Never use Memcached",
             project="projB",
         )
+        # Identical stored vectors make both pairs deterministic tier-1 hits,
+        # so the project filter has something real to exclude.
+        client = fake_store._client
+        client._data["mem:episodic:01B"]["vector"] = client._data["mem:episodic:01A"]["vector"]
+        client._data["mem:episodic:01D"]["vector"] = client._data["mem:episodic:01C"]["vector"]
         result = check_contradictions(project_filter="projA")
         # Should only find contradictions within projA
+        assert result["contradictions"]
         for c in result["contradictions"]:
             keys = {c["key_a"], c["key_b"]}
             assert "mem:episodic:01C" not in keys
             assert "mem:episodic:01D" not in keys
 
     def test_skips_archived(self, fake_store, fake_embedder):
-        store_memory(fake_store, fake_embedder, "mem:episodic:01A", "Use Alpine")
+        store_memory(fake_store, fake_embedder, "mem:episodic:01A", "Always use Alpine")
         store_memory(
-            fake_store, fake_embedder, "mem:episodic:01B", "Do not use Alpine",
+            fake_store, fake_embedder, "mem:episodic:01B", "Never use Alpine",
             state="archived",
         )
+        # A second active memory with an identical vector guarantees at least
+        # one contradiction is found, proving the loop excludes the archived one.
+        store_memory(fake_store, fake_embedder, "mem:episodic:01E", "Never use Alpine")
+        client = fake_store._client
+        client._data["mem:episodic:01E"]["vector"] = client._data["mem:episodic:01A"]["vector"]
         result = check_contradictions()
         # Archived memory should be excluded from scan
-        for c in result.get("contradictions", []):
+        assert result["contradictions"]
+        for c in result["contradictions"]:
             assert "mem:episodic:01B" not in (c["key_a"], c["key_b"])
 
     def test_links_cross_referenced(self, fake_store, fake_embedder):
-        store_memory(fake_store, fake_embedder, "mem:episodic:01A", "Use Alpine for builds")
-        store_memory(fake_store, fake_embedder, "mem:episodic:01B", "Do not use Alpine for builds")
+        store_memory(fake_store, fake_embedder, "mem:episodic:01A", "Always use Alpine for builds")
+        store_memory(fake_store, fake_embedder, "mem:episodic:01B", "Never use Alpine for builds")
+        client = fake_store._client
+        client._data["mem:episodic:01B"]["vector"] = client._data["mem:episodic:01A"]["vector"]
         check_contradictions()
         # Check that contradictions are linked on both memories
         data_a = fake_store.get("mem:episodic:01A")
-        data_b = fake_store.get("mem:episodic:01B")
-        if data_a and data_a.get("contradictions"):
-            import json
-            contras = json.loads(data_a["contradictions"])
-            assert any(c.get("key") == "mem:episodic:01B" for c in contras)
+        assert data_a and data_a.get("contradictions")
+        import json
+        contras = json.loads(data_a["contradictions"])
+        assert any(c.get("key") == "mem:episodic:01B" for c in contras)

@@ -220,9 +220,9 @@ class TestStoredVectors:
         store_memory(fake_store, fake_embedder, "mem:episodic:d2", "use valkey for caching layers")
         store_memory(fake_store, fake_embedder, "mem:episodic:d3", "completely unrelated topic")
 
-        def _boom(texts):
-            raise AssertionError("embed_batch should not run when stored vectors exist")
-
+        from unittest.mock import Mock
+        _boom = Mock(side_effect=AssertionError(
+            "embed_batch should not run when stored vectors exist"))
         monkeypatch.setattr(fake_embedder, "embed_batch", _boom)
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic")
         assert len(clusters) == 1

@@ -371,3 +371,171 @@ class TestPlanAndApply:
         summary = apply_skill_import(fake_store, fake_embedder, result)
         assert summary["skill_written"] is False
         assert summary["memories_written"] == ["mem:episodic:01A"]
+
+
+class TestValidateEdgeCases:
+    """The validation branches the round-trip tests can't reach."""
+
+    def _patch_skill(self, bundle, mutate):
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as zf:
+            skill = json.loads(zf.read("skill.json"))
+        mutate(skill)
+        body = skill.get("body", "")
+        return _rebuild_zip(bundle["data"], replace={
+            "skill.json": json.dumps(skill).encode(),
+            "SKILL.md": body.encode() if isinstance(body, str) else b"",
+        }, refresh_checksums=True)
+
+    def test_export_skips_uncitable_manifest_keys(self, fake_store, fake_embedder):
+        _seed_skill(fake_store, fake_embedder,
+                    sources=("mem:episodic:01A", "mem:project:oddball"))
+        fake_store.upsert("project", "mem:project:oddball", {
+            "content": "not a valid skill source", "state": "active",
+        }, fake_embedder.embed("odd"))
+        out, err = build_skill_export(fake_store, "mem:skill:gen:python-local")
+        assert err is None
+        assert out["memory_count"] == 1
+        assert "mem:project:oddball" in out["missing_sources"]
+
+    def test_duplicate_zip_entries_rejected(self, bundle):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as src, \
+                zipfile.ZipFile(buf, "w") as dst:
+            for name in src.namelist():
+                dst.writestr(name, src.read(name))
+            dst.writestr("SKILL.md", src.read("SKILL.md"))
+        result = validate_skill_import(buf.getvalue())
+        assert result["ok"] is False
+        assert "duplicate entries" in result["error"]
+
+    def test_oversized_entry_rejected(self, bundle):
+        big = json.dumps({
+            "key": "mem:episodic:01BIG",
+            "fields": {"content": "x" * (1024 * 1024 + 100)},
+        }).encode()
+        data = _rebuild_zip(bundle["data"], add={"memories/0009.json": big},
+                            refresh_checksums=True)
+        result = validate_skill_import(data)
+        assert result["ok"] is False
+        assert "too large" in result["error"]
+
+    def test_manifest_not_json_and_not_object(self, bundle):
+        for raw in (b"{broken", b'["a list"]'):
+            data = _rebuild_zip(bundle["data"], replace={"manifest.json": raw})
+            result = validate_skill_import(data)
+            assert result["ok"] is False
+            assert "manifest" in result["error"].lower()
+
+    def test_checksums_missing_entirely(self, bundle):
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+        del manifest["checksums"]
+        data = _rebuild_zip(bundle["data"], replace={
+            "manifest.json": json.dumps(manifest).encode(),
+        })
+        result = validate_skill_import(data)
+        assert result["ok"] is False
+        assert "checksums" in result["error"]
+
+    def test_skill_json_shapes_rejected(self, bundle):
+        data = _rebuild_zip(bundle["data"], replace={
+            "skill.json": b"{broken",
+        }, refresh_checksums=True)
+        assert "skill.json" in validate_skill_import(data)["error"]
+
+        data = _rebuild_zip(bundle["data"], replace={
+            "skill.json": b'["list"]',
+        }, refresh_checksums=True)
+        assert "skill.json" in validate_skill_import(data)["error"]
+
+    def test_skill_field_values_must_be_strings(self, bundle):
+        data = self._patch_skill(bundle, lambda s: s.update(compiled_at=123))
+        result = validate_skill_import(data)
+        assert result["ok"] is False
+        assert "strings" in result["error"]
+
+    def test_skill_field_too_large(self, bundle):
+        data = self._patch_skill(
+            bundle, lambda s: s.update(description="x" * 100_001),
+        )
+        result = validate_skill_import(data)
+        assert result["ok"] is False
+        assert "too large" in result["error"]
+
+    def test_skill_name_and_body_requirements(self, bundle):
+        data = self._patch_skill(bundle, lambda s: s.update(name=""))
+        assert "name" in validate_skill_import(data)["error"]
+
+        data = self._patch_skill(bundle, lambda s: s.update(body="   "))
+        assert "empty body" in validate_skill_import(data)["error"]
+
+    def test_rule_manifest_damage_rejected(self, bundle):
+        data = self._patch_skill(bundle, lambda s: s.update(rule_manifest="{broken"))
+        assert "rule_manifest" in validate_skill_import(data)["error"]
+
+        data = self._patch_skill(
+            bundle, lambda s: s.update(rule_manifest='{"not": "a list"}'),
+        )
+        assert "rule_manifest" in validate_skill_import(data)["error"]
+
+    def test_memory_file_shapes_rejected(self, bundle):
+        cases = [
+            (b"{broken", "not valid JSON"),
+            (b'["a list"]', "JSON object"),
+            (json.dumps({"key": 42, "fields": {}}).encode(), "invalid memory key"),
+            (json.dumps({"key": "mem:episodic:01A"}).encode(), "no fields"),
+        ]
+        for raw, expected in cases:
+            data = _rebuild_zip(bundle["data"], replace={
+                "memories/0000.json": raw,
+            }, refresh_checksums=True)
+            result = validate_skill_import(data)
+            assert result["ok"] is False
+            assert expected in result["error"]
+
+    def test_memory_field_bounds(self, bundle):
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as zf:
+            mem = json.loads(zf.read("memories/0000.json"))
+
+        too_many = dict(mem, fields={f"f{i}": "v" for i in range(65)})
+        long_name = dict(mem, fields={"x" * 65: "v", "content": "c"})
+        big_value = dict(mem, fields={"content": "c", "notes": "x" * 100_500})
+        big_content = dict(mem, fields={"content": "x" * 50_001})
+        for payload, expected in (
+            (too_many, "too many fields"),
+            (long_name, "invalid field name"),
+            (big_value, "too large"),
+            (big_content, "content exceeds"),
+        ):
+            data = _rebuild_zip(bundle["data"], replace={
+                "memories/0000.json": json.dumps(payload).encode(),
+            }, refresh_checksums=True)
+            result = validate_skill_import(data)
+            assert result["ok"] is False
+            assert expected in result["error"]
+
+    def test_duplicate_memory_keys_rejected(self, bundle):
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as zf:
+            mem0 = zf.read("memories/0000.json")
+        data = _rebuild_zip(bundle["data"], replace={
+            "memories/0001.json": mem0,
+        }, refresh_checksums=True)
+        result = validate_skill_import(data)
+        assert result["ok"] is False
+        assert "twice" in result["error"]
+
+    def test_exporter_reported_missing_sources_warns(self, bundle):
+        data = _rebuild_zip(bundle["data"], manifest_patch={
+            "missing_sources": ["mem:episodic:01GONE"],
+        })
+        result = validate_skill_import(data)
+        assert result["ok"] is True
+        assert any("export time" in w for w in result["warnings"])
+
+    def test_source_manifest_damage_tolerated_in_parser(self):
+        from memory.skill_transfer import _parse_source_manifest
+
+        assert _parse_source_manifest("{broken") == []
+        assert _parse_source_manifest('"a string"') == []
+        assert _parse_source_manifest('["ok", 42]') == ["ok"]
+        assert _parse_source_manifest(None) == []
