@@ -159,17 +159,14 @@ def test_pipeline_expand_queries_disabled_by_default(
     monkeypatch, fake_store, fake_embedder, pipeline
 ):
     """Without the flag, expand_query is not called at all."""
-    called = {"count": 0}
+    from unittest.mock import Mock
 
-    def tracker(q, store=None):
-        called["count"] += 1
-        return ["nope"]
-
+    tracker = Mock(return_value=["nope"])
     monkeypatch.setattr("memory.recall.expand_query", tracker)
     monkeypatch.delenv("RECALL_EXPAND_QUERIES", raising=False)
 
     pipeline.recall(query="anything", top_k=5)
-    assert called["count"] == 0
+    assert tracker.call_count == 0
 
 
 def test_pipeline_expand_queries_env_var_enables(

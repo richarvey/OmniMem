@@ -11,6 +11,7 @@
       {% if states.deprioritised %}<span class="indicator warn">{{ states.deprioritised }} deprioritised</span>{% endif %}
       {% if states.archived %}<span class="indicator warn">{{ states.archived }} archived</span>{% endif %}
     </div>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-modal').style.display='flex'">Import Skill</button>
     <button class="btn btn-primary btn-sm" onclick="document.getElementById('compile-modal').style.display='flex'">New Skill</button>
   </div>
 </header>
@@ -18,8 +19,17 @@
 <p class="section-note">
   Skills are compiled from experience and graveyard memories via the
   <code>compile_skill</code> propose-and-accept flow. They can't be edited —
-  to change one, update the underlying memories and recompile.
+  to change one, update the underlying memories and recompile. Export bundles
+  a skill with its source memories for another OmniMem instance; import is
+  strictly additive and never overwrites what's already here.
 </p>
+
+{% if message %}
+<div class="flash flash-success"><span>{{ message }}</span></div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error"><span>{{ error }}</span></div>
+{% endif %}
 
 <div id="compile-modal" class="modal-backdrop" style="display:none">
   <div class="modal modal-wide">
@@ -37,6 +47,27 @@
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm"
               onclick="document.getElementById('compile-modal').style.display='none';document.getElementById('compile-result').innerHTML=''">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="import-modal" class="modal-backdrop" style="display:none">
+  <div class="modal modal-wide">
+    <h3>Import a Skill Bundle</h3>
+    <p>
+      Upload a <code>.zip</code> exported from another OmniMem instance's
+      skills page. The bundle is validated first, then you review exactly
+      what would be added — existing skills and memories are never
+      overwritten.
+    </p>
+    <form hx-post="/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+      <input type="file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Validate Bundle</button>
+    </form>
+    <div id="import-result"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('import-modal').style.display='none';document.getElementById('import-result').innerHTML=''">Close</button>
     </div>
   </div>
 </div>
@@ -76,7 +107,8 @@
       <td><span class="badge {{ s.state }}">{{ s.state }}</span></td>
       <td class="mono">{{ s.compiled_at }}</td>
       <td><span class="recall-badge">{{ s.recall_count }}</span></td>
-      <td style="text-align:right">
+      <td class="skill-actions">
+        <a href="/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
         <form method="POST" action="/skills/delete" style="display:inline" onsubmit="return confirm('Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.')">
           <input type="hidden" name="key" value="{{ s.key }}">
           <button type="submit" class="btn btn-danger btn-sm">Delete</button>

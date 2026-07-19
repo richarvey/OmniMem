@@ -275,6 +275,29 @@ def briefing(
             if updates:
                 result["skill_updates"] = updates
 
+            # Auto skill scan (v6.4.1): time-gated, proposes drafts for
+            # cross-project lesson patterns and for changed skills. Stash
+            # only — the propose-and-accept gate is untouched, a human still
+            # commits every draft.
+            try:
+                from memory.skill_scan import run_skill_scan, scan_due
+
+                if scan_due(store):
+                    scan = run_skill_scan(
+                        store, embedder,
+                        update_domains=[u["domain"] for u in updates],
+                    )
+                    if scan["proposals"]:
+                        result["auto_proposed_skills"] = {
+                            "note": "Drafts proposed automatically from "
+                                    "recurring lessons — nothing is written "
+                                    "until a human reviews and accepts each "
+                                    "one. Ignoring a draft declines it.",
+                            "proposals": scan["proposals"],
+                        }
+            except Exception as exc:
+                logger.error("Auto skill scan failed: %s", exc)
+
             # Fresh knowledge semantically close to a compiled skill —
             # awareness only; promoting an article is a deliberate call.
             watch = knowledge_watch(store)

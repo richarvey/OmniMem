@@ -183,11 +183,12 @@ class TestWhyDidYouMention:
         self._store_recall_log(
             fake_store, "log:recall:001", "container image compilation problems",
         )
-        result = why_did_you_mention("Docker build failures")
-        # Should find a semantic match (similar topics)
-        assert result["status"] in ("found", "not_found")
-        if result["status"] == "found":
-            assert result["match_type"] == "semantic"
+        # Same words reordered: the fake embedder is additive bag-of-words, so
+        # this yields an identical vector (similarity 1.0) without matching
+        # the keyword path — deterministically a semantic match.
+        result = why_did_you_mention("problems compilation image container")
+        assert result["status"] == "found"
+        assert result["match_type"] == "semantic"
 
     def test_not_found(self, fake_store):
         self._store_recall_log(fake_store, "log:recall:001", "unrelated topic")

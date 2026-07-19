@@ -107,7 +107,7 @@ def _fetch_page_content(url: str) -> str | None:
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-GB,en;q=0.9",
         })
-        with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:  # nosec B310 — scheme validated above
+        with urllib.request.urlopen(req, timeout=_PAGE_FETCH_TIMEOUT) as resp:  # scheme validated above  # nosec B310
             # Cap the read so a huge or endless response can't exhaust memory.
             raw = resp.read(_MAX_PAGE_BYTES + 1)
             if len(raw) > _MAX_PAGE_BYTES:

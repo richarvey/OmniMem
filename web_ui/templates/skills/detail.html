@@ -9,6 +9,9 @@
   <span class="badge {{ skill.state }}">{{ skill.state }}</span>
   {% if skill.generated %}<span class="badge generated" title="Compiler output — never hand-edited">generated</span>{% endif %}
   <span class="detail-key">{{ skill.key }}</span>
+  {% if skill.generated %}
+  <a href="/skills/export/{{ skill.key }}" class="btn btn-secondary btn-sm" style="margin-left:auto" title="Download this skill and its source memories as a portable zip bundle">Export</a>
+  {% endif %}
 </header>
 
 {% if skill.description %}

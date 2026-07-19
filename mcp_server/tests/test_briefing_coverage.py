@@ -250,12 +250,16 @@ class TestCheckContradictionsTool:
                      "Always use Alpine Linux")
         store_memory(fake_store, fake_embedder, "mem:episodic:ct11",
                      "Never use Alpine Linux, avoid it")
+        # Give the pair identical stored vectors so tier 1 surfaces it
+        # deterministically regardless of the hash seed.
+        client = fake_store._client
+        client._data["mem:episodic:ct11"]["vector"] = client._data["mem:episodic:ct10"]["vector"]
         with patch("tools.contradiction.check_contradiction_api",
                    return_value={"is_contradiction": True, "confidence": 0.95,
                                  "explanation": "Direct conflict"}):
             result = check_contradictions(query=None, use_api=True)
-            if result["contradictions"]:
-                assert result["contradictions"][0]["method"] == "api_confirmed"
+            assert result["contradictions"]
+            assert result["contradictions"][0]["method"] == "api_confirmed"
 
     def test_scan_filters_archived_and_project(self, fake_store, fake_embedder):
         store_memory(fake_store, fake_embedder, "mem:episodic:ct12",

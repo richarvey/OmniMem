@@ -5,8 +5,10 @@
       <th>Namespace</th>
       <th>Content</th>
       <th>State</th>
-      <th>Project</th>
-      <th>Updated</th>
+      {# Articles all share one project label — the feed they came from is
+         the meaningful grouping #}
+      <th>{{ "Feed" if source == "rss" else "Project" }}</th>
+      <th>{{ "Added" if source == "rss" else "Updated" }}</th>
       <th>Actions</th>
     </tr>
   </thead>
@@ -16,7 +18,7 @@
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
       <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
-      <td class="content-cell">{{ mem.project or "—" }}</td>
+      <td class="content-cell">{{ (mem.feed_name if source == "rss" else mem.project) or "—" }}</td>
       <td class="date-cell">
         <span class="date-main">{{ mem.updated_date }}</span>
         <span class="date-time">{{ mem.updated_time }}</span>

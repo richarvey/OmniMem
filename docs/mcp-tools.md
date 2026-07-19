@@ -19,7 +19,7 @@ Every tool the OmniMem MCP server exposes, grouped by area. The server delivers 
 | `list_suppressions()` | Show all currently suppressed topics |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Scan for clusters of near-identical memories |
 | `check_contradictions(query?, namespace?, use_api?)` | Detect memories that contradict each other |
-| `briefing(project?, include_knowledge?)` | Single-call session start with full context |
+| `briefing(project?, include_knowledge?)` | Single-call session start with full context. Also runs auto-maintenance on its interval and, at most once per `SKILL_SCAN_INTERVAL_HOURS`, the auto skill scan that proposes skill drafts for review |
 
 ## Project context
 

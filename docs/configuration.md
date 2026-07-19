@@ -65,3 +65,7 @@ All configuration is via environment variables, usually set in your `.env` file.
 | `SKILL_EXPORT_DIR` | `/app/backups/skills` | Root directory for optional `export_path` mirrors of compiled skills. Valkey stays the canonical store |
 | `SKILL_KNOWLEDGE_WATCH_DAYS` | `14` | Lookback window for the briefing's knowledge watch — how long a recent article can keep flagging itself as relevant to a compiled skill. Set to 0 to disable |
 | `SKILL_KNOWLEDGE_WATCH_THRESHOLD` | `0.35` | Similarity floor between an article and a skill's discovery embedding before the knowledge watch surfaces it |
+| `SKILL_SCAN_INTERVAL_HOURS` | `24` | How often a `briefing()` may run the auto skill scan that proposes new skills from cross-project lesson patterns and drafts for changed skills. Set to 0 to disable |
+| `SKILL_SCAN_MIN_POOL` | `3` | Minimum lesson-bearing memories a domain needs before the scan even checks it for a new skill |
+| `SKILL_SCAN_CROSS_PROJECT` | `true` | Require at least one qualifying rule to span two or more projects before auto-proposing a new skill. Set to `false` to propose from single-project patterns too |
+| `SKILL_SCAN_MAX_PROPOSALS` | `3` | Cap on proposals a single scan run may create, so one briefing never floods the review queue |

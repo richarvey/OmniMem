@@ -27,11 +27,9 @@ class TestCheckDuplicate:
         vector = fake_embedder.embed("Kubernetes deployment strategies for production")
         result = check_duplicate(fake_store, "episodic", vector,
                                  "Kubernetes deployment strategies for production")
-        # Due to deterministic fake embedder, different text -> different vector
-        # The threshold is 0.92, random vectors are unlikely to match
-        # This test verifies the flow works; exact similarity depends on the hash
-        if result is not None:
-            assert result.similarity >= 0.92
+        # The fake embedder sums per-word random vectors, so texts sharing only
+        # "for" land nowhere near the 0.92 threshold.
+        assert result is None
 
     def test_archived_excluded_from_dedup(self, fake_store, fake_embedder):
         content = "Use Redis for session storage"
@@ -103,12 +101,15 @@ class TestFindAllDuplicates:
 
     def test_archived_excluded(self, fake_store, fake_embedder):
         content = "Shared content"
+        # Two active copies guarantee a cluster forms (identical content gives
+        # similarity 1.0), so the loop genuinely checks the archived exclusion.
+        store_memory(fake_store, fake_embedder, "mem:episodic:fd004", content)
         store_memory(fake_store, fake_embedder, "mem:episodic:fd005", content)
         store_memory(fake_store, fake_embedder, "mem:episodic:fd006",
                      content, state="archived", surface_score="0.0")
 
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic")
-        # Archived should be excluded, so no cluster of 2
+        assert clusters
         for cluster in clusters:
             keys = [m["key"] for m in cluster["memories"]]
             assert "mem:episodic:fd006" not in keys
@@ -130,14 +131,18 @@ class TestFindAllDuplicates:
 
     def test_project_filter(self, fake_store, fake_embedder):
         content = "Shared content between projects"
+        # Two alpha copies guarantee a cluster forms under the filter, so the
+        # loop genuinely checks that beta memories were never scanned.
         store_memory(fake_store, fake_embedder, "mem:episodic:fd008",
                      content, project="alpha")
         store_memory(fake_store, fake_embedder, "mem:episodic:fd009",
                      content, project="beta")
+        store_memory(fake_store, fake_embedder, "mem:episodic:fd010",
+                     content, project="alpha")
 
         clusters = find_all_duplicates(fake_store, fake_embedder, "episodic",
                                        project_filter="alpha")
-        # Only alpha project memories should be scanned
+        assert clusters
         for cluster in clusters:
             for item in cluster["memories"]:
                 assert item.get("project") == "alpha"

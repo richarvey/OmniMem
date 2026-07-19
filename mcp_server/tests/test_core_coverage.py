@@ -74,18 +74,30 @@ class TestValidationEdges:
 # --- Contradiction warning in remember() ---
 
 class TestRememberContradiction:
-    def test_remember_returns_contradiction_warning(self, fake_store, fake_embedder):
+    def test_remember_returns_contradiction_warning(self, fake_store, fake_embedder, monkeypatch):
         """When storing content that contradicts an existing memory, a warning is returned."""
+        # Craft vectors with cosine similarity exactly 0.8: above the
+        # contradiction threshold (0.7) but below the dedup cutoff (0.92),
+        # so the second remember() passes dedup and hits the heuristic.
+        import numpy as np
+        e1 = np.zeros(384, dtype=np.float32)
+        e1[0] = 1.0
+        e2 = np.zeros(384, dtype=np.float32)
+        e2[1] = 1.0
+        vectors = {
+            "You should always use Redis for caching": e1,
+            "You should never use Redis for caching": (0.8 * e1 + 0.6 * e2).astype(np.float32),
+        }
+        monkeypatch.setattr(fake_embedder, "embed", lambda text: vectors[text])
         # Store a memory with "use" language
         remember("You should always use Redis for caching")
-        # Store a contradicting memory with "don't use" language
-        result = remember("You should never use Redis for caching", force=True)
-        # The contradiction heuristic checks negation patterns
-        if "contradiction_warning" in result:
-            warning = result["contradiction_warning"]
-            assert "existing_key" in warning
-            assert "similarity" in warning
-            assert "explanation" in warning
+        # Store a contradicting memory with "don't use" language (force=True
+        # would skip the heuristic entirely, so this must be a plain write)
+        result = remember("You should never use Redis for caching")
+        warning = result["contradiction_warning"]
+        assert "existing_key" in warning
+        assert "similarity" in warning
+        assert "explanation" in warning
 
 
 # --- Recall with rich result fields ---

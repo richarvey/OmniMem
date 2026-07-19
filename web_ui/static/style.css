@@ -764,26 +764,46 @@ span.project-name {
   font-family: var(--font-mono);
 }
 
-/* Skills table */
+/* Skills table — fixed layout, so anything that can't fit its column would
+   spill under the neighbour: clip the cells and let badges wrap instead */
 .skills-table {
   table-layout: fixed;
   width: 100%;
 }
 
+.skills-table td {
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
+
+.skills-table td:nth-child(2) .badge,
+.skills-table td:nth-child(4) .badge {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.skills-table .skill-actions {
+  text-align: right;
+}
+
+.skills-table .skill-actions .btn {
+  margin-bottom: 0.25rem;
+}
+
 .skills-table th:nth-child(1),
-.skills-table td:nth-child(1) { width: 17%; }
+.skills-table td:nth-child(1) { width: 16%; }
 .skills-table th:nth-child(2),
-.skills-table td:nth-child(2) { width: 11%; }
+.skills-table td:nth-child(2) { width: 12%; }
 .skills-table th:nth-child(3),
-.skills-table td:nth-child(3) { width: 30%; }
+.skills-table td:nth-child(3) { width: 23%; }
 .skills-table th:nth-child(4),
-.skills-table td:nth-child(4) { width: 10%; }
+.skills-table td:nth-child(4) { width: 12%; }
 .skills-table th:nth-child(5),
-.skills-table td:nth-child(5) { width: 14%; }
+.skills-table td:nth-child(5) { width: 13%; }
 .skills-table th:nth-child(6),
-.skills-table td:nth-child(6) { width: 8%; }
+.skills-table td:nth-child(6) { width: 6%; }
 .skills-table th:nth-child(7),
-.skills-table td:nth-child(7) { width: 10%; }
+.skills-table td:nth-child(7) { width: 18%; }
 
 /* Graveyard table */
 .graveyard-table {
@@ -803,8 +823,6 @@ span.project-name {
 .graveyard-table td:nth-child(4) { width: 9%; }
 .graveyard-table th:nth-child(5),
 .graveyard-table td:nth-child(5) { width: 11%; }
-.skills-table th:nth-child(6),
-.skills-table td:nth-child(6) { width: 8%; }
 
 /* SKILL.md body — the whole document, monospace, scrolls inside its own box */
 .skill-body {
@@ -1193,6 +1211,49 @@ span.project-name {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+}
+
+/* Skill import preview: what confirm would add vs leave untouched */
+.import-plan {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.import-plan li {
+  display: block;
+  line-height: 1.5;
+}
+
+.import-plan .badge {
+  margin-right: 0.35rem;
+}
+
+.import-plan .mono {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.import-keys {
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.import-keys summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  margin-bottom: 0.35rem;
+}
+
+.import-keys .mono {
+  display: block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0;
+  overflow-wrap: anywhere;
 }
 
 /* Refresh feedback: dim the target while the request is in flight,

@@ -1,0 +1,71 @@
+{% set st = result.status %}
+{% if st == "preview" %}
+<div class="flash flash-info">
+  <span>
+    Bundle validated: <strong>{{ result.manifest.name }}</strong>
+    (domain <strong>{{ result.manifest.domain }}</strong>)
+    {%- if result.manifest.exported_at %}, exported {{ result.manifest.exported_at }}{% endif %}
+    {%- if result.manifest.omnimem_version %} from OmniMem {{ result.manifest.omnimem_version }}{% endif %}.
+    Nothing is written until you confirm below.
+  </span>
+</div>
+
+{% for w in result.warnings %}
+<div class="flash flash-warning"><span>{{ w }}</span></div>
+{% endfor %}
+
+<ul class="import-plan">
+  <li>
+    {% if result.plan.skill_exists %}
+    <span class="badge deprioritised">skip</span>
+    A skill already exists at <span class="mono">{{ result.plan.skill_key }}</span> —
+    it will <strong>not</strong> be overwritten. Delete it first if you want the
+    bundled version.
+    {% else %}
+    <span class="badge active">add</span>
+    Skill will be created at <span class="mono">{{ result.plan.skill_key }}</span>.
+    {% endif %}
+  </li>
+  {% if result.plan.new_memories %}
+  <li>
+    <span class="badge active">add</span>
+    {{ result.plan.new_memories|length }} source
+    memor{{ "y" if result.plan.new_memories|length == 1 else "ies" }} will be added.
+  </li>
+  {% endif %}
+  {% if result.plan.existing_memories %}
+  <li>
+    <span class="badge deprioritised">skip</span>
+    {{ result.plan.existing_memories|length }} source
+    memor{{ "y is" if result.plan.existing_memories|length == 1 else "ies are" }}
+    already stored here and will be left untouched.
+  </li>
+  {% endif %}
+</ul>
+
+{% if result.plan.new_memories %}
+<details class="import-keys">
+  <summary>Memories to be added</summary>
+  {% for key in result.plan.new_memories %}
+  <span class="mono">{{ key }}</span>
+  {% endfor %}
+</details>
+{% endif %}
+
+{% if result.nothing_to_do %}
+<p class="section-note">
+  Everything in this bundle is already on this instance — confirming would
+  change nothing.
+</p>
+{% else %}
+<form hx-post="/skills/import/confirm" hx-target="#import-result" style="margin-top:0.75rem;text-align:right">
+  <input type="hidden" name="token" value="{{ result.token }}">
+  <button type="submit" class="btn btn-primary btn-sm">Confirm Import</button>
+</form>
+{% endif %}
+
+{% else %}
+<div class="flash flash-error">
+  <span>{{ result.reason or "Import failed." }}</span>
+</div>
+{% endif %}

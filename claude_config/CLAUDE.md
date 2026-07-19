@@ -40,6 +40,7 @@ At the beginning of every session:
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
 - **Knowledge watch** — if the briefing includes `skill_knowledge_watch`, recent articles look relevant to a compiled skill; entries flagged `possible_contradiction` may mean the world moved under a rule. Surface them and, if the human agrees an article belongs in the skill, call `promote_knowledge(key, domain="<domain>")` then recompile
+- **Auto-proposed skills** — if the briefing includes `auto_proposed_skills`, the server's periodic scan found recurring cross-project lessons worth a new skill (or a changed skill worth a fresh draft) and has already stashed the proposal. Surface each one; review with `compile_skill(domain, mode="propose")` and accept with `mode="write"` only if the human agrees. Ignoring a draft declines it
 1. If the MCP server seems unresponsive or recall is slow, call `health()` and report the status to the human before continuing.
 
 -----
