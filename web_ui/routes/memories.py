@@ -35,7 +35,7 @@ def _get_all_memories(
         all_data = deps.store.get_fields_multi(
             keys,
             ("content", "state", "project", "project_name", "updated_at",
-             "feed_name", "last_recalled"),
+             "created_at", "feed_name", "last_recalled"),
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -61,6 +61,10 @@ def _get_all_memories(
             except (TypeError, ValueError):
                 # One malformed timestamp must not 500 the whole listing.
                 updated_at = 0.0
+            try:
+                created_at = float(data.get("created_at", "0"))
+            except (TypeError, ValueError):
+                created_at = 0.0
 
             memories.append({
                 "key": key,
@@ -70,6 +74,7 @@ def _get_all_memories(
                 "project": mem_project,
                 "feed_name": data.get("feed_name") or "",
                 "updated_at": updated_at,
+                "created_at": created_at,
                 "heat": _recall_heat(data.get("last_recalled")),
             })
 
@@ -112,15 +117,19 @@ async def memories_list(request: Request) -> HTMLResponse:
         source=source or None,
     )
 
+    # Articles never change after ingestion, but migrations and backfills can
+    # touch updated_at — order and date them by when they were added instead.
+    def _row_ts(mem: dict) -> float:
+        if source == "rss":
+            return mem["created_at"] or mem["updated_at"]
+        return mem["updated_at"]
+
     # Sort
-    if sort == "oldest":
-        memories.sort(key=lambda x: x["updated_at"])
-    else:
-        memories.sort(key=lambda x: x["updated_at"], reverse=True)
+    memories.sort(key=_row_ts, reverse=(sort != "oldest"))
 
     # Format timestamps
     for mem in memories:
-        ts = mem["updated_at"]
+        ts = _row_ts(mem)
         if ts > 0:
             lt = time.localtime(ts)
             mem["updated_date"] = time.strftime("%-d %b %Y", lt)

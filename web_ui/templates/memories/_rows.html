@@ -8,7 +8,7 @@
       {# Articles all share one project label — the feed they came from is
          the meaningful grouping #}
       <th>{{ "Feed" if source == "rss" else "Project" }}</th>
-      <th>Updated</th>
+      <th>{{ "Added" if source == "rss" else "Updated" }}</th>
       <th>Actions</th>
     </tr>
   </thead>
