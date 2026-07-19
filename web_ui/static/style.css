@@ -1195,6 +1195,49 @@ span.project-name {
   overflow-wrap: break-word;
 }
 
+/* Skill import preview: what confirm would add vs leave untouched */
+.import-plan {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.import-plan li {
+  display: block;
+  line-height: 1.5;
+}
+
+.import-plan .badge {
+  margin-right: 0.35rem;
+}
+
+.import-plan .mono {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.import-keys {
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.import-keys summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  margin-bottom: 0.35rem;
+}
+
+.import-keys .mono {
+  display: block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0;
+  overflow-wrap: anywhere;
+}
+
 /* Refresh feedback: dim the target while the request is in flight,
    then fade the fresh content back in so a refresh is always visible
    even when the numbers haven't changed */

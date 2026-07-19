@@ -2,6 +2,10 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [6.4.0] - 2026-07-19
+### Added
+- **Skills move between instances now**: every skill on the web UI's skills page (and its detail view) gains an Export button that downloads the skill together with all the source memories it was compiled from as a single zip bundle. The bundle is self-describing — a manifest with a format version and a sha256 checksum for every file, the skill as both machine-readable JSON and the human-readable SKILL.md, and one JSON file per source memory. An Import Skill button on the skills page takes such a bundle into another OmniMem instance: the upload is validated end to end (format, checksums, key shapes, field types, size bounds, the generated flag, and that every bundled memory is actually cited by the skill), then a preview shows exactly what would be added before anything is written. Import is strictly additive — existing skills and memories are never overwritten, so replaying a bundle is a no-op and a half-present skill just gains its missing pieces. Embeddings never travel in the bundle; everything is re-embedded on the receiving instance, and per-instance telemetry (load counts) stays behind
+
 ## [6.3.2] - 2026-07-17
 ### Added
 - **Five platform deployment guides**: step-by-step setup for macOS (Docker Desktop, Apple Silicon and Intel), Raspberry Pi (64-bit OS, native arm64), AWS EC2 (Linux), GCP Compute Engine (Linux), and any Linux server with Tailscale Funnel for a public HTTPS endpoint without a domain or port forwarding. All linked from the README's documentation table and the docs index

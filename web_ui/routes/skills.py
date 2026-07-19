@@ -1,4 +1,4 @@
-"""Compiled skills routes: list, detail, gated create, and delete.
+"""Compiled skills routes: list, detail, gated create, delete, and transfer.
 
 Skills are build output — compiled from experience and graveyard memories
 through the compile_skill propose-and-accept gate. The web UI offers no edit
@@ -7,22 +7,42 @@ skill's content changes is a reviewed proposal. Creation here runs the exact
 same shared flow (memory/skill_compiler.py) — compile a draft, a human reviews
 it in the modal, accept commits it. Deletion is allowed with confirmation;
 to change a skill, update the underlying memories and recompile.
+
+Transfer moves a skill between instances: export bundles the skill and its
+source memories into a checksummed zip, import validates the bundle, previews
+what would change, and only writes on an explicit confirm — strictly additive,
+existing keys are never overwritten (memory/skill_transfer.py).
 """
 
 import json
+import re
+import secrets
 import time
+from urllib.parse import quote
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from memory.skill_compiler import compile_skill_flow
+from memory.skill_transfer import (
+    apply_skill_import,
+    build_skill_export,
+    plan_skill_import,
+    validate_skill_import,
+)
 from memory.skills import generated_skill_key, resolve_domain, validate_domain
 
 from .. import deps
 
 _SKILL_PREFIX = "mem:skill:"
 _PROPOSAL_PREFIX = "meta:skill:proposal:"
+
+# Validated-but-unconfirmed import bundles, keyed by a one-shot token so the
+# confirm step commits exactly what was previewed.
+_IMPORT_STASH_PREFIX = "meta:skill:import:"
+_IMPORT_STASH_TTL = 1800
+_IMPORT_TOKEN_RE = re.compile(r"^[A-Za-z0-9_\-]{8,64}$")
 
 # Discovery metadata only — the body is fetched by the detail view alone.
 _LIST_FIELDS = (
@@ -139,7 +159,12 @@ async def skills_list(request: Request) -> HTMLResponse:
     """GET /skills — compiled skill catalogue with pending proposals."""
     data = gather_skills(deps.store)
     template = request.app.state.templates.get_template("skills/list.html")
-    content = template.render(request=request, current_page="skills", **data)
+    content = template.render(
+        request=request, current_page="skills",
+        message=request.query_params.get("message"),
+        error=request.query_params.get("error"),
+        **data,
+    )
     return HTMLResponse(content)
 
 
@@ -227,10 +252,128 @@ async def skill_delete(request: Request):
     return RedirectResponse("/skills", status_code=303)
 
 
+async def skill_export(request: Request):
+    """GET /skills/export/{key} — download the skill + source memories as a zip."""
+    key = request.path_params["key"]
+    bundle, err = build_skill_export(deps.store, key)
+    if err:
+        return HTMLResponse(f'<p class="empty-state">{err}.</p>', status_code=404)
+    return Response(
+        bundle["data"],
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{bundle["filename"]}"',
+        },
+    )
+
+
+def _render_import_result(request: Request, result: dict) -> HTMLResponse:
+    template = request.app.state.templates.get_template("skills/_import_result.html")
+    return HTMLResponse(template.render(request=request, result=result))
+
+
+async def skill_import(request: Request) -> HTMLResponse:
+    """POST /skills/import — validate an uploaded bundle and preview the plan.
+
+    Nothing is written here: the validated bundle is stashed under a one-shot
+    token and the preview partial shows exactly what confirm would add.
+    """
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or isinstance(upload, str) or not upload.filename:
+        return _render_import_result(request, {
+            "status": "error", "reason": "Choose a .zip bundle to upload.",
+        })
+    if not upload.filename.lower().endswith(".zip"):
+        return _render_import_result(request, {
+            "status": "error", "reason": "Only .zip bundles exported from the "
+                                         "skills page are accepted.",
+        })
+
+    raw = await upload.read()
+    result = validate_skill_import(raw)
+    if not result["ok"]:
+        return _render_import_result(request, {
+            "status": "error", "reason": result["error"],
+        })
+
+    plan = plan_skill_import(deps.store, result)
+    token = secrets.token_urlsafe(24)
+    deps.store.client.set(
+        f"{_IMPORT_STASH_PREFIX}{token}",
+        json.dumps({
+            "skill_key": result["skill_key"],
+            "skill_fields": result["skill_fields"],
+            "memories": result["memories"],
+        }),
+        ex=_IMPORT_STASH_TTL,
+    )
+
+    return _render_import_result(request, {
+        "status": "preview",
+        "token": token,
+        "manifest": result["manifest"],
+        "warnings": result["warnings"],
+        "plan": plan,
+        "nothing_to_do": (
+            plan["skill_exists"] and not plan["new_memories"]
+        ),
+    })
+
+
+async def skill_import_confirm(request: Request) -> HTMLResponse:
+    """POST /skills/import/confirm — commit the previewed bundle."""
+    form = await request.form()
+    token = (form.get("token") or "").strip()
+    if not _IMPORT_TOKEN_RE.match(token):
+        return _render_import_result(request, {
+            "status": "error", "reason": "Invalid import token.",
+        })
+
+    stash_key = f"{_IMPORT_STASH_PREFIX}{token}"
+    raw = deps.store.client.get(stash_key)
+    if raw is None:
+        return _render_import_result(request, {
+            "status": "error",
+            "reason": "This import preview has expired — upload the bundle again.",
+        })
+    deps.store.client.delete(stash_key)
+
+    try:
+        bundle = json.loads(raw)
+    except json.JSONDecodeError:
+        return _render_import_result(request, {
+            "status": "error", "reason": "Stored import bundle is unreadable — "
+                                         "upload the bundle again.",
+        })
+
+    summary = apply_skill_import(deps.store, deps.embedder, bundle)
+    # Imported episodic memories may carry abandoned-approach entries.
+    if deps.pipeline is not None:
+        deps.pipeline.invalidate_abandoned_cache()
+
+    written = len(summary["memories_written"])
+    skipped = len(summary["memories_skipped"])
+    parts = []
+    if summary["skill_written"]:
+        parts.append("Skill imported")
+    else:
+        parts.append("Skill already existed (left untouched)")
+    parts.append(f"{written} memor{'y' if written == 1 else 'ies'} added")
+    if skipped:
+        parts.append(f"{skipped} already present (skipped)")
+    message = quote("; ".join(parts) + ".")
+    # htmx follows HX-Redirect back to the catalogue with the outcome flash.
+    return HTMLResponse("", headers={"HX-Redirect": f"/skills?message={message}"})
+
+
 routes = [
     Route("/skills", skills_list),
     Route("/skills/compile", skill_compile, methods=["POST"]),
     Route("/skills/commit", skill_commit, methods=["POST"]),
     Route("/skills/delete", skill_delete, methods=["POST"]),
+    Route("/skills/import", skill_import, methods=["POST"]),
+    Route("/skills/import/confirm", skill_import_confirm, methods=["POST"]),
+    Route("/skills/export/{key:path}", skill_export),
     Route("/skills/{key:path}", skill_detail),
 ]
