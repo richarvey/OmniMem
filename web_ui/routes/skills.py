@@ -25,15 +25,18 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from memory.skill_compiler import compile_skill_flow
+from memory.feed_influence import sync_feed_influences
 from memory.skill_transfer import (
     apply_skill_import,
     build_skill_export,
+    merge_feed_influences,
     plan_skill_import,
     validate_skill_import,
 )
 from memory.skills import generated_skill_key, resolve_domain, validate_domain
 
 from .. import deps
+from .feeds import _load_feeds, _save_feeds
 
 _SKILL_PREFIX = "mem:skill:"
 _PROPOSAL_PREFIX = "meta:skill:proposal:"
@@ -125,7 +128,7 @@ def gather_skill(store, key: str) -> dict | None:
         return None
 
     rules = [r for r in _parse_json_list(data.get("rule_manifest")) if isinstance(r, dict)]
-    rule_counts = {"do": 0, "watch": 0, "dont": 0, "ref": 0}
+    rule_counts = {"do": 0, "watch": 0, "dont": 0, "ref": 0, "feed": 0}
     for rule in rules:
         kind = rule.get("kind")
         if kind in rule_counts:
@@ -297,7 +300,7 @@ async def skill_import(request: Request) -> HTMLResponse:
             "status": "error", "reason": result["error"],
         })
 
-    plan = plan_skill_import(deps.store, result)
+    plan = plan_skill_import(deps.store, result, current_feeds=_load_feeds())
     token = secrets.token_urlsafe(24)
     deps.store.client.set(
         f"{_IMPORT_STASH_PREFIX}{token}",
@@ -305,6 +308,7 @@ async def skill_import(request: Request) -> HTMLResponse:
             "skill_key": result["skill_key"],
             "skill_fields": result["skill_fields"],
             "memories": result["memories"],
+            "feeds": result.get("feeds", []),
         }),
         ex=_IMPORT_STASH_TTL,
     )
@@ -317,6 +321,7 @@ async def skill_import(request: Request) -> HTMLResponse:
         "plan": plan,
         "nothing_to_do": (
             plan["skill_exists"] and not plan["new_memories"]
+            and not plan["new_feeds"] and not plan["updated_feeds"]
         ),
     })
 
@@ -352,6 +357,19 @@ async def skill_import_confirm(request: Request) -> HTMLResponse:
     if deps.pipeline is not None:
         deps.pipeline.invalidate_abandoned_cache()
 
+    # Bundled feed influences fold into the reading list additively: a feed
+    # already present (by URL) at most gains the influence entry it lacked.
+    feeds_added: list[str] = []
+    feeds_updated: list[str] = []
+    if bundle.get("feeds"):
+        current = _load_feeds()
+        merged, feeds_added, feeds_updated, _ = merge_feed_influences(
+            current, bundle["feeds"]
+        )
+        if feeds_added or feeds_updated:
+            _save_feeds(merged)
+            sync_feed_influences(deps.store.client, merged)
+
     written = len(summary["memories_written"])
     skipped = len(summary["memories_skipped"])
     parts = []
@@ -362,6 +380,12 @@ async def skill_import_confirm(request: Request) -> HTMLResponse:
     parts.append(f"{written} memor{'y' if written == 1 else 'ies'} added")
     if skipped:
         parts.append(f"{skipped} already present (skipped)")
+    if feeds_added:
+        parts.append(f"{len(feeds_added)} RSS feed{'' if len(feeds_added) == 1 else 's'} "
+                     "added to the reading list")
+    if feeds_updated:
+        parts.append(f"{len(feeds_updated)} existing feed"
+                     f"{'' if len(feeds_updated) == 1 else 's'} gained influence")
     message = quote("; ".join(parts) + ".")
     # htmx follows HX-Redirect back to the catalogue with the outcome flash.
     return HTMLResponse("", headers={"HX-Redirect": f"/skills?message={message}"})

@@ -1,6 +1,18 @@
 # Each feed takes: url (required), name, topics, mode (summary|digest), and
 # project — the project label stamped on ingested articles so they can be
 # separated from conversation-sourced knowledge. Defaults to "RSS".
+#
+# A feed can also influence compiled skills with a skills mapping of skill
+# domain to influence score (1-10). When that skill is rebuilt, the feed's
+# latest articles land in its Feed watch section — the score is how many
+# recent articles the feed contributes, 10 being the strongest. Feeds without
+# a skills mapping never touch a skill unless an article is promoted by hand.
+#
+#   - url: https://example.com/feed.xml
+#     name: Example Feed
+#     topics: [python]
+#     skills:
+#       python: 8
 feeds:
   # Rust & systems programming
   - url: https://blog.rust-lang.org/feed.xml

@@ -7,6 +7,13 @@
   <h2>{% if is_new %}Add Feed{% else %}Edit Feed{% endif %}</h2>
 </header>
 
+{% if error %}
+<div class="flash flash-error">
+  {{ error }}
+  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+</div>
+{% endif %}
+
 <form method="POST" action="{% if is_new %}/feeds/new{% else %}/feeds/{{ feed.index }}/edit{% endif %}" style="max-width:700px">
   <div class="form-group">
     <label>Feed Name</label>
@@ -33,9 +40,51 @@
     </small>
   </div>
 
+  <div class="form-group">
+    <label>Skill influence</label>
+    <small style="color:var(--text-muted);margin-bottom:0.5rem;display:block">
+      Tie this feed to one or more compiled skills. When a skill is rebuilt, the feed's
+      latest articles appear in its Feed watch section — the influence score (1–10)
+      is how many recent articles the feed contributes, 10 being the strongest.
+      Clear a domain to remove the association.
+    </small>
+    <div id="skill-rows">
+      {% for row in feed.skills %}
+      <div class="skill-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <input type="text" name="skill_domain" class="form-input" list="skill-domains"
+               value="{{ row.domain }}" placeholder="skill domain, e.g. python" style="flex:1">
+        <input type="number" name="skill_influence" class="form-input" min="1" max="10"
+               value="{{ row.influence }}" style="width:6rem" aria-label="Influence (1-10)">
+      </div>
+      {% endfor %}
+      <div class="skill-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <input type="text" name="skill_domain" class="form-input" list="skill-domains"
+               value="" placeholder="skill domain, e.g. python" style="flex:1">
+        <input type="number" name="skill_influence" class="form-input" min="1" max="10"
+               value="5" style="width:6rem" aria-label="Influence (1-10)">
+      </div>
+    </div>
+    <datalist id="skill-domains">
+      {% for domain in skill_domains %}
+      <option value="{{ domain }}"></option>
+      {% endfor %}
+    </datalist>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="addSkillRow()">+ Add another skill</button>
+  </div>
+
   <div style="display:flex;gap:0.5rem">
     <button type="submit" class="btn btn-primary">{% if is_new %}Add Feed{% else %}Save{% endif %}</button>
     <a href="/feeds" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+
+<script>
+function addSkillRow() {
+  const rows = document.getElementById('skill-rows');
+  const row = rows.lastElementChild.cloneNode(true);
+  row.querySelector('input[name="skill_domain"]').value = '';
+  row.querySelector('input[name="skill_influence"]').value = '5';
+  rows.appendChild(row);
+}
+</script>
 {% endblock %}

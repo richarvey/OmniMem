@@ -41,6 +41,32 @@
     already stored here and will be left untouched.
   </li>
   {% endif %}
+  {% if result.plan.new_feeds %}
+  <li>
+    <span class="badge active">add</span>
+    RSS feed{{ "" if result.plan.new_feeds|length == 1 else "s" }}
+    {% for name in result.plan.new_feeds %}<strong>{{ name }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+    will join the reading list with the bundled influence score.
+  </li>
+  {% endif %}
+  {% if result.plan.updated_feeds %}
+  <li>
+    <span class="badge active">add</span>
+    Existing feed{{ " " if result.plan.updated_feeds|length == 1 else "s " }}
+    {% for name in result.plan.updated_feeds %}<strong>{{ name }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+    will gain the bundled influence entry — nothing else about
+    {{ "it" if result.plan.updated_feeds|length == 1 else "them" }} changes.
+  </li>
+  {% endif %}
+  {% if result.plan.skipped_feeds %}
+  <li>
+    <span class="badge deprioritised">skip</span>
+    Feed{{ " " if result.plan.skipped_feeds|length == 1 else "s " }}
+    {% for name in result.plan.skipped_feeds %}<strong>{{ name }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+    already {{ "carries" if result.plan.skipped_feeds|length == 1 else "carry" }}
+    this influence and will be left untouched.
+  </li>
+  {% endif %}
 </ul>
 
 {% if result.plan.new_memories %}

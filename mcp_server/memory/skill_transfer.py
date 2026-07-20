@@ -11,6 +11,13 @@ already has some of the memories) can only add what's missing. Vectors never
 travel: embeddings are regenerated on the importing instance, so bundles stay
 portable across embedding models and instances.
 
+Format version 2 adds an optional feeds.json: the RSS feeds that influence
+the exported skill's domain (name, url, topics, mode, project, and the
+influence score), so the receiving instance can keep the skill fed. The same
+additive rule applies on import: a feed already in the reading list (matched
+by URL) is never rewritten — at most it gains the bundled influence entry it
+was missing. Version-1 bundles remain importable.
+
 Shared by the web UI export/import routes; lives in the memory package beside
 skill_compiler.py so the logic is testable without the web stack.
 """
@@ -24,6 +31,7 @@ import time
 import zipfile
 from typing import Any
 
+from .feed_influence import load_feed_influences, validate_feed_skills
 from .skills import (
     SKILL_KEY_PREFIX,
     discovery_text,
@@ -35,7 +43,8 @@ from .version import __version__
 logger = logging.getLogger(__name__)
 
 EXPORT_FORMAT = "omnimem-skill-export"
-EXPORT_FORMAT_VERSION = 1
+EXPORT_FORMAT_VERSION = 2
+_SUPPORTED_FORMAT_VERSIONS = (1, 2)
 
 # Bounds for an acceptable bundle. Generous against real skills (a body caps
 # at 100KB and a memory at 50KB) while keeping a hostile zip from ballooning.
@@ -48,6 +57,12 @@ _MAX_FIELD_NAME = 64
 _MAX_FIELD_VALUE = 100_000
 _MAX_CONTENT = 50_000
 _MAX_SKILL_BODY = 100_000
+_MAX_BUNDLE_FEEDS = 50
+_MAX_FEED_NAME = 200
+_MAX_FEED_URL = 2000
+_MAX_FEED_TOPICS = 20
+_MAX_FEED_TOPIC_CHARS = 100
+_MAX_FEED_PROJECT = 100
 
 # Source memories a skill can cite: episodic experience/graveyard entries and
 # promoted knowledge articles. Nothing else belongs in a skill bundle.
@@ -125,6 +140,12 @@ def build_skill_export(store, key: str) -> tuple[dict[str, Any] | None, str | No
             mem, indent=2, ensure_ascii=False, sort_keys=True
         ).encode("utf-8")
 
+    feeds = _influencing_feeds(store, skill_fields.get("domain", ""))
+    if feeds:
+        files["feeds.json"] = json.dumps(
+            feeds, indent=2, ensure_ascii=False, sort_keys=True
+        ).encode("utf-8")
+
     manifest = {
         "format": EXPORT_FORMAT,
         "format_version": EXPORT_FORMAT_VERSION,
@@ -136,6 +157,7 @@ def build_skill_export(store, key: str) -> tuple[dict[str, Any] | None, str | No
         "user": skill_fields.get("user", ""),
         "memory_count": len(memories),
         "missing_sources": missing,
+        "feed_count": len(feeds),
         "checksums": {name: _sha256(data) for name, data in files.items()},
     }
 
@@ -160,6 +182,32 @@ def build_skill_export(store, key: str) -> tuple[dict[str, Any] | None, str | No
         "memory_count": len(memories),
         "missing_sources": missing,
     }, None
+
+
+def _influencing_feeds(store, domain: str) -> list[dict[str, Any]]:
+    """Feed entries whose skills mapping influences this domain, for the
+    bundle's feeds.json. Only the exported domain's score travels — a feed's
+    other skill associations are not this bundle's business."""
+    if not domain:
+        return []
+    feeds: list[dict[str, Any]] = []
+    for name, entry in sorted(load_feed_influences(store.client).items()):
+        score = entry.get("skills", {}).get(domain)
+        if not score:
+            continue
+        feed: dict[str, Any] = {
+            "name": name,
+            "url": entry.get("url", ""),
+            "skills": {domain: score},
+        }
+        if entry.get("topics"):
+            feed["topics"] = entry["topics"]
+        if entry.get("mode"):
+            feed["mode"] = entry["mode"]
+        if entry.get("project"):
+            feed["project"] = entry["project"]
+        feeds.append(feed)
+    return feeds
 
 
 def _read_entry(zf: zipfile.ZipFile, name: str) -> bytes | None:
@@ -203,6 +251,121 @@ def _validate_memory(raw: bytes, entry_name: str) -> tuple[dict[str, Any] | None
     return {"key": key, "fields": _strip_instance_local(fields)}, None
 
 
+def _validate_feeds(
+    raw: bytes | None, domain: str
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Validate a bundle's feeds.json. Returns (feeds, error)."""
+    if raw is None:
+        return [], "Could not read feeds.json"
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return [], "feeds.json is not valid JSON"
+    if not isinstance(parsed, list):
+        return [], "feeds.json must be a list of feed entries"
+    if len(parsed) > _MAX_BUNDLE_FEEDS:
+        return [], f"feeds.json carries too many feeds (max {_MAX_BUNDLE_FEEDS})"
+
+    feeds: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for i, entry in enumerate(parsed):
+        label = f"feeds.json entry {i}"
+        if not isinstance(entry, dict):
+            return [], f"{label} must be an object"
+        name = entry.get("name")
+        url = entry.get("url")
+        if not isinstance(name, str) or not name.strip() or len(name) > _MAX_FEED_NAME:
+            return [], f"{label} has an invalid name"
+        if (not isinstance(url, str) or len(url) > _MAX_FEED_URL
+                or not url.startswith(("http://", "https://"))):
+            return [], f"{label} has an invalid url (must be http or https)"
+        if url in seen_urls:
+            return [], f"feeds.json lists the url {url} twice"
+        seen_urls.add(url)
+
+        try:
+            skills = validate_feed_skills(entry.get("skills"))
+        except ValueError as exc:
+            return [], f"{label}: {exc}"
+        if set(skills) != {domain}:
+            return [], (f"{label} must carry exactly one influence entry, for "
+                        f"the bundle's domain '{domain}'")
+
+        feed: dict[str, Any] = {"name": name.strip(), "url": url, "skills": skills}
+
+        topics = entry.get("topics", [])
+        if topics:
+            if (not isinstance(topics, list) or len(topics) > _MAX_FEED_TOPICS
+                    or not all(isinstance(t, str) and 0 < len(t) <= _MAX_FEED_TOPIC_CHARS
+                               for t in topics)):
+                return [], f"{label} has invalid topics"
+            feed["topics"] = topics
+        mode = entry.get("mode")
+        if mode is not None:
+            if mode not in ("summary", "digest"):
+                return [], f"{label} has an invalid mode (summary or digest)"
+            feed["mode"] = mode
+        project = entry.get("project")
+        if project is not None:
+            if not isinstance(project, str) or len(project) > _MAX_FEED_PROJECT:
+                return [], f"{label} has an invalid project label"
+            if project:
+                feed["project"] = project
+        feeds.append(feed)
+    return feeds, None
+
+
+def merge_feed_influences(
+    current_feeds: list[dict[str, Any]],
+    bundle_feeds: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str], list[str], list[str]]:
+    """Additively fold bundled feeds into the current reading list.
+
+    Returns (merged, added, updated, skipped) where the last three are feed
+    names. Matching is by URL. A feed not in the list is appended whole
+    (renamed with an " (imported)" suffix if its name is taken by a different
+    URL, or skipped when even that collides — feed names identify articles,
+    so silently conflating two feeds is worse than skipping one). A feed
+    already present only ever gains influence entries it doesn't have;
+    nothing existing — topics, mode, project, or an existing score for the
+    same domain — is touched.
+    """
+    merged = [dict(f) for f in current_feeds]
+    by_url = {f.get("url"): f for f in merged if f.get("url")}
+    names = {str(f.get("name", "")).strip() for f in merged}
+
+    added: list[str] = []
+    updated: list[str] = []
+    skipped: list[str] = []
+    for feed in bundle_feeds:
+        existing = by_url.get(feed["url"])
+        if existing is None:
+            name = feed["name"]
+            if name in names:
+                name = f"{name} (imported)"
+            if name in names:
+                skipped.append(feed["name"])
+                continue
+            entry = dict(feed)
+            entry["name"] = name
+            merged.append(entry)
+            by_url[entry["url"]] = entry
+            names.add(name)
+            added.append(name)
+            continue
+
+        current_skills = existing.get("skills")
+        if not isinstance(current_skills, dict):
+            current_skills = {}
+        missing = {d: s for d, s in feed["skills"].items() if d not in current_skills}
+        if missing:
+            existing["skills"] = {**current_skills, **missing}
+            updated.append(str(existing.get("name", feed["name"])))
+        else:
+            skipped.append(str(existing.get("name", feed["name"])))
+    return merged, added, updated, skipped
+
+
 def validate_skill_import(data: bytes) -> dict[str, Any]:
     """Validate uploaded bundle bytes without touching the store.
 
@@ -243,7 +406,8 @@ def validate_skill_import(data: bytes) -> dict[str, Any]:
         for name in names:
             if name == "manifest.json":
                 continue
-            if name in ("skill.json", "SKILL.md") or _MEMORY_ENTRY_RE.match(name):
+            if (name in ("skill.json", "SKILL.md", "feeds.json")
+                    or _MEMORY_ENTRY_RE.match(name)):
                 payload_names.append(name)
             else:
                 return fail(f"Unexpected entry in bundle: {name}")
@@ -265,11 +429,12 @@ def validate_skill_import(data: bytes) -> dict[str, Any]:
 
         if manifest.get("format") != EXPORT_FORMAT:
             return fail("Not an OmniMem skill export (wrong format marker)")
-        if manifest.get("format_version") != EXPORT_FORMAT_VERSION:
+        if manifest.get("format_version") not in _SUPPORTED_FORMAT_VERSIONS:
             return fail(
                 "Unsupported export format version "
                 f"{manifest.get('format_version')!r} "
-                f"(this instance reads version {EXPORT_FORMAT_VERSION})"
+                "(this instance reads versions "
+                f"{', '.join(str(v) for v in _SUPPORTED_FORMAT_VERSIONS)})"
             )
 
         checksums = manifest.get("checksums")
@@ -334,6 +499,12 @@ def validate_skill_import(data: bytes) -> dict[str, Any]:
                 except json.JSONDecodeError:
                     return fail(f"skill.json {manifest_field} is not valid JSON")
 
+        feeds: list[dict[str, Any]] = []
+        if "feeds.json" in names:
+            feeds, feed_err = _validate_feeds(_read_entry(zf, "feeds.json"), domain)
+            if feed_err:
+                return fail(feed_err)
+
         memory_names = sorted(n for n in payload_names if n.startswith("memories/"))
         if len(memory_names) > _MAX_MEMORIES:
             return fail(f"Bundle carries too many memories (max {_MAX_MEMORIES})")
@@ -378,6 +549,7 @@ def validate_skill_import(data: bytes) -> dict[str, Any]:
         "skill_key": skill_key,
         "skill_fields": skill_fields,
         "memories": memories,
+        "feeds": feeds,
         "manifest": {
             "exported_at": manifest.get("exported_at", ""),
             "omnimem_version": manifest.get("omnimem_version", ""),
@@ -389,8 +561,17 @@ def validate_skill_import(data: bytes) -> dict[str, Any]:
     }
 
 
-def plan_skill_import(store, bundle: dict[str, Any]) -> dict[str, Any]:
-    """Preview what applying a validated bundle would do — read-only."""
+def plan_skill_import(
+    store,
+    bundle: dict[str, Any],
+    current_feeds: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Preview what applying a validated bundle would do — read-only.
+
+    Pass the current feeds.yml list as current_feeds to also preview the
+    feed merge; with None (callers without a reading list) bundled feeds
+    are reported but not planned against anything.
+    """
     skill_key = bundle["skill_key"]
     skill_exists = store.get(skill_key) is not None
 
@@ -402,12 +583,22 @@ def plan_skill_import(store, bundle: dict[str, Any]) -> dict[str, Any]:
         else:
             new_memories.append(mem["key"])
 
-    return {
+    plan = {
         "skill_key": skill_key,
         "skill_exists": skill_exists,
         "new_memories": new_memories,
         "existing_memories": existing_memories,
+        "new_feeds": [],
+        "updated_feeds": [],
+        "skipped_feeds": [],
     }
+    bundle_feeds = bundle.get("feeds") or []
+    if bundle_feeds and current_feeds is not None:
+        _, added, updated, skipped = merge_feed_influences(current_feeds, bundle_feeds)
+        plan["new_feeds"] = added
+        plan["updated_feeds"] = updated
+        plan["skipped_feeds"] = skipped
+    return plan
 
 
 def apply_skill_import(store, embedder, bundle: dict[str, Any]) -> dict[str, Any]:

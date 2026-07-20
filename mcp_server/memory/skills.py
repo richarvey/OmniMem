@@ -359,6 +359,68 @@ def gather_promoted_knowledge(
     return pools
 
 
+def gather_feed_knowledge(
+    store, domain: str, domain_feeds: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Latest active articles from feeds that influence this domain.
+
+    domain_feeds comes from feed_influence.feeds_for_domain — strongest
+    influence first. Each feed contributes up to `influence` of its most
+    recent articles (score 1-10 ⇒ 1-10 articles), so the score directly
+    weights how much of the feed appears in the compiled skill. Articles
+    already promoted to the domain are excluded — they render as vetted
+    Reference rules, not feed-watch items. The overall section is capped at
+    SKILL_FEED_MAX_ARTICLES (default 25, 0 disables the section entirely),
+    trimmed weakest-influence-first.
+
+    Ordering is deterministic for a fixed store: feeds by (-influence, name),
+    articles within a feed by (-created_at, key).
+    """
+    max_total = int(os.getenv("SKILL_FEED_MAX_ARTICLES", "25"))
+    if not domain_feeds or max_total <= 0:
+        return []
+
+    keys = store.scan_prefix("mem:knowledge:")
+    if not keys:
+        return []
+    if len(keys) > _MAX_POOL_KEYS:
+        logger.warning(
+            "Feed-knowledge scan capped at %d keys (total: %d)",
+            _MAX_POOL_KEYS, len(keys),
+        )
+        keys = keys[:_MAX_POOL_KEYS]
+
+    by_feed: dict[str, list[dict[str, Any]]] = {}
+    feed_meta = {f["feed_name"]: f for f in domain_feeds}
+    rows = store.get_fields_multi(keys, _KNOWLEDGE_POOL_FIELDS)
+    for key, row in zip(keys, rows):
+        if row is None:
+            continue
+        if row.get("state") not in ("active", None):
+            continue
+        feed_name = row.get("feed_name", "")
+        if feed_name not in feed_meta:
+            continue
+        if domain in parse_skill_domains(row.get("skill_domains")):
+            continue
+        by_feed.setdefault(feed_name, []).append({
+            "key": key,
+            "content": row.get("content", ""),
+            "title": row.get("title", ""),
+            "feed_name": feed_name,
+            "influence": feed_meta[feed_name]["influence"],
+            "source_url": row.get("source_url", ""),
+            "created_at": _safe_float(row.get("created_at")),
+        })
+
+    selected: list[dict[str, Any]] = []
+    for feed in domain_feeds:
+        articles = by_feed.get(feed["feed_name"], [])
+        articles.sort(key=lambda a: (-a["created_at"], a["key"]))
+        selected.extend(articles[: feed["influence"]])
+    return selected[:max_total]
+
+
 def lesson_bearing(mem: dict[str, Any]) -> bool:
     """Would extract_lessons() get anything out of this pool entry?
 
@@ -394,7 +456,7 @@ class Lesson:
 class Rule:
     """A lesson pattern that cleared the promotion gate."""
 
-    kind: str                    # "do" | "watch" | "dont" | "ref"
+    kind: str                    # "do" | "watch" | "dont" | "ref" | "feed"
     text: str
     sources: list[str]           # distinct memory keys, chronological
     reinforcement: int           # distinct source memories backing this rule
@@ -402,7 +464,9 @@ class Rule:
     name: str | None = None      # dont only
     approach_type: str = ""      # dont only
     projects: list[str] = field(default_factory=list)
-    url: str = ""                # ref only: the article's source URL
+    url: str = ""                # ref/feed: the article's source URL
+    feed: str = ""               # feed only: the originating feed's name
+    influence: int = 0           # feed only: the feed's influence score (1-10)
 
     @property
     def primary_source(self) -> str:
@@ -421,6 +485,10 @@ class Rule:
             d["name"] = self.name
         if self.url:
             d["url"] = self.url
+        if self.feed:
+            d["feed"] = self.feed
+        if self.influence:
+            d["influence"] = self.influence
         return d
 
 
@@ -663,6 +731,38 @@ def build_reference_rules(promoted: list[dict[str, Any]]) -> list[Rule]:
     return rules
 
 
+def build_feed_rules(articles: list[dict[str, Any]]) -> list[Rule]:
+    """Feed rules for influence-selected articles, in selection order.
+
+    No clustering, no reinforcement gate, no blessing: the feed association
+    (with its influence score) is the human's standing declaration that this
+    feed's latest output belongs in the skill. Each article contributes one
+    summary rule; unlike promoted references these are unvetted, which the
+    rendered section says out loud.
+    """
+    rules: list[Rule] = []
+    for item in articles:
+        title = (item.get("title") or "").strip()
+        content = (item.get("content") or "").strip()
+        if title and content and not content.lower().startswith(title.lower()):
+            text = _one_line(f"{title}: {content}")
+        else:
+            text = _one_line(content or title)
+        if not text:
+            continue
+        rules.append(Rule(
+            kind="feed",
+            text=text,
+            sources=[item["key"]],
+            reinforcement=1,
+            name=title or None,
+            url=item.get("source_url", ""),
+            feed=item.get("feed_name", ""),
+            influence=int(item.get("influence") or 0),
+        ))
+    return rules
+
+
 def draft_description(domain: str, user: str) -> str:
     """Compiler draft of the load trigger, in the structured cue format.
 
@@ -689,6 +789,8 @@ def _manifest_annotations(rules: list[Rule]) -> list[tuple[str, str]]:
                 seen[source] = f"graveyard: {rule.name}"
             elif rule.kind == "ref":
                 seen[source] = "promoted reference"
+            elif rule.kind == "feed":
+                seen[source] = f"feed: {rule.feed} (influence {rule.influence}/10)"
             elif rule.blessed and rule.reinforcement < 2:
                 seen[source] = "blessed"
             else:
@@ -710,6 +812,13 @@ def _rule_bullet(rule: Rule) -> str:
         if not text.endswith((".", "!", "?", "…")):
             text += "."
         line = f"- {text}"
+        if rule.url:
+            line += f" ({rule.url})"
+    elif rule.kind == "feed":
+        text = rule.text
+        if not text.endswith((".", "!", "?", "…")):
+            text += "."
+        line = f"- {text} (via {rule.feed}, influence {rule.influence}/10)"
         if rule.url:
             line += f" ({rule.url})"
     else:
@@ -743,6 +852,7 @@ def render_skill_md(
     watch_rules = [r for r in rules if r.kind == "watch"]
     dont_rules = [r for r in rules if r.kind == "dont"]
     ref_rules = [r for r in rules if r.kind == "ref"]
+    feed_rules = [r for r in rules if r.kind == "feed"]
     exp_sources = sorted({s for r in do_rules + watch_rules for s in r.sources})
 
     lines: list[str] = ["---"]
@@ -808,6 +918,22 @@ def render_skill_md(
         lines.append("")
         lines.extend(_rule_bullet(r) for r in ref_rules)
 
+    if feed_rules:
+        lines.append("")
+        lines.append("## Feed watch  (influenced feeds)")
+        lines.append("")
+        lines.append(
+            "The latest articles from RSS feeds tied to this domain, pulled "
+            "in automatically at compile time and weighted by each feed's "
+            "influence score (1-10 — the score is how many of its most "
+            "recent articles a feed contributes). Unlike the Reference "
+            "section these are unvetted: treat them as current signal, not "
+            "procedure, and promote_knowledge() anything worth keeping "
+            "before it ages out of the knowledge namespace."
+        )
+        lines.append("")
+        lines.extend(_rule_bullet(r) for r in feed_rules)
+
     lines.append("")
     lines.append("## Provenance")
     lines.append("")
@@ -824,6 +950,15 @@ def render_skill_md(
             f"Plus {len(ref_rules)} promoted reference "
             f"{'article' if len(ref_rules) == 1 else 'articles'} from the "
             "knowledge namespace. "
+        )
+    if feed_rules:
+        feed_names = sorted({r.feed for r in feed_rules if r.feed})
+        provenance += (
+            f"Plus {len(feed_rules)} feed-watch "
+            f"{'article' if len(feed_rules) == 1 else 'articles'} from "
+            f"{len(feed_names)} influencing "
+            f"{'feed' if len(feed_names) == 1 else 'feeds'} "
+            f"({', '.join(feed_names)}). "
         )
     provenance += (
         "Full source manifest in frontmatter. Operating contract at "
@@ -887,6 +1022,10 @@ def summarise_rule_changes(
     changes: list[dict[str, Any]] = []
 
     def _add(change: str, risk: str, rule: dict[str, Any], was: str | None = None) -> None:
+        # Feed-watch items rotate by design as articles arrive and expire —
+        # their churn is never a high-stakes edit to reviewed procedure.
+        if rule.get("kind") == "feed":
+            risk = "low"
         entry = {
             "change": change,
             "risk": risk,
@@ -900,7 +1039,7 @@ def summarise_rule_changes(
             entry["was"] = _gist(was)
         changes.append(entry)
 
-    for kind in ("do", "watch", "dont", "ref"):
+    for kind in ("do", "watch", "dont", "ref", "feed"):
         olds = [r for r in old_rules if r.get("kind") == kind]
         news = [r for r in new_rules if r.get("kind") == kind]
 

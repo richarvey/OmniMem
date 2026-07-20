@@ -18,13 +18,16 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .feed_influence import feeds_for_domain, load_feed_influences
 from .skills import (
     CONTRACT_VERSION,
     Rule,
     body_sha,
     bodies_equivalent,
+    build_feed_rules,
     build_reference_rules,
     build_rules,
+    gather_feed_knowledge,
     discovery_text,
     draft_description,
     extract_lessons,
@@ -196,6 +199,15 @@ def _propose(
     promoted = gather_promoted_knowledge(store, [domain])[domain]
     ref_rules = build_reference_rules(promoted)
 
+    # Feeds tied to this domain contribute their latest articles, weighted by
+    # influence score. They supplement a skill, never bootstrap one: with no
+    # experience pool and no promoted references, feed association alone
+    # still reads as no_candidates below.
+    domain_feeds = feeds_for_domain(load_feed_influences(store.client), domain)
+    feed_rules = build_feed_rules(
+        gather_feed_knowledge(store, domain, domain_feeds)
+    ) if domain_feeds else []
+
     if not pool and not ref_rules:
         domains = known_domains(store)
         suggestion = suggest_similar_domain(embedder, domain, domains.keys())
@@ -240,8 +252,9 @@ def _propose(
                     "rule. Lower min_reinforcement or bless() a strong lesson.",
         })
     # Promoted references join after the gate: promotion is the vetting, so
-    # they neither need reinforcement nor consume it.
-    eligible = eligible + ref_rules
+    # they neither need reinforcement nor consume it. Feed rules likewise —
+    # the influence association is the standing human decision.
+    eligible = eligible + ref_rules + feed_rules
 
     # Description: human-owned and pinned. An explicit override is the
     # strongest ownership signal; otherwise the stored one survives
