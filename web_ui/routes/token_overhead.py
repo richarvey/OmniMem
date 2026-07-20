@@ -17,7 +17,7 @@ _METRICS_RESET_KEY = "meta:tool_metrics_reset"
 
 # MCP instructions text size (measured from instructions.py).
 # Update if instructions change significantly.
-_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "12512"))
+_INSTRUCTIONS_CHARS = int(os.getenv("OMNIMEM_INSTRUCTIONS_CHARS", "14162"))
 
 # Tool schema overhead — 34 tools (33 registered + health).
 # Each tool contributes name + description + JSON parameter schema.

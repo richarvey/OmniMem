@@ -53,7 +53,7 @@ All configuration is via environment variables, usually set in your `.env` file.
 | `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
 | `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
-| `OMNIMEM_INSTRUCTIONS_CHARS` | `12512` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
+| `OMNIMEM_INSTRUCTIONS_CHARS` | `14162` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
 | `OMNIMEM_TOOL_SCHEMAS_CHARS` | `7620` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
 | `WEB_PORT` | `8080` | Port the web UI listens on |
 | `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
@@ -68,4 +68,5 @@ All configuration is via environment variables, usually set in your `.env` file.
 | `SKILL_SCAN_INTERVAL_HOURS` | `24` | How often a `briefing()` may run the auto skill scan that proposes new skills from cross-project lesson patterns and drafts for changed skills. Set to 0 to disable |
 | `SKILL_SCAN_MIN_POOL` | `3` | Minimum lesson-bearing memories a domain needs before the scan even checks it for a new skill |
 | `SKILL_SCAN_CROSS_PROJECT` | `true` | Require at least one qualifying rule to span two or more projects before auto-proposing a new skill. Set to `false` to propose from single-project patterns too |
+| `SKILL_FEED_MAX_ARTICLES` | `25` | Overall cap on the Feed watch section a compiled skill can carry from influencing RSS feeds, trimmed weakest-influence-first. Set to 0 to disable feed influence entirely |
 | `SKILL_SCAN_MAX_PROPOSALS` | `3` | Cap on proposals a single scan run may create, so one briefing never floods the review queue |

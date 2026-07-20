@@ -173,6 +173,8 @@ The skill's `description` is the load trigger and is human-owned: the compiler d
 
 **Extracting rules from an article.** When an article contains discrete guidance (a "5 things to avoid" list, a best-practice post), don't settle for the one-line summary: read the article (`recall_detail` on its key), draft one rule per item as `{"kind": "do"|"watch"|"dont"|"note", "text": "..."}`, show the human the list, and pass the approved set as `promote_knowledge(key, domain="<domain>", rules=[...])`. Each becomes its own stance-prefixed bullet in the skill's Reference section ("Avoid: ...", "Do: ..."), all citing the article. Extraction happens at promotion under human review — never at compile — so re-promote with an edited list to revise, or `rules=[]` to revert to the summary line.
 
+**Feed influence.** An RSS feed can be tied to skill domains with an influence score (1-10), set on the feed in the web UI or as a `skills:` mapping in feeds.yml. Recompiling such a skill pulls the feed's latest articles into a distinct Feed watch section automatically — the score is how many recent articles the feed contributes — with no per-article promotion needed. These items are unvetted current signal, not procedure: when reviewing a compile diff, treat their churn as routine (it is classified low-risk), and suggest `promote_knowledge` for any feed-watch article worth keeping permanently. Feeds without an influence mapping never touch a skill except through promotion.
+
 -----
 
 ### Session End

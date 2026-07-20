@@ -46,7 +46,7 @@ Five kinds of memory, all searched together at recall time:
 
 - **Episodic** — the decisions you made, the bugs you fixed, the patterns you discovered. The things that took real effort to learn and should not have to be re-learned every morning.
 - **Project context** — your stack, goals, and current state. The agent arrives at every session already briefed rather than starting cold.
-- **Knowledge** — RSS feeds you configure, fetched on a schedule, summarised by Claude Haiku, embedded, and stored. When a relevant article landed last week, it surfaces as a starting point worth reading.
+- **Knowledge** — RSS feeds you configure, fetched on a schedule, summarised by Claude Haiku, embedded, and stored. When a relevant article landed last week, it surfaces as a starting point worth reading. A feed can also influence a compiled skill directly, weighted by a score you set, so rebuilding the skill pulls in the feed's latest articles without hand-promoting each one.
 - **Preferences** — prescriptive rules about how you want to work ("always update the README after a feature lands"), extracted from your conversations automatically and surfaced whenever they apply.
 - **Skills** — SKILL.md documents compiled from your accumulated experience in a domain, so the agent works your way from the first prompt. Derived from the other namespaces, never hand-edited, and every change goes through your review. See [the skill compiler](docs/skill-compiler.md).
 

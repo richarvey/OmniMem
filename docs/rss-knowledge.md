@@ -20,6 +20,12 @@ feeds:
     name: n8n Blog
     topics: [automation, workflow, n8n]
     project: automation-research   # optional, defaults to "RSS"
+
+  - url: https://realpython.com/atom.xml
+    name: Real Python
+    topics: [python]
+    skills:                        # optional: influence compiled skills
+      python: 8
 ```
 
 You can also manage feeds from the [web UI](web-ui.md)'s RSS Feeds page — uploading a new feeds.yml just writes the file and the worker picks up the change automatically.
@@ -33,6 +39,10 @@ If no `ANTHROPIC_API_KEY` is set, the worker still runs — summaries fall back 
 ## Keeping articles
 
 If an article turns out to be genuinely useful, call `promote_knowledge(key)` to clear its expiry and keep it permanently — or `promote_knowledge(key, domain="python")` to also feed it into that domain's compiled skill as reference material. See [the skill compiler](skill-compiler.md) for how promoted articles become Reference rules.
+
+## Influencing skills
+
+Promotion vets one article at a time. When a whole feed reliably matters to a skill, give it a standing association instead: a `skills:` mapping (shown above, also editable per feed in the web UI) ties the feed to one or more skill domains with an influence score from 1 to 10. Every recompile of that skill then pulls the feed's latest articles into a Feed watch section automatically — the score is how many recent articles the feed contributes, so 10 dominates and 1 adds a single headline. Feeds without a `skills:` mapping keep today's behaviour: their articles never touch a skill unless you promote one by hand. Details and the review-gate implications are in [the skill compiler](skill-compiler.md#feed-influence).
 
 ## See also
 
