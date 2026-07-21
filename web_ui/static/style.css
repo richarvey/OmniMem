@@ -838,23 +838,27 @@ span.project-name {
   overflow-x: auto;
 }
 
-/* Feeds table — five columns: Name, URL, Topics, Mode, Actions */
+/* Feeds table — six columns: Name, URL, Topics, Skills, Mode, Actions */
 .feeds-table { table-layout: fixed; }
 .feeds-table th:nth-child(1),
-.feeds-table td:nth-child(1) { width: 18%; }
+.feeds-table td:nth-child(1) { width: 16%; }
 .feeds-table th:nth-child(2),
-.feeds-table td:nth-child(2) { width: 34%; }
+.feeds-table td:nth-child(2) { width: 24%; }
 .feeds-table th:nth-child(3),
-.feeds-table td:nth-child(3) { width: 22%; }
+.feeds-table td:nth-child(3) { width: 18%; }
 .feeds-table th:nth-child(4),
-.feeds-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+.feeds-table td:nth-child(4) { width: 16%; overflow-wrap: anywhere; }
 .feeds-table th:nth-child(5),
-.feeds-table td:nth-child(5) { width: 16%; }
+.feeds-table td:nth-child(5) { width: 9%; white-space: nowrap; }
+.feeds-table th:nth-child(6),
+.feeds-table td:nth-child(6) { width: 17%; }
 
-.actions-cell {
-  display: flex;
-  gap: 0.35rem;
-  align-items: center;
+/* display:flex on a td detaches it from table-cell layout and the fixed
+   column widths stop applying — keep the cell a cell, flow children inline */
+.actions-cell > * {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0.1rem 0.35rem 0.1rem 0;
 }
 
 /* Section note */
@@ -1458,6 +1462,8 @@ a.composition-total:hover .composition-num { color: var(--accent-text); }
 
   .graveyard-table { table-layout: auto; }
   .graveyard-table th, .graveyard-table td { width: auto !important; }
+
+  .feeds-table th, .feeds-table td { padding: 0.6rem 0.4rem; }
 }
 
 /* Login page — standalone card, no sidebar or footer */
