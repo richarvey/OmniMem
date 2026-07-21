@@ -168,6 +168,7 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 ## Web UI Notes
 
 - htmx endpoints must return **partials**, not full page templates
+- **Every data table uses `table-layout: fixed` with percentage widths summing to exactly 100%** — the only method that cannot overflow the viewport. Long content is handled inside the cell (ellipsis via `content-cell`, or `overflow-wrap`). Never switch a table to `table-layout: auto` in media queries, never put `display:flex` on a `<td>` (it detaches the cell from table layout so its column width stops applying), and when adding a column, rebalance the percentages — the old ones still sum to 100% and the new column gets no room. `.content` keeps `min-width: 0` so long unbroken strings can't widen the page
 - **Fonts are self-hosted**: Ubuntu + Ubuntu Mono woff2 files live in `web_ui/static/fonts/` with `@font-face` rules at the top of `style.css` — never link out to Google Fonts, the UI must work offline. Monospace elements use `var(--font-mono)`
 - **Accent colour is split three ways for WCAG AA**: `--accent` (#6366f1) is for borders and translucent fills only, `--accent-text` (#818cf8) for accent-coloured text on dark surfaces, `--accent-strong` (#5b5ee8) for solid fills carrying white text. Don't put `--accent` behind small text — it fails 4.5:1 on the card and page backgrounds
 - **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected
