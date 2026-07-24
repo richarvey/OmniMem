@@ -1,10 +1,10 @@
 # \<OmniMem\><br><sub><sub>[omnimem.org](https://omnimem.org)</sub></sub>
 
-[![Security Scans](https://codeberg.org/ric_harvey/omnimem/badges/workflows/security.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
-[![Docker Build](https://codeberg.org/ric_harvey/omnimem/badges/workflows/docker.yml/badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
-[![Coverage](https://codeberg.org/ric_harvey/omnimem/raw/branch/badges/coverage-badge.svg)](https://codeberg.org/ric_harvey/omnimem/actions)
+[![Security Scans](https://code.squarecows.com/ric/omnimem/badges/workflows/security.yml/badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
+[![Docker Build](https://code.squarecows.com/ric/omnimem/badges/workflows/docker.yml/badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
+[![Coverage](https://code.squarecows.com/ric/omnimem/raw/branch/badges/coverage-badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
 
-<sub>Development happens on [Codeberg](https://codeberg.org/ric_harvey/omnimem) — issues and PRs there please.</sub>
+<sub>Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem) — issues and PRs there please.</sub>
 
 **Stop living the same session twice.**
 
@@ -33,7 +33,7 @@ That warning came from memory, not luck. The mistake you already paid for does n
 > One command gets the full stack running from the pre-built Docker Hub images:
 >
 > ```bash
-> curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
+> curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash
 > ```
 >
 > Then point your agent at it — the [quick start](docs/quick-start.md) walks through the rest, or jump to the fuller [quick start section](#quick-start) below.
@@ -131,13 +131,13 @@ Expose the MCP port through your reverse proxy and every machine you work from s
 The installer checks Docker is installed, generates secure passwords, writes a sensible `.env`, and starts everything from the pre-built Docker Hub images:
 
 ```bash
-curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
+curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash
 ```
 
 Or build from source:
 
 ```bash
-git clone https://codeberg.org/ric_harvey/omnimem.git && cd omnimem
+git clone https://code.squarecows.com/ric/omnimem.git && cd omnimem
 cp .env.example .env
 # Set VALKEY_PASSWORD and ANTHROPIC_API_KEY in .env
 docker compose up -d
@@ -185,7 +185,7 @@ Per-namespace storage specifications, if you want to know exactly what gets writ
 
 ## Contributing
 
-Issues and PRs are welcome. Development happens on [Codeberg](https://codeberg.org/ric_harvey/omnimem) — issues and PRs there please. OmniMem is designed to be extended and the scoring pipeline is structured so new multipliers can be added without touching the core. New MCP tools, additional namespace types, and alternative embedding backends are all reasonable directions.
+Issues and PRs are welcome. Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem) — issues and PRs there please. OmniMem is designed to be extended and the scoring pipeline is structured so new multipliers can be added without touching the core. New MCP tools, additional namespace types, and alternative embedding backends are all reasonable directions.
 
 ---
 
