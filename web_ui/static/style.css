@@ -437,6 +437,10 @@ html.sidebar-collapsed .content {
 
 .content {
   flex: 1;
+  /* flex items default to min-width auto, so a child with a wide
+     min-content (a long URL, a wide table) silently widens the whole
+     page — allow the column to shrink and let children handle overflow */
+  min-width: 0;
   margin-left: var(--sidebar-width);
   padding: 1.5rem 2rem 3rem;
   max-width: 1100px;
@@ -447,6 +451,8 @@ html.sidebar-collapsed .content {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   margin-bottom: 1.5rem;
 }
 
@@ -838,23 +844,53 @@ span.project-name {
   overflow-x: auto;
 }
 
-/* Feeds table — five columns: Name, URL, Topics, Mode, Actions */
+/* Feeds table — six columns: Name, URL, Topics, Skills, Mode, Actions */
 .feeds-table { table-layout: fixed; }
 .feeds-table th:nth-child(1),
-.feeds-table td:nth-child(1) { width: 18%; }
+.feeds-table td:nth-child(1) { width: 16%; }
 .feeds-table th:nth-child(2),
-.feeds-table td:nth-child(2) { width: 34%; }
+.feeds-table td:nth-child(2) { width: 24%; }
 .feeds-table th:nth-child(3),
-.feeds-table td:nth-child(3) { width: 22%; }
+.feeds-table td:nth-child(3) { width: 18%; }
 .feeds-table th:nth-child(4),
-.feeds-table td:nth-child(4) { width: 10%; white-space: nowrap; }
+.feeds-table td:nth-child(4) { width: 16%; overflow-wrap: anywhere; }
 .feeds-table th:nth-child(5),
-.feeds-table td:nth-child(5) { width: 16%; }
+.feeds-table td:nth-child(5) { width: 9%; white-space: nowrap; }
+.feeds-table th:nth-child(6),
+.feeds-table td:nth-child(6) { width: 17%; }
 
-.actions-cell {
-  display: flex;
-  gap: 0.35rem;
-  align-items: center;
+/* Effortful memories table (experience page) — three columns */
+.effortful-table { table-layout: fixed; }
+.effortful-table th:nth-child(1),
+.effortful-table td:nth-child(1) { width: 12%; }
+.effortful-table th:nth-child(2),
+.effortful-table td:nth-child(2) { width: 16%; }
+.effortful-table th:nth-child(3),
+.effortful-table td:nth-child(3) { width: 72%; }
+
+/* Backups table — four columns */
+.backups-table { table-layout: fixed; }
+.backups-table th:nth-child(1),
+.backups-table td:nth-child(1) { width: 42%; overflow-wrap: anywhere; }
+.backups-table th:nth-child(2),
+.backups-table td:nth-child(2) { width: 12%; }
+.backups-table th:nth-child(3),
+.backups-table td:nth-child(3) { width: 26%; }
+.backups-table th:nth-child(4),
+.backups-table td:nth-child(4) { width: 20%; }
+
+/* Skill detail rules table — column widths are inline on the th elements,
+   fixed layout makes them stick and long rule text wraps instead of
+   widening the table */
+.skill-rules-table { table-layout: fixed; }
+.skill-rules-table td { overflow-wrap: break-word; }
+
+/* display:flex on a td detaches it from table-cell layout and the fixed
+   column widths stop applying — keep the cell a cell, flow children inline */
+.actions-cell > * {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0.1rem 0.35rem 0.1rem 0;
 }
 
 /* Section note */
@@ -1075,6 +1111,7 @@ span.project-name {
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .detail-content {
@@ -1154,6 +1191,7 @@ span.project-name {
   font-size: 0.85rem;
   color: var(--text);
   line-height: 1.6;
+  overflow-wrap: break-word;
 }
 
 /* Confirm modal */
@@ -1431,33 +1469,27 @@ a.composition-total:hover .composition-num { color: var(--accent-text); }
   .nav-divider { display: none; }
   .nav-section-label { display: none; }
 
-  .memories-table { table-layout: auto; }
-  .memories-table th:nth-child(1),
-  .memories-table td:nth-child(1),
-  .memories-table th:nth-child(2),
-  .memories-table td:nth-child(2),
-  .memories-table th:nth-child(3),
-  .memories-table td:nth-child(3),
-  .memories-table th:nth-child(4),
-  .memories-table td:nth-child(4),
-  .memories-table th:nth-child(5),
-  .memories-table td:nth-child(5) { width: auto; }
+  /* Tables keep their fixed percentage layouts on small screens — switching
+     to table-layout auto lets nowrap cells force the table wider than the
+     viewport and the whole page scrolls sideways. Tighter cell padding
+     buys the narrow columns some room instead, and breaking anywhere
+     stops long unbroken tokens widening the auto-layout tables. */
+  .data-table th, .data-table td { padding: 0.6rem 0.4rem; }
+  .data-table td { overflow-wrap: anywhere; }
+  .data-table th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .data-table .btn-sm { padding: 0.3rem 0.45rem; }
 
-  .projects-table { table-layout: auto; }
-  .projects-table th:nth-child(1),
-  .projects-table td:nth-child(1) { width: auto; }
-  .projects-table th:nth-child(2),
-  .projects-table td:nth-child(2) { width: auto; }
-  .projects-table th:nth-child(3),
-  .projects-table td:nth-child(3) { width: auto; }
-  .projects-table th:nth-child(4),
-  .projects-table td:nth-child(4) { width: auto; }
+  /* Namespace pills and dates are wider than their narrow columns on
+     phones — let them break onto two lines rather than widen the table */
+  .data-table .badge { white-space: normal; overflow-wrap: anywhere; }
+  .data-table .date-cell { white-space: normal; }
 
-  .skills-table { table-layout: auto; }
-  .skills-table th, .skills-table td { width: auto !important; }
-
-  .graveyard-table { table-layout: auto; }
-  .graveyard-table th, .graveyard-table td { width: auto !important; }
+  /* Header action rows (inline display:flex divs/forms) wrap under the h2 */
+  .page-header > div, .page-header > form { flex-wrap: wrap; }
 }
 
 /* Login page — standalone card, no sidebar or footer */

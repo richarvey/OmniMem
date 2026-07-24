@@ -57,6 +57,49 @@ def _resolve_project(feed_config: dict[str, Any]) -> str:
 _embedder: SentenceTransformer | None = None
 _valkey_client: valkey.Valkey | None = None
 
+# Feed→skill influence mirror. The skill compiler runs in the MCP server and
+# web UI containers, which don't mount feeds.yml, so each ingest cycle mirrors
+# the feed list into one Valkey hash. This is a deliberate small copy of
+# mcp_server/memory/feed_influence.py sync_feed_influences (the worker image
+# doesn't ship that package) — the key and value shape must stay in step.
+_FEED_INFLUENCE_KEY = "meta:feed:influence"
+
+
+def _sync_feed_influence(client: valkey.Valkey, feeds: list[dict[str, Any]]) -> int:
+    """Mirror feeds.yml into meta:feed:influence. Full replace, one pipeline.
+
+    Values are stored raw; validation (domain charset, score bounds 1-10)
+    happens on the reading side in memory/feed_influence.py, so the two
+    writers can't drift on rules.
+    """
+    mapping: dict[str, str] = {}
+    for feed in feeds or []:
+        if not isinstance(feed, dict):
+            continue
+        name = str(feed.get("name") or "").strip()
+        url = str(feed.get("url") or "").strip()
+        if not name or not url:
+            continue
+        topics = feed.get("topics")
+        entry: dict[str, Any] = {
+            "url": url,
+            "topics": [str(t) for t in topics if t] if isinstance(topics, list) else [],
+            "skills": feed.get("skills") if isinstance(feed.get("skills"), dict) else {},
+        }
+        if feed.get("mode"):
+            entry["mode"] = str(feed["mode"])
+        if feed.get("project"):
+            entry["project"] = str(feed["project"])
+        mapping[name] = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+
+    pipe = client.pipeline(transaction=False)
+    pipe.delete(_FEED_INFLUENCE_KEY)
+    if mapping:
+        pipe.hset(_FEED_INFLUENCE_KEY, mapping=mapping)
+    pipe.execute()
+    logger.info("Mirrored %d feeds into %s", len(mapping), _FEED_INFLUENCE_KEY)
+    return len(mapping)
+
 
 def _get_embedder() -> SentenceTransformer:
     """Lazy-load the embedding model."""
@@ -380,6 +423,14 @@ def ingest_all_feeds(feeds_config_path: str = "/app/feeds.yml") -> dict[str, Any
         return {"status": "error", "message": "Failed to load feeds configuration"}
 
     feeds = config.get("feeds", [])
+
+    # Keep the skill compiler's view of feed influence current even when
+    # feeds.yml was edited by hand rather than through the web UI.
+    try:
+        _sync_feed_influence(_get_valkey(), feeds if isinstance(feeds, list) else [])
+    except Exception as exc:
+        logger.warning("Could not mirror feed influence: %s", exc)
+
     if not feeds:
         logger.warning("No feeds configured in %s", feeds_config_path)
         return {"status": "no_feeds", "feeds_processed": 0}

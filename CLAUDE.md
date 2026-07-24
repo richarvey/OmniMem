@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
 
-**Version**: 6.4.2
+**Version**: 6.5.1
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -22,7 +22,8 @@ mcp_server/           # MCP server — FastMCP SSE transport
     contradiction.py  # Tier 1 heuristic + optional Tier 2 Claude Haiku API
     skills.py         # v6 skill compiler engine: domain pools, lesson clustering, SKILL.md rendering, diffs
     skill_compiler.py # Shared propose-and-accept compile flow (used by MCP compile_skill AND the web UI)
-    skill_transfer.py # v6.4 skill export/import: checksummed zip bundles (skill + source memories), strictly additive import
+    skill_transfer.py # v6.4 skill export/import: checksummed zip bundles (skill + source memories + influencing feeds), strictly additive import
+    feed_influence.py # v6.5 feed→skill influence: meta:feed:influence mirror of feeds.yml, validation, per-domain feed lookup
     skill_scan.py     # v6.4.1 auto skill scan: time-gated in briefing, proposes drafts (stash only) for cross-project patterns + changed skills
   tools/              # 30+ MCP tool implementations
     core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
@@ -95,6 +96,7 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **Skill writes are gated** (v6) — `compile_skill(mode="propose")` stashes the rendered draft in `meta:skill:proposal:{domain}-{user}` (TTL `SKILL_PROPOSAL_TTL_SECONDS`); `mode="write"` commits that stashed body verbatim (no recompile at write time), refuses if the stored skill's sha changed since the proposal, and refuses anything not flagged `generated: true`. Experience/graveyard writes stay ungated — that asymmetry is the design
 - **Promoted knowledge feeds skills, ordinary knowledge doesn't** (v6.2) — `promote_knowledge(key, domain=...)` sets `skill_domains` + `promoted_at` on the article (and clears expiry); `gather_promoted_knowledge()` pools those into `compile_skill`, rendered as `ref` rules in a separate Reference section — one summary rule per article, or one stance-prefixed rule per item when the article was promoted with extracted `rules=[{kind, text}, ...]` (stored in `skill_rules` on the article; extraction happens at promotion under human review, never at compile, so rendering stays deterministic). Promotion substitutes for reinforcement (same logic as `bless`), so refs bypass the gate but never count toward it. The briefing's `knowledge_watch()` (tools/skills.py) is the awareness layer: recent unpromoted articles vs skill discovery vectors (both read via `get_vectors_multi`, no re-embedding), with the tier-1 negation heuristic upgrading matches to `possible_contradiction`. Tunables: `SKILL_KNOWLEDGE_WATCH_DAYS` (14, 0 disables), `SKILL_KNOWLEDGE_WATCH_THRESHOLD` (0.35)
 - **Skill compilation is deterministic** — same source memories render a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps into `render_skill_md()` or every recompile will propose noise diffs
+- **RSS feeds can influence skills** (v6.5) — a feed's `skills: {domain: score}` mapping (1-10, web UI feed editor or feeds.yml) makes recompiles of that skill pull the feed's latest articles into a Feed watch section: score = number of most-recent articles contributed, total capped by `SKILL_FEED_MAX_ARTICLES` (25, 0 disables). Config is mirrored into the `meta:feed:influence` Valkey hash by the web UI on every feed save AND by the worker each ingest cycle (`rss_worker/ingester.py _sync_feed_influence` is a deliberate copy of `memory/feed_influence.py` — the worker image doesn't ship the memory package; keep the formats in step). Feed rules are kind `feed`, bypass the reinforcement gate like refs, never bootstrap a skill (no pool + no refs is still `no_candidates`), and their churn is always low-risk in `summarise_rule_changes`. Skill bundles are format v2: `feeds.json` carries influencing feeds; import merges them additively by URL (existing feeds at most gain a missing influence entry)
 
 ## Validation Constraints
 
@@ -166,6 +168,7 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 ## Web UI Notes
 
 - htmx endpoints must return **partials**, not full page templates
+- **Every data table uses `table-layout: fixed` with percentage widths summing to exactly 100%** — the only method that cannot overflow the viewport. Long content is handled inside the cell (ellipsis via `content-cell`, or `overflow-wrap`). Never switch a table to `table-layout: auto` in media queries, never put `display:flex` on a `<td>` (it detaches the cell from table layout so its column width stops applying), and when adding a column, rebalance the percentages — the old ones still sum to 100% and the new column gets no room. `.content` keeps `min-width: 0` so long unbroken strings can't widen the page
 - **Fonts are self-hosted**: Ubuntu + Ubuntu Mono woff2 files live in `web_ui/static/fonts/` with `@font-face` rules at the top of `style.css` — never link out to Google Fonts, the UI must work offline. Monospace elements use `var(--font-mono)`
 - **Accent colour is split three ways for WCAG AA**: `--accent` (#6366f1) is for borders and translucent fills only, `--accent-text` (#818cf8) for accent-coloured text on dark surfaces, `--accent-strong` (#5b5ee8) for solid fills carrying white text. Don't put `--accent` behind small text — it fails 4.5:1 on the card and page backgrounds
 - **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected

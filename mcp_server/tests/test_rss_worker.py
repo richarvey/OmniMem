@@ -259,6 +259,10 @@ class FakeIngestPipeline:
         self._commands.append(("hset", key, mapping))
         return self
 
+    def delete(self, key):
+        self._commands.append(("delete", key))
+        return self
+
     def execute(self):
         commands, self._commands = self._commands, []
         # fail_store only breaks the store pipeline (hset), not the dedup one
@@ -268,8 +272,11 @@ class FakeIngestPipeline:
         for cmd in commands:
             if cmd[0] == "exists":
                 results.append(1 if cmd[1] in self._client.data else 0)
+            elif cmd[0] == "delete":
+                results.append(1 if self._client.data.pop(cmd[1], None) else 0)
             else:
-                self._client.data[cmd[1]] = dict(cmd[2])
+                existing = self._client.data.setdefault(cmd[1], {})
+                existing.update(dict(cmd[2]))
                 results.append(True)
         return results
 
@@ -434,6 +441,11 @@ class TestIngestFeed:
 
 
 class TestIngestAllFeeds:
+    @pytest.fixture(autouse=True)
+    def _fake_valkey(self, monkeypatch):
+        self.client = FakeIngestValkey()
+        monkeypatch.setattr(ingester, "_get_valkey", lambda: self.client)
+
     def test_missing_config(self, tmp_path):
         result = ingester.ingest_all_feeds(str(tmp_path / "missing.yml"))
         assert result["status"] == "error"
@@ -463,3 +475,74 @@ class TestIngestAllFeeds:
         assert result["added"] == 2
         assert result["skipped"] == 1
         assert result["errors"] == 1
+
+    def test_mirrors_feed_influence(self, tmp_path, monkeypatch):
+        path = tmp_path / "feeds.yml"
+        path.write_text(yaml.dump({"feeds": [
+            {"url": "https://a.example", "name": "A",
+             "topics": ["python"], "skills": {"python": 7}},
+        ]}))
+        monkeypatch.setattr(
+            ingester, "ingest_feed",
+            lambda config: {"added": 0, "skipped": 0, "errors": 0},
+        )
+        ingester.ingest_all_feeds(str(path))
+        mirrored = self.client.data[ingester._FEED_INFLUENCE_KEY]
+        entry = json.loads(mirrored["A"])
+        assert entry["url"] == "https://a.example"
+        assert entry["skills"] == {"python": 7}
+        assert entry["topics"] == ["python"]
+
+    def test_sync_failure_does_not_break_ingestion(self, tmp_path, monkeypatch):
+        path = tmp_path / "feeds.yml"
+        path.write_text(yaml.dump({"feeds": [
+            {"url": "https://a.example", "name": "A"},
+        ]}))
+        monkeypatch.setattr(
+            ingester, "_sync_feed_influence",
+            lambda client, feeds: (_ for _ in ()).throw(RuntimeError("down")),
+        )
+        monkeypatch.setattr(
+            ingester, "ingest_feed",
+            lambda config: {"added": 1, "skipped": 0, "errors": 0},
+        )
+        result = ingester.ingest_all_feeds(str(path))
+        assert result["status"] == "complete"
+        assert result["added"] == 1
+
+
+class TestSyncFeedInfluence:
+    def test_writes_full_entries(self):
+        client = FakeIngestValkey()
+        count = ingester._sync_feed_influence(client, [
+            {"url": "https://a.example", "name": "A", "topics": ["x"],
+             "mode": "digest", "project": "research", "skills": {"python": 9}},
+            {"url": "https://b.example", "name": "B"},
+        ])
+        assert count == 2
+        entry = json.loads(client.data[ingester._FEED_INFLUENCE_KEY]["A"])
+        assert entry == {"url": "https://a.example", "topics": ["x"],
+                         "skills": {"python": 9}, "mode": "digest",
+                         "project": "research"}
+        assert json.loads(client.data[ingester._FEED_INFLUENCE_KEY]["B"])["skills"] == {}
+
+    def test_full_replace_and_invalid_entries(self):
+        client = FakeIngestValkey()
+        ingester._sync_feed_influence(client, [
+            {"url": "https://old.example", "name": "Old"},
+        ])
+        count = ingester._sync_feed_influence(client, [
+            {"url": "https://new.example", "name": "New"},
+            {"url": "", "name": "NoUrl"},
+            "not a dict",
+        ])
+        assert count == 1
+        assert set(client.data[ingester._FEED_INFLUENCE_KEY]) == {"New"}
+
+    def test_empty_list_clears_key(self):
+        client = FakeIngestValkey()
+        ingester._sync_feed_influence(client, [
+            {"url": "https://a.example", "name": "A"},
+        ])
+        assert ingester._sync_feed_influence(client, []) == 0
+        assert ingester._FEED_INFLUENCE_KEY not in client.data

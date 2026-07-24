@@ -40,6 +40,7 @@
       <th>Name</th>
       <th>URL</th>
       <th>Topics</th>
+      <th>Skills</th>
       <th>Mode</th>
       <th>Actions</th>
     </tr>
@@ -55,6 +56,13 @@
           <span class="badge ns-knowledge">{{ topic }}</span>
           {% endif %}
         {% endfor %}
+      </td>
+      <td>
+        {% if f.skills %}
+        <span class="mono" style="font-size:0.8rem">{{ f.skills }}</span>
+        {% else %}
+        <span style="color:var(--text-muted)">—</span>
+        {% endif %}
       </td>
       <td>
         {% if f.digest %}

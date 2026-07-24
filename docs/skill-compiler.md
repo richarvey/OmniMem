@@ -22,6 +22,14 @@ Every skill carries a fixed operating contract that instructs the agent to keep 
 
 The RSS feed acts as an early-warning system for the skills you've compiled: the briefing's knowledge watch compares recent articles against each skill and surfaces the ones that look relevant, flagging a possible contradiction when an article's language opposes one of the skill's rules. Nothing changes automatically — you review, promote the article into the skill if it belongs there, or ignore it and let it age out of the watch window.
 
+## Feed influence
+
+Promotion is per-article vetting; feed influence is the standing version of the same decision. On the web UI's feed editor (or as a `skills:` mapping in feeds.yml) you can tie a feed to one or more skill domains with an influence score from 1 to 10. When a skill for that domain is recompiled, the latest articles from its influencing feeds are pulled into a distinct **Feed watch** section automatically — no per-article blessing — and the score is literally how many of the feed's most recent articles appear, so a 10 dominates the section and a 1 contributes a single headline (the whole section caps at `SKILL_FEED_MAX_ARTICLES`, default 25).
+
+The write gate is untouched: feed-watch items only enter through a proposed, reviewed compile, the section is labelled unvetted current signal rather than procedure, and their natural churn (articles arrive, articles expire) is classified low-risk in the change summary so rotations don't drown out real rule edits. A feed with no influence mapping never touches a skill except through `promote_knowledge`. Feeds don't bootstrap either — a domain with no experience pool and no promoted references still won't compile from feed association alone.
+
+Exported skill bundles carry the influencing feeds (name, URL, topics, mode, and the score) so a skill stays fed on the instance you import it into: feeds missing from the receiving reading list are added, feeds already present at most gain the influence entry they lacked — nothing existing is ever rewritten.
+
 ## Storage
 
 Skills live whole in Valkey (`mem:skill:gen:{domain}-{user}`) — discovery metadata is embedded and searchable, the body is retrieved intact, and `export_path` can mirror a copy to disk. Domains are free-form tags with a "did you mean" guard, so `py` resolves to `python` instead of silently scattering your lessons across tags that never reach the threshold.
@@ -51,4 +59,4 @@ Ignoring a draft declines it: the proposal expires on its TTL, and a per-domain 
 
 ## Tuning
 
-The relevant environment variables, all covered in the [configuration reference](configuration.md): `OMNIMEM_USER`, `SKILL_CLUSTER_THRESHOLD`, `SKILL_DOMAIN_SUGGEST_THRESHOLD`, `SKILL_PROPOSAL_TTL_SECONDS`, `SKILL_SUGGEST_MIN_SIMILARITY`, `SKILL_EXPORT_DIR`, `SKILL_KNOWLEDGE_WATCH_DAYS`, `SKILL_KNOWLEDGE_WATCH_THRESHOLD`, `SKILL_SCAN_INTERVAL_HOURS`, `SKILL_SCAN_MIN_POOL`, `SKILL_SCAN_CROSS_PROJECT`, `SKILL_SCAN_MAX_PROPOSALS`.
+The relevant environment variables, all covered in the [configuration reference](configuration.md): `OMNIMEM_USER`, `SKILL_CLUSTER_THRESHOLD`, `SKILL_DOMAIN_SUGGEST_THRESHOLD`, `SKILL_PROPOSAL_TTL_SECONDS`, `SKILL_SUGGEST_MIN_SIMILARITY`, `SKILL_EXPORT_DIR`, `SKILL_KNOWLEDGE_WATCH_DAYS`, `SKILL_KNOWLEDGE_WATCH_THRESHOLD`, `SKILL_SCAN_INTERVAL_HOURS`, `SKILL_SCAN_MIN_POOL`, `SKILL_SCAN_CROSS_PROJECT`, `SKILL_SCAN_MAX_PROPOSALS`, `SKILL_FEED_MAX_ARTICLES`.

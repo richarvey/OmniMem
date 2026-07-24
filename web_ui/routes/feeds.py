@@ -1,12 +1,24 @@
-"""RSS feed management routes: list, create, edit, delete, download, upload."""
+"""RSS feed management routes: list, create, edit, delete, download, upload.
+
+Feeds can carry skill influence associations — a `skills:` mapping of skill
+domain to influence score (1-10) per feed in feeds.yml. Every write here also
+mirrors the feed list into Valkey (memory/feed_influence.py) so the skill
+compiler, which runs without the feeds.yml mount, sees the current scores.
+"""
 
 import logging
 import os
+from urllib.parse import quote
 
 import yaml
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.routing import Route
+
+from memory.feed_influence import sync_feed_influences, validate_feed_skills
+from memory.skills import SKILL_KEY_PREFIX
+
+from .. import deps
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +48,56 @@ def _save_feeds(feeds: list[dict]) -> None:
         )
 
 
+def _sync_influence(feeds: list[dict]) -> None:
+    """Mirror feeds into Valkey for the skill compiler; never block the save."""
+    try:
+        sync_feed_influences(deps.store.client, feeds)
+    except Exception:
+        logger.exception("Failed to mirror feed influence into Valkey")
+
+
+def _known_skill_domains() -> list[str]:
+    """Domains of compiled skills, for the edit form's suggestion list."""
+    try:
+        keys = deps.store.scan_prefix(SKILL_KEY_PREFIX)
+        rows = deps.store.get_fields_multi(keys, ("domain",)) if keys else []
+    except Exception:
+        return []
+    domains = {(row or {}).get("domain") for row in rows}
+    return sorted(d for d in domains if d)
+
+
+def _skills_summary(feed: dict) -> str:
+    """'python (8), docker (3)' for the list view; strongest first."""
+    skills = feed.get("skills")
+    if not isinstance(skills, dict) or not skills:
+        return ""
+    pairs = sorted(skills.items(), key=lambda kv: (-int(kv[1]), kv[0]))
+    return ", ".join(f"{domain} ({score})" for domain, score in pairs)
+
+
+def _parse_skills_form(form) -> dict[str, int]:
+    """Paired skill_domain / skill_influence rows into a skills mapping.
+
+    Blank domain rows are dropped (that's how the form removes an
+    association). Raises ValueError with a user-facing message on a bad
+    domain or score — validation itself lives in memory/feed_influence.py.
+    """
+    domains = form.getlist("skill_domain")
+    influences = form.getlist("skill_influence")
+    raw: dict[str, str] = {}
+    for domain, influence in zip(domains, influences):
+        domain = (domain or "").strip()
+        if not domain:
+            continue
+        raw[domain] = (influence or "").strip() or "5"
+    return validate_feed_skills(raw)
+
+
+def _form_error_redirect(url: str, exc: Exception) -> RedirectResponse:
+    return RedirectResponse(url=f"{url}?error={quote(str(exc))}", status_code=303)
+
+
 async def feed_list(request: Request) -> HTMLResponse:
     """GET /feeds — list all configured RSS feeds."""
     feeds = _load_feeds()
@@ -47,6 +109,7 @@ async def feed_list(request: Request) -> HTMLResponse:
             "url": feed.get("url", ""),
             "topics": ", ".join(feed.get("topics", [])),
             "digest": feed.get("mode") == "digest",
+            "skills": _skills_summary(feed),
         })
 
     message = request.query_params.get("message")
@@ -59,12 +122,26 @@ async def feed_list(request: Request) -> HTMLResponse:
     return HTMLResponse(content)
 
 
+def _skills_rows(feed: dict) -> list[dict]:
+    skills = feed.get("skills")
+    if not isinstance(skills, dict):
+        return []
+    return [
+        {"domain": domain, "influence": score}
+        for domain, score in sorted(
+            skills.items(), key=lambda kv: (-int(kv[1]), kv[0]),
+        )
+    ]
+
+
 async def feed_create_form(request: Request) -> HTMLResponse:
     """GET /feeds/new — form to add a new feed."""
-    feed = {"name": "", "url": "", "topics": "", "digest": False}
+    feed = {"name": "", "url": "", "topics": "", "digest": False, "skills": []}
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=True,
+        skill_domains=_known_skill_domains(),
+        error=request.query_params.get("error"),
     )
     return HTMLResponse(content)
 
@@ -80,15 +157,23 @@ async def feed_create(request: Request) -> RedirectResponse:
     if not name or not url:
         return RedirectResponse(url="/feeds/new", status_code=303)
 
+    try:
+        skills = _parse_skills_form(form)
+    except ValueError as exc:
+        return _form_error_redirect("/feeds/new", exc)
+
     topics = [t.strip() for t in topics_raw.split(",") if t.strip()] if topics_raw else []
 
     feed_entry: dict = {"url": url, "name": name, "topics": topics}
     if digest:
         feed_entry["mode"] = "digest"
+    if skills:
+        feed_entry["skills"] = skills
 
     feeds = _load_feeds()
     feeds.append(feed_entry)
     _save_feeds(feeds)
+    _sync_influence(feeds)
 
     logger.info("Added RSS feed: %s (%s)", name, url)
     return RedirectResponse(url="/feeds", status_code=303)
@@ -109,11 +194,14 @@ async def feed_edit_form(request: Request) -> HTMLResponse:
         "url": raw.get("url", ""),
         "topics": ", ".join(raw.get("topics", [])),
         "digest": raw.get("mode") == "digest",
+        "skills": _skills_rows(raw),
     }
 
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=False,
+        skill_domains=_known_skill_domains(),
+        error=request.query_params.get("error"),
     )
     return HTMLResponse(content)
 
@@ -131,6 +219,11 @@ async def feed_save(request: Request) -> RedirectResponse:
     if not name or not url:
         return RedirectResponse(url=f"/feeds/{index}/edit", status_code=303)
 
+    try:
+        skills = _parse_skills_form(form)
+    except ValueError as exc:
+        return _form_error_redirect(f"/feeds/{index}/edit", exc)
+
     topics = [t.strip() for t in topics_raw.split(",") if t.strip()] if topics_raw else []
 
     feeds = _load_feeds()
@@ -140,8 +233,11 @@ async def feed_save(request: Request) -> RedirectResponse:
     feed_entry: dict = {"url": url, "name": name, "topics": topics}
     if digest:
         feed_entry["mode"] = "digest"
+    if skills:
+        feed_entry["skills"] = skills
     feeds[index] = feed_entry
     _save_feeds(feeds)
+    _sync_influence(feeds)
 
     logger.info("Updated RSS feed #%d: %s (%s)", index, name, url)
     return RedirectResponse(url="/feeds", status_code=303)
@@ -155,6 +251,7 @@ async def feed_delete(request: Request) -> RedirectResponse:
     if 0 <= index < len(feeds):
         removed = feeds.pop(index)
         _save_feeds(feeds)
+        _sync_influence(feeds)
         logger.info("Deleted RSS feed #%d: %s", index, removed.get("name", ""))
 
     return RedirectResponse(url="/feeds", status_code=303)
@@ -208,6 +305,7 @@ async def feed_upload(request: Request) -> RedirectResponse:
     # Write the validated file — mtime change will trigger rss_worker reload
     with open(FEEDS_PATH, "wb") as f:
         f.write(raw)
+    _sync_influence(data["feeds"])
 
     logger.info("Uploaded new feeds.yml (%d feeds) from %s", len(data["feeds"]), upload.filename)
     return RedirectResponse(
