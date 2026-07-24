@@ -161,9 +161,9 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 
 ## Committing
 
-Commit after each meaningful section of work for easy rollback. The repo is hosted on Codeberg — Forgejo MCP is connected to Codeberg and can be used for PRs and repo operations.
+Commit after each meaningful section of work for easy rollback. The repo is hosted on a self-hosted Forgejo instance at `code.squarecows.com` (owner `ric`) — push over git (SSH on port 222) and use the squarecows web UI for PRs and releases. Note: the connected Forgejo MCP points at Codeberg, a *different* instance, so its repo/action tools (PRs, `list_action_runners_jobs`, etc.) do NOT operate on this repo — don't reach for them here.
 
-**Branch policy**: version lines (v6, v7, ...) are developed AND released from their own branch — cut tags and Codeberg releases on the version branch. Never merge a version branch into main unless explicitly asked; main only moves when Ric says so.
+**Branch policy**: version lines (v6, v7, ...) are developed AND released from their own branch — cut tags and releases on the version branch. Never merge a version branch into main unless explicitly asked; main only moves when Ric says so.
 
 ## Web UI Notes
 
