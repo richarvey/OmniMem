@@ -36,11 +36,17 @@ jobs:
           # --branch=main marks this as a production deployment (Cloudflare's
           # default production branch is `main`); change it if your Pages
           # project uses a different production branch.
+          #
+          # Site is mounted read-only at /site, but wrangler runs from a
+          # separate writable working dir (/work) so it can create its
+          # .wrangler/tmp scratch dir. Using the :ro mount as cwd caused
+          # `ENOENT ... mkdir /site/.wrangler/tmp` — wrangler writes .wrangler
+          # into its working directory.
           /usr/bin/docker run --rm \
             -e CLOUDFLARE_API_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID \
             -v "$PWD/dist":/site:ro \
-            -w /site \
+            -w /work \
             node:20-slim \
             npx --yes wrangler@3 pages deploy /site \
               --project-name=omnimem \
