@@ -1,4 +1,4 @@
-"""Version check route: compare running version against latest Codeberg release."""
+"""Version check route: compare running version against the latest forge release."""
 
 import json
 import logging
@@ -16,8 +16,8 @@ logger = logging.getLogger("omnimem.web.version_check")
 # /releases/latest excludes drafts and pre-releases, so a beta cut on a
 # version branch (e.g. v6.1.0 marked pre-release) never nudges stable
 # installs — the indicator only points at the latest stable release.
-CODEBERG_API_URL = (
-    "https://codeberg.org/api/v1/repos/ric_harvey/omnimem/releases/latest"
+RELEASES_API_URL = (
+    "https://code.squarecows.com/api/v1/repos/ric/omnimem/releases/latest"
 )
 CACHE_TTL = 3600  # Cache for 1 hour
 
@@ -30,13 +30,13 @@ def _parse_version(v: str) -> tuple[int, ...]:
 
 
 def _fetch_latest_version() -> str | None:
-    """Fetch the latest release tag from Codeberg, with caching."""
+    """Fetch the latest release tag from the forge, with caching."""
     now = time.time()
     if _cache["latest"] and (now - _cache["checked_at"]) < CACHE_TTL:
         return _cache["latest"]
 
     try:
-        req = Request(CODEBERG_API_URL, headers={"Accept": "application/json"})
+        req = Request(RELEASES_API_URL, headers={"Accept": "application/json"})
         with urlopen(req, timeout=5) as resp:  # scheme is validated above  # nosec B310
             data = json.loads(resp.read())
             if isinstance(data, dict) and data.get("tag_name"):

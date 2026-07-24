@@ -85,7 +85,7 @@ jobs:
           cp coverage-badge.svg /tmp/coverage-badge.svg
           rm -f coverage-badge.svg
           git config user.name "Forgejo Actions"
-          git config user.email "actions@codeberg.org"
+          git config user.email "actions@squarecows.com"
           if git fetch origin badges 2>/dev/null; then
             git checkout badges
           else

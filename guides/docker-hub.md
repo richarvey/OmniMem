@@ -6,7 +6,7 @@ Pre-built Docker images are available on Docker Hub. This is the quickest way to
 > The installer script automates everything on this page — it checks for Docker, generates passwords, writes the `.env` and compose file, and starts the stack:
 >
 > ```bash
-> curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash
+> curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash
 > ```
 >
 > The rest of this guide is the manual version of the same setup.
