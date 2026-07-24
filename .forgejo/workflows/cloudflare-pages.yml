@@ -1,0 +1,48 @@
+name: Deploy to Cloudflare Pages
+
+# Runs whenever the pages branch moves. NOTE: in Forgejo Actions the workflow
+# is read from the branch that was pushed, so this file MUST live on `pages`
+# for a push to `pages` to trigger it — a copy on main would never fire.
+on:
+  push:
+    branches:
+      - pages
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Publish static site
+    runs-on: sqcows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage site files
+        run: |
+          # Export the committed tree into dist/, then drop CI/VCS metadata so
+          # it never gets served as a site asset. git + tar are already present
+          # (checkout uses them), so no dependency on rsync being installed.
+          rm -rf dist
+          mkdir -p dist
+          git archive HEAD | tar -x -C dist
+          rm -rf dist/.forgejo dist/.domains dist/.gitignore
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # wrangler runs in a glibc node image (not alpine — wrangler's bundled
+          # binaries are glibc-only, same musl trap as noted in CLAUDE.md).
+          # --branch=main marks this as a production deployment (Cloudflare's
+          # default production branch is `main`); change it if your Pages
+          # project uses a different production branch.
+          /usr/bin/docker run --rm \
+            -e CLOUDFLARE_API_TOKEN \
+            -e CLOUDFLARE_ACCOUNT_ID \
+            -v "$PWD/dist":/site:ro \
+            -w /site \
+            node:20-slim \
+            npx --yes wrangler@3 pages deploy /site \
+              --project-name=omnimem \
+              --branch=main \
+              --commit-dirty=true
