@@ -44,7 +44,7 @@ Docker Desktop defaults are fine for OmniMem. If you've reduced Docker's memory 
 ## Step 2 — Clone OmniMem
 
 ```bash
-git clone https://codeberg.org/ric_harvey/omnimem.git
+git clone https://code.squarecows.com/ric/omnimem.git
 cd omnimem
 ```
 
@@ -108,7 +108,7 @@ docker compose up -d
 
 This pulls the images in under a minute rather than building from source.
 
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Codeberg](https://codeberg.org/ric_harvey/omnimem/releases) for available tags.
+To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
 
 ### Option B — Build from source
 

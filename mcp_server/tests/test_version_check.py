@@ -1,4 +1,4 @@
-"""Tests for the web UI version check against Codeberg's latest-release API."""
+"""Tests for the web UI version check against the forge's latest-release API."""
 
 import io
 import json
