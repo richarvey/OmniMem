@@ -6,8 +6,8 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 
 ## Docs
 
-- [Source repository](https://codeberg.org/ric_harvey/omnimem): full README, manual, and deployment guides
-- [Install](https://omnimem.org/#quickstart): `curl -fsSL https://codeberg.org/ric_harvey/omnimem/raw/branch/main/install.sh | bash`
+- [Source repository](https://code.squarecows.com/ric/omnimem): full README, manual, and deployment guides
+- [Install](https://omnimem.org/#quickstart): `curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash`
 
 ## Key facts
 
