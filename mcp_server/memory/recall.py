@@ -47,30 +47,69 @@ _PROJECT_FILTER_FIELDS = {
 }
 
 
-def _build_filter_expr(namespace: str, project_filter: str | None) -> str:
-    """Compose the FT.SEARCH filter for one namespace."""
+def normalise_project_filter(project_filter: Any) -> list[str]:
+    """Accept a single project or a list of them, and return a clean list.
+
+    A domain filter resolves to several projects (v6.6), so every project-
+    scoped path takes a list internally. A bare string still works and is the
+    common case, so callers were not changed.
+    """
+    if not project_filter:
+        return []
+    if isinstance(project_filter, str):
+        candidates = [project_filter]
+    else:
+        candidates = [p for p in project_filter if isinstance(p, str)]
+    out: list[str] = []
+    for name in candidates:
+        name = name.strip()
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def _build_filter_expr(namespace: str, project_filter: Any) -> str:
+    """Compose the FT.SEARCH filter for one namespace.
+
+    With more than one project the clauses are OR'd at clause level rather
+    than with in-brace alternation — `@project:{a|b}` returns an empty set on
+    valkey-search (verified live; see the graveyard). Only values matching the
+    tag allowlist are pushed down; anything else is left to the Python-side
+    filter, and a filter that covers only part of the requested set would be
+    wrong, so a single unsafe value drops push-down for the whole clause.
+    """
     clauses = [_STATE_FILTER]
-    if project_filter and _TAG_VALUE_SAFE_RE.match(project_filter):
+    projects = normalise_project_filter(project_filter)
+    if projects:
         tag_field = _PROJECT_FILTER_FIELDS.get(namespace)
-        if tag_field:
-            clauses.append(f"@{tag_field}:{{{project_filter}}}")
+        if tag_field and all(_TAG_VALUE_SAFE_RE.match(p) for p in projects):
+            if len(projects) == 1:
+                clauses.append(f"@{tag_field}:{{{projects[0]}}}")
+            else:
+                alternatives = " | ".join(
+                    f"@{tag_field}:{{{p}}}" for p in projects
+                )
+                clauses.append(f"({alternatives})")
     if len(clauses) == 1:
         return clauses[0]
     return "(" + " ".join(clauses) + ")"
 
 
-def _candidate_k(top_k: int, project_filter: str | None) -> int:
+def _candidate_k(top_k: int, project_filter: Any) -> int:
     """How many KNN candidates to request per namespace.
 
     Was hardcoded to 20, which starved results in two ways: a caller asking
     for top_k > 20 in one namespace could never get more than 20, and with a
     project filter the top 20 could easily contain zero matches for that
     project even though matches exist further down. Over-fetch when filtering
-    so the Python-side filter still has candidates left after discarding.
+    so the Python-side filter still has candidates left after discarding, and
+    over-fetch further as the project set widens — a domain filter spanning
+    six projects has to share the same candidate budget between them.
     """
     k = max(20, top_k)
-    if project_filter:
-        k = max(k, 50)
+    projects = normalise_project_filter(project_filter)
+    if projects:
+        k = max(k, min(100, 50 + 10 * (len(projects) - 1)))
     return k
 
 
@@ -139,16 +178,25 @@ class RecallPipeline:
         query: str,
         namespaces: list[str] | None = None,
         top_k: int | None = None,
-        project_filter: str | None = None,
+        project_filter: str | list[str] | None = None,
         expand_queries: bool | None = None,
     ) -> list[RecallResult]:
         """Full recall pipeline: abandoned fast-path, search, score, rank.
+
+        project_filter takes one project name or a list of them; a list is
+        what a domain-scoped recall resolves to (v6.6). Passing an empty list
+        is the same as passing nothing — callers that resolved a filter to
+        nothing must decide for themselves whether an unscoped search is the
+        right answer, because silently running one here would present a global
+        result set as a scoped one.
 
         When expand_queries is True (or RECALL_EXPAND_QUERIES env var is set),
         the query is expanded into N variants via Claude Haiku and results are
         unioned across all variants, deduplicated by key, and ranked by best
         adjusted_score.
         """
+        project_filter = normalise_project_filter(project_filter)
+        project_set = set(project_filter)
         if top_k is None:
             top_k = int(os.getenv("MEMORY_RECALL_TOP_K", "5"))
         # Clamp top_k to a sane range
@@ -221,7 +269,7 @@ class RecallPipeline:
 
                 # Project filter
                 doc_project = doc.get("project") or doc.get("project_name")
-                if project_filter and doc_project != project_filter:
+                if project_set and doc_project not in project_set:
                     continue
 
                 raw_score = max(0.0, 1.0 - float(doc.get("similarity_score", "1.0")))
@@ -388,7 +436,7 @@ class RecallPipeline:
         self,
         variant: str,
         namespaces: list[str],
-        project_filter: str | None,
+        project_filter: str | list[str] | None,
         suppressed_topics: list[str],
         recency_decay_days: int,
         now: float,
@@ -404,6 +452,7 @@ class RecallPipeline:
         """
         out: list[RecallResult] = []
         query_vector = self.embedder.embed(variant)
+        project_set = set(normalise_project_filter(project_filter))
         per_ns_k = _candidate_k(top_k, project_filter)
         for ns in namespaces:
             raw_results = self.store.search(
@@ -420,7 +469,7 @@ class RecallPipeline:
                     if any(topic in content_lower for topic in suppressed_topics):
                         continue
                 doc_project = doc.get("project") or doc.get("project_name")
-                if project_filter and doc_project != project_filter:
+                if project_set and doc_project not in project_set:
                     continue
 
                 raw_score = max(0.0, 1.0 - float(doc.get("similarity_score", "1.0")))

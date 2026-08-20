@@ -28,9 +28,11 @@ At the beginning of every session:
      description="<ask the human for a brief description>",
      stack=["<technologies>"],
      goals=["<current goals>"],
-     current_state="<starting point>"
+     current_state="<starting point>",
+     domains=["<kinds of work, e.g. python, docker, design>"]
    )
    ```
+1. If the project context has no `domains`, call `compile_project_domains("<project_name>")` — it proposes them from the stack and the project's own recurring tags, with the evidence for each. Show the human the draft and only save with `auto_save=True` if they agree. Domains are what let a later session search across projects rather than inside one.
 1. Briefly summarise what you found:
 - Current project state and goals
 - Recent decisions and discovered patterns
@@ -51,6 +53,7 @@ At the beginning of every session:
 
 - Call `recall("<problem description>")` — you may find a prior solution, a relevant pattern, or a knowledge article that gives you a head start
 - If a recalled knowledge article seems relevant, mention it: *“I found an article from [source] about X — shall I use that as a research base?”*
+- **When the problem is about a kind of work rather than this project** — a Python gotcha, a CSS layout trap, a Docker build failure — add `domain_filter`: `recall("<problem>", domain_filter="python")` searches every project doing that kind of work. Compiled skills hold the lessons that already cleared the reinforcement gate; the domain filter reaches the raw memories underneath, including the ones that never became a rule. If the reply starts with a `domain_filter_notice` saying the filter was not applied, no project declares that domain and the results you are reading span everything — say so rather than presenting them as a targeted search
 
 **Before suggesting OR agreeing to any library, tool, or architectural approach** — including ones the human proposes:
 

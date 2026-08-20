@@ -407,6 +407,21 @@ class FakeValkeyStore:
         return restored, skipped, restored_keys
 
 
+@pytest.fixture(autouse=True)
+def _clear_project_domain_cache():
+    """Drop the project domain -> project name cache between tests.
+
+    It is process-global with a TTL (one store per process in production), so
+    without this a resolution cached against one test's fake store would be
+    served to the next one.
+    """
+    from memory.project_domains import invalidate_domain_cache
+
+    invalidate_domain_cache()
+    yield
+    invalidate_domain_cache()
+
+
 @pytest.fixture
 def web_client(fake_store, fake_embedder, monkeypatch):
     """Starlette TestClient over the real web UI app, backed by the fakes.

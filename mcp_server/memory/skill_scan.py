@@ -83,6 +83,29 @@ def _existing_skill_domains(store) -> set[str]:
     return {row["domain"] for row in rows if row and row.get("domain")}
 
 
+# How much one project declaring a domain (v6.6) is worth when ranking scan
+# candidates. The scan is capped at _MAX_CANDIDATES, so ordering decides what
+# gets looked at at all, and a domain two projects have declared is exactly
+# the cross-project signal this scan already prefers.
+_PROJECT_DOMAIN_WEIGHT = 2
+
+
+def _boost_by_project_domains(store, counts: dict[str, int]) -> None:
+    """Re-rank scan candidates using the domains projects declare.
+
+    Boost only, never introduce: a domain no memory is tagged with has an
+    empty pool and would be dropped at the min_pool gate anyway, so adding it
+    would only spend one of the capped candidate slots to reach the same
+    answer. Sharing the vocabulary is what makes this legal — project domains
+    and skill domains are the same normalised names.
+    """
+    from .project_domains import known_project_domains
+
+    for domain, project_count in known_project_domains(store).items():
+        if domain in counts:
+            counts[domain] += _PROJECT_DOMAIN_WEIGHT * project_count
+
+
 def _propose(
     store, embedder, domain: str, user: str, new_skill: bool,
 ) -> dict[str, Any] | None:
@@ -150,6 +173,7 @@ def run_skill_scan(
 
     # Phase 1: domains with no skill yet, largest pools first.
     counts = known_domains(store)
+    _boost_by_project_domains(store, counts)
     candidates: list[str] = []
     for domain in sorted(counts, key=lambda d: (-counts[d], d)):
         if domain in existing or domain in pending:

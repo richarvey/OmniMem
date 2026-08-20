@@ -146,9 +146,12 @@ def _init() -> None:
 
     # One-time migrations: set project_name on ULID-keyed project memories,
     # backfill state on pre-state-field memories (needed by the recall
-    # filter push-down), and label pre-existing RSS articles with a project.
+    # filter push-down), label pre-existing RSS articles with a project, and
+    # seed work-type domains from each project's stack field so the v6.6
+    # domain filter isn't empty on the first run after an upgrade.
     from memory.migrations import (
         migrate_missing_state,
+        migrate_project_domains,
         migrate_project_names,
         migrate_rss_article_projects,
     )
@@ -156,6 +159,7 @@ def _init() -> None:
     migrate_project_names(store)
     migrate_missing_state(store)
     migrate_rss_article_projects(store)
+    migrate_project_domains(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker
@@ -177,8 +181,8 @@ def _register_tools() -> None:
     )
     from tools.project import (
         set_project_context, get_project_context, list_projects,
-        update_project_state, compile_project_context, delete_project,
-        deprioritise_project, reinstate_project,
+        update_project_state, compile_project_context, compile_project_domains,
+        delete_project, deprioritise_project, reinstate_project,
     )
     from tools.audit import memory_audit, why_did_you_mention, explain_memory, reindex
     from tools.experience import (
@@ -215,6 +219,7 @@ def _register_tools() -> None:
     mcp.tool()(list_projects)
     mcp.tool()(update_project_state)
     mcp.tool()(compile_project_context)
+    mcp.tool()(compile_project_domains)
     mcp.tool()(delete_project)
     mcp.tool()(deprioritise_project)
     mcp.tool()(reinstate_project)

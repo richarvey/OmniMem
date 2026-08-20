@@ -685,17 +685,136 @@ a.stat-card:hover .stat-ns {
   width: 100%;
 }
 
+/* Six columns since the Domains column landed in v6.6 — the widths are
+   rebalanced across all six and sum to exactly 100%. Adding a column without
+   redistributing leaves the new one with no room and pushes the table past
+   the viewport. */
 .projects-table th:nth-child(1),
-.projects-table td:nth-child(1) { width: 20%; }
+.projects-table td:nth-child(1) { width: 16%; }
 
 .projects-table th:nth-child(2),
-.projects-table td:nth-child(2) { width: 32%; }
+.projects-table td:nth-child(2) { width: 16%; }
 
 .projects-table th:nth-child(3),
-.projects-table td:nth-child(3) { width: 32%; }
+.projects-table td:nth-child(3) { width: 22%; }
 
 .projects-table th:nth-child(4),
-.projects-table td:nth-child(4) { width: 16%; }
+.projects-table td:nth-child(4) { width: 22%; }
+
+.projects-table th:nth-child(5),
+.projects-table td:nth-child(5) { width: 11%; }
+
+.projects-table th:nth-child(6),
+.projects-table td:nth-child(6) { width: 13%; text-align: right; }
+
+/* Work-type domains (v6.6). Pills wrap inside their cell rather than forcing
+   the column wider — kebab-case names break at their hyphens. */
+.domains-cell {
+  overflow: hidden;
+}
+
+.domain-pill {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  margin: 0.1rem 0.25rem 0.1rem 0;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  color: var(--accent-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.domain-pill:hover,
+.domain-pill:focus-visible {
+  border-color: var(--border-strong);
+  text-decoration: underline;
+}
+
+.domain-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.domain-skill-link {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  margin-right: 0.5rem;
+}
+
+.domain-skill-link:hover,
+.domain-skill-link:focus-visible { text-decoration: underline; }
+
+/* Domain filter chips above the projects table */
+.domain-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.domain-chip {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.domain-chip:hover,
+.domain-chip:focus-visible { border-color: var(--border-strong); color: var(--text); }
+
+.domain-chip.is-active {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.domain-chip-count { color: var(--text-dim); font-weight: 400; }
+
+.header-qualifier {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.text-dim { color: var(--text-dim); }
+
+.form-hint, .meta-hint {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin: 0.35rem 0 0.5rem;
+  line-height: 1.5;
+}
+
+.domain-suggestion {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.domain-suggestion-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.domain-evidence-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.domain-evidence-list li { margin-bottom: 0.25rem; }
 
 /* Memories table — six columns; the dashboard's five-column recent activity
    table reuses this, and the missing Actions column's share redistributes

@@ -88,3 +88,65 @@ def migrate_rss_article_projects(store) -> None:
             "Migration: labelled %d RSS articles with project=%s",
             fixed, RSS_PROJECT_LABEL,
         )
+
+
+def migrate_project_domains(store) -> None:
+    """Seed work-type domains (v6.6) from each project's existing stack string.
+
+    Without this, every project upgrading to v6.6 has no domains, so
+    recall(domain_filter=...) matches nothing on day one — the failure mode
+    that made issue #20 so hard to spot, where a filter silently returns
+    nothing rather than reporting that it has nothing to filter on.
+
+    Deliberately conservative and never destructive: it only writes to
+    projects with no `domains` field at all, and it only reads a field a human
+    already wrote by hand. A project whose stack yields nothing usable gets an
+    empty marker so a later run doesn't rescan it, and so the web UI can tell
+    "not set up yet" from "considered and empty". Anything derived here is
+    editable in the web UI or replaceable with compile_project_domains().
+    """
+    from .project_domains import (
+        invalidate_domain_cache,
+        normalise_domains,
+        parse_domains,
+        serialise_domains,
+        _STACK_STOPWORDS,
+    )
+
+    keys = store.scan_prefix("mem:project:")
+    if not keys:
+        return
+
+    rows = store.get_fields_multi(keys, ("stack", "domains", "goals"))
+    seeded = 0
+    marked = 0
+    for key, row in zip(keys, rows):
+        if not row:
+            continue
+        # `domains` present at all (even empty) means this project has been
+        # through the migration or been edited since.
+        if row.get("domains") is not None:
+            continue
+        # Only real context entries carry a stack or goals; ULID-keyed project
+        # memories are not projects and must not grow a domains field.
+        if not (row.get("stack") or row.get("goals")):
+            continue
+
+        candidates = [
+            item for item in parse_domains(row.get("stack") or "")
+            if item.strip().lower() not in _STACK_STOPWORDS
+        ]
+        domains, _, _ = normalise_domains(candidates)
+        store.set_field(key, "domains", serialise_domains(domains))
+        if domains:
+            seeded += 1
+        else:
+            marked += 1
+
+    if seeded or marked:
+        invalidate_domain_cache()
+        logger.info(
+            "Migration: seeded domains on %d projects from their stack "
+            "(%d had nothing usable to derive)",
+            seeded, marked,
+        )

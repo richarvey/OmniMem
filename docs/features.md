@@ -118,6 +118,35 @@ Instead of making three separate calls at session start, a single `briefing(proj
 
 One tool call, one response, full context.
 
+## Cross-project recall by work type
+
+Memory scoped to one project answers "what did we decide here". It does not answer "what have I learned the hard way about Python", which is the question you actually have when you hit a familiar-feeling problem in a project you started last week.
+
+Projects declare **work-type domains** — the kinds of work inside them:
+
+```python
+set_project_context(
+    project_name="omnimem",
+    description="Self-hosted semantic memory MCP server",
+    stack="Python 3.12, FastMCP, Valkey",
+    goals="Ship v6.6",
+    current_state="v6.6.x branch",
+    domains=["python", "docker", "htmx"],
+)
+
+recall("valkey tag filter behaviour", domain_filter="python")
+```
+
+That searches every project declaring `python`, not just the one you are sitting in. `project_filter` and `domain_filter` intersect when both are given, and `list_projects(domain="python")` shows which projects a domain covers.
+
+Three things make it work rather than turn into a tagging chore:
+
+- **It shares the compiled-skill vocabulary.** A project domain and a skill domain normalise through the same code, so `py` becomes `python` in both and the same name reaches `find_skills()`. Skills carry the lessons that cleared the reinforcement gate; the domain filter reaches the raw memories underneath — including the gotcha you hit twice that never became a rule.
+- **Domains suggest themselves.** `compile_project_domains(name)` reads the project's existing stack field and the tags that recur across its memories, and proposes a list with the evidence for each entry. It proposes by default, writes only on `auto_save=True`, and never removes a domain you set by hand. A startup migration seeds domains from `stack` on upgrade, so the filter is not empty on day one.
+- **An unmatched domain says so.** Filter on a domain no project declares and the search runs unscoped with a leading notice telling you the filter was not applied. A global search dressed up as a targeted one is worse than no filter at all.
+
+Domains route; they do not label individual memories. A project is Python *and* CSS *and* Docker at once, so stamping those onto every memory would surface a CSS gotcha in a Python search. The domain narrows which projects are candidates, and the vector search still decides what is actually relevant inside them.
+
 ## Automatic maintenance
 
 Memory systems accumulate duplicates and contradictions over time. OmniMem handles this automatically.

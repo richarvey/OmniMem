@@ -29,6 +29,35 @@
   </div>
   {% endif %}
 
+  <div class="meta-item" style="grid-column:span 2">
+    <div class="meta-label">Domains</div>
+    <div class="meta-value">
+      {% if project.domains %}
+      <div class="domain-pill-row">
+        {% for d in project.domains %}
+        <a href="/projects?domain={{ d.name }}" class="domain-pill">{{ d.name }}</a>
+        {% if d.has_skill %}
+        <a href="/skills/mem:skill:gen:{{ d.name }}-{{ skill_user }}" class="domain-skill-link" title="Compiled skill for {{ d.name }}">skill &rarr;</a>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <p class="meta-hint">
+        The kinds of work in this project. They share the compiled-skill
+        vocabulary, so <code>recall(query, domain_filter="{{ project.domains[0].name }}")</code>
+        searches every project declaring the same domain.
+      </p>
+      {% else %}
+      <span class="text-dim">None set.</span>
+      <p class="meta-hint">
+        Declaring domains lets recall search across every project doing the
+        same kind of work. Add them on the
+        <a href="/projects/{{ project.name }}/edit">edit page</a> &mdash; it can
+        suggest them from the stack and this project's own memories.
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
   {% if project.stack %}
   <div class="meta-item" style="grid-column:span 2">
     <div class="meta-label">Stack</div>

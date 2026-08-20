@@ -26,6 +26,35 @@
   </div>
 
   <div class="form-group">
+    <label for="project-domains">Domains</label>
+    <input type="text" id="project-domains" name="domains" class="form-input"
+           value="{{ project.domains }}" list="project-domain-options"
+           placeholder="python, docker, wcag-accessibility">
+    <p class="form-hint">
+      Comma separated. The kinds of work in this project, sharing the
+      compiled-skill vocabulary &mdash; so <code>recall(domain_filter="python")</code>
+      searches every Python project at once, and the same names reach
+      <code>find_skills()</code>. Aliases resolve on save (<code>py</code> becomes
+      <code>python</code>).
+    </p>
+    {% if not is_new %}
+    <button type="button" class="btn btn-secondary btn-sm"
+            hx-post="/projects/{{ project.name }}/domains/suggest"
+            hx-target="#domain-suggestion" hx-swap="innerHTML">
+      Suggest from stack &amp; memories
+    </button>
+    <div id="domain-suggestion"></div>
+    {% endif %}
+    {% if domain_options %}
+    <datalist id="project-domain-options">
+      {% for d in domain_options %}
+      <option value="{{ d }}"></option>
+      {% endfor %}
+    </datalist>
+    {% endif %}
+  </div>
+
+  <div class="form-group">
     <label>Goals</label>
     <textarea name="goals" class="form-textarea" rows="3" placeholder="Current objectives">{{ project.goals }}</textarea>
   </div>

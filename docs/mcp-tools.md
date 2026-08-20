@@ -8,7 +8,8 @@ Every tool the OmniMem MCP server exposes, grouped by area. The server delivers 
 |---|---|
 | `remember(content, project?, tags?, force?, mode?)` | Store a memory. In `full` mode (default) extracts atomic facts via Claude Haiku and routes preferences to the preference namespace; `raw` stores verbatim. Auto-checks for duplicates and contradictions |
 | `remember_document(content, chunk_strategy, project?, tags?, namespace?, chunk_size?, mode?)` | Index a long-form document by splitting it into chunks (`turn_pairs`, `sentences`, `paragraphs`, or `fixed_tokens`) and storing each as a memory linked by a shared `doc_id` |
-| `recall(query, top_k?, project_filter?, expand_queries?)` | Semantic search across all namespaces. With `expand_queries=true`, generates alternative phrasings via Claude Haiku and unions the results to improve recall coverage when query vocabulary doesn't match stored content |
+| `recall(query, top_k?, project_filter?, expand_queries?, domain_filter?)` | Semantic search across all namespaces. `domain_filter` searches every project declaring a work-type domain at once (`domain_filter="python"`), intersecting with `project_filter` when both are given. With `expand_queries=true`, generates alternative phrasings via Claude Haiku and unions the results to improve recall coverage when query vocabulary doesn't match stored content |
+| `recall_index(query, top_k?, project_filter?, snippet_length?, domain_filter?)` | Lightweight recall returning ranked snippets and a token estimate; expand chosen keys with `recall_detail()`. Reports the resolved domain filter under `domain_filter` |
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Soft-suppress without deleting |
 | `archive(key_or_query)` | Remove from recall but keep for history |
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
@@ -25,11 +26,12 @@ Every tool the OmniMem MCP server exposes, grouped by area. The server delivers 
 
 | Tool | What it does |
 |---|---|
-| `set_project_context(name, description, stack, goals, current_state)` | Create or update project memory |
+| `set_project_context(name, description, stack, goals, current_state, notes?, domains?)` | Create or update project memory. `domains` declares the kinds of work in the project (`["python", "docker"]`) using the compiled-skill vocabulary; omit it to leave existing domains alone, pass `[]` to clear them |
 | `get_project_context(name)` | Retrieve it, called at every session start |
 | `update_project_state(name, current_state, notes?)` | Update state without re-embedding |
-| `compile_project_context(name, auto_save?)` | Auto-produce or refresh a project context from its episodic memories, tags, experience data, and abandoned approaches |
-| `list_projects()` | See all stored projects |
+| `compile_project_context(name, auto_save?)` | Auto-produce or refresh a project context from its episodic memories, tags, experience data, and abandoned approaches. The draft includes suggested domains |
+| `compile_project_domains(name, auto_save?)` | Suggest work-type domains for a project from its stack field and its own recurring memory tags, with the evidence behind each one. Proposes by default; `auto_save=True` writes the merged list. Never removes a domain |
+| `list_projects(domain?)` | See all stored projects and their domains; `domain="python"` narrows to the projects declaring it |
 | `delete_project(name, confirm?, include_context?)` | Bulk delete every memory belonging to a project by direct key scan (no semantic search, so nothing gets missed). Preview by default; `confirm=True` deletes in pipelined batches; `include_context=True` also removes the project context entry |
 
 ## Experience scoring

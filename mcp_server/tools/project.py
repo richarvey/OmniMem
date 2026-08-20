@@ -8,6 +8,14 @@ from collections import Counter
 from typing import Any
 
 from memory.lifecycle import MemoryState
+from memory.project_domains import (
+    invalidate_domain_cache,
+    known_project_domains,
+    normalise_domains,
+    read_project_domains,
+    serialise_domains,
+    suggest_domains_for_project,
+)
 
 from . import _compact
 
@@ -40,6 +48,7 @@ def set_project_context(
     goals: str,
     current_state: str,
     notes: str | None = None,
+    domains: list[str] | str | None = None,
 ) -> dict[str, Any]:
     """Create or update a project's context (description, stack, goals, state).
 
@@ -50,6 +59,12 @@ def set_project_context(
         goals: Current objectives.
         current_state: Current project state.
         notes: Freeform notes for next session.
+        domains: Kinds of work in this project ('python', 'docker', 'design'),
+            sharing the compiled-skill vocabulary so recall(domain_filter=...)
+            and find_skills() speak the same names. Omit to leave any existing
+            domains untouched; pass [] to clear them. Use
+            compile_project_domains() to have them suggested from the stack
+            and the project's own memories.
     """
     store, embedder = _get_deps()
 
@@ -76,9 +91,31 @@ def set_project_context(
     if notes:
         fields["notes"] = notes
 
+    # None means "don't touch"; an empty list means "clear". Distinguishing
+    # them matters because this tool is also the update path — a caller
+    # refreshing goals shouldn't silently wipe the project's domains.
+    resolved: list[str] | None = None
+    aliased: dict[str, str] = {}
+    rejected: list[str] = []
+    if domains is None:
+        existing = store.get(key)
+        if existing is not None:
+            resolved = read_project_domains(existing)
+    else:
+        resolved, aliased, rejected = normalise_domains(domains)
+    if resolved is not None:
+        fields["domains"] = serialise_domains(resolved)
+
     store.upsert("project", key, fields, vector)
+    invalidate_domain_cache()
     logger.info("Saved project context: %s", project_name)
-    return {"project_name": project_name}
+
+    return _compact({
+        "project_name": project_name,
+        "domains": resolved or None,
+        "resolved_aliases": aliased or None,
+        "rejected_domains": rejected or None,
+    })
 
 
 def get_project_context(project_name: str) -> dict[str, Any]:
@@ -102,6 +139,7 @@ def get_project_context(project_name: str) -> dict[str, Any]:
         "project_name": data.get("project_name", project_name),
         "description": data.get("description", ""),
         "stack": data.get("stack", ""),
+        "domains": read_project_domains(data) or None,
         "goals": data.get("goals", ""),
         "current_state": data.get("current_state", ""),
         "notes": data.get("notes"),
@@ -110,15 +148,32 @@ def get_project_context(project_name: str) -> dict[str, Any]:
     })
 
 
-def list_projects() -> dict[str, Any]:
-    """List all stored project contexts, deduplicated by project name."""
+def list_projects(domain: str | None = None) -> dict[str, Any]:
+    """List all stored project contexts, deduplicated by project name.
+
+    Args:
+        domain: Only list projects declaring this work-type domain
+            (e.g. 'python'). Aliases resolve the same way skill domains do.
+    """
     store, _ = _get_deps()
+
+    wanted: str | None = None
+    if domain:
+        resolved, _, rejected = normalise_domains(domain)
+        if rejected or not resolved:
+            raise ValueError(
+                f"Invalid domain filter: {domain!r}. Use 1-64 characters of "
+                "lowercase letters, digits, hyphens, underscores or dots."
+            )
+        wanted = resolved[0]
 
     keys = store.scan_prefix("mem:project:")
 
     # One round-trip, only the fields the listing shows
     all_data = store.get_fields_multi(
-        keys, ("project_name", "project", "goals", "stack", "description", "state")
+        keys,
+        ("project_name", "project", "goals", "stack", "description", "state",
+         "domains"),
     )
 
     # Group by resolved project name to deduplicate
@@ -136,16 +191,111 @@ def list_projects() -> dict[str, Any]:
                 "description": "",
                 "state": "active",
                 "memory_count": 0,
+                "domains": [],
             }
 
         if is_context:
             project_map[name]["description"] = (data.get("description") or "")[:80]
             project_map[name]["state"] = data.get("state", "active")
+            project_map[name]["domains"] = read_project_domains(data)
         else:
             project_map[name]["memory_count"] += 1
 
     projects = sorted(project_map.values(), key=lambda p: p["project_name"].lower())
-    return {"projects": projects}
+    if wanted is not None:
+        projects = [p for p in projects if wanted in p["domains"]]
+
+    result: dict[str, Any] = {
+        "projects": [
+            {k: v for k, v in p.items() if k != "domains" or v} for p in projects
+        ]
+    }
+    if wanted is not None:
+        result["domain"] = wanted
+        if not projects:
+            result["note"] = (
+                f"No project declares the domain '{wanted}'. "
+                "Run compile_project_domains(project_name) to suggest domains "
+                "for a project from its stack and memories."
+            )
+    return result
+
+
+def compile_project_domains(
+    project_name: str,
+    auto_save: bool = False,
+) -> dict[str, Any]:
+    """Suggest work-type domains for a project from its stack and its own memories, with the evidence behind each one. Returns a draft by default; pass auto_save=True to store it.
+
+    Domains are what makes cross-project recall work: once projects declare
+    them, recall(domain_filter='python') searches every Python project at
+    once. They share the compiled-skill vocabulary, so the same names reach
+    find_skills() and get_skill().
+
+    Suggestions are merged with any domains the project already declares —
+    this never removes one.
+
+    Args:
+        project_name: Project to suggest domains for.
+        auto_save: If True, write the merged domain list to the project context.
+    """
+    store, _ = _get_deps()
+
+    _validate_project_name(project_name)
+
+    key = f"mem:project:{project_name}"
+    if store.get(key) is None:
+        return {
+            "status": "not_found",
+            "project_name": project_name,
+            "note": (
+                "No project context stored. Create one with "
+                "set_project_context() or compile_project_context() first."
+            ),
+        }
+
+    suggestion = suggest_domains_for_project(store, project_name)
+
+    saved = False
+    if auto_save and suggestion["merged_domains"] != suggestion["existing_domains"]:
+        store.set_fields(key, {
+            "domains": serialise_domains(suggestion["merged_domains"]),
+            "updated_at": str(time.time()),
+        })
+        invalidate_domain_cache()
+        saved = True
+        logger.info(
+            "compile_project_domains('%s'): saved %d domains",
+            project_name, len(suggestion["merged_domains"]),
+        )
+
+    result: dict[str, Any] = {
+        "status": "compiled",
+        "project_name": project_name,
+        "existing_domains": suggestion["existing_domains"],
+        "suggested_domains": suggestion["suggested_domains"],
+        "merged_domains": suggestion["merged_domains"],
+    }
+    if suggestion["evidence"]:
+        result["evidence"] = suggestion["evidence"]
+    if saved:
+        result["auto_saved"] = True
+    elif not suggestion["suggested_domains"]:
+        result["note"] = (
+            "Nothing new to suggest. Domains are read from the project's "
+            "stack field and from tags that recur across its memories — set "
+            "them by hand with set_project_context(domains=[...]) if neither "
+            "carries the signal."
+        )
+    else:
+        result["note"] = "Call again with auto_save=True to store these."
+
+    known = known_project_domains(store)
+    if known:
+        result["domains_in_use"] = dict(
+            sorted(known.items(), key=lambda kv: (-kv[1], kv[0]))
+        )
+    return result
 
 
 def update_project_state(
@@ -246,6 +396,10 @@ def delete_project(
     deleted = 0
     for keys in to_delete.values():
         deleted += store.delete_many(keys)
+
+    # The project context may have been one of them — its domains no longer
+    # route anything.
+    invalidate_domain_cache()
 
     # Deleted memories may have carried abandoned-approach entries.
     from tools import _pipeline
@@ -404,6 +558,7 @@ def compile_project_context(
         existing_context = _compact({
             "description": existing_data.get("description", ""),
             "stack": existing_data.get("stack", ""),
+            "domains": read_project_domains(existing_data) or None,
             "goals": existing_data.get("goals", ""),
             "current_state": existing_data.get("current_state", ""),
             "notes": existing_data.get("notes"),
@@ -505,6 +660,11 @@ def compile_project_context(
     # 3. Build the draft context
     top_tags = [tag for tag, _ in tag_counter.most_common(20)]
 
+    # Work-type domains, derived from the same two sources the standalone
+    # compile_project_domains() reads. Existing domains are never dropped.
+    domain_suggestion = suggest_domains_for_project(store, project_name)
+    draft_domains = domain_suggestion["merged_domains"]
+
     # Compile notes from breakthroughs, gotchas, and abandoned approaches
     notes_parts: list[str] = []
     if breakthroughs:
@@ -536,6 +696,7 @@ def compile_project_context(
             if existing_context and existing_context.get("stack")
             else ", ".join(top_tags)
         ),
+        "domains": draft_domains or None,
         "goals": (
             existing_context.get("goals", "")
             if existing_context
@@ -566,6 +727,7 @@ def compile_project_context(
             "goals": goals,
             "current_state": current_state,
             "notes": notes,
+            "domains": serialise_domains(draft_domains),
             "state": MemoryState.ACTIVE.value,
             "surface_score": "1.0",
             "updated_at": now,
@@ -574,6 +736,7 @@ def compile_project_context(
             fields["created_at"] = now
 
         store.upsert("project", existing_key, fields, vector)
+        invalidate_domain_cache()
         saved = True
         logger.info("Auto-saved compiled project context: %s", project_name)
 
@@ -587,6 +750,8 @@ def compile_project_context(
         result["existing_context"] = existing_context
     if top_tags:
         result["top_tags"] = top_tags
+    if domain_suggestion["evidence"]:
+        result["domain_evidence"] = domain_suggestion["evidence"]
     if unique_abandoned:
         result["abandoned_approaches"] = unique_abandoned
     if breakthroughs:

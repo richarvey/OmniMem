@@ -16,6 +16,7 @@ One per project, keyed by name: `mem:project:omnimem`. Created and fully replace
 | `project_name` | string | yes | The project identifier. 1-200 chars: alphanumeric, hyphens, underscores, dots, spaces. |
 | `description` | string | yes | What the project does. |
 | `stack` | string | yes | Technology stack (free text; the compiler drafts it from top tags). |
+| `domains` | comma-separated string | no | Work-type domains: the kinds of work inside the project (`python,docker,wcag-accessibility`). Normalised through the *same* vocabulary as compiled skills (`memory/skills.py resolve_domain`), so `py` on a project and `py` on a skill both land on `python` and the two can never drift into parallel taxonomies. Stored comma-separated rather than as a JSON array because that is what a TAG field tokenises on — the JSON form used by `tags` and `topics` indexes as unusable tokens, which is why neither is ever filtered on. A startup migration seeds this from `stack` on projects that have never had it, so the domain filter is not empty after an upgrade; an empty string means "considered, nothing derivable", which is distinct from the field being absent. |
 | `goals` | string | yes | Current objectives. Presence of this (or `stack`) is what marks the record as a context entry. |
 | `current_state` | string | yes | Where the project is now. Updated by `update_project_state()` without touching the vector. |
 | `notes` | string | no | Freeform notes for the next session. The compiler fills this with breakthroughs, gotchas, and abandoned approaches. |
@@ -86,7 +87,57 @@ reinstate_project(project_name="omnimem", confirm=True, include_context=False)
 
 # List every known project (context entries and ULID-only projects, deduplicated by name).
 list_projects()
+
+# Narrow to the projects declaring a work-type domain. Aliases resolve (py -> python).
+list_projects(domain="python")
+
+# Suggest domains from the stack field and the project's own recurring tags. Proposes
+# by default and shows its evidence; auto_save=True writes the merged list.
+compile_project_domains(project_name="omnimem", auto_save=False)
 ```
+
+## Work-type domains and cross-project recall
+
+Domains are what turn a pile of separate projects into something you can search by
+the *kind* of work rather than by which project it happened in. Declare them on the
+project context and `recall(domain_filter="python")` searches every Python project at
+once:
+
+```python
+set_project_context(
+    project_name="omnimem",
+    description="Self-hosted semantic memory MCP server",
+    stack="Python 3.12, FastMCP, Valkey",
+    goals="Ship v6.6",
+    current_state="v6.6.x branch",
+    domains=["python", "docker", "htmx"],   # omit to keep existing, [] to clear
+)
+
+# Every gotcha from every Python project, not just this one.
+recall("valkey tag filter", domain_filter="python")
+
+# Both filters intersect: this project, and only if it is a Python project.
+recall("valkey tag filter", project_filter="omnimem", domain_filter="python")
+```
+
+Three behaviours worth knowing:
+
+- **The vocabulary is shared with compiled skills.** A project domain and a skill
+  domain normalise identically, so the same name reaches `find_skills("python")`
+  and `get_skill()`. Skills hold the distilled lessons that cleared the
+  reinforcement gate; the domain filter reaches the raw memories underneath them,
+  including the ones that never made it into a skill.
+- **A domain nobody declares does not silently return everything.** If no project
+  declares `rust`, the recall runs unscoped and prepends a
+  `domain_filter_notice` result saying so — a scoped-looking search that quietly
+  became a global one is worse than no filter at all. When a domain *and* a
+  project filter are both given and nothing satisfies both, the result is empty
+  plus the same notice, never a widened search.
+- **Domains route, they do not label memories.** A memory is not stamped with its
+  project's domains. OmniMem is Python and Docker and CSS at once, so inheriting
+  those onto every memory would surface a CSS gotcha in a Python search. The
+  domain narrows the candidate *projects*; the vector search still decides
+  relevance within them.
 
 ## Indexed fields
 

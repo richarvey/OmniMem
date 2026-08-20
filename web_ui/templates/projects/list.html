@@ -4,19 +4,34 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Projects</h2>
+  <h2>Projects{% if domain_filter and domain_filter_valid %} <span class="header-qualifier">in {{ domain_filter }}</span>{% endif %}</h2>
   <a href="/projects/new" class="btn btn-primary btn-sm">New Project</a>
 </header>
 
-{% if projects %}
+{% if all_domains %}
+<nav class="domain-filter-bar" aria-label="Filter projects by domain">
+  <a href="/projects" class="domain-chip{% if not domain_filter %} is-active{% endif %}">All <span class="domain-chip-count">{{ total_projects }}</span></a>
+  {% for name, count in all_domains %}
+  <a href="/projects?domain={{ name }}" class="domain-chip{% if domain_filter == name %} is-active{% endif %}">{{ name }} <span class="domain-chip-count">{{ count }}</span></a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if domain_filter and not domain_filter_valid %}
+<p class="empty-state">
+  &ldquo;{{ domain_filter }}&rdquo; is not a usable domain. Domains are 1&ndash;64
+  characters of lowercase letters, digits, hyphens, underscores or dots.
+</p>
+{% elif projects %}
 <table class="data-table projects-table">
   <thead>
     <tr>
       <th>Name</th>
+      <th>Domains</th>
       <th>Description</th>
       <th>Current State</th>
       <th>Updated</th>
-      <th style="width:12rem"></th>
+      <th></th>
     </tr>
   </thead>
   <tbody>
@@ -32,13 +47,16 @@
         <span class="memory-count-badge">{{ p.memory_count }}</span>
         {% endif %}
       </td>
+      <td class="domains-cell">
+        {% for d in p.domains %}<a href="/projects?domain={{ d }}" class="domain-pill">{{ d }}</a>{% else %}<span class="text-dim">&mdash;</span>{% endfor %}
+      </td>
       <td class="content-cell">{{ p.description }}</td>
       <td class="content-cell">{{ p.current_state }}</td>
       <td class="date-cell">
         <span class="date-main">{{ p.updated_date }}</span>
         <span class="date-time">{{ p.updated_time }}</span>
       </td>
-      <td style="text-align:right">
+      <td class="actions-cell">
         {% if p.has_context %}
         {% if p.state == "deprioritised" %}
         <form method="POST" action="/projects/{{ p.name }}/reinstate" style="display:inline" onsubmit="return confirm('Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.')">
@@ -58,6 +76,12 @@
     {% endfor %}
   </tbody>
 </table>
+{% elif domain_filter %}
+<p class="empty-state">
+  No project declares the domain &ldquo;{{ domain_filter }}&rdquo;. Open a project and
+  use <strong>Suggest from stack &amp; memories</strong> on its edit page, or run
+  <code>compile_project_domains("&lt;project&gt;")</code>.
+</p>
 {% else %}
 <p class="empty-state">No projects configured yet.</p>
 {% endif %}

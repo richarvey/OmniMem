@@ -15,6 +15,7 @@ from memory.dedup import check_duplicate, find_all_duplicates
 from memory.enrichment import enqueue, enqueue_batch
 from memory.embedder import Embedder
 from memory.lifecycle import MemoryLifecycle, MemoryState
+from memory.project_domains import resolve_projects_for_domains
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
 from memory.tags import MAX_TAGS, MAX_TAG_LENGTH, retag_memory, validate_tags as _validate_tags
@@ -301,12 +302,89 @@ def remember_document(
     }
 
 
+def _resolve_recall_scope(
+    project_filter: str | None,
+    domain_filter: list[str] | str | None,
+) -> tuple[list[str], dict[str, Any] | None, bool]:
+    """Turn project and/or domain filters into the project list recall takes.
+
+    Returns (projects, notice, empty_scope). The notice is the honest-reporting
+    half: a domain nobody has declared must not quietly become an unscoped
+    search presented as a scoped one. empty_scope is the other half — the
+    pipeline reads an empty project list as "search everything", so a scope
+    that legitimately resolves to no projects has to short-circuit here rather
+    than fall through into a global search.
+    """
+    store, _, _, _ = _get_deps()
+
+    if project_filter:
+        _validate_project_name(project_filter)
+    if not domain_filter:
+        return ([project_filter] if project_filter else []), None, False
+
+    resolution = resolve_projects_for_domains(store, domain_filter)
+    projects = resolution.projects
+
+    if project_filter:
+        # Both filters given: intersect. An empty intersection is a real
+        # answer (that project isn't in that domain), not a degradation — so
+        # it returns nothing rather than widening to every project.
+        projects = [p for p in projects if p == project_filter]
+        if not projects:
+            return [], {
+                "result_type": "domain_filter_notice",
+                "domain_filter": resolution.requested,
+                "project_filter": project_filter,
+                "applied": True,
+                "projects": [],
+                "note": (
+                    f"Project '{project_filter}' does not declare "
+                    + ("this domain" if len(resolution.requested) == 1
+                       else "any of these domains")
+                    + ", so nothing matches both filters."
+                ),
+            }, True
+
+    notice: dict[str, Any] | None = None
+    if resolution.fully_unmatched:
+        notice = {
+            "result_type": "domain_filter_notice",
+            "domain_filter": resolution.requested,
+            "unmatched_domains": resolution.unmatched,
+            "applied": False,
+            "note": (
+                "No project declares "
+                + ("this domain" if len(resolution.unmatched) == 1
+                   else "any of these domains")
+                + ", so the domain filter was not applied and these results "
+                "span every project. Run compile_project_domains(project_name) "
+                "or list_projects(domain=...) to see what is declared."
+            ),
+        }
+        projects = []
+    elif resolution.unmatched:
+        notice = {
+            "result_type": "domain_filter_notice",
+            "domain_filter": resolution.requested,
+            "unmatched_domains": resolution.unmatched,
+            "applied": True,
+            "projects": projects,
+            "note": (
+                "Filtered on the domains that matched; no project declares "
+                + ", ".join(resolution.unmatched) + "."
+            ),
+        }
+
+    return projects, notice, False
+
+
 def recall(
     query: str,
     top_k: int = 5,
     namespaces: list[str] | None = None,
     project_filter: str | None = None,
     expand_queries: bool | None = None,
+    domain_filter: list[str] | str | None = None,
 ) -> list[dict[str, Any]]:
     """Search memories by semantic similarity. Returns ranked results; abandoned-approach warnings appear first.
 
@@ -317,6 +395,11 @@ def recall(
         project_filter: Restrict to a project.
         expand_queries: If True, generate alternative phrasings via Claude Haiku and union
             the results. Default follows the RECALL_EXPAND_QUERIES env var.
+        domain_filter: Restrict to every project declaring these work-type
+            domains (e.g. 'python') — the cross-project search. Combines with
+            project_filter as an intersection. If no project declares the
+            domain, the search runs unscoped and says so in a leading
+            'domain_filter_notice' entry.
     """
     _, _, _, pipeline = _get_deps()
 
@@ -324,18 +407,24 @@ def recall(
     if namespaces:
         for ns in namespaces:
             _validate_namespace(ns)
-    if project_filter:
-        _validate_project_name(project_filter)
+
+    projects, notice, empty_scope = _resolve_recall_scope(
+        project_filter, domain_filter
+    )
+    if empty_scope:
+        return [notice] if notice is not None else []
 
     results = pipeline.recall(
         query=query,
         namespaces=namespaces,
         top_k=top_k,
-        project_filter=project_filter,
+        project_filter=projects,
         expand_queries=expand_queries,
     )
 
     output: list[dict[str, Any]] = []
+    if notice is not None:
+        output.append(notice)
     for r in results:
         # Build compact result — only include non-empty/non-default fields
         entry: dict[str, Any] = {
@@ -381,6 +470,7 @@ def recall_index(
     project_filter: str | None = None,
     snippet_length: int = 150,
     expand_queries: bool | None = None,
+    domain_filter: list[str] | str | None = None,
 ) -> dict[str, Any]:
     """Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
 
@@ -390,6 +480,11 @@ def recall_index(
         namespaces: Namespaces to search. All by default.
         project_filter: Restrict to a project.
         snippet_length: Content preview length in chars (default 150).
+        expand_queries: If True, generate alternative phrasings via Claude Haiku
+            and union the results.
+        domain_filter: Restrict to every project declaring these work-type
+            domains (e.g. 'python'). Reports back under 'domain_filter' when a
+            requested domain matches no project.
     """
     _, _, _, pipeline = _get_deps()
 
@@ -397,8 +492,16 @@ def recall_index(
     if namespaces:
         for ns in namespaces:
             _validate_namespace(ns)
-    if project_filter:
-        _validate_project_name(project_filter)
+
+    projects, notice, empty_scope = _resolve_recall_scope(
+        project_filter, domain_filter
+    )
+    if empty_scope:
+        return {
+            "results": [],
+            "token_estimate": {"index": 0, "full": 0},
+            "domain_filter": notice,
+        }
 
     snippet_length = max(50, min(snippet_length, 500))
 
@@ -406,7 +509,7 @@ def recall_index(
         query=query,
         namespaces=namespaces,
         top_k=top_k,
-        project_filter=project_filter,
+        project_filter=projects,
         expand_queries=expand_queries,
     )
 
@@ -442,10 +545,20 @@ def recall_index(
         total_index_tokens += index_tokens
         output.append(entry)
 
-    return {
+    payload: dict[str, Any] = {
         "results": output,
         "token_estimate": {"index": total_index_tokens, "full": total_full_tokens},
     }
+    if notice is not None:
+        payload["domain_filter"] = notice
+    elif projects and domain_filter:
+        payload["domain_filter"] = {
+            "domain_filter": domain_filter
+            if isinstance(domain_filter, list) else [domain_filter],
+            "applied": True,
+            "projects": projects,
+        }
+    return payload
 
 
 def recall_detail(

@@ -4,7 +4,9 @@
 
 Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
 
-**Version**: 6.5.1
+v6.6 adds work-type domains on projects: a project declares what kinds of work it contains (`python`, `docker`, `wcag-accessibility`) using the same vocabulary compiled skills use, so `recall(domain_filter="python")` searches every Python project at once.
+
+**Version**: 6.6.0
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
 
 ## Project Structure
@@ -24,10 +26,11 @@ mcp_server/           # MCP server — FastMCP SSE transport
     skill_compiler.py # Shared propose-and-accept compile flow (used by MCP compile_skill AND the web UI)
     skill_transfer.py # v6.4 skill export/import: checksummed zip bundles (skill + source memories + influencing feeds), strictly additive import
     feed_influence.py # v6.5 feed→skill influence: meta:feed:influence mirror of feeds.yml, validation, per-domain feed lookup
+    project_domains.py # v6.6 project work-type domains: vocabulary shared with skills, domain→project resolution (TTL cached), stack/tag-derived suggestions
     skill_scan.py     # v6.4.1 auto skill scan: time-gated in briefing, proposes drafts (stash only) for cross-project patterns + changed skills
   tools/              # 30+ MCP tool implementations
     core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
-    project.py        # set/get/update/compile project_context, list_projects, delete_project
+    project.py        # set/get/update/compile project_context, compile_project_domains, list_projects, delete_project
     experience.py     # record_experience, log_abandoned, warn_if_abandoned
     briefing.py       # Session-start 5-in-1 aggregation
     audit.py          # memory_audit, explain_memory, why_did_you_mention
@@ -89,6 +92,9 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **In-memory fakes** for testing (no Docker-in-tests complexity)
 - **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
 - **Auto skill scan** (v6.4.1) — time-gated in `briefing()` (`meta:skill_scan:last_run`, `SKILL_SCAN_INTERVAL_HOURS` default 24, 0 disables): proposes new skills for domains whose lessons clear the reinforcement gate (cross-project by default, `SKILL_SCAN_CROSS_PROJECT`) and drafts for changed skills (fed the `pending_skill_updates` domains so change detection runs once). Stash-only — the propose-and-accept gate is untouched. Noise gate: `meta:skill_scan:seen:{domain}-{user}` holds the last auto-proposed body sha (volatile-stripped), so an ignored/expired draft is never re-proposed until the compiled output changes; the scan withdraws its own stash when the sha matches. Domains with any live proposal stash (human or auto) are skipped entirely
+- **Project work-type domains** (v6.6) — a project context carries `domains` (`python,docker`), normalised through the *same* `resolve_domain`/`validate_domain` as compiled skills so the two can never become parallel taxonomies. `recall(domain_filter=...)`/`recall_index` resolve domains to a project set and filter on all of them; `project_filter` and `domain_filter` intersect. Two rules the design turns on: (1) **domains route, they never label memories** — a memory doesn't inherit its project's domains, because OmniMem is Python *and* CSS at once and inheritance would surface a CSS gotcha in a Python search; the domain narrows candidate projects and the vector search still decides relevance; (2) **an unmatched domain is always reported** — it degrades to an unscoped search with a leading `domain_filter_notice`, and an empty domain∩project intersection returns nothing rather than falling through to a global search (the pipeline reads an empty project list as "search everything", so the tool layer short-circuits). `migrate_project_domains` seeds from `stack` so an upgrade isn't empty on day one; the field being absent differs from it being an empty string ("considered, nothing derivable"). The skill scan boosts, but never introduces, candidates by project-declared domains
+- **`domains` is stored comma-separated, not JSON** — a TAG field tokenises on commas, so the JSON-array form used by `tags`/`topics` indexes as garbage tokens (`["python`, `"docker"]`) and `@tags:{python}` matches nothing. Nothing filters on those fields, which is why it has never bitten; `domains` is meant to be filtered, so it uses the format the index actually reads. Validation guarantees a domain can't contain a comma
+- **Never call valkey-py's `client.ft(name).dropindex()`** — use `execute_command("FT.DROPINDEX", name)`. `dropindex()` passes its delete-documents flag positionally even when False, so the wire command is `FT.DROPINDEX <index> ""` (three args). RediSearch tolerates the trailing empty string, valkey-search rejects it with "wrong number of arguments". This silently broke `_migrate_indexes()` from its introduction until 6.6.0: the error was caught by the same `except valkey.ResponseError` that handles a missing index, so every upgraded instance kept a stale index and the logs said nothing. `reindex_namespace()` always used the raw command and was unaffected. The test fake now *raises* on `dropindex()` so nothing can reach for it again
 - **Index migration** on startup — `_migrate_indexes()` compares field count against definitions, drops stale indexes (data-safe) so they get recreated with new fields
 - **Per-memory recall counters** — `recall_count` and `last_recalled` updated via pipeline on each recall; `/telemetry` dashboard and `/metrics` Prometheus endpoint expose these
 - **RSS articles carry a project label** (v6.1.1) — default `RSS`, per-feed override via `project:` in feeds.yml, backfilled by a startup migration (`memory/migrations.py`), so ingested articles stay separable from conversation-sourced knowledge. Articles are identified by `feed_name`; the label must satisfy the project-name charset or the ingester falls back to `RSS`. It does not create a pseudo-project: projects pages/tools only count `mem:project:*` keys
@@ -103,6 +109,7 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - Project names: alphanumeric, hyphens, underscores, dots, spaces only
 - Content: max 50KB per memory
 - Tags: max 20 per memory, each ≤100 chars
+- Project domains: max 20 per project, same charset as skill domains, aliases resolve via `DOMAIN_ALIASES`
 - Namespaces: `episodic`, `project`, `knowledge`, or `preference` for `remember()`; `skill` exists as a search namespace but is only writable through the `compile_skill` gate
 - Key prefixes: `mem:episodic:`, `mem:project:`, `mem:knowledge:`, `mem:preference:`, `mem:skill:`
 - Skill domains: normalised to lowercase kebab-case, 1-64 chars of `[a-z0-9._-]`; aliases (`py`→`python` etc) resolve in `memory/skills.py DOMAIN_ALIASES`
@@ -121,7 +128,7 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
 ## Recall Pipeline (how scoring works)
 
 1. Abandoned fast-path: keyword scan on `abandoned_approaches` (no embedding needed; parsed entries cached for `ABANDONED_CACHE_TTL_SECONDS`, default 60, invalidated on experience/forget/restore writes)
-2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter). State and project filters are pushed into FT.SEARCH as tag filters (episodic, preference, knowledge) so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net
+2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter, widening by 10 per extra project up to 100). State and project filters are pushed into FT.SEARCH as tag filters (episodic, preference, knowledge) so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net. `project_filter` takes a list since v6.6 and composes with clause-level OR — never in-brace alternation — and one unsafe value drops push-down for the whole clause rather than filtering on part of the set
 3. Apply multipliers in order:
    - Surface score (lifecycle state: active 1.0x, deprioritised 0.2x, archived 0.0x)
    - Recency decay (age penalty after `RECENCY_DECAY_DAYS`, default 90)
@@ -170,7 +177,8 @@ Commit after each meaningful section of work for easy rollback. The repo is host
 - htmx endpoints must return **partials**, not full page templates
 - **Every data table uses `table-layout: fixed` with percentage widths summing to exactly 100%** — the only method that cannot overflow the viewport. Long content is handled inside the cell (ellipsis via `content-cell`, or `overflow-wrap`). Never switch a table to `table-layout: auto` in media queries, never put `display:flex` on a `<td>` (it detaches the cell from table layout so its column width stops applying), and when adding a column, rebalance the percentages — the old ones still sum to 100% and the new column gets no room. `.content` keeps `min-width: 0` so long unbroken strings can't widen the page
 - **Fonts are self-hosted**: Ubuntu + Ubuntu Mono woff2 files live in `web_ui/static/fonts/` with `@font-face` rules at the top of `style.css` — never link out to Google Fonts, the UI must work offline. Monospace elements use `var(--font-mono)`
-- **Accent colour is split three ways for WCAG AA**: `--accent` (#6366f1) is for borders and translucent fills only, `--accent-text` (#818cf8) for accent-coloured text on dark surfaces, `--accent-strong` (#5b5ee8) for solid fills carrying white text. Don't put `--accent` behind small text — it fails 4.5:1 on the card and page backgrounds
+- **Accent colour is split for WCAG AA**: the palette is brand orange (`--accent-strong` #ff8e01 for solid fills, always paired with `--on-accent` navy text). `--accent` is for borders and boundaries, `--accent-text` for accent-coloured text (#ff8e01 on dark at 8.35:1, #9a5a00 on paper at 5.1:1), and `--accent-soft` is the translucent wash — use the token rather than hardcoding an rgba, or a theme change leaves your fill behind
+- **The projects table is six columns** since v6.6 added Domains — Name, Domains, Description, Current State, Updated, Actions, widths summing to exactly 100%. Domain pills wrap inside their cell and kebab-case names break at hyphens
 - **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected
 - Footers are full-width (not inside sidebar/container)
 - Auth is a single `AuthMiddleware` (web_ui/auth.py): session login turns on automatically when `OAUTH_ADMIN_USER` + `OAUTH_ADMIN_PASSWORD` are set (`WEB_UI_LOGIN_ENABLED=false` opts out), reusing the OAuth credentials with the same constant-time compare and per-IP rate limit knobs. Sessions are opaque tokens in Valkey (`meta:webui:session:{token}`, TTL `WEB_UI_SESSION_HOURS`, default 168) behind an HttpOnly `omnimem_session` cookie; `/logout` deletes the token server-side. `WEB_UI_AUTH_TOKEN` bearer auth is accepted alongside for scripts. `/metrics`, `/static/` and `/login` are exempt; unauthenticated htmx requests get 401 + `HX-Redirect` so partials never swap in the login page

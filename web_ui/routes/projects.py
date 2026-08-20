@@ -8,14 +8,50 @@ from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from memory.lifecycle import MemoryState, bulk_transition_project
+from memory.project_domains import (
+    invalidate_domain_cache,
+    known_project_domains,
+    normalise_domains,
+    read_project_domains,
+    serialise_domains,
+    suggest_domains_for_project,
+)
+from memory.skills import GENERATED_SKILL_PREFIX
 
 from .. import deps
 
 logger = logging.getLogger(__name__)
 
 
+def _skill_domains() -> set[str]:
+    """Domains that already have a compiled skill, so the UI can link to it."""
+    keys = deps.store.scan_prefix(GENERATED_SKILL_PREFIX)
+    if not keys:
+        return set()
+    rows = deps.store.get_fields_multi(keys, ("domain",))
+    return {row["domain"] for row in rows if row and row.get("domain")}
+
+
+def _domain_suggestions() -> list[str]:
+    """Datalist vocabulary: domains in use on projects plus compiled skills."""
+    return sorted(set(known_project_domains(deps.store)) | _skill_domains())
+
+
 async def project_list(request: Request) -> HTMLResponse:
-    """GET /projects — list all projects, deduplicated by name."""
+    """GET /projects — list all projects, deduplicated by name.
+
+    ?domain=python narrows to the projects declaring that work-type domain.
+    """
+    raw_domain = (request.query_params.get("domain") or "").strip()
+    wanted: str | None = None
+    invalid_domain = False
+    if raw_domain:
+        resolved, _, _ = normalise_domains(raw_domain)
+        if resolved:
+            wanted = resolved[0]
+        else:
+            invalid_domain = True
+
     keys = deps.store.scan_prefix("mem:project:")
     all_data = deps.store.get_multi(keys) if keys else []
 
@@ -36,9 +72,13 @@ async def project_list(request: Request) -> HTMLResponse:
                 "updated_at": 0.0,
                 "memory_count": 0,
                 "has_context": False,
+                "domains": [],
             }
 
-        updated = float(data.get("updated_at", "0"))
+        try:
+            updated = float(data.get("updated_at", "0"))
+        except (TypeError, ValueError):
+            updated = 0.0
         if updated > project_map[name]["updated_at"]:
             project_map[name]["updated_at"] = updated
 
@@ -47,10 +87,17 @@ async def project_list(request: Request) -> HTMLResponse:
             project_map[name]["current_state"] = (data.get("current_state") or "")[:120]
             project_map[name]["state"] = data.get("state", "active")
             project_map[name]["has_context"] = True
+            project_map[name]["domains"] = read_project_domains(data)
         else:
             project_map[name]["memory_count"] += 1
 
     projects = sorted(project_map.values(), key=lambda x: x["updated_at"], reverse=True)
+    total = len(projects)
+    if wanted is not None:
+        projects = [p for p in projects if wanted in p["domains"]]
+    elif invalid_domain:
+        projects = []
+
     for p in projects:
         ts = p["updated_at"]
         if ts > 0:
@@ -62,7 +109,15 @@ async def project_list(request: Request) -> HTMLResponse:
             p["updated_time"] = ""
 
     template = request.app.state.templates.get_template("projects/list.html")
-    content = template.render(request=request, projects=projects, current_page="projects")
+    content = template.render(
+        request=request,
+        projects=projects,
+        current_page="projects",
+        domain_filter=wanted or (raw_domain if invalid_domain else None),
+        domain_filter_valid=not invalid_domain,
+        all_domains=sorted(known_project_domains(deps.store).items()),
+        total_projects=total,
+    )
     return HTMLResponse(content)
 
 
@@ -81,10 +136,15 @@ async def project_detail(request: Request) -> HTMLResponse:
         except (ValueError, TypeError):
             return "—"
 
+    domains = read_project_domains(data)
+    compiled = _skill_domains()
     project = {
         "name": data.get("project_name", name),
         "description": data.get("description", ""),
         "stack": data.get("stack", ""),
+        "domains": [
+            {"name": d, "has_skill": d in compiled} for d in domains
+        ],
         "goals": data.get("goals", ""),
         "current_state": data.get("current_state", ""),
         "notes": data.get("notes", ""),
@@ -94,8 +154,42 @@ async def project_detail(request: Request) -> HTMLResponse:
     }
 
     template = request.app.state.templates.get_template("projects/detail.html")
-    content = template.render(request=request, project=project, current_page="projects")
+    content = template.render(
+        request=request,
+        project=project,
+        current_page="projects",
+        skill_user=_skill_user(),
+    )
     return HTMLResponse(content)
+
+
+def _skill_user() -> str:
+    from memory.skills import skill_user
+    return skill_user()
+
+
+async def project_suggest_domains(request: Request) -> HTMLResponse:
+    """POST /projects/{name}/domains/suggest — htmx partial with a domain draft.
+
+    Proposes only; the human still presses Save on the edit form. Mirrors the
+    propose-and-accept shape the skill compiler uses, for the same reason:
+    derived content is a starting point, not a decision.
+    """
+    name = request.path_params["name"]
+    if deps.store.get(f"mem:project:{name}") is None:
+        return HTMLResponse(
+            '<p class="empty-state">Project not found.</p>', status_code=404
+        )
+
+    suggestion = suggest_domains_for_project(deps.store, name)
+    template = request.app.state.templates.get_template(
+        "partials/domain_suggestion.html"
+    )
+    return HTMLResponse(template.render(
+        request=request,
+        suggestion=suggestion,
+        value=serialise_domains(suggestion["merged_domains"]),
+    ))
 
 
 async def project_edit_form(request: Request) -> HTMLResponse:
@@ -111,13 +205,20 @@ async def project_edit_form(request: Request) -> HTMLResponse:
         "name": data.get("project_name", name),
         "description": data.get("description", ""),
         "stack": data.get("stack", ""),
+        "domains": serialise_domains(read_project_domains(data)),
         "goals": data.get("goals", ""),
         "current_state": data.get("current_state", ""),
         "notes": data.get("notes", ""),
     }
 
     template = request.app.state.templates.get_template("projects/edit.html")
-    content = template.render(request=request, project=project, current_page="projects", is_new=False)
+    content = template.render(
+        request=request,
+        project=project,
+        current_page="projects",
+        is_new=False,
+        domain_options=_domain_suggestions(),
+    )
     return HTMLResponse(content)
 
 
@@ -134,6 +235,7 @@ async def project_save(request: Request) -> RedirectResponse:
     goals = form.get("goals", "").strip()
     current_state = form.get("current_state", "").strip()
     notes = form.get("notes", "").strip()
+    domains, _, _ = normalise_domains(form.get("domains", ""))
 
     # Re-embed with updated content
     embed_text = f"{description} {goals} {current_state}"
@@ -144,6 +246,7 @@ async def project_save(request: Request) -> RedirectResponse:
         "project_name": name,
         "description": description,
         "stack": stack,
+        "domains": serialise_domains(domains),
         "goals": goals,
         "current_state": current_state,
         "notes": notes,
@@ -158,6 +261,7 @@ async def project_save(request: Request) -> RedirectResponse:
         fields["created_at"] = now
 
     deps.store.upsert("project", key, fields, vector)
+    invalidate_domain_cache()
     logger.info("Saved project %s via web UI", name)
 
     return RedirectResponse(url=f"/projects/{name}", status_code=303)
@@ -165,9 +269,18 @@ async def project_save(request: Request) -> RedirectResponse:
 
 async def project_create_form(request: Request) -> HTMLResponse:
     """GET /projects/new — create project form."""
-    project = {"name": "", "description": "", "stack": "", "goals": "", "current_state": "", "notes": ""}
+    project = {
+        "name": "", "description": "", "stack": "", "domains": "",
+        "goals": "", "current_state": "", "notes": "",
+    }
     template = request.app.state.templates.get_template("projects/edit.html")
-    content = template.render(request=request, project=project, current_page="projects", is_new=True)
+    content = template.render(
+        request=request,
+        project=project,
+        current_page="projects",
+        is_new=True,
+        domain_options=_domain_suggestions(),
+    )
     return HTMLResponse(content)
 
 
@@ -187,6 +300,7 @@ async def project_create(request: Request) -> RedirectResponse:
     goals = form.get("goals", "").strip()
     current_state = form.get("current_state", "").strip()
     notes = form.get("notes", "").strip()
+    domains, _, _ = normalise_domains(form.get("domains", ""))
 
     embed_text = f"{description} {goals} {current_state}"
     vector = deps.embedder.embed(embed_text)
@@ -196,6 +310,7 @@ async def project_create(request: Request) -> RedirectResponse:
         "project_name": name,
         "description": description,
         "stack": stack,
+        "domains": serialise_domains(domains),
         "goals": goals,
         "current_state": current_state,
         "notes": notes,
@@ -206,6 +321,7 @@ async def project_create(request: Request) -> RedirectResponse:
     }
 
     deps.store.upsert("project", key, fields, vector)
+    invalidate_domain_cache()
     logger.info("Created project %s via web UI", name)
 
     return RedirectResponse(url=f"/projects/{name}", status_code=303)
@@ -222,6 +338,7 @@ async def project_delete(request: Request) -> RedirectResponse:
         return RedirectResponse(url="/projects", status_code=303)
 
     deps.store.delete(key)
+    invalidate_domain_cache()
     logger.info("Deleted project %s via web UI", name)
 
     return RedirectResponse(url="/projects", status_code=303)
@@ -258,5 +375,10 @@ routes = [
     Route("/projects/{name:path}/reinstate", project_reinstate, methods=["POST"]),
     Route("/projects/{name:path}/edit", project_edit_form),
     Route("/projects/{name:path}/edit", project_save, methods=["POST"]),
+    Route(
+        "/projects/{name:path}/domains/suggest",
+        project_suggest_domains,
+        methods=["POST"],
+    ),
     Route("/projects/{name:path}", project_detail),
 ]
