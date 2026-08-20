@@ -46,6 +46,7 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
     "project": (
         "similarity_score", "content", "project_name", "stack", "state",
         "surface_score", "created_at", "updated_at", "recall_count", "last_recalled",
+        "domains",
     ),
     "knowledge": (
         "similarity_score", "content", "source_url", "feed_name", "published_at",
@@ -108,6 +109,12 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("created_at"),
             NumericField("updated_at"),
             NumericField("recall_count"),
+            # Work-type domains (v6.6), sharing the compiled-skill vocabulary.
+            # Stored comma-separated, which is what a TAG field actually
+            # tokenises on — the JSON-array form used by `tags`/`topics`
+            # indexes as unusable tokens. Startup index migration picks the
+            # new field up automatically.
+            TagField("domains"),
         ],
     },
     "idx:knowledge": {
@@ -242,23 +249,44 @@ class ValkeyStore:
     def _migrate_indexes(self) -> None:
         """Drop indexes whose field count doesn't match the definition.
 
-        This is data-safe — dropindex() only removes the index, not the
-        underlying hashes. _ensure_indexes() then recreates it with the
-        new fields, and RediSearch re-indexes existing hashes automatically.
+        This is data-safe — dropping an index removes only the index, not the
+        underlying hashes. _ensure_indexes() then recreates it with the new
+        fields, and the search module re-indexes existing hashes automatically.
+
+        GOTCHA (fixed in 6.6.0, silently broken before it): do NOT use
+        valkey-py's `client.ft(name).dropindex()` here. It appends its
+        delete-documents flag as a positional argument even when False, so the
+        wire command is `FT.DROPINDEX <index> ""` — three arguments. RediSearch
+        tolerates the trailing empty string; valkey-search rejects it with
+        "wrong number of arguments". That ResponseError used to be caught by
+        the same `except` that handles a missing index, so every migration
+        failed silently and every upgraded instance kept a stale index while
+        the logs said nothing. The drop now has its own error handling, and a
+        failure is logged as an error rather than swallowed.
         """
         for idx_name, idx_def in INDEX_DEFINITIONS.items():
             try:
                 info = self.client.ft(idx_name).info()
-                existing_count = len(info.get("attributes", []))
-                expected_count = len(idx_def["fields"])
-                if existing_count < expected_count:
-                    logger.info(
-                        "Index %s has %d fields, expected %d — dropping for recreation",
-                        idx_name, existing_count, expected_count,
-                    )
-                    self.client.ft(idx_name).dropindex()
             except valkey.ResponseError:
-                pass  # Index doesn't exist yet — _ensure_indexes will create it
+                continue  # Index doesn't exist yet — _ensure_indexes creates it
+
+            existing_count = len(info.get("attributes", []))
+            expected_count = len(idx_def["fields"])
+            if existing_count >= expected_count:
+                continue
+
+            logger.info(
+                "Index %s has %d fields, expected %d — dropping for recreation",
+                idx_name, existing_count, expected_count,
+            )
+            try:
+                self.client.execute_command("FT.DROPINDEX", idx_name)
+            except valkey.ResponseError as exc:
+                logger.error(
+                    "Could not drop index %s for migration (%s) — it will keep "
+                    "its old fields and any new ones will not be searchable",
+                    idx_name, exc,
+                )
 
     def _ensure_indexes(self) -> None:
         """Create vector indexes if they don't already exist."""
@@ -571,10 +599,13 @@ class ValkeyStore:
         except valkey.ResponseError:
             pass
 
-        # Use execute_command directly — the client wrapper's .dropindex()
-        # was returning a response the python client misinterpreted, leaving
-        # the index in place and causing create_index to fail with "already
-        # exists". The raw command works reliably.
+        # Use execute_command directly. The symptom recorded here originally
+        # was that .dropindex() left the index in place and create_index then
+        # failed with "already exists"; the cause (pinned down in 6.6.0) is
+        # that valkey-py appends its delete-documents flag positionally even
+        # when False, so the command is `FT.DROPINDEX <index> ""` and
+        # valkey-search rejects the third argument outright. See
+        # _migrate_indexes, which had the same bug without the workaround.
         try:
             self.client.execute_command("FT.DROPINDEX", idx_name)
         except valkey.ResponseError as exc:

@@ -80,8 +80,16 @@ class ExtSearchIndex(FakeSearchIndex):
             raise valkey.ResponseError("Unknown index name")
         return self._cfg.get("info", {"attributes": [], "num_docs": 0})
 
-    def dropindex(self):
-        self._client.dropped.append(self._index_name)
+    def dropindex(self, delete_documents: bool = False):
+        # valkey-py passes its delete-documents flag positionally even when
+        # False, so the wire command is `FT.DROPINDEX <index> ""` — three
+        # arguments, which valkey-search rejects. The fake used to accept this
+        # happily, which is exactly why _migrate_indexes could be silently
+        # broken against a real server while every test passed. Reproduce the
+        # real failure so nothing reaches for this helper again.
+        raise valkey.ResponseError(
+            "wrong number of arguments for FT.DROPINDEX command"
+        )
 
     def create_index(self, *args, **kwargs):
         self._client.created.append(self._index_name)
@@ -137,8 +145,13 @@ class ExtClient(FakeValkeyClient):
 
     def execute_command(self, *args):
         self.raw_commands.append(args)
-        if args[0] == "FT.DROPINDEX" and self.dropindex_error:
-            raise valkey.ResponseError(self.dropindex_error)
+        if args[0] == "FT.DROPINDEX":
+            if self.dropindex_error:
+                raise valkey.ResponseError(self.dropindex_error)
+            # A dropped index is then missing, so the caller's next info()
+            # fails and the create path runs — as it does on a real server.
+            self.dropped.append(args[1])
+            self._index_config.setdefault(args[1], {})["missing"] = True
 
 
 def _vec(seed: float = 1.0) -> np.ndarray:
@@ -233,11 +246,53 @@ class TestIndexMigration:
         store.client._index_config[missing] = {"missing": True}
 
         store._ensure_indexes()
+        # Two arguments exactly. Passing valkey-py's empty delete-documents
+        # flag as a third makes valkey-search reject the command outright.
+        assert ("FT.DROPINDEX", stale) in store.client.raw_commands
         assert stale in store.client.dropped
         assert fresh not in store.client.dropped
-        # Only the missing index needed creating (info still succeeds for the
-        # stale one in this fake, so recreation is the missing-index path).
+        # The stale index is recreated after the drop, not just removed —
+        # that recreation is what puts the new fields into the index.
+        assert stale in store.client.created
         assert missing in store.client.created
+        assert fresh not in store.client.created
+
+    def test_drop_failure_is_logged_not_swallowed(self, store, caplog):
+        # The original bug: the drop's ResponseError was caught by the same
+        # `except` that handles a missing index, so a failed migration looked
+        # identical to a healthy startup.
+        stale = "idx:episodic"
+        store.client._index_config[stale] = {
+            "info": {"attributes": list(range(
+                len(INDEX_DEFINITIONS[stale]["fields"]) - 1
+            ))},
+        }
+        store.client.dropindex_error = "wrong number of arguments"
+
+        with caplog.at_level("ERROR"):
+            store._ensure_indexes()
+
+        assert "Could not drop index idx:episodic" in caplog.text
+        assert stale not in store.client.created
+
+    def test_missing_index_is_not_an_error(self, store, caplog):
+        store.client._index_config["idx:episodic"] = {"missing": True}
+        with caplog.at_level("ERROR"):
+            store._ensure_indexes()
+        assert "Could not drop index" not in caplog.text
+        assert "idx:episodic" in store.client.created
+
+    def test_extra_fields_on_an_index_are_left_alone(self, store):
+        # Only a shortfall triggers a drop; a longer index (an older build
+        # that had a field since removed) is not worth destroying.
+        idx = "idx:episodic"
+        store.client._index_config[idx] = {
+            "info": {"attributes": list(range(
+                len(INDEX_DEFINITIONS[idx]["fields"]) + 2
+            ))},
+        }
+        store._ensure_indexes()
+        assert idx not in store.client.dropped
 
 
 class TestCrud:
