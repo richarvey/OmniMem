@@ -79,7 +79,8 @@ def stamp_lineage(
 ) -> dict[str, list[str]]:
     """Write ``fields`` onto ``keys`` and onto every fact derived from them.
 
-    Returns ``{"classified": [...], "cascaded": [...], "not_found": [...]}``.
+    Returns ``{"classified": [...], "cascaded": [...], "not_found": [...]}``;
+    ``classified`` includes the sibling chunks of any chunked document.
     ``updated_at`` is deliberately not touched: classification is metadata,
     not a content edit, and the skill compiler reads a bumped ``updated_at``
     as "source changed".
@@ -90,23 +91,43 @@ def stamp_lineage(
     if not found:
         return {"classified": [], "cascaded": [], "not_found": missing}
 
-    source_ids = set(found)
-    for row in rows:
+    # A chunked document is one rights unit: its facts name the document
+    # (source_doc_id = doc_id), not any one chunk, so classifying one chunk
+    # must reach the sibling chunks too or the facts and half the chunks
+    # would disagree. Siblings live in the same namespace as the chunk.
+    doc_ids_by_ns: dict[str, set[str]] = {}
+    for key, row in zip(keys, rows):
         if row and row.get("doc_id"):
-            source_ids.add(row["doc_id"])
-    cascaded: list[str] = []
-    for ns in ("knowledge", "preference"):
-        fact_keys = store.scan_prefix(f"mem:{ns}:")
-        if not fact_keys:
-            continue
-        fact_rows = store.get_fields_multi(fact_keys, ("enriched_from", "source_doc_id"))
-        cascaded.extend(
-            k for k, row in zip(fact_keys, fact_rows)
-            if row and k not in source_ids and (
-                row.get("enriched_from") in source_ids
-                or row.get("source_doc_id") in source_ids
-            )
+            doc_ids_by_ns.setdefault(key.split(":")[1], set()).add(row["doc_id"])
+    for ns, doc_ids in doc_ids_by_ns.items():
+        sibling_keys = store.scan_prefix(f"mem:{ns}:")
+        sibling_rows = store.get_fields_multi(sibling_keys, ("doc_id",))
+        found.extend(
+            k for k, row in zip(sibling_keys, sibling_rows)
+            if row and row.get("doc_id") in doc_ids and k not in found
         )
+
+    source_ids = set(found)
+    for doc_ids in doc_ids_by_ns.values():
+        source_ids.update(doc_ids)
+
+    # Knowledge is never an enrichment source (remember() skips it), so a
+    # call that only classifies articles has nothing to cascade to — and
+    # that is the common case, so it must not pay for a store-wide scan.
+    cascaded: list[str] = []
+    if any(not k.startswith("mem:knowledge:") for k in found):
+        for ns in ("knowledge", "preference"):
+            fact_keys = store.scan_prefix(f"mem:{ns}:")
+            if not fact_keys:
+                continue
+            fact_rows = store.get_fields_multi(fact_keys, ("enriched_from", "source_doc_id"))
+            cascaded.extend(
+                k for k, row in zip(fact_keys, fact_rows)
+                if row and k not in source_ids and (
+                    row.get("enriched_from") in source_ids
+                    or row.get("source_doc_id") in source_ids
+                )
+            )
 
     store.set_fields_multi(found + cascaded, fields)
     return {"classified": found, "cascaded": cascaded, "not_found": missing}

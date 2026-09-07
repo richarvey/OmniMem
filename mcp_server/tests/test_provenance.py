@@ -283,6 +283,20 @@ class TestWritePaths:
         apply_skill_import(target, fake_embedder, validate_skill_import(bundle["data"]))
         assert target.get("mem:episodic:01A")["provenance"] == "concluded"
 
+    def test_skill_import_never_keeps_the_exporters_own(self, fake_store, fake_embedder):
+        from memory.skill_transfer import apply_skill_import, build_skill_export, validate_skill_import
+        from tests.test_skill_transfer_feeds import _seed_skill
+        key = _seed_skill(fake_store, fake_embedder, sources=("mem:episodic:01A", "mem:episodic:01B"))
+        fake_store.set_fields("mem:episodic:01A", {"licence": "own", "licence_note": "ours"})
+        fake_store.set_fields("mem:episodic:01B", {"licence": "restricted", "licence_note": "EULA"})
+        bundle, _ = build_skill_export(fake_store, key)
+        target = type(fake_store)()
+        apply_skill_import(target, fake_embedder, validate_skill_import(bundle["data"]))
+        assert target.get("mem:episodic:01A")["licence"] == "unknown"
+        assert "licence_note" not in target.get("mem:episodic:01A")
+        assert target.get("mem:episodic:01B")["licence"] == "restricted"
+        assert target.get("mem:episodic:01B")["licence_note"] == "EULA"
+
     def test_skill_import_rejects_out_of_vocabulary_value(self, fake_store, fake_embedder):
         from memory.skill_transfer import apply_skill_import, build_skill_export, validate_skill_import
         from tests.test_skill_transfer_feeds import _seed_skill
@@ -323,21 +337,74 @@ class TestIngesterProvenance:
 
 
 class TestReadTimeFallback:
-    def test_effective_provenance(self):
+    def test_effective_provenance_mirrors_the_backfill(self):
         from memory.provenance import effective_provenance
         assert effective_provenance({"provenance": "asserted"}, "episodic") == "asserted"
         assert effective_provenance({"provenance": "Bogus"}, "episodic") == "concluded"
         assert effective_provenance({"feed_name": "F"}, "knowledge") == "retrieved"
-        assert effective_provenance({"stack": "python"}, "project") == "asserted"
-        assert effective_provenance({}, "project") == "concluded"
+        # a fact whose source can't be consulted here, and a legacy plain
+        # knowledge write, are concluded — as the backfill stamps them
+        assert effective_provenance({"enriched_from": "mem:episodic:x"}, "knowledge") == "concluded"
+        assert effective_provenance({"enriched_from": "mem:episodic:x"}, "preference") == "concluded"
+        assert effective_provenance({}, "knowledge") == "concluded"
         assert effective_provenance({}, "preference") == "asserted"
+        assert effective_provenance({"stack": "python"}, "project") == "asserted"
+        assert effective_provenance({"project_name": "p", "stack": "", "goals": ""},
+                                    "project", "mem:project:p") == "asserted"
+        assert effective_provenance({"project_name": "p"}, "project", "mem:project:01ULID") == "concluded"
+        assert effective_provenance({}, "project") == "concluded"
 
-    def test_effective_licence(self):
+    def test_effective_provenance_agrees_with_migration(self, fake_store):
+        """Every shape the backfill handles must read the same before and
+        after it runs."""
+        from memory.provenance import effective_provenance
+        shapes = {
+            "mem:episodic:01E": {},
+            "mem:project:ctx": {"project_name": "ctx", "stack": "", "goals": ""},
+            "mem:project:01U": {"project_name": "ctx"},
+            "mem:preference:01P": {},
+            "mem:knowledge:art": {"feed_name": "F"},
+            "mem:knowledge:01K": {},
+            "mem:knowledge:01F": {"enriched_from": "mem:episodic:GONE"},
+        }
+        before = {}
+        for key, fields in shapes.items():
+            _put(fake_store, key, **fields)
+            before[key] = effective_provenance(fake_store.get(key), key.split(":")[1], key)
+        migrate_provenance(fake_store)
+        after = {key: fake_store.get(key)["provenance"] for key in shapes}
+        assert before == after
+
+    def test_effective_licence_mirrors_the_backfill(self, fake_store):
         from memory.licence import effective_licence
+        from memory.migrations import migrate_licence
         assert effective_licence({"licence": "open"}, "knowledge") == "open"
-        assert effective_licence({"feed_name": "F"}, "knowledge") == "unknown"
-        assert effective_licence({"imported_at": "1"}, "episodic") == "unknown"
-        assert effective_licence({}, "episodic") == "own"
+        assert effective_licence({"licence": "gpl"}, "knowledge") == "unknown"
+        shapes = {
+            "mem:episodic:01E": {},
+            "mem:episodic:01I": {"imported_at": "1"},
+            "mem:preference:01P": {},
+            "mem:knowledge:art": {"feed_name": "F"},
+            "mem:knowledge:01K": {},
+            "mem:knowledge:01F": {"enriched_from": "mem:episodic:GONE"},
+        }
+        before = {}
+        for key, fields in shapes.items():
+            _put(fake_store, key, **fields)
+            before[key] = effective_licence(fake_store.get(key), key.split(":")[1])
+        migrate_licence(fake_store)
+        assert before == {key: fake_store.get(key)["licence"] for key in shapes}
+
+    def test_recall_detail_skips_classification_for_skills(self, fake_store, fake_embedder):
+        from tools.core import recall_detail
+        import time
+        now = str(time.time())
+        fake_store.upsert("skill", "mem:skill:gen:python-local", {
+            "name": "python-local", "state": "active", "generated": "true",
+            "body": "---\n", "created_at": now, "updated_at": now, "content": "skill",
+        }, fake_embedder.embed("python"))
+        row = recall_detail(["mem:skill:gen:python-local"])[0]
+        assert "licence" not in row and "provenance" not in row
 
     def test_recall_reports_unstamped_article_as_retrieved_unknown(self, fake_store, fake_embedder):
         """A worker image that predates the fields stamps nothing; recall

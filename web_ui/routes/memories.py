@@ -7,8 +7,9 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.routing import Route
 
-from memory.licence import LICENCE_CLASSES, LICENCE_LABELS
-from memory.provenance import PROVENANCE_CLASSES, PROVENANCE_LABELS
+from memory.classification import classification_fields
+from memory.licence import LICENCE_CHOICES, LICENCE_CLASSES
+from memory.provenance import PROVENANCE_CHOICES, PROVENANCE_CLASSES
 
 from .. import deps
 
@@ -40,7 +41,8 @@ def _get_all_memories(
         all_data = deps.store.get_fields_multi(
             keys,
             ("content", "state", "project", "project_name", "updated_at",
-             "created_at", "feed_name", "last_recalled", "licence", "provenance"),
+             "created_at", "feed_name", "last_recalled", "licence", "provenance",
+             "enriched_from", "imported_at", "stack", "goals"),
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -60,9 +62,15 @@ def _get_all_memories(
                 continue
             if source == "learned" and data.get("feed_name"):
                 continue
-            if licence and (data.get("licence") or "") != licence:
+            # Filter on the value the record has or would be backfilled
+            # with, the same way recall reports it — so ?licence=unknown is
+            # the complete classify queue even before a restart backfills.
+            classification = classification_fields(data, ns, key)
+            mem_licence = classification["licence"]
+            mem_provenance = classification["provenance"]
+            if licence and mem_licence != licence:
                 continue
-            if provenance and (data.get("provenance") or "") != provenance:
+            if provenance and mem_provenance != provenance:
                 continue
 
             try:
@@ -82,8 +90,8 @@ def _get_all_memories(
                 "state": mem_state,
                 "project": mem_project,
                 "feed_name": data.get("feed_name") or "",
-                "licence": data.get("licence") or "",
-                "provenance": data.get("provenance") or "",
+                "licence": mem_licence,
+                "provenance": mem_provenance,
                 "updated_at": updated_at,
                 "created_at": created_at,
                 "heat": _recall_heat(data.get("last_recalled")),
@@ -209,9 +217,9 @@ async def memories_list(request: Request) -> HTMLResponse:
         project=project,
         source=source,
         licence=licence,
-        licence_classes=[(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES],
+        licence_classes=LICENCE_CHOICES,
         provenance=provenance,
-        provenance_classes=[(value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES],
+        provenance_classes=PROVENANCE_CHOICES,
         back_url=back_url,
         sort=sort,
         projects=projects,

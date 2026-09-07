@@ -17,9 +17,9 @@ from starlette.routing import Route
 
 from memory.feed_influence import sync_feed_influences, validate_feed_skills
 from memory.licence import (
-    LICENCE_CLASSES,
-    LICENCE_LABELS,
+    LICENCE_CHOICES,
     LICENCE_UNKNOWN,
+    note_for_reclassification,
     resolve_licence,
     validate_licence_note,
 )
@@ -105,9 +105,6 @@ def _form_error_redirect(url: str, exc: Exception) -> RedirectResponse:
     return RedirectResponse(url=f"{url}?error={quote(str(exc))}", status_code=303)
 
 
-_LICENCE_CHOICES = [(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES]
-
-
 def _feed_licence(feed: dict) -> tuple[str, str]:
     """(class, note) a feed declares, for display. Unparseable → unknown,
     matching what the ingester would stamp on its articles."""
@@ -141,11 +138,12 @@ def _parse_licence_form(form, current: dict | None = None) -> dict:
         resolve_licence(raw)
         entry["licence"] = raw
     note = validate_licence_note(form.get("licence_note") or "")
-    if note and current is not None:
+    if current is not None:
         old_class, old_note = _feed_licence(current)
-        declared_class = resolve_licence(raw)[0] if raw else ""
-        if declared_class != (old_class if current.get("licence") else "") and note == old_note:
-            note = None
+        note = note_for_reclassification(
+            old_class if current.get("licence") else "", old_note,
+            resolve_licence(raw)[0] if raw else "", note,
+        )
     if note:
         entry["licence_note"] = note
     return entry
@@ -195,7 +193,7 @@ async def feed_create_form(request: Request) -> HTMLResponse:
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=True,
-        skill_domains=_known_skill_domains(), licence_classes=_LICENCE_CHOICES,
+        skill_domains=_known_skill_domains(), licence_classes=LICENCE_CHOICES,
         error=request.query_params.get("error"),
     )
     return HTMLResponse(content)
@@ -262,7 +260,7 @@ async def feed_edit_form(request: Request) -> HTMLResponse:
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=False,
-        skill_domains=_known_skill_domains(), licence_classes=_LICENCE_CHOICES,
+        skill_domains=_known_skill_domains(), licence_classes=LICENCE_CHOICES,
         error=request.query_params.get("error"),
     )
     return HTMLResponse(content)

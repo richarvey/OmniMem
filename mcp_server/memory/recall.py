@@ -372,7 +372,7 @@ class RecallPipeline:
                     enriched_from=doc.get("enriched_from"),
                     licence=effective_licence(doc, ns),
                     licence_note=doc.get("licence_note"),
-                    provenance=effective_provenance(doc, ns),
+                    provenance=effective_provenance(doc, ns, doc.get("key")),
                 ))
 
         # Step 9b: Query expansion — run additional searches for each variant
@@ -559,7 +559,7 @@ class RecallPipeline:
                     enriched_from=doc.get("enriched_from"),
                     licence=effective_licence(doc, ns),
                     licence_note=doc.get("licence_note"),
-                    provenance=effective_provenance(doc, ns),
+                    provenance=effective_provenance(doc, ns, doc.get("key")),
                 ))
         return out
 

@@ -58,6 +58,11 @@ PROVENANCE_LABELS: dict[str, str] = {
     PROVENANCE_ASSERTED: "Asserted (stated by the human)",
 }
 
+# (value, label) pairs for form selects, in vocabulary order.
+PROVENANCE_CHOICES: list[tuple[str, str]] = [
+    (value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES
+]
+
 # Synonyms a human is likely to reach for. Kept small on purpose: the
 # classes are the contract, the aliases are a convenience.
 PROVENANCE_ALIASES: dict[str, str] = {
@@ -130,14 +135,20 @@ def provenance_for_write(raw: str | None, namespace: str) -> str:
     return resolve_provenance(raw)
 
 
-def effective_provenance(doc: dict, namespace: str) -> str:
+def effective_provenance(doc: dict, namespace: str, key: str | None = None) -> str:
     """The provenance a stored record has, or would have had.
 
     A read-time fallback for records the backfill has not reached — an
     article ingested by a worker image that predates the field during a
-    rolling upgrade, say. Mirrors the backfill: an article is retrieved, a
-    context entry asserted, everything else the namespace default. An
-    out-of-vocabulary stored value is treated as absent rather than passed
+    rolling upgrade, or a read between an upgrade and the restart that
+    backfills. Mirrors migrate_provenance exactly, so a record reports the
+    same value before and after the backfill: an article is retrieved, a
+    preference or a project context entry (its key is mem:project:{name})
+    asserted, and everything else — a fact whose source can't be consulted
+    here, a legacy plain knowledge write, an episodic memory — concluded.
+    Note this is NOT the write-time default (a new plain knowledge write is
+    retrieved): an unstamped record is by definition a legacy one. An
+    out-of-vocabulary stored value reads as absent rather than passing
     through, so a filter can never fail to match what recall reports.
     """
     stored = doc.get("provenance")
@@ -145,9 +156,15 @@ def effective_provenance(doc: dict, namespace: str) -> str:
         return stored
     if doc.get("feed_name"):
         return PROVENANCE_RETRIEVED
-    if namespace == "project" and (doc.get("stack") or doc.get("goals")):
+    if doc.get("enriched_from"):
+        return PROVENANCE_CONCLUDED
+    if namespace == "preference":
         return PROVENANCE_ASSERTED
-    return default_provenance(namespace)
+    if namespace == "project":
+        name = doc.get("project_name")
+        if (name and key == f"mem:project:{name}") or doc.get("stack") or doc.get("goals"):
+            return PROVENANCE_ASSERTED
+    return PROVENANCE_CONCLUDED
 
 
 def classify_provenance(store, keys: list[str], provenance: str) -> dict[str, list[str]]:

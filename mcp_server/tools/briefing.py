@@ -6,8 +6,7 @@ import os
 import time
 from typing import Any
 
-from memory.licence import effective_licence
-from memory.provenance import effective_provenance
+from memory.classification import classification_fields
 
 from . import _compact
 
@@ -138,7 +137,7 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
 
     all_data = store.get_fields_multi(
         keys, ("state", "created_at", "content", "source_url", "feed_name",
-               "licence", "provenance"),
+               "licence", "licence_note", "provenance", "enriched_from"),
     )
     for key, data in zip(keys, all_data):
         if data is None:
@@ -153,8 +152,7 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
                 "content": data.get("content", "")[:80],
                 "source_url": data.get("source_url"),
                 "feed_name": data.get("feed_name"),
-                "licence": effective_licence(data, "knowledge"),
-                "provenance": effective_provenance(data, "knowledge"),
+                **classification_fields(data, "knowledge", key),
             }))
 
     return new_articles[:10]

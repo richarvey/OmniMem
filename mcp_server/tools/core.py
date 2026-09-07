@@ -14,10 +14,11 @@ from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
 from memory.enrichment import enqueue, enqueue_batch
 from memory.embedder import Embedder
-from memory.licence import LICENCE_UNKNOWN, effective_licence, licence_for_write
+from memory.classification import classification_fields
+from memory.licence import LICENCE_UNKNOWN, licence_for_write
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.project_domains import resolve_projects_for_domains
-from memory.provenance import effective_provenance, provenance_for_write
+from memory.provenance import provenance_for_write
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
 from memory.tags import MAX_TAGS, MAX_TAG_LENGTH, retag_memory, validate_tags as _validate_tags
@@ -239,7 +240,8 @@ def remember(
 
     # Enqueue for background fact extraction if full mode
     if _enrich_after:
-        enqueue(store, key, namespace, project=project, tags=tags, created_at=now)
+        enqueue(store, key, namespace, project=project, tags=tags, created_at=now,
+                classification={**licence_data, "provenance": provenance_class})
 
     result: dict[str, Any] = {
         "key": key, "namespace": namespace, "licence": licence_data["licence"],
@@ -353,13 +355,15 @@ def remember_document(
             enqueue_batch(
                 store, keys, combined, namespace,
                 project=project, tags=tags, doc_id=doc_id, created_at=now,
+                classification={**licence_data, "provenance": provenance_class},
             )
             logger.info("Enqueued batch enrichment for doc_id=%s (%d chunks)", doc_id, len(keys))
         else:
             # One enrichment job per chunk
             for k in keys:
                 enqueue(store, k, namespace, project=project, tags=tags,
-                        doc_id=doc_id, created_at=now)
+                        doc_id=doc_id, created_at=now,
+                        classification={**licence_data, "provenance": provenance_class})
             logger.info("Enqueued %d enrichment jobs for doc_id=%s", len(keys), doc_id)
 
     logger.info(
@@ -465,6 +469,10 @@ def recall(
     domain_filter: list[str] | str | None = None,
 ) -> list[dict[str, Any]]:
     """Search memories by semantic similarity. Returns ranked results; abandoned-approach warnings appear first.
+
+    Every result carries its `licence` and `provenance`. When any result's
+    licence is still unknown, a trailing entry with result_type
+    'licence_notice' (no key) lists them so the human can classify.
 
     Args:
         query: What you're looking for.
@@ -696,10 +704,7 @@ def recall_detail(
                 pass
         if data.get("source_url"):
             entry["source_url"] = data["source_url"]
-        entry["licence"] = effective_licence(data, entry["namespace"])
-        if data.get("licence_note"):
-            entry["licence_note"] = data["licence_note"]
-        entry["provenance"] = effective_provenance(data, entry["namespace"])
+        entry.update(classification_fields(data, entry["namespace"], key))
         if data.get("breakthrough"):
             entry["breakthrough"] = data["breakthrough"]
         if data.get("effort_score"):

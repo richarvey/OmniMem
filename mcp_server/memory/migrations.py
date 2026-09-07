@@ -163,9 +163,10 @@ def migrate_licence(store) -> None:
     no traceable origin. The one derivation the migration does make is for
     extracted facts — a fact carries ``enriched_from`` pointing at the
     memory it was extracted from, and a derivative has exactly its source's
-    rights. Sources are read after the conversation namespaces are stamped
-    so a fact of an own memory resolves to own; a fact whose source is gone
-    is unknown, because there is nothing left to inherit from.
+    rights, wherever the fact landed (knowledge or preference). Sources are
+    resolved from this pass first and the store second; a fact whose source
+    is gone is own, because the only thing that is ever enriched is a
+    conversation write.
 
     Memories that arrived in a skill bundle (``imported_at``) are someone
     else's work and become ``unknown``, whatever namespace they sit in.
@@ -179,11 +180,12 @@ def migrate_licence(store) -> None:
 
     own_keys: list[str] = []
     imported_keys: list[str] = []
+    pending_facts: list[tuple[str, str]] = []  # (fact key, source key)
     for ns in ("episodic", "project", "preference"):
         keys = store.scan_prefix(f"mem:{ns}:")
         if not keys:
             continue
-        rows = store.get_fields_multi(keys, ("licence", "imported_at"))
+        rows = store.get_fields_multi(keys, ("licence", "imported_at", "enriched_from"))
         for key, row in zip(keys, rows):
             row = row or {}
             if row.get("licence"):
@@ -193,6 +195,9 @@ def migrate_licence(store) -> None:
             # backfill exists to avoid.
             if row.get("imported_at"):
                 imported_keys.append(key)
+            elif row.get("enriched_from"):
+                # An extracted preference inherits like an extracted fact.
+                pending_facts.append((key, row["enriched_from"]))
             else:
                 own_keys.append(key)
     # Stamp the conversation namespaces first: extracted facts inherit from
@@ -204,7 +209,6 @@ def migrate_licence(store) -> None:
 
     knowledge_keys = store.scan_prefix("mem:knowledge:")
     knowledge_by_value: dict[str, list[str]] = {}
-    pending_facts: list[tuple[str, str]] = []  # (fact key, source key)
     rows = store.get_fields_multi(
         knowledge_keys, ("licence", "feed_name", "enriched_from"),
     )
@@ -233,7 +237,10 @@ def migrate_licence(store) -> None:
             value = stamped.get(source)
             if value:
                 inherited += 1
-            knowledge_by_value.setdefault(value or LICENCE_UNKNOWN, []).append(key)
+            # A fact's only possible source is a conversation write, so a
+            # source that is gone was own — the same answer the read-time
+            # fallback gives, so nothing flips when the backfill runs.
+            knowledge_by_value.setdefault(value or LICENCE_OWN, []).append(key)
 
     for value, keys in knowledge_by_value.items():
         store.set_fields_multi(keys, {"licence": value})

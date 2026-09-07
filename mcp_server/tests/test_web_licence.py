@@ -39,6 +39,19 @@ class TestMemoriesList:
         resp = web_client.get("/memories")
         assert resp.text.count("licence-unknown") == 1
 
+    def test_unstamped_records_are_in_the_queue(self, web_client, fake_store, fake_embedder):
+        """The classify queue must include records the backfill hasn't
+        reached, valued the way recall reports them."""
+        store_memory(fake_store, fake_embedder, "mem:knowledge:01RAW", "unstamped article",
+                     namespace="knowledge")
+        fake_store.set_field("mem:knowledge:01RAW", "feed_name", "Feed")
+        store_memory(fake_store, fake_embedder, "mem:episodic:01RAW", "unstamped own")
+        resp = web_client.get("/memories?licence=unknown")
+        assert "mem:knowledge:01RAW" in resp.text
+        assert "mem:episodic:01RAW" not in resp.text
+        assert "licence-unknown" in resp.text
+        assert "mem:episodic:01RAW" in web_client.get("/memories?licence=own").text
+
     def test_bad_licence_filter_is_ignored(self, web_client, fake_store, fake_embedder):
         _seed(fake_store, fake_embedder)
         resp = web_client.get("/memories?licence=cc-by")
@@ -155,6 +168,15 @@ class TestDetailPage:
         }, follow_redirects=False)
         assert resp.status_code == 303
         assert "licence" not in fake_store.get("mem:skill:gen:python-local")
+
+    def test_post_classifies_an_unstamped_record(self, web_client, fake_store, fake_embedder):
+        """A record with neither licence field (lagging writer, or pre-backfill)
+        must still be classifiable — get_fields_multi returns None when none
+        of the projected fields exist, not when the key is missing."""
+        store_memory(fake_store, fake_embedder, "mem:episodic:01RAW", "unstamped")
+        assert "licence" not in fake_store.get("mem:episodic:01RAW")
+        web_client.post("/memory/mem:episodic:01RAW/licence", data={"licence": "open"})
+        assert fake_store.get("mem:episodic:01RAW")["licence"] == "open"
 
     def test_post_unknown_key_redirects(self, web_client):
         resp = web_client.post("/memory/mem:knowledge:GONE/licence", data={

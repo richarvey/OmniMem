@@ -67,6 +67,11 @@ LICENCE_LABELS: dict[str, str] = {
     LICENCE_UNKNOWN: "Unknown (needs classifying)",
 }
 
+# (value, label) pairs for form selects, in vocabulary order.
+LICENCE_CHOICES: list[tuple[str, str]] = [
+    (value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES
+]
+
 MAX_LICENCE_NOTE = 200
 
 # Recognised licence identifiers → (class, note). The note is the canonical
@@ -207,16 +212,46 @@ def licence_for_write(raw: str | None, namespace: str) -> dict[str, str]:
 
 
 def effective_licence(doc: dict, namespace: str) -> str:
-    """The licence a stored record has, or would have had: a read-time
-    fallback for records written before the field existed or by a worker
-    image that predates it (a rolling upgrade). Mirrors the backfill: an
-    article is unknown, a conversation write is own."""
+    """The licence a stored record has, or would have had.
+
+    A read-time fallback for records the backfill has not reached — written
+    by a worker image that predates the field during a rolling upgrade, or
+    read between an upgrade and the restart that backfills. Mirrors
+    migrate_licence exactly, so a record reports the same value before and
+    after the backfill: an article or an imported memory is unknown, a
+    conversation write or a fact extracted from one is own.
+    An out-of-vocabulary stored value reads as absent rather than passing
+    through, so a filter can never fail to match what recall reports.
+    """
     stored = doc.get("licence")
-    if stored:
+    if stored in LICENCE_CLASSES:
         return stored
     if doc.get("feed_name") or doc.get("imported_at"):
         return LICENCE_UNKNOWN
-    return default_licence(namespace)
+    # An extracted fact's only possible source is a conversation write
+    # (knowledge is never enriched), which is own — the backfill inherits
+    # that, and falls back to own when the source is gone.
+    if doc.get("enriched_from"):
+        return LICENCE_OWN
+    if namespace == "knowledge":
+        return LICENCE_UNKNOWN
+    return LICENCE_OWN
+
+
+def note_for_reclassification(
+    old_class: str, old_note: str | None, new_class: str, submitted: str | None,
+) -> str | None:
+    """Drop a pre-filled note that belonged to the class being replaced.
+
+    The web forms pre-fill the current note, so switching Open → Restricted
+    and pressing Save would otherwise carry "CC BY 4.0" onto the restricted
+    record. A note the human actually typed (different from what was
+    pre-filled) is kept, and so is the note when the class is unchanged.
+    Both the memory detail form and the feed editor use this.
+    """
+    if submitted and new_class != (old_class or "") and submitted == (old_note or ""):
+        return None
+    return submitted
 
 
 def licence_fields(

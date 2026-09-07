@@ -11,34 +11,21 @@ from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from memory.dedup import check_duplicate
-from memory.licence import (
-    LICENCE_CLASSES,
-    LICENCE_LABELS,
-    licence_for_write,
-    validate_licence_note,
-)
+from memory.licence import LICENCE_CHOICES, licence_for_write, validate_licence_note
 from memory.lifecycle import MemoryState
-from memory.provenance import (
-    PROVENANCE_CLASSES,
-    PROVENANCE_LABELS,
-    provenance_for_write,
-)
+from memory.provenance import PROVENANCE_CHOICES, provenance_for_write
 
 from .. import deps
 
 logger = logging.getLogger(__name__)
-
-_LICENCE_CHOICES = [(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES]
-_PROVENANCE_CHOICES = [(value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES]
-
 
 def _render_form(request: Request, values: dict, error=None, duplicate=None) -> HTMLResponse:
     template = request.app.state.templates.get_template("create.html")
     return HTMLResponse(template.render(
         request=request, current_page="create",
         error=error, duplicate=duplicate, values=values,
-        licence_classes=_LICENCE_CHOICES,
-        provenance_classes=_PROVENANCE_CHOICES,
+        licence_classes=LICENCE_CHOICES,
+        provenance_classes=PROVENANCE_CHOICES,
     ))
 
 

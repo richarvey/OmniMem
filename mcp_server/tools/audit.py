@@ -5,9 +5,7 @@ import logging
 import time
 from typing import Any
 
-from memory.licence import effective_licence
-from memory.lineage import is_classifiable_key
-from memory.provenance import effective_provenance
+from memory.classification import classification_fields
 
 from . import _compact
 
@@ -253,11 +251,8 @@ def explain_memory(key: str) -> dict[str, Any]:
 
     # Classification (v6.6.1/v6.6.2), resolved the way recall reports it,
     # so a set_licence / set_provenance change is confirmable here.
-    if key.startswith("mem:") and is_classifiable_key(key):
-        namespace = key.split(":")[1]
-        result["licence"] = effective_licence(data, namespace)
-        result["licence_note"] = data.get("licence_note") or None
-        result["provenance"] = effective_provenance(data, namespace)
+    if key.startswith("mem:"):
+        result.update(classification_fields(data, key.split(":")[1], key))
 
     return _compact(result)
 

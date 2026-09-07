@@ -32,7 +32,7 @@ import zipfile
 from typing import Any
 
 from .feed_influence import load_feed_influences, validate_feed_skills
-from .licence import LICENCE_UNKNOWN, MAX_LICENCE_NOTE, resolve_licence
+from .licence import LICENCE_OPEN, LICENCE_RESTRICTED, LICENCE_UNKNOWN, MAX_LICENCE_NOTE, resolve_licence
 from .provenance import PROVENANCE_CLASSES, default_provenance
 from .skills import (
     SKILL_KEY_PREFIX,
@@ -645,10 +645,14 @@ def apply_skill_import(store, embedder, bundle: dict[str, Any]) -> dict[str, Any
             continue
         fields = dict(mem["fields"])
         fields.setdefault("state", "active")
-        # A bundle from a pre-6.6.1 instance carries no licence. Imported
-        # memories are someone else's work by definition, so the honest
-        # value is unknown, not this instance's namespace default.
-        fields.setdefault("licence", LICENCE_UNKNOWN)
+        # An imported memory is someone else's work by definition: a bundled
+        # "own" is the exporter's own, not ours, and a pre-6.6.1 bundle
+        # carries nothing at all. Open and restricted travel with their
+        # note; anything else — own, missing, or out of vocabulary from a
+        # hand-edited bundle — is honestly unknown.
+        if fields.get("licence") not in (LICENCE_OPEN, LICENCE_RESTRICTED):
+            fields["licence"] = LICENCE_UNKNOWN
+            fields.pop("licence_note", None)
         # Provenance travels with the memory; a pre-6.6.2 bundle carries
         # none, and the namespace default is the honest reading of what
         # the exporting instance would have stamped.

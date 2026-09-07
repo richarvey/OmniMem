@@ -22,7 +22,7 @@ import ulid
 
 from .dedup import check_duplicate
 from .extraction import extract_facts, ExtractedFact
-from .licence import LICENCE_UNKNOWN
+from .licence import LICENCE_OWN
 from .provenance import PROVENANCE_CONCLUDED
 from .lifecycle import MemoryState
 
@@ -108,8 +108,11 @@ class EnrichmentWorker:
 
         # A fact is a derivative of its source, so it carries exactly the
         # source's redistribution rights and provenance — never the
-        # namespace defaults it lands in.
+        # namespace defaults it lands in. The write that queued the job
+        # already knew them, so they ride in the payload; the store read is
+        # the fallback for jobs queued before an upgrade.
         source_licence: dict[str, str] = {}
+        declared = payload.get("classification")
 
         if batch_mode and batch_content:
             # Batch extraction: all chunks combined into one API call. The
@@ -122,7 +125,7 @@ class EnrichmentWorker:
                     [key], ("event_date", "created_at", "licence", "licence_note", "provenance")
                 )
                 src = rows[0] if rows and rows[0] else {}
-                source_licence = _licence_of(src)
+                source_licence = _licence_of(declared or src)
                 if not source_created_at:
                     source_event_date = source_event_date or src.get("event_date")
                     source_created_at = src.get("created_at")
@@ -138,7 +141,7 @@ class EnrichmentWorker:
                 return
             source_event_date = data.get("event_date") or source_event_date
             source_created_at = data.get("created_at") or source_created_at
-            source_licence = _licence_of(data)
+            source_licence = _licence_of(declared or data)
             facts = extract_facts(content)
 
         if not facts:
@@ -218,11 +221,13 @@ def _licence_of(source: dict) -> dict[str, str]:
     A fact is a restatement: it carries the source's redistribution
     rights and the source's provenance (an extracted fact of something the
     human asserted is still asserted — extraction is not reasoning). A
-    source with no provenance yields concluded: the fact exists because
-    the system produced it.
+    source stamped with neither is a conversation write from before the
+    fields existed (knowledge is never enriched), so it yields own and
+    concluded — the same answer the backfill and the read-time fallbacks
+    give it.
     """
     inherited = {
-        "licence": source.get("licence") or LICENCE_UNKNOWN,
+        "licence": source.get("licence") or LICENCE_OWN,
         "provenance": source.get("provenance") or PROVENANCE_CONCLUDED,
     }
     if source.get("licence_note"):
@@ -238,8 +243,14 @@ def enqueue(
     tags: list[str] | None = None,
     doc_id: str | None = None,
     created_at: str | None = None,
+    classification: dict[str, str] | None = None,
 ) -> None:
-    """Push a memory key onto the enrichment queue for background processing."""
+    """Push a memory key onto the enrichment queue for background processing.
+
+    ``classification`` is the licence/provenance the write stamped on the
+    source, so the facts inherit it even if the source is gone by the time
+    the job runs.
+    """
     payload = json.dumps({
         "key": key,
         "namespace": namespace,
@@ -247,6 +258,7 @@ def enqueue(
         "tags": tags,
         "doc_id": doc_id,
         "created_at": created_at,
+        "classification": classification,
     })
     store.client.lpush(QUEUE_KEY, payload)
 
@@ -260,6 +272,7 @@ def enqueue_batch(
     tags: list[str] | None = None,
     doc_id: str | None = None,
     created_at: str | None = None,
+    classification: dict[str, str] | None = None,
 ) -> None:
     """Push a batch enrichment job — all chunks extracted in one Haiku call."""
     payload = json.dumps({
@@ -269,6 +282,7 @@ def enqueue_batch(
         "tags": tags,
         "doc_id": doc_id,
         "created_at": created_at,
+        "classification": classification,
         "batch_mode": True,
         "batch_content": combined_content[:24000],  # cap for prompt size
     })

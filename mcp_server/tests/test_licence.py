@@ -6,7 +6,6 @@ remember_document, project context, enrichment, the ingester), the recall
 surfaces that report it, and the set_licence tool.
 """
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -172,8 +171,9 @@ class TestMigrateLicence:
         assert fake_store.get("mem:knowledge:01F1")["licence"] == "own"
         # Source already classified → fact takes that class
         assert fake_store.get("mem:knowledge:01F2")["licence"] == "restricted"
-        # Source gone → nothing to inherit, honest unknown
-        assert fake_store.get("mem:knowledge:01F3")["licence"] == "unknown"
+        # Source gone → it was a conversation write (the only thing ever
+        # enriched), so own — the same answer the read-time fallback gives
+        assert fake_store.get("mem:knowledge:01F3")["licence"] == "own"
 
     def test_article_with_enriched_from_is_still_an_article(self, fake_store):
         # An RSS article never carries enriched_from, but if one did the
@@ -203,8 +203,10 @@ class TestMigrateLicence:
         _put(fake_store, "mem:episodic:01A")
         _put(fake_store, "mem:knowledge:art", feed_name="Feed")
         _put(fake_store, "mem:knowledge:fact", enriched_from="mem:episodic:01A")
+        _put(fake_store, "mem:preference:pf", enriched_from="mem:episodic:01A")
         migrate_licence(fake_store)
-        assert "backfilled licence on 3 memories (1 own, 1 unknown, 1 extracted" in caplog.text
+        assert fake_store.get("mem:preference:pf")["licence"] == "own"
+        assert "backfilled licence on 4 memories (1 own, 1 unknown, 2 extracted" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -310,23 +312,25 @@ class TestEnrichmentInheritsLicence:
         facts = [fake_store.get(k) for k in fake_store.scan_prefix("mem:knowledge:")]
         assert facts and all(f["licence"] == "open" for f in facts)
 
-    def test_source_without_licence_yields_unknown(self, monkeypatch, fake_store, fake_embedder):
+    def test_source_without_licence_yields_own(self, monkeypatch, fake_store, fake_embedder):
+        """Only conversation writes are ever enriched, so an unstamped source
+        is own — the same answer the backfill gives it."""
         self._facts(monkeypatch)
         store_memory(fake_store, fake_embedder, "mem:episodic:01SRC", "content")
         EnrichmentWorker(fake_store, fake_embedder)._enrich({
             "key": "mem:episodic:01SRC", "namespace": "episodic",
         })
         facts = [fake_store.get(k) for k in fake_store.scan_prefix("mem:knowledge:")]
-        assert facts and all(f["licence"] == "unknown" for f in facts)
+        assert facts and all(f["licence"] == "own" for f in facts)
 
-    def test_batch_mode_missing_first_chunk_yields_unknown(self, monkeypatch, fake_store, fake_embedder):
+    def test_batch_mode_missing_first_chunk_and_no_payload_yields_own(self, monkeypatch, fake_store, fake_embedder):
         self._facts(monkeypatch)
         EnrichmentWorker(fake_store, fake_embedder)._enrich({
             "key": "mem:episodic:01GONE", "namespace": "episodic",
             "batch_mode": True, "batch_content": "text",
         })
         facts = [fake_store.get(k) for k in fake_store.scan_prefix("mem:knowledge:")]
-        assert facts and all(f["licence"] == "unknown" for f in facts)
+        assert facts and all(f["licence"] == "own" for f in facts)
 
 
 # ---------------------------------------------------------------------------
@@ -763,3 +767,90 @@ class TestMirrorValidation:
         result = validate_skill_import(_patch_bundle(bundle["data"], feeds=feeds))
         assert result["ok"]
         assert "licence_note" not in result["feeds"][0]
+
+
+class TestDocumentLevelCascade:
+    def test_classifying_one_chunk_reaches_siblings_and_facts(self, fake_store):
+        for i in range(3):
+            _put(fake_store, f"mem:episodic:0{i}", doc_id="DOC", licence="own")
+        _put(fake_store, "mem:episodic:other", licence="own")
+        _put(fake_store, "mem:knowledge:01F", enriched_from="mem:episodic:00", source_doc_id="DOC")
+        from tools.licence import set_licence
+        result = set_licence("restricted", keys=["mem:episodic:01"])
+        assert sorted(result["keys"]) == ["mem:episodic:00", "mem:episodic:01", "mem:episodic:02"]
+        assert result["cascaded_facts"] == ["mem:knowledge:01F"]
+        for k in ("mem:episodic:00", "mem:episodic:01", "mem:episodic:02", "mem:knowledge:01F"):
+            assert fake_store.get(k)["licence"] == "restricted"
+        assert fake_store.get("mem:episodic:other")["licence"] == "own"
+
+    def test_knowledge_only_call_does_not_scan_for_facts(self, fake_store, monkeypatch):
+        _put(fake_store, "mem:knowledge:art", feed_name="F")
+        calls = []
+        original = fake_store.scan_prefix
+        monkeypatch.setattr(fake_store, "scan_prefix", lambda p: calls.append(p) or original(p))
+        from memory.lineage import stamp_lineage
+        out = stamp_lineage(fake_store, ["mem:knowledge:art"], {"licence": "open"})
+        assert out["classified"] == ["mem:knowledge:art"] and out["cascaded"] == []
+        assert calls == []
+
+    def test_feed_path_goes_through_the_engine(self, fake_store, fake_embedder):
+        from tools.licence import set_licence
+        _put(fake_store, "mem:knowledge:art", feed_name="F", licence="unknown",
+             licence_note="stale")
+        result = set_licence("ogl", feed_name="F")
+        assert result["classified"] == 1 and result["licence_note"] == "OGL v3.0"
+        assert fake_store.get("mem:knowledge:art")["licence_note"] == "OGL v3.0"
+        set_licence("restricted", feed_name="F")
+        assert not fake_store.get("mem:knowledge:art").get("licence_note")
+
+
+class TestEnrichmentPayloadClassification:
+    def _facts(self, monkeypatch):
+        from memory import enrichment
+        monkeypatch.setattr(enrichment, "extract_facts",
+                            lambda content: [ExtractedFact(text="A fact", kind="fact")])
+
+    def test_batch_facts_take_declared_classification_when_first_chunk_is_gone(
+            self, monkeypatch, fake_store, fake_embedder):
+        self._facts(monkeypatch)
+        EnrichmentWorker(fake_store, fake_embedder)._enrich({
+            "key": "mem:episodic:GONE", "namespace": "episodic",
+            "batch_mode": True, "batch_content": "text", "created_at": "1.0",
+            "classification": {"licence": "restricted", "licence_note": "EULA",
+                               "provenance": "retrieved"},
+        })
+        facts = [fake_store.get(k) for k in fake_store.scan_prefix("mem:knowledge:")]
+        assert facts and facts[0]["licence"] == "restricted"
+        assert facts[0]["licence_note"] == "EULA"
+        assert facts[0]["provenance"] == "retrieved"
+
+    def test_remember_document_queues_its_classification(self, fake_store, monkeypatch):
+        import json
+        from tools.core import remember_document
+        monkeypatch.setenv("ENRICHMENT_BATCH_MODE", "true")
+        monkeypatch.setattr("tools.core.check_duplicate", lambda *a, **k: None)
+        remember_document("Para one.\n\nPara two.", mode="full", licence="cc-by-4.0",
+                          provenance="retrieved")
+        payload = json.loads(fake_store.client._data["queue:enrich"]["_list"][0])
+        assert payload["classification"] == {
+            "licence": "open", "licence_note": "CC BY 4.0", "provenance": "retrieved",
+        }
+
+    def test_remember_queues_its_classification(self, fake_store, monkeypatch):
+        import json
+        from tools.core import remember
+        remember("Something worth a fact", mode="full", provenance="asserted")
+        payload = json.loads(fake_store.client._data["queue:enrich"]["_list"][0])
+        assert payload["classification"] == {"licence": "own", "provenance": "asserted"}
+
+
+class TestNoteForReclassification:
+    @pytest.mark.parametrize("old_class,old_note,new_class,submitted,expected", [
+        ("open", "CC BY 4.0", "restricted", "CC BY 4.0", None),      # pre-filled, class changed
+        ("open", "CC BY 4.0", "restricted", "Paywalled", "Paywalled"),  # typed
+        ("open", "CC BY 4.0", "open", "CC BY 4.0", "CC BY 4.0"),     # unchanged
+        ("", None, "open", "checked", "checked"),                   # previously unset
+        ("open", "CC BY 4.0", "restricted", None, None),
+    ])
+    def test_rule(self, old_class, old_note, new_class, submitted, expected):
+        assert lic.note_for_reclassification(old_class, old_note, new_class, submitted) == expected

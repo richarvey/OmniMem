@@ -45,7 +45,7 @@ When `INGEST_MODE=full`, `remember()` stores the raw memory and queues it; the e
 | `enriched_from` | key string | The source memory's key. Recall suppresses a fact when its source memory already made the result cut. |
 | `project` | string | Inherited from the source. |
 | `event_date` | unix seconds string | Fallback chain: the fact's own extracted date → the source's `event_date` → the source's `created_at`. Keeps temporal queries able to find extracted facts. |
-| `licence` / `licence_note` | licence class / string | Inherited from the source memory — a fact is a derivative and has exactly its source's rights. A source with no licence yields `unknown`. |
+| `licence` / `licence_note` | licence class / string | Inherited from the source memory — a fact is a derivative and has exactly its source's rights. The write that queued the job carries them in the payload, so they survive the source being deleted before enrichment runs; an unstamped source (only ever a conversation write) yields `own`. |
 | `provenance` | provenance class | Inherited from the source memory — extraction is restatement, not reasoning, so a fact of something the human asserted is still asserted. A source with no provenance yields `concluded`. |
 | `vector` | 384-dim float32 blob | Embedding of the fact text. |
 

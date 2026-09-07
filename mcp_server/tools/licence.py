@@ -10,12 +10,7 @@ points those out; this is how the human's answer gets recorded.
 import logging
 from typing import Any
 
-from memory.licence import (
-    classify_memories,
-    licence_fields,
-    resolve_licence,
-    validate_licence_note,
-)
+from memory.licence import classify_memories, resolve_licence, validate_licence_note
 from memory.lineage import partition_keys
 
 from . import _compact
@@ -66,28 +61,25 @@ def set_licence(
     try:
         licence_class, derived_note = resolve_licence(licence)
         note = validate_licence_note(note) or derived_note
-        fields = licence_fields(licence_class, note)
     except ValueError as exc:
         return {"error": str(exc)}
-    # Reclassifying must not leave a stale note behind ("CC BY 4.0" on a
-    # record now marked restricted) — hashes can't drop a field in a bulk
-    # HSET, so an absent note is written as empty, which reads as none.
-    fields.setdefault("licence_note", "")
 
     if feed_name:
-        # Articles are never enriched, so there is nothing to cascade to.
+        # feed_name is a key resolver; the write is the same engine as the
+        # key path, so if an article ever grows facts they follow it.
         targets = _article_keys_for_feed(store, feed_name)
         if not targets:
             return {"error": f"No knowledge articles found for feed '{feed_name}'"}
-        written = store.set_fields_multi(targets, fields)
+        outcome = classify_memories(store, targets, licence_class, note)
         logger.info(
-            "Classified %d articles from feed %s as %s", written, feed_name, licence_class,
+            "Classified %d articles from feed %s as %s",
+            len(outcome["classified"]), feed_name, licence_class,
         )
         return _compact({
             "feed_name": feed_name,
             "licence": licence_class,
-            "licence_note": fields["licence_note"],
-            "classified": written,
+            "licence_note": note,
+            "classified": len(outcome["classified"]),
             "note": (
                 "Existing articles only. Set `licence:` on this feed in feeds.yml "
                 "or the web UI feed editor so future articles arrive classified."
@@ -107,7 +99,7 @@ def set_licence(
 
     return _compact({
         "licence": licence_class,
-        "licence_note": fields["licence_note"],
+        "licence_note": note,
         "classified": len(outcome["classified"]),
         "keys": outcome["classified"],
         "cascaded_facts": outcome["cascaded"],

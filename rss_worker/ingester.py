@@ -128,7 +128,7 @@ def _licence_required() -> bool:
 
 
 def _licence_key(raw: Any) -> str:
-    """Alias-table lookup key, mirroring memory/licence.py _normalise_key.
+    """Alias-table lookup key, mirroring memory/lineage.py normalise_alias_key.
 
     A non-string YAML value (`licence: no` parses as False) is a mistyped
     declaration, not an absent one, so it is stringified rather than folded
