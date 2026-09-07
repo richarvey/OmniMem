@@ -7,6 +7,7 @@ import time
 from collections import Counter
 from typing import Any
 
+from memory.licence import LICENCE_OWN
 from memory.lifecycle import MemoryState
 from memory.project_domains import (
     invalidate_domain_cache,
@@ -87,6 +88,9 @@ def set_project_context(
         "surface_score": "1.0",
         "created_at": now,
         "updated_at": now,
+        # A project context is written by the human or the agent about their
+        # own work — ours to redistribute.
+        "licence": LICENCE_OWN,
     }
     if notes:
         fields["notes"] = notes
@@ -731,6 +735,7 @@ def compile_project_context(
             "state": MemoryState.ACTIVE.value,
             "surface_score": "1.0",
             "updated_at": now,
+            "licence": LICENCE_OWN,
         }
         if existing_data is None:
             fields["created_at"] = now

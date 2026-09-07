@@ -16,6 +16,13 @@ from starlette.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from memory.feed_influence import sync_feed_influences, validate_feed_skills
+from memory.licence import (
+    LICENCE_CLASSES,
+    LICENCE_LABELS,
+    LICENCE_UNKNOWN,
+    resolve_licence,
+    validate_licence_note,
+)
 from memory.skills import SKILL_KEY_PREFIX
 
 from .. import deps
@@ -98,6 +105,52 @@ def _form_error_redirect(url: str, exc: Exception) -> RedirectResponse:
     return RedirectResponse(url=f"{url}?error={quote(str(exc))}", status_code=303)
 
 
+_LICENCE_CHOICES = [(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES]
+
+
+def _feed_licence(feed: dict) -> tuple[str, str]:
+    """(class, note) a feed declares, for display. Unparseable → unknown,
+    matching what the ingester would stamp on its articles."""
+    raw = feed.get("licence")
+    try:
+        # A YAML boolean (`licence: no`) is a mistyped declaration, not an
+        # absent one — it must not fold to the empty-string alias.
+        licence_class, derived = resolve_licence(raw if isinstance(raw, str) or raw is None else str(raw))
+    except ValueError:
+        licence_class, derived = LICENCE_UNKNOWN, None
+    note = str(feed.get("licence_note") or "").strip() or derived or ""
+    return licence_class, note
+
+
+def _parse_licence_form(form, current: dict | None = None) -> dict:
+    """licence / licence_note fields into the feeds.yml keys to store.
+
+    The form offers the four classes, so a feed hand-written with an
+    identifier (`licence: cc-by-4.0`) is shown as its class with the
+    identifier in the note, and saving writes it back in that split form —
+    the articles it stamps are identical either way. An empty choice stores
+    nothing, which ingests as unknown. Because the note is pre-filled from
+    the current declaration, a note that matches it is dropped when the
+    class changes: switching Open → Restricted must not carry "OGL v3.0"
+    onto every future article. Raises ValueError on an unrecognised value
+    or an over-long note.
+    """
+    raw = (form.get("licence") or "").strip()
+    entry: dict = {}
+    if raw:
+        resolve_licence(raw)
+        entry["licence"] = raw
+    note = validate_licence_note(form.get("licence_note") or "")
+    if note and current is not None:
+        old_class, old_note = _feed_licence(current)
+        declared_class = resolve_licence(raw)[0] if raw else ""
+        if declared_class != (old_class if current.get("licence") else "") and note == old_note:
+            note = None
+    if note:
+        entry["licence_note"] = note
+    return entry
+
+
 async def feed_list(request: Request) -> HTMLResponse:
     """GET /feeds — list all configured RSS feeds."""
     feeds = _load_feeds()
@@ -110,6 +163,7 @@ async def feed_list(request: Request) -> HTMLResponse:
             "topics": ", ".join(feed.get("topics", [])),
             "digest": feed.get("mode") == "digest",
             "skills": _skills_summary(feed),
+            "licence": _feed_licence(feed)[0],
         })
 
     message = request.query_params.get("message")
@@ -136,11 +190,12 @@ def _skills_rows(feed: dict) -> list[dict]:
 
 async def feed_create_form(request: Request) -> HTMLResponse:
     """GET /feeds/new — form to add a new feed."""
-    feed = {"name": "", "url": "", "topics": "", "digest": False, "skills": []}
+    feed = {"name": "", "url": "", "topics": "", "digest": False, "skills": [],
+            "licence": "", "licence_note": ""}
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=True,
-        skill_domains=_known_skill_domains(),
+        skill_domains=_known_skill_domains(), licence_classes=_LICENCE_CHOICES,
         error=request.query_params.get("error"),
     )
     return HTMLResponse(content)
@@ -159,6 +214,7 @@ async def feed_create(request: Request) -> RedirectResponse:
 
     try:
         skills = _parse_skills_form(form)
+        licence_entry = _parse_licence_form(form)
     except ValueError as exc:
         return _form_error_redirect("/feeds/new", exc)
 
@@ -169,6 +225,7 @@ async def feed_create(request: Request) -> RedirectResponse:
         feed_entry["mode"] = "digest"
     if skills:
         feed_entry["skills"] = skills
+    feed_entry.update(licence_entry)
 
     feeds = _load_feeds()
     feeds.append(feed_entry)
@@ -188,6 +245,7 @@ async def feed_edit_form(request: Request) -> HTMLResponse:
         return HTMLResponse('<p class="empty-state">Feed not found.</p>', status_code=404)
 
     raw = feeds[index]
+    licence_class, licence_note = _feed_licence(raw)
     feed = {
         "index": index,
         "name": raw.get("name", ""),
@@ -195,12 +253,16 @@ async def feed_edit_form(request: Request) -> HTMLResponse:
         "topics": ", ".join(raw.get("topics", [])),
         "digest": raw.get("mode") == "digest",
         "skills": _skills_rows(raw),
+        # The form offers the four classes; a declared identifier shows as
+        # its class with the identifier in the note.
+        "licence": licence_class if raw.get("licence") else "",
+        "licence_note": licence_note,
     }
 
     template = request.app.state.templates.get_template("feeds/edit.html")
     content = template.render(
         request=request, feed=feed, current_page="feeds", is_new=False,
-        skill_domains=_known_skill_domains(),
+        skill_domains=_known_skill_domains(), licence_classes=_LICENCE_CHOICES,
         error=request.query_params.get("error"),
     )
     return HTMLResponse(content)
@@ -219,22 +281,24 @@ async def feed_save(request: Request) -> RedirectResponse:
     if not name or not url:
         return RedirectResponse(url=f"/feeds/{index}/edit", status_code=303)
 
+    feeds = _load_feeds()
+    if index < 0 or index >= len(feeds):
+        return RedirectResponse(url="/feeds", status_code=303)
+
     try:
         skills = _parse_skills_form(form)
+        licence_entry = _parse_licence_form(form, current=feeds[index])
     except ValueError as exc:
         return _form_error_redirect(f"/feeds/{index}/edit", exc)
 
     topics = [t.strip() for t in topics_raw.split(",") if t.strip()] if topics_raw else []
-
-    feeds = _load_feeds()
-    if index < 0 or index >= len(feeds):
-        return RedirectResponse(url="/feeds", status_code=303)
 
     feed_entry: dict = {"url": url, "name": name, "topics": topics}
     if digest:
         feed_entry["mode"] = "digest"
     if skills:
         feed_entry["skills"] = skills
+    feed_entry.update(licence_entry)
     feeds[index] = feed_entry
     _save_feeds(feeds)
     _sync_influence(feeds)

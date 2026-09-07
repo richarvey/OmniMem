@@ -7,6 +7,8 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.routing import Route
 
+from memory.licence import LICENCE_CLASSES, LICENCE_LABELS
+
 from .. import deps
 
 PAGE_SIZE = 25
@@ -14,13 +16,14 @@ PAGE_SIZE = 25
 
 def _get_all_memories(
     namespace: str | None, state: str | None, project: str | None,
-    source: str | None = None,
+    source: str | None = None, licence: str | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Fetch and filter memories, returning (memories, distinct_projects) in a single pass.
 
-    source splits knowledge by provenance: "rss" keeps only RSS-ingested
+    source splits knowledge by origin: "rss" keeps only RSS-ingested
     articles (they carry a feed_name field), "learned" keeps everything
-    else — extracted facts and remember() writes never have one.
+    else — extracted facts and remember() writes never have one. licence
+    narrows to one redistribution class; "unknown" is the classify queue.
     """
     ns_list = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
     memories = []
@@ -35,7 +38,7 @@ def _get_all_memories(
         all_data = deps.store.get_fields_multi(
             keys,
             ("content", "state", "project", "project_name", "updated_at",
-             "created_at", "feed_name", "last_recalled"),
+             "created_at", "feed_name", "last_recalled", "licence"),
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -55,6 +58,8 @@ def _get_all_memories(
                 continue
             if source == "learned" and data.get("feed_name"):
                 continue
+            if licence and (data.get("licence") or "") != licence:
+                continue
 
             try:
                 updated_at = float(data.get("updated_at", "0"))
@@ -73,6 +78,7 @@ def _get_all_memories(
                 "state": mem_state,
                 "project": mem_project,
                 "feed_name": data.get("feed_name") or "",
+                "licence": data.get("licence") or "",
                 "updated_at": updated_at,
                 "created_at": created_at,
                 "heat": _recall_heat(data.get("last_recalled")),
@@ -107,6 +113,9 @@ async def memories_list(request: Request) -> HTMLResponse:
     source = request.query_params.get("source", "")
     if source not in ("rss", "learned"):
         source = ""
+    licence = request.query_params.get("licence", "")
+    if licence not in LICENCE_CLASSES:
+        licence = ""
     sort = request.query_params.get("sort", "newest")
     page = max(1, int(request.query_params.get("page", "1")))
 
@@ -115,6 +124,7 @@ async def memories_list(request: Request) -> HTMLResponse:
         state=state or None,
         project=project or None,
         source=source or None,
+        licence=licence or None,
     )
 
     # Articles never change after ingestion, but migrations and backfills can
@@ -155,6 +165,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         params.append(f"&project={project}")
     if source:
         params.append(f"&source={source}")
+    if licence:
+        params.append(f"&licence={licence}")
     if sort != "newest":
         params.append(f"&sort={sort}")
     extra_params = "".join(params)
@@ -185,6 +197,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         state=state,
         project=project,
         source=source,
+        licence=licence,
+        licence_classes=[(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES],
         back_url=back_url,
         sort=sort,
         projects=projects,

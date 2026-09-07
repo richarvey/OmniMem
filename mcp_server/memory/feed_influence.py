@@ -14,8 +14,8 @@ compiler runs in the MCP server and web UI containers — which don't share the
 worker's feeds.yml mount — the config is mirrored into one Valkey hash:
 
     meta:feed:influence   field = feed name, value = JSON feed entry
-                          {"url", "topics", "mode", "project",
-                           "skills": {domain: score}}
+                          {"url", "topics", "mode", "project", "licence",
+                           "licence_note", "skills": {domain: score}}
 
 The web UI mirrors on every feeds.yml write and the RSS worker re-mirrors on
 each ingest cycle (rss_worker/ingester.py `_sync_feed_influence` — a
@@ -29,6 +29,7 @@ import json
 import logging
 from typing import Any
 
+from .licence import MAX_LICENCE_NOTE, resolve_licence
 from .skills import resolve_domain, validate_domain
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,22 @@ def normalise_feed_entry(feed: dict[str, Any]) -> dict[str, Any] | None:
         entry["mode"] = str(feed["mode"])
     if feed.get("project"):
         entry["project"] = str(feed["project"])
+    # A feed's licence declaration is mirrored only when it resolves: an
+    # unrecognised value would ingest locally as unknown (the worker logs
+    # it) but reach skill bundles verbatim and fail validation on import.
+    raw_licence = feed.get("licence")
+    if raw_licence is not None and raw_licence != "":
+        try:
+            resolve_licence(raw_licence if isinstance(raw_licence, str) else str(raw_licence))
+        except ValueError:
+            logger.warning(
+                "Feed %s: unrecognised licence %r not mirrored", name, raw_licence,
+            )
+        else:
+            entry["licence"] = str(raw_licence)
+            note = " ".join(str(feed.get("licence_note") or "").split())
+            if note:
+                entry["licence_note"] = note[:MAX_LICENCE_NOTE]
     return entry
 
 

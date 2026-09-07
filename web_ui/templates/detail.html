@@ -77,7 +77,46 @@
     <div class="meta-value"><a href="{{ memory.source_url }}" target="_blank" style="color:var(--accent)">{{ memory.feed_name or memory.source_url }}</a></div>
   </div>
   {% endif %}
+
+  {% if memory.namespace != 'skill' %}
+  <div class="meta-item">
+    <div class="meta-label">Licence</div>
+    <div class="meta-value">
+      {{ memory.licence_label }}{% if memory.licence_note %} <span style="color:var(--text-dim)">· {{ memory.licence_note }}</span>{% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+{% if memory.namespace != 'skill' %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Redistribution rights</h3>
+  <p style="font-size:0.85rem;color:var(--text-dim);margin:0 0 0.5rem">
+    May this content be redistributed outside this instance? Own work and open-licensed
+    sources can; paywalled or all-rights-reserved sources cannot. Unknown means nobody has said yet.
+  </p>
+  <form method="POST" action="/memory/{{ memory.key }}/licence" style="max-width:40rem">
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <label for="licence-select" class="visually-hidden">Licence</label>
+      <select id="licence-select" name="licence" class="form-select" style="flex:0 1 16rem">
+        {% if not memory.licence %}
+        <option value="" disabled selected>Not recorded — choose one</option>
+        {% endif %}
+        {% for value, label in licence_classes %}
+        <option value="{{ value }}"{% if memory.licence == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <label for="licence-note" class="visually-hidden">Licence note</label>
+      <input type="text" id="licence-note" name="licence_note" class="form-input" style="flex:1;min-width:12rem"
+             value="{{ memory.licence_note }}" maxlength="200" placeholder="Optional: which licence, or where it was checked">
+      <button type="submit" class="btn btn-secondary btn-sm">Save licence</button>
+    </div>
+  </form>
+  {% if licence_error %}
+  <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ licence_error }}</p>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if memory.namespace != 'skill' %}
 <div style="margin-bottom:1.5rem">

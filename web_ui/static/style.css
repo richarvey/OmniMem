@@ -594,6 +594,27 @@ a.stat-card:hover .stat-ns {
   color: var(--red);
 }
 
+/* Redistribution rights not yet classified — the one licence state that
+   asks for action, so the only one that gets a pill in list views. */
+.badge.licence-unknown {
+  background: rgba(251, 146, 60, 0.15);
+  color: var(--orange);
+  margin-left: 0.25rem;
+}
+
+/* Label present for assistive tech, removed from the visual layout. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Namespace markers — a coloured dot beside plain text, not another pill.
    Pills stay reserved for lifecycle state, the actionable badge. The dot is
    decorative (the namespace name sits right next to it), so it carries no
@@ -968,13 +989,14 @@ span.project-name {
 .feeds-table th:nth-child(1),
 .feeds-table td:nth-child(1) { width: 16%; }
 .feeds-table th:nth-child(2),
-.feeds-table td:nth-child(2) { width: 24%; }
+.feeds-table td:nth-child(2) { width: 20%; }
 .feeds-table th:nth-child(3),
 .feeds-table td:nth-child(3) { width: 18%; }
 .feeds-table th:nth-child(4),
 .feeds-table td:nth-child(4) { width: 16%; overflow-wrap: anywhere; }
+/* Mode and licence share a cell (two lines), so it wraps rather than nowraps */
 .feeds-table th:nth-child(5),
-.feeds-table td:nth-child(5) { width: 9%; white-space: nowrap; }
+.feeds-table td:nth-child(5) { width: 13%; }
 .feeds-table th:nth-child(6),
 .feeds-table td:nth-child(6) { width: 17%; }
 

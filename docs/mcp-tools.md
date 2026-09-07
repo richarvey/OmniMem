@@ -6,10 +6,10 @@ Every tool the OmniMem MCP server exposes, grouped by area. The server delivers 
 
 | Tool | What it does |
 |---|---|
-| `remember(content, project?, tags?, force?, mode?)` | Store a memory. In `full` mode (default) extracts atomic facts via Claude Haiku and routes preferences to the preference namespace; `raw` stores verbatim. Auto-checks for duplicates and contradictions |
-| `remember_document(content, chunk_strategy, project?, tags?, namespace?, chunk_size?, mode?)` | Index a long-form document by splitting it into chunks (`turn_pairs`, `sentences`, `paragraphs`, or `fixed_tokens`) and storing each as a memory linked by a shared `doc_id` |
-| `recall(query, top_k?, project_filter?, expand_queries?, domain_filter?)` | Semantic search across all namespaces. `domain_filter` searches every project declaring a work-type domain at once (`domain_filter="python"`), intersecting with `project_filter` when both are given. With `expand_queries=true`, generates alternative phrasings via Claude Haiku and unions the results to improve recall coverage when query vocabulary doesn't match stored content |
-| `recall_index(query, top_k?, project_filter?, snippet_length?, domain_filter?)` | Lightweight recall returning ranked snippets and a token estimate; expand chosen keys with `recall_detail()`. Reports the resolved domain filter under `domain_filter` |
+| `remember(content, project?, tags?, force?, mode?, licence?)` | Store a memory. In `full` mode (default) extracts atomic facts via Claude Haiku and routes preferences to the preference namespace; `raw` stores verbatim. Auto-checks for duplicates and contradictions. `licence` records redistribution rights (`own`, `open`, `restricted`, `unknown`, or an identifier such as `cc-by-4.0`); defaults to `own` for episodic/project/preference and `unknown` for knowledge |
+| `remember_document(content, chunk_strategy, project?, tags?, namespace?, chunk_size?, mode?, licence?)` | Index a long-form document by splitting it into chunks (`turn_pairs`, `sentences`, `paragraphs`, or `fixed_tokens`) and storing each as a memory linked by a shared `doc_id`. `licence` applies to every chunk — say where the document came from |
+| `recall(query, top_k?, project_filter?, expand_queries?, domain_filter?)` | Semantic search across all namespaces. `domain_filter` searches every project declaring a work-type domain at once (`domain_filter="python"`), intersecting with `project_filter` when both are given. With `expand_queries=true`, generates alternative phrasings via Claude Haiku and unions the results to improve recall coverage when query vocabulary doesn't match stored content. Every classified result carries its `licence`; when any result is still `unknown`, a trailing `licence_notice` lists the keys so the human can classify them |
+| `recall_index(query, top_k?, project_filter?, snippet_length?, domain_filter?)` | Lightweight recall returning ranked snippets and a token estimate; expand chosen keys with `recall_detail()`. Reports the resolved domain filter under `domain_filter` and unclassified results under `licence_notice` |
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Soft-suppress without deleting |
 | `archive(key_or_query)` | Remove from recall but keep for history |
 | `reinstate(key_or_query)` | Bring a deprioritised memory back |
@@ -59,7 +59,8 @@ See [skill-compiler.md](skill-compiler.md) for how compilation and the propose-a
 
 | Tool | What it does |
 |---|---|
-| `recent_knowledge(days?, feed_name?, topics?, limit?)` | Query recent RSS articles with optional filters, sorted newest first |
+| `recent_knowledge(days?, feed_name?, topics?, limit?, licence?)` | Query recent RSS articles with optional filters, sorted newest first. `licence="unknown"` lists what still needs classifying |
+| `set_licence(licence, keys?, feed_name?, note?)` | Record redistribution rights on stored memories: specific `keys`, or every article from one RSS `feed_name`. Accepts a class (`own`, `open`, `restricted`, `unknown`) or a recognised identifier (`ogl-3.0`, `cc-by-4.0`, `all-rights-reserved`), which is kept as the note. Facts extracted from a classified memory follow it. Reclassifying clears any stale note, and never bumps `updated_at`. Only affects existing records — set `licence:` on the feed itself so future articles arrive classified |
 | `promote_knowledge(key, domain?, demote?, rules?)` | Mark an article as permanently useful by clearing its expiry. With `domain`, also mark it skill-eligible: the next `compile_skill()` for that domain renders it in the skill's Reference section. Pass `rules=[{kind, text}, ...]` to extract an article's discrete guidance into individual stance-prefixed Reference rules (reviewed at promotion, so compiles stay deterministic). `demote=True` removes a domain again |
 
 ## Audit and backup

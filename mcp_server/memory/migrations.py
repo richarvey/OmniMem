@@ -150,3 +150,95 @@ def migrate_project_domains(store) -> None:
             "(%d had nothing usable to derive)",
             seeded, marked,
         )
+
+
+def migrate_licence(store) -> None:
+    """Backfill the licence / redistribution field (v6.6.1) with honest defaults.
+
+    Conversation-sourced namespaces (episodic, project, preference) are our
+    own work and get ``own``. Knowledge is the namespace that holds
+    third-party material, and it gets no optimistic guess: RSS articles
+    (identified by ``feed_name``) become ``unknown`` so recall can point
+    them out for a human to classify, and so do plain knowledge writes with
+    no traceable origin. The one derivation the migration does make is for
+    extracted facts — a fact carries ``enriched_from`` pointing at the
+    memory it was extracted from, and a derivative has exactly its source's
+    rights. Sources are read after the conversation namespaces are stamped
+    so a fact of an own memory resolves to own; a fact whose source is gone
+    is unknown, because there is nothing left to inherit from.
+
+    Memories that arrived in a skill bundle (``imported_at``) are someone
+    else's work and become ``unknown``, whatever namespace they sit in.
+
+    Idempotent: only records with no ``licence`` field at all are touched,
+    so a value a human has since set is never revisited. Writes are batched
+    per value through set_fields_multi. Runs at startup and again after a
+    backup restore, since a pre-6.6.1 dump carries no licence field.
+    """
+    from .licence import LICENCE_OWN, LICENCE_UNKNOWN
+
+    own_keys: list[str] = []
+    imported_keys: list[str] = []
+    for ns in ("episodic", "project", "preference"):
+        keys = store.scan_prefix(f"mem:{ns}:")
+        if not keys:
+            continue
+        rows = store.get_fields_multi(keys, ("licence", "imported_at"))
+        for key, row in zip(keys, rows):
+            row = row or {}
+            if row.get("licence"):
+                continue
+            # A memory that arrived in a skill bundle is someone else's work
+            # by definition; "own" would be exactly the optimistic guess the
+            # backfill exists to avoid.
+            if row.get("imported_at"):
+                imported_keys.append(key)
+            else:
+                own_keys.append(key)
+    # Stamp the conversation namespaces first: extracted facts inherit from
+    # them, so the sources must carry a value before the facts are read.
+    if own_keys:
+        store.set_fields_multi(own_keys, {"licence": LICENCE_OWN})
+    if imported_keys:
+        store.set_fields_multi(imported_keys, {"licence": LICENCE_UNKNOWN})
+
+    knowledge_keys = store.scan_prefix("mem:knowledge:")
+    knowledge_by_value: dict[str, list[str]] = {}
+    pending_facts: list[tuple[str, str]] = []  # (fact key, source key)
+    rows = store.get_fields_multi(
+        knowledge_keys, ("licence", "feed_name", "enriched_from"),
+    )
+    for key, row in zip(knowledge_keys, rows):
+        row = row or {}
+        if row.get("licence"):
+            continue
+        source = row.get("enriched_from")
+        if source and not row.get("feed_name"):
+            pending_facts.append((key, source))
+        else:
+            knowledge_by_value.setdefault(LICENCE_UNKNOWN, []).append(key)
+
+    inherited = 0
+    if pending_facts:
+        source_rows = store.get_fields_multi(
+            [source for _, source in pending_facts], ("licence",),
+        )
+        for (key, _), source_row in zip(pending_facts, source_rows):
+            value = (source_row or {}).get("licence")
+            if value:
+                inherited += 1
+            knowledge_by_value.setdefault(value or LICENCE_UNKNOWN, []).append(key)
+
+    for value, keys in knowledge_by_value.items():
+        store.set_fields_multi(keys, {"licence": value})
+
+    unknown = len(knowledge_by_value.get(LICENCE_UNKNOWN, [])) + len(imported_keys)
+    total = len(own_keys) + len(imported_keys) + sum(
+        len(keys) for keys in knowledge_by_value.values()
+    )
+    if total:
+        logger.info(
+            "Migration: backfilled licence on %d memories (%d own, %d unknown, "
+            "%d extracted facts inherited their source's licence)",
+            total, len(own_keys), unknown, inherited,
+        )

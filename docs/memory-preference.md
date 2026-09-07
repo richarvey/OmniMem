@@ -52,11 +52,11 @@ The enrichment path needs no call: with `INGEST_MODE=full`, any `remember()` who
 
 ## Indexed fields
 
-`idx:preference` indexes: `vector` (HNSW cosine), `project` (tag), `scope` (tag), `state` (tag), `tags` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).
+`idx:preference` indexes: `vector` (HNSW cosine), `project` (tag), `scope` (tag), `state` (tag), `tags` (tag), `licence` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).
 
 ## Search return whitelist
 
-`_NAMESPACE_RETURN_FIELDS["preference"]` returns `content`, `project`, `scope`, `state`, `surface_score`, timestamps, `tags`, recall counters, `source_doc_id`, `event_date`, and `enriched_from`.
+`_NAMESPACE_RETURN_FIELDS["preference"]` returns `content`, `project`, `scope`, `state`, `surface_score`, timestamps, `tags`, recall counters, `source_doc_id`, `event_date`, `enriched_from`, `licence`, and `licence_note`. Preferences are `own` by default; an extracted preference inherits its source's licence.
 
 ## Where preferences surface
 

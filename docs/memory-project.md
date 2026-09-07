@@ -141,11 +141,12 @@ Three behaviours worth knowing:
 
 ## Indexed fields
 
-`idx:project` indexes: `vector` (HNSW cosine), `project_name` (tag), `stack` (tag), `state` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).
+`idx:project` indexes: `vector` (HNSW cosine), `project_name` (tag), `stack` (tag), `state` (tag), `domains` (tag), `licence` (tag), `surface_score`, `created_at`, `updated_at`, `recall_count` (numeric).
 
 ## Behavioural notes
 
-- **Search returns** (`_NAMESPACE_RETURN_FIELDS["project"]`) include only `content`, `project_name`, `stack`, `state`, `surface_score`, timestamps, and recall counters. `description`, `goals`, `current_state`, and `notes` come back via `get_project_context()`, not vector search.
+- **Search returns** (`_NAMESPACE_RETURN_FIELDS["project"]`) include only `content`, `project_name`, `stack`, `state`, `surface_score`, timestamps, recall counters, `domains`, `licence`, and `licence_note`. `description`, `goals`, `current_state`, and `notes` come back via `get_project_context()`, not vector search.
+- **Project context is always `own`**: `set_project_context()` and `compile_project_context(auto_save=True)` stamp `licence=own` — a context entry is written by the human or the agent about their own work.
 - Projects that only exist as ULID memories (no `set_project_context()` call yet) have no context entry; the web UI detail view disables links for them until one is created.
 - `delete_project()` and the bulk deprioritise/reinstate tools match memories across all namespaces on `project` or `project_name`, and leave the context entry alone unless `include_context=True`.
 - The RSS `project` label (default `RSS`) does not create a pseudo-project: project pages and tools only count `mem:project:*` keys.

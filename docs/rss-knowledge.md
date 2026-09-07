@@ -26,6 +26,11 @@ feeds:
     topics: [python]
     skills:                        # optional: influence compiled skills
       python: 8
+
+  - url: https://www.gov.uk/government/publications.atom
+    name: GOV.UK Publications
+    topics: [regulation]
+    licence: ogl-3.0               # optional: redistribution rights, see below
 ```
 
 You can also manage feeds from the [web UI](web-ui.md)'s RSS Feeds page — uploading a new feeds.yml just writes the file and the worker picks up the change automatically.
@@ -35,6 +40,27 @@ You can also manage feeds from the [web UI](web-ui.md)'s RSS Feeds page — uplo
 Each article gets fetched, stripped of HTML, summarised to a couple of sentences by Claude Haiku, embedded, and stored in the `knowledge` namespace with an `expires_at` timestamp (default 30 days, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Articles are labelled with the project `RSS` (or the feed's own `project:` label if you set one) so ingested content stays separable from knowledge captured in conversation — filter by project in the web UI, or pass `project="RSS"` to `recall()` to search only articles. Expired articles are auto-archived during maintenance. Duplicates are skipped by URL. The worker runs once on startup and then on whatever schedule you set in `RSS_SCHEDULE_HOURS`.
 
 If no `ANTHROPIC_API_KEY` is set, the worker still runs — summaries fall back to simple truncation instead of Haiku.
+
+## Licence and redistribution rights
+
+Every article is stamped with a `licence` field the moment it is stored: may this content be redistributed outside your instance? The answer comes from the feed's `licence:` declaration in feeds.yml (or the Licence field in the web UI's feed editor), and the field is set at ingest rather than audited later because the worker accrues articles every night and the ones you cannot ship are impossible to pick out cheaply afterwards. "It's only a summary" is a weak defence once a bundle has been sold.
+
+The value is one of four classes, and a recognised licence identifier resolves to a class and keeps the identifier as a note:
+
+| Class | Meaning | Identifiers that resolve to it |
+|---|---|---|
+| `open` | Third-party content you may redistribute | `ogl-3.0`, `cc-by-4.0`, `cc-by-sa-4.0`, `cc0`, `public-domain`, `mit`, `apache-2.0` |
+| `restricted` | Third-party content you may not redistribute | `all-rights-reserved`, `proprietary`, `paywalled`, `cc-by-nc`, `cc-by-nd`, `crown-copyright` |
+| `own` | Written here — your own decisions, fixes and preferences | (the default for conversation-sourced memories) |
+| `unknown` | Nobody has said yet | (the default for a feed that declares nothing) |
+
+Non-commercial and no-derivatives Creative Commons variants are restricted on purpose: a summary is a derivative, and a sold bundle is commercial use. An unrecognised identifier is logged and treated as `unknown` rather than guessed at.
+
+A feed that declares nothing ingests as `unknown`, and `recall()` points those articles out with a `licence_notice` so the human can classify them when the content is in front of them — with `set_licence(keys=[...], licence="open")`, or `set_licence(feed_name="...", licence="ogl-3.0")` to classify every article already stored from one feed. Set `licence:` on the feed itself so future articles arrive classified. The web UI's memories page filters on licence (`?licence=unknown` is the classify queue) and each memory's detail page has a form for it.
+
+If your store must never accrue unvetted records, set `RSS_REQUIRE_LICENCE=true`: a feed with no usable licence declaration is then refused outright — skipped before any fetch, counted under `refused` in the ingest stats — instead of ingesting as unknown. Articles you have already classified are never touched by the worker.
+
+This field answers one question only: redistribution rights. It says nothing about who may see a memory. A summary of a paywalled standard can legitimately be visible to everyone on your instance and still be non-redistributable.
 
 ## Keeping articles
 
@@ -47,4 +73,4 @@ Promotion vets one article at a time. When a whole feed reliably matters to a sk
 ## See also
 
 - [Knowledge memory spec](memory-knowledge.md) — every stored field
-- [Configuration reference](configuration.md) — `RSS_SCHEDULE_HOURS`, `RSS_MAX_ARTICLES_PER_FEED`, `RSS_MAX_DIGEST_ENTRIES`, `MAX_KNOWLEDGE_AGE_DAYS`, and friends
+- [Configuration reference](configuration.md) — `RSS_SCHEDULE_HOURS`, `RSS_MAX_ARTICLES_PER_FEED`, `RSS_MAX_DIGEST_ENTRIES`, `RSS_REQUIRE_LICENCE`, `MAX_KNOWLEDGE_AGE_DAYS`, and friends

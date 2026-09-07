@@ -17,23 +17,31 @@ def recent_knowledge(
     feed_name: str | None = None,
     topics: list[str] | None = None,
     limit: int = 20,
+    licence: str | None = None,
 ) -> list[dict[str, Any]]:
     """Recent knowledge articles ingested by the RSS worker.
 
     Returns knowledge items created within the given lookback window,
-    sorted newest first. Optionally filter by feed name or topics.
+    sorted newest first. Optionally filter by feed name, topics, or licence
+    class — licence='unknown' lists what still needs classifying.
 
     Args:
         days: Lookback window in days (default 7, max 365).
         feed_name: Filter to a specific RSS feed name.
         topics: Filter to items tagged with at least one of these topics.
         limit: Maximum results to return (default 20, max 50).
+        licence: Filter to one redistribution class: 'own', 'open',
+            'restricted', or 'unknown'.
     """
+    from memory.licence import validate_licence_class
+
     store = _get_deps()
     now = time.time()
     days = max(1, min(days, 365))
     limit = max(1, min(limit, 50))
     cutoff = now - (days * 86400)
+    if licence:
+        validate_licence_class(licence)
 
     keys = store.scan_prefix("mem:knowledge:")
     if not keys:
@@ -42,7 +50,7 @@ def recent_knowledge(
     all_data = store.get_fields_multi(
         keys,
         ("state", "created_at", "feed_name", "topics", "title", "content",
-         "source_url", "published_at", "expires_at"),
+         "source_url", "published_at", "expires_at", "licence", "licence_note"),
     )
     results = []
     for key, data in zip(keys, all_data):
@@ -53,6 +61,8 @@ def recent_knowledge(
         if float(data.get("created_at", "0")) < cutoff:
             continue
         if feed_name and data.get("feed_name") != feed_name:
+            continue
+        if licence and data.get("licence") != licence:
             continue
         if topics:
             try:
@@ -71,6 +81,8 @@ def recent_knowledge(
             "created_at": data.get("created_at"),
             "expires_at": data.get("expires_at"),
             "topics": json.loads(data.get("topics", "[]")) if data.get("topics") else None,
+            "licence": data.get("licence"),
+            "licence_note": data.get("licence_note"),
         }))
 
     results.sort(key=lambda x: float(x.get("created_at") or "0"), reverse=True)

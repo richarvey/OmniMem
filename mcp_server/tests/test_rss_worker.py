@@ -336,7 +336,7 @@ class TestIngestFeed:
         monkeypatch.setattr(ingester, "summarise", lambda t, u, c: "A summary.")
 
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 1, "skipped": 0, "errors": 0}
+        assert stats == {"added": 1, "skipped": 0, "errors": 0, "refused": 0}
         stored = list(ingest_env.data.values())[0]
         assert stored["content"] == "A summary."
         assert stored["feed_name"] == "Example"
@@ -356,23 +356,23 @@ class TestIngestFeed:
         monkeypatch.setattr(ingester, "summarise", lambda t, u, c: "S.")
         assert ingester.ingest_feed(self.CONFIG)["added"] == 1
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 1, "errors": 0}
+        assert stats == {"added": 0, "skipped": 1, "errors": 0, "refused": 0}
 
     def test_summarise_refusal_skips(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [_entry()])
         monkeypatch.setattr(ingester, "summarise", lambda t, u, c: None)
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 1, "errors": 0}
+        assert stats == {"added": 0, "skipped": 1, "errors": 0, "refused": 0}
 
     def test_entries_without_links_ignored(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [{"title": "no link", "summary": "x"}])
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 0, "errors": 0}
+        assert stats == {"added": 0, "skipped": 0, "errors": 0, "refused": 0}
 
     def test_empty_feed(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [])
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 0, "errors": 0}
+        assert stats == {"added": 0, "skipped": 0, "errors": 0, "refused": 0}
 
     def test_processing_error_counted(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [_entry()])
@@ -391,14 +391,14 @@ class TestIngestFeed:
                 raise RuntimeError("model died")
         monkeypatch.setattr(ingester, "_get_embedder", lambda: BrokenEmbedder())
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 0, "errors": 1}
+        assert stats == {"added": 0, "skipped": 0, "errors": 1, "refused": 0}
 
     def test_store_failure_counts_errors(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [_entry()])
         monkeypatch.setattr(ingester, "summarise", lambda t, u, c: "S.")
         ingest_env.fail_store = True
         stats = ingester.ingest_feed(self.CONFIG)
-        assert stats == {"added": 0, "skipped": 0, "errors": 1}
+        assert stats == {"added": 0, "skipped": 0, "errors": 1, "refused": 0}
 
     def test_digest_mode(self, ingest_env, monkeypatch):
         long_summary = "word " * 200  # over _MIN_CONTENT_LENGTH once stripped
@@ -417,7 +417,7 @@ class TestIngestFeed:
         _patch_feed(monkeypatch, [_entry(summary="word " * 200)])
         monkeypatch.setattr(ingester, "extract_items", lambda t, u, c: None)
         stats = ingester.ingest_feed({**self.CONFIG, "mode": "digest"})
-        assert stats == {"added": 0, "skipped": 1, "errors": 0}
+        assert stats == {"added": 0, "skipped": 1, "errors": 0, "refused": 0}
 
     def test_digest_short_content_fetches_page(self, ingest_env, monkeypatch):
         _patch_feed(monkeypatch, [_entry(summary="tiny but over fifty characters of teaser text here")])
@@ -437,7 +437,7 @@ class TestIngestFeed:
         _patch_feed(monkeypatch, [_entry(summary="tiny")])
         monkeypatch.setattr(ingester, "_fetch_page_content", lambda url: None)
         stats = ingester.ingest_feed({**self.CONFIG, "mode": "digest"})
-        assert stats == {"added": 0, "skipped": 1, "errors": 0}
+        assert stats == {"added": 0, "skipped": 1, "errors": 0, "refused": 0}
 
 
 class TestIngestAllFeeds:
@@ -546,3 +546,104 @@ class TestSyncFeedInfluence:
         ])
         assert ingester._sync_feed_influence(client, []) == 0
         assert ingester._FEED_INFLUENCE_KEY not in client.data
+
+
+class TestIngestLicence:
+    """Redistribution rights are decided at ingest from the feed's declaration."""
+
+    CONFIG = {"url": "https://example.org/feed.xml", "name": "Example",
+              "topics": ["rust"]}
+
+    def _add(self, monkeypatch):
+        _patch_feed(monkeypatch, [_entry(published=True)])
+        monkeypatch.setattr(ingester, "summarise", lambda t, u, c: "A summary.")
+
+    def test_undeclared_feed_stamps_unknown(self, ingest_env, monkeypatch):
+        self._add(monkeypatch)
+        ingester.ingest_feed(self.CONFIG)
+        stored = list(ingest_env.data.values())[0]
+        assert stored["licence"] == "unknown"
+        assert "licence_note" not in stored
+
+    def test_declared_identifier_stamps_class_and_note(self, ingest_env, monkeypatch):
+        self._add(monkeypatch)
+        ingester.ingest_feed({**self.CONFIG, "licence": "OGL 3.0"})
+        stored = list(ingest_env.data.values())[0]
+        assert stored["licence"] == "open"
+        assert stored["licence_note"] == "OGL v3.0"
+
+    def test_explicit_note_overrides_identifier_and_is_capped(self, ingest_env, monkeypatch):
+        self._add(monkeypatch)
+        ingester.ingest_feed({**self.CONFIG, "licence": "restricted",
+                              "licence_note": "  x " + "y" * 300})
+        stored = list(ingest_env.data.values())[0]
+        assert stored["licence"] == "restricted"
+        assert stored["licence_note"].startswith("x y")
+        assert len(stored["licence_note"]) == ingester._MAX_LICENCE_NOTE
+
+    def test_unrecognised_declaration_logs_and_stamps_unknown(self, ingest_env, monkeypatch, caplog):
+        self._add(monkeypatch)
+        ingester.ingest_feed({**self.CONFIG, "licence": "wtfpl"})
+        assert "unrecognised licence 'wtfpl'" in caplog.text
+        assert list(ingest_env.data.values())[0]["licence"] == "unknown"
+
+    def test_require_licence_refuses_undeclared_feed_before_fetch(self, ingest_env, monkeypatch, caplog):
+        monkeypatch.setenv("RSS_REQUIRE_LICENCE", "true")
+        monkeypatch.setattr(ingester.feedparser, "parse",
+                            lambda url: (_ for _ in ()).throw(AssertionError("fetched")))
+        stats = ingester.ingest_feed(self.CONFIG)
+        assert stats == {"added": 0, "skipped": 0, "errors": 0, "refused": 1}
+        assert "refused: RSS_REQUIRE_LICENCE" in caplog.text
+        assert ingest_env.data == {}
+
+    def test_require_licence_accepts_declared_feed(self, ingest_env, monkeypatch):
+        monkeypatch.setenv("RSS_REQUIRE_LICENCE", "1")
+        self._add(monkeypatch)
+        stats = ingester.ingest_feed({**self.CONFIG, "licence": "cc-by-4.0"})
+        assert stats["added"] == 1 and stats["refused"] == 0
+
+    def test_require_licence_refuses_explicit_unknown(self, ingest_env, monkeypatch):
+        monkeypatch.setenv("RSS_REQUIRE_LICENCE", "yes")
+        stats = ingester.ingest_feed({**self.CONFIG, "licence": "unknown"})
+        assert stats["refused"] == 1
+
+    def test_refused_counts_roll_up(self, tmp_path, monkeypatch):
+        path = tmp_path / "feeds.yml"
+        path.write_text(yaml.dump({"feeds": [
+            {"url": "https://a.example", "name": "A"},
+        ]}))
+        monkeypatch.setattr(ingester, "_get_valkey", lambda: FakeIngestValkey())
+        monkeypatch.setattr(
+            ingester, "ingest_feed",
+            lambda config: {"added": 0, "skipped": 0, "errors": 0, "refused": 1},
+        )
+        result = ingester.ingest_all_feeds(str(path))
+        assert result["refused"] == 1
+
+    def test_mirror_carries_declared_licence(self):
+        client = FakeIngestValkey()
+        ingester._sync_feed_influence(client, [
+            {"url": "https://a.example", "name": "A", "licence": "ogl"},
+        ])
+        entry = json.loads(client.data[ingester._FEED_INFLUENCE_KEY]["A"])
+        assert entry["licence"] == "ogl"
+
+    def test_yaml_boolean_is_mistyped_not_absent(self, ingest_env, monkeypatch, caplog):
+        self._add(monkeypatch)
+        ingester.ingest_feed({**self.CONFIG, "licence": False})
+        assert "unrecognised licence 'False'" in caplog.text
+        assert list(ingest_env.data.values())[0]["licence"] == "unknown"
+
+    def test_mirror_drops_unrecognised_and_carries_note(self):
+        client = FakeIngestValkey()
+        ingester._sync_feed_influence(client, [
+            {"url": "https://a.example", "name": "A", "licence": "wtfpl"},
+            {"url": "https://b.example", "name": "B", "licence": True},
+            {"url": "https://c.example", "name": "C", "licence": "ogl",
+             "licence_note": " OGL  checked "},
+        ])
+        entries = {k: json.loads(v) for k, v in client.data[ingester._FEED_INFLUENCE_KEY].items()}
+        assert "licence" not in entries["A"]
+        assert "licence" not in entries["B"]
+        assert entries["C"]["licence"] == "ogl"
+        assert entries["C"]["licence_note"] == "OGL checked"

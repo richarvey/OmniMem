@@ -54,6 +54,27 @@
     <input type="text" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
   </div>
 
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="form-group">
+      <label for="licence">Licence</label>
+      <select id="licence" name="licence" class="form-select">
+        <option value="">Default for namespace</option>
+        {% for value, label in licence_classes %}
+        <option value="{{ value }}"{% if values.licence == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <small style="color:var(--text-muted);margin-top:0.25rem;display:block">
+        May this be redistributed? Defaults to own work, or unknown for knowledge.
+      </small>
+    </div>
+
+    <div class="form-group">
+      <label for="licence_note">Licence note</label>
+      <input type="text" id="licence_note" name="licence_note" class="form-input" maxlength="200"
+             placeholder="Optional: e.g. CC BY 4.0" value="{{ values.licence_note }}">
+    </div>
+  </div>
+
   <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
     <input type="checkbox" name="force" id="force"{% if values.force %} checked{% endif %}>
     <label for="force" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text)">Force save (skip duplicate check)</label>

@@ -22,6 +22,7 @@ import ulid
 
 from .dedup import check_duplicate
 from .extraction import extract_facts, ExtractedFact
+from .licence import LICENCE_UNKNOWN
 from .lifecycle import MemoryState
 
 if TYPE_CHECKING:
@@ -104,18 +105,26 @@ class EnrichmentWorker:
         source_event_date = payload.get("event_date")
         source_created_at = payload.get("created_at")
 
+        # A fact is a derivative of its source, so it carries exactly the
+        # source's redistribution rights — never the namespace default it
+        # lands in. A source with no licence at all yields unknown.
+        source_licence: dict[str, str] = {}
+
         if batch_mode and batch_content:
-            # Batch extraction: all chunks combined into one API call.
-            # If the payload predates the created_at field (queued before an
-            # upgrade), fall back to reading the first chunk's timestamps so
-            # the facts still get a temporal anchor.
-            if not source_created_at and key:
+            # Batch extraction: all chunks combined into one API call. The
+            # first chunk stands in for the document: its licence (every
+            # chunk carries the same one), and — if the payload predates the
+            # created_at field (queued before an upgrade) — its timestamps,
+            # so the facts still get a temporal anchor.
+            if key:
                 rows = self._store.get_fields_multi(
-                    [key], ("event_date", "created_at")
+                    [key], ("event_date", "created_at", "licence", "licence_note")
                 )
                 src = rows[0] if rows and rows[0] else {}
-                source_event_date = source_event_date or src.get("event_date")
-                source_created_at = src.get("created_at")
+                source_licence = _licence_of(src)
+                if not source_created_at:
+                    source_event_date = source_event_date or src.get("event_date")
+                    source_created_at = src.get("created_at")
             facts = extract_facts(batch_content)
         else:
             # Single-key extraction: read content from store
@@ -128,6 +137,7 @@ class EnrichmentWorker:
                 return
             source_event_date = data.get("event_date") or source_event_date
             source_created_at = data.get("created_at") or source_created_at
+            source_licence = _licence_of(data)
             facts = extract_facts(content)
 
         if not facts:
@@ -173,6 +183,7 @@ class EnrichmentWorker:
                 "tags": json.dumps(tags or []),
                 "source_doc_id": source_doc_id,
                 "enriched_from": key,
+                **source_licence,
             }
             if project:
                 fields["project"] = project
@@ -198,6 +209,14 @@ class EnrichmentWorker:
             "Enriched %s: %d facts (%d preferences, %d duplicates skipped) from %d extracted",
             key, stored, preferences, duplicates, len(facts),
         )
+
+
+def _licence_of(source: dict) -> dict[str, str]:
+    """Licence fields a derived fact inherits from its source memory."""
+    inherited = {"licence": source.get("licence") or LICENCE_UNKNOWN}
+    if source.get("licence_note"):
+        inherited["licence_note"] = source["licence_note"]
+    return inherited
 
 
 def enqueue(

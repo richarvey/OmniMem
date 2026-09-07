@@ -17,7 +17,14 @@
     <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
-      <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
+      <td>
+        <span class="badge {{ mem.state }}">{{ mem.state }}</span>
+        {# Only the unclassified case gets a pill: it is the one that asks
+           for action. The class itself is on the detail page. #}
+        {% if mem.licence == 'unknown' %}
+        <span class="badge licence-unknown" title="Redistribution rights not yet classified">unclassified</span>
+        {% endif %}
+      </td>
       <td class="content-cell">{{ (mem.feed_name if source == "rss" else mem.project) or "—" }}</td>
       <td class="date-cell">
         <span class="date-main">{{ mem.updated_date }}</span>

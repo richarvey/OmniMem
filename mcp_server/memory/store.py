@@ -41,24 +41,25 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "reinstate_hints", "effort_score", "outcome", "iterations",
         "abandoned_approaches", "breakthrough", "gotchas", "experience_weight",
         "contradictions", "recall_count", "last_recalled", "event_date",
-        "enriched_from",
+        "enriched_from", "licence", "licence_note",
     ),
     "project": (
         "similarity_score", "content", "project_name", "stack", "state",
         "surface_score", "created_at", "updated_at", "recall_count", "last_recalled",
-        "domains",
+        "domains", "licence", "licence_note",
     ),
     "knowledge": (
         "similarity_score", "content", "source_url", "feed_name", "published_at",
         "topics", "state", "surface_score", "created_at", "updated_at",
         "recall_count", "last_recalled", "expires_at",
         "project", "event_date", "tags", "enriched_from",
+        "licence", "licence_note",
     ),
     "preference": (
         "similarity_score", "content", "project", "scope", "state",
         "surface_score", "created_at", "updated_at", "tags",
         "recall_count", "last_recalled", "source_doc_id",
-        "event_date", "enriched_from",
+        "event_date", "enriched_from", "licence", "licence_note",
     ),
     # Skills are whole-document objects: search returns discovery metadata
     # only, never the body. The canonical body is fetched intact by ID via
@@ -92,6 +93,11 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("iterations"),
             NumericField("experience_weight"),
             NumericField("recall_count"),
+            # Redistribution rights (v6.6.1): one bare class per record, so
+            # the TAG tokeniser sees exactly one value. Indexed on every
+            # writable namespace so "everything still unclassified" and a
+            # future export filter are a tag clause, not a full scan.
+            TagField("licence"),
         ],
     },
     "idx:project": {
@@ -115,6 +121,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             # indexes as unusable tokens. Startup index migration picks the
             # new field up automatically.
             TagField("domains"),
+            TagField("licence"),
         ],
     },
     "idx:knowledge": {
@@ -138,6 +145,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             # indexed so the recall project filter can be pushed down.
             # Startup index migration picks up the new field automatically.
             TagField("project"),
+            TagField("licence"),
         ],
     },
     "idx:preference": {
@@ -156,6 +164,7 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
             NumericField("created_at"),
             NumericField("updated_at"),
             NumericField("recall_count"),
+            TagField("licence"),
         ],
     },
     # Compiled skills (v6). The vector embeds discovery metadata (name +

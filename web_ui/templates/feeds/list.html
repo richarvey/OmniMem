@@ -41,7 +41,7 @@
       <th>URL</th>
       <th>Topics</th>
       <th>Skills</th>
-      <th>Mode</th>
+      <th>Mode &middot; Licence</th>
       <th>Actions</th>
     </tr>
   </thead>
@@ -70,6 +70,13 @@
         {% else %}
         <span style="color:var(--text-muted)">summary</span>
         {% endif %}
+        <div>
+          {% if f.licence == 'unknown' %}
+          <span class="badge licence-unknown" style="margin-left:0" title="Articles ingest with an unknown licence">unclassified</span>
+          {% else %}
+          <span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ f.licence }}</span>
+          {% endif %}
+        </div>
       </td>
       <td class="actions-cell">
         <a href="/feeds/{{ f.index }}/edit" class="btn btn-secondary btn-sm">Edit</a>

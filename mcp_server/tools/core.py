@@ -14,6 +14,12 @@ from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
 from memory.enrichment import enqueue, enqueue_batch
 from memory.embedder import Embedder
+from memory.licence import (
+    LICENCE_UNKNOWN,
+    default_licence,
+    licence_fields,
+    resolve_licence,
+)
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.project_domains import resolve_projects_for_domains
 from memory.recall import RecallPipeline
@@ -89,6 +95,48 @@ def _resolve_mode(mode: str | None) -> str:
     return mode
 
 
+def _resolve_write_licence(licence: str | None, namespace: str) -> dict[str, str]:
+    """Licence hash fields for a write: the declared licence, or the
+    namespace default (own for conversation namespaces, unknown for
+    knowledge). Raises ValueError on an unrecognised identifier."""
+    # An empty string means "not given" (clients that serialise unset
+    # optionals as "" must get the namespace default, not unknown).
+    if not licence:
+        return licence_fields(default_licence(namespace))
+    return licence_fields(*resolve_licence(licence))
+
+
+def _licence_notice(entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """A trailing notice listing results whose licence is still unknown.
+
+    Unknown means nobody has said whether the source may be redistributed.
+    Surfacing it at recall time — when the human has the content in front
+    of them — is how those records get classified; a periodic audit never
+    happens.
+    """
+    # Only stored records count: abandoned-approach warnings and other
+    # synthetic rows carry no licence of their own.
+    unclassified = [
+        e["key"] for e in entries
+        if e.get("licence") == LICENCE_UNKNOWN
+        and e.get("result_type", "memory") in ("memory", "knowledge")
+    ]
+    if not unclassified:
+        return None
+    n = len(unclassified)
+    return {
+        "result_type": "licence_notice",
+        "unclassified": unclassified,
+        "note": (
+            f"{n} result{'s' if n != 1 else ''} above "
+            f"{'have' if n != 1 else 'has'} no recorded redistribution licence. "
+            "If the human can say whether the source may be redistributed, "
+            "record it with set_licence(keys=[...], licence='open'|'restricted'), "
+            "or set_licence(feed_name=...) to classify every article from one feed."
+        ),
+    }
+
+
 def remember(
     content: str,
     project: str | None = None,
@@ -96,6 +144,7 @@ def remember(
     namespace: str = "episodic",
     force: bool = False,
     mode: str | None = None,
+    licence: str | None = None,
 ) -> dict[str, Any]:
     """Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
 
@@ -108,6 +157,15 @@ def remember(
         mode: 'full' (default — extract discrete facts via Claude before storing,
             routing preferences to the preference namespace) or 'raw' (store
             verbatim). Default follows the INGEST_MODE env var.
+        licence: Redistribution rights for the content — 'own' (written here:
+            a decision, a fix, a preference), 'open' (third-party under a
+            redistributable licence), 'restricted' (third-party, not
+            redistributable: paywalled, all rights reserved), or 'unknown'.
+            A recognised identifier ('cc-by-4.0', 'ogl-3.0',
+            'all-rights-reserved') is accepted and kept as a note. Defaults
+            to 'own' for episodic/project/preference and 'unknown' for
+            knowledge. Pass it explicitly whenever the content came from
+            somewhere else — an article, a document, a vendor page.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -116,6 +174,7 @@ def remember(
     _validate_project_name(project)
     _validate_tags(tags)
     mode = _resolve_mode(mode)
+    licence_data = _resolve_write_licence(licence, namespace)
 
     # Full mode: store raw immediately, then enqueue for background
     # fact extraction. Caller gets instant response; enrichment worker
@@ -167,6 +226,7 @@ def remember(
         "created_at": now,
         "updated_at": now,
         "tags": json.dumps(tags or []),
+        **licence_data,
     }
     if project:
         fields["project"] = project
@@ -183,7 +243,9 @@ def remember(
     if _enrich_after:
         enqueue(store, key, namespace, project=project, tags=tags, created_at=now)
 
-    result: dict[str, Any] = {"key": key, "namespace": namespace}
+    result: dict[str, Any] = {
+        "key": key, "namespace": namespace, "licence": licence_data["licence"],
+    }
     if _enrich_after:
         result["enrichment"] = "queued"
     if contradiction_warning:
@@ -199,6 +261,7 @@ def remember_document(
     namespace: str = "episodic",
     chunk_size: int | None = None,
     mode: str | None = None,
+    licence: str | None = None,
 ) -> dict[str, Any]:
     """Index a long-form document by splitting it into chunks and storing each chunk as a memory.
 
@@ -214,6 +277,12 @@ def remember_document(
         tags: Categorisation tags applied to every chunk.
         namespace: 'episodic' (default), 'project', or 'knowledge'.
         chunk_size: Words per chunk for fixed_tokens strategy (default 200).
+        licence: Redistribution rights, applied to every chunk — see remember().
+            Documents are the write most likely to be someone else's work, so
+            say where it came from: 'restricted' for a paywalled or all-rights-
+            reserved source, 'open' (or its identifier, e.g. 'ogl-3.0') for a
+            redistributable one. Defaults to 'own' outside the knowledge
+            namespace and 'unknown' inside it.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -222,6 +291,7 @@ def remember_document(
     _validate_project_name(project)
     _validate_tags(tags)
     mode = _resolve_mode(mode)
+    licence_data = _resolve_write_licence(licence, namespace)
     if chunk_strategy not in CHUNK_STRATEGIES:
         raise ValueError(
             f"Invalid chunk_strategy '{chunk_strategy}'. "
@@ -263,6 +333,7 @@ def remember_document(
             "doc_id": doc_id,
             "chunk_index": str(idx),
             "chunk_strategy": chunk_strategy,
+            **licence_data,
         }
         if project:
             fields["project"] = project
@@ -298,6 +369,7 @@ def remember_document(
         "duplicates_skipped": skipped,
         "namespace": namespace,
         "mode": mode,
+        "licence": licence_data["licence"],
         "enrichment": "batch_queued" if (_enrich_after and _batch_mode) else ("queued" if _enrich_after else "none"),
     }
 
@@ -458,8 +530,15 @@ def recall(
             entry["event_date"] = r.event_date
         if r.enriched_from:
             entry["enriched_from"] = r.enriched_from
+        if r.licence:
+            entry["licence"] = r.licence
+        if r.licence_note:
+            entry["licence_note"] = r.licence_note
         output.append(entry)
 
+    notice = _licence_notice(output)
+    if notice is not None:
+        output.append(notice)
     return output
 
 
@@ -540,6 +619,8 @@ def recall_index(
             entry["tags"] = r.tags
         if r.reinstate_candidate:
             entry["reinstate_candidate"] = True
+        if r.licence:
+            entry["licence"] = r.licence
 
         index_tokens = len(snippet) // 4 + 10  # snippet + metadata overhead
         total_index_tokens += index_tokens
@@ -549,6 +630,9 @@ def recall_index(
         "results": output,
         "token_estimate": {"index": total_index_tokens, "full": total_full_tokens},
     }
+    licence_notice = _licence_notice(output)
+    if licence_notice is not None:
+        payload["licence_notice"] = licence_notice
     if notice is not None:
         payload["domain_filter"] = notice
     elif projects and domain_filter:
@@ -602,6 +686,10 @@ def recall_detail(
                 pass
         if data.get("source_url"):
             entry["source_url"] = data["source_url"]
+        if data.get("licence"):
+            entry["licence"] = data["licence"]
+        if data.get("licence_note"):
+            entry["licence_note"] = data["licence_note"]
         if data.get("breakthrough"):
             entry["breakthrough"] = data["breakthrough"]
         if data.get("effort_score"):

@@ -54,6 +54,7 @@ At the beginning of every session:
 - Call `recall("<problem description>")` — you may find a prior solution, a relevant pattern, or a knowledge article that gives you a head start
 - If a recalled knowledge article seems relevant, mention it: *“I found an article from [source] about X — shall I use that as a research base?”*
 - **When the problem is about a kind of work rather than this project** — a Python gotcha, a CSS layout trap, a Docker build failure — add `domain_filter`: `recall("<problem>", domain_filter="python")` searches every project doing that kind of work. Compiled skills hold the lessons that already cleared the reinforcement gate; the domain filter reaches the raw memories underneath, including the ones that never became a rule. If the reply starts with a `domain_filter_notice` saying the filter was not applied, no project declares that domain and the results you are reading span everything — say so rather than presenting them as a targeted search
+- **If the reply ends with a `licence_notice`**, some results have no recorded redistribution licence — usually RSS articles from a feed that never declared one. When the human can say whether the source may be redistributed (an OGL or CC BY page is open; a paywalled or all-rights-reserved one is restricted), record it: `set_licence(keys=[...], licence="open")`, or `set_licence(feed_name="<feed>", licence="ogl-3.0")` to classify everything from one feed. Do not guess on their behalf — an unknown is honest, a wrong `open` is a liability
 
 **Before suggesting OR agreeing to any library, tool, or architectural approach** — including ones the human proposes:
 
@@ -74,6 +75,8 @@ At the beginning of every session:
 - `episodic` — things that happened: decisions made, work done, bugs fixed (default)
 - `knowledge` — facts, rules, preferences, reference information
 - `project` — scoped context for a specific project
+
+**Say where content came from.** Every memory carries a `licence` — its redistribution rights. `remember()` defaults to `own` (a decision, a fix, a preference written here) and `knowledge` writes to `unknown`, so pass `licence=` whenever the content is someone else's: `licence="restricted"` for a summary of a paywalled document or vendor page, `licence="open"` (or the identifier, `"cc-by-4.0"`, `"ogl-3.0"`) for a redistributable source. `remember_document()` is the write most likely to be third-party material, so always say. This field is about redistribution *rights* only; it says nothing about who may see the memory.
 
 Use this tagging vocabulary for consistency:
 

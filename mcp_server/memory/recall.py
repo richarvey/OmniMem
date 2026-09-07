@@ -146,6 +146,11 @@ class RecallResult:
     contradictions: list[dict] = field(default_factory=list)
     event_date: float | None = None
     enriched_from: str | None = None
+    # Redistribution rights (v6.6.1). Carried through untouched: it is
+    # reported, never scored on — landing the field and changing what recall
+    # does with it are deliberately separate releases.
+    licence: str | None = None
+    licence_note: str | None = None
 
 
 class RecallPipeline:
@@ -360,6 +365,8 @@ class RecallPipeline:
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),
+                    licence=doc.get("licence"),
+                    licence_note=doc.get("licence_note"),
                 ))
 
         # Step 9b: Query expansion — run additional searches for each variant
@@ -544,6 +551,8 @@ class RecallPipeline:
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),
+                    licence=doc.get("licence"),
+                    licence_note=doc.get("licence_note"),
                 ))
         return out
 

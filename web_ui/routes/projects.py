@@ -7,6 +7,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
+from memory.licence import LICENCE_OWN
 from memory.lifecycle import MemoryState, bulk_transition_project
 from memory.project_domains import (
     invalidate_domain_cache,
@@ -253,6 +254,8 @@ async def project_save(request: Request) -> RedirectResponse:
         "state": MemoryState.ACTIVE.value,
         "surface_score": "1.0",
         "updated_at": now,
+        # A project context is our own work — same stamp as the MCP tool.
+        "licence": LICENCE_OWN,
     }
 
     # Check if this is a new project (no created_at)
@@ -318,6 +321,7 @@ async def project_create(request: Request) -> RedirectResponse:
         "surface_score": "1.0",
         "created_at": now,
         "updated_at": now,
+        "licence": LICENCE_OWN,
     }
 
     deps.store.upsert("project", key, fields, vector)

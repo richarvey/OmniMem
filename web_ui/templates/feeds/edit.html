@@ -40,6 +40,28 @@
     </small>
   </div>
 
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="form-group">
+      <label for="feed-licence">Licence</label>
+      <select id="feed-licence" name="licence" class="form-select">
+        <option value="">Not declared (articles ingest as unknown)</option>
+        {% for value, label in licence_classes %}
+        <option value="{{ value }}"{% if feed.licence == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <small style="color:var(--text-muted);margin-top:0.25rem;display:block">
+        Stamped on every article this feed ingests. Open for OGL, CC BY or public
+        domain sources; restricted for paywalled or all-rights-reserved ones.
+      </small>
+    </div>
+
+    <div class="form-group">
+      <label for="feed-licence-note">Licence note</label>
+      <input type="text" id="feed-licence-note" name="licence_note" class="form-input" maxlength="200"
+             value="{{ feed.licence_note }}" placeholder="Optional: e.g. OGL v3.0">
+    </div>
+  </div>
+
   <div class="form-group">
     <label>Skill influence</label>
     <small style="color:var(--text-muted);margin-bottom:0.5rem;display:block">

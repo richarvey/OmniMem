@@ -146,10 +146,13 @@ def _init() -> None:
 
     # One-time migrations: set project_name on ULID-keyed project memories,
     # backfill state on pre-state-field memories (needed by the recall
-    # filter push-down), label pre-existing RSS articles with a project, and
+    # filter push-down), label pre-existing RSS articles with a project,
     # seed work-type domains from each project's stack field so the v6.6
-    # domain filter isn't empty on the first run after an upgrade.
+    # domain filter isn't empty on the first run after an upgrade, and
+    # backfill the v6.6.1 licence field with honest defaults (own for
+    # conversation namespaces, unknown for articles).
     from memory.migrations import (
+        migrate_licence,
         migrate_missing_state,
         migrate_project_domains,
         migrate_project_names,
@@ -160,6 +163,7 @@ def _init() -> None:
     migrate_missing_state(store)
     migrate_rss_article_projects(store)
     migrate_project_domains(store)
+    migrate_licence(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker
@@ -193,6 +197,7 @@ def _register_tools() -> None:
     from tools.contradiction import check_contradictions
     from tools.briefing import briefing
     from tools.knowledge import recent_knowledge, promote_knowledge
+    from tools.licence import set_licence
     from tools.queue import queue_status
     from tools.skills import compile_skill, find_skills, get_skill, bless
 
@@ -252,6 +257,7 @@ def _register_tools() -> None:
     # Knowledge tools
     mcp.tool()(recent_knowledge)
     mcp.tool()(promote_knowledge)
+    mcp.tool()(set_licence)
 
     # Queue tools
     mcp.tool()(queue_status)

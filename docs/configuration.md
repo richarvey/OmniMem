@@ -36,6 +36,7 @@ All configuration is via environment variables, usually set in your `.env` file.
 | `RSS_SCHEDULE_HOURS` | `6` | How often feeds are ingested |
 | `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per cycle |
 | `RSS_MAX_DIGEST_ENTRIES` | `2` | Entries ingested per cycle for feeds set to `mode: digest` in feeds.yml |
+| `RSS_REQUIRE_LICENCE` | `false` | Refuse feeds that declare no usable `licence:` in feeds.yml instead of ingesting their articles as `licence=unknown`. The refusal happens before any fetch and is counted under `refused` in the ingest stats |
 | `FEEDS_CONFIG_PATH` | `/app/feeds.yml` | Path to feeds.yml inside the RSS worker and web UI containers |
 | `FEEDS_WATCH_INTERVAL` | `10` | Seconds between mtime polls of feeds.yml for change detection (inotify doesn't work on Docker bind mounts) |
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |

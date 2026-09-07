@@ -256,6 +256,11 @@ async def restore_backup(request: Request) -> RedirectResponse:
         data = backup.get("data", {})
         # restore_all returns (restored, skipped, restored_keys).
         restored, skipped, restored_keys = deps.store.restore_all(data)
+        # Pre-6.6.1 dumps carry no licence; backfill now rather than at
+        # the next restart (mirrors the MCP restore tool).
+        from memory.migrations import migrate_licence
+
+        migrate_licence(deps.store)
 
         # Re-embed restored memories so they are searchable again — backups
         # exclude the binary vector field, so restored hashes have no embedding

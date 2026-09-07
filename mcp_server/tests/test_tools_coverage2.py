@@ -599,4 +599,4 @@ class TestIngesterBranches:
         monkeypatch.setattr(ingester, "feedparser", broken)
 
         stats = ingester.ingest_feed({"url": "http://feed", "name": "broken"})
-        assert stats == {"added": 0, "skipped": 0, "errors": 1}
+        assert stats == {"added": 0, "skipped": 0, "errors": 1, "refused": 0}

@@ -201,6 +201,14 @@ def restore_from_file(
         logger.error("Restore failed: %s", exc)
         return {"status": "error", "message": "Restore operation failed"}
 
+    # A dump from before 6.6.1 carries no licence field, and the startup
+    # backfill only runs at startup — without this, restored records would
+    # sit in an invisible third state (neither classified nor "unknown")
+    # until the next restart. Idempotent, so a modern dump costs one scan.
+    from memory.migrations import migrate_licence
+
+    migrate_licence(store)
+
     # Re-embed restored memories so they are immediately searchable.
     # Backups exclude binary vector data (decode_responses=True prevents
     # round-tripping raw bytes), so we regenerate embeddings from content.

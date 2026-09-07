@@ -134,7 +134,7 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
         return new_articles
 
     all_data = store.get_fields_multi(
-        keys, ("state", "created_at", "content", "source_url", "feed_name"),
+        keys, ("state", "created_at", "content", "source_url", "feed_name", "licence"),
     )
     for key, data in zip(keys, all_data):
         if data is None:
@@ -149,6 +149,7 @@ def _get_new_knowledge(store, since_days: int = 7) -> list[dict[str, Any]]:
                 "content": data.get("content", "")[:80],
                 "source_url": data.get("source_url"),
                 "feed_name": data.get("feed_name"),
+                "licence": data.get("licence"),
             }))
 
     return new_articles[:10]

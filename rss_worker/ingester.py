@@ -54,6 +54,125 @@ def _resolve_project(feed_config: dict[str, Any]) -> str:
         return _DEFAULT_PROJECT
     return project
 
+# Redistribution rights (v6.6.1). Every article is stamped with a licence
+# class from what its feed declares (`licence:` in feeds.yml), because the
+# records that can't be redistributed are impossible to pick out cheaply
+# once they've accrued. A feed that declares nothing yields "unknown" —
+# recall then asks a human to classify — unless RSS_REQUIRE_LICENCE is on,
+# in which case the feed is refused outright.
+#
+# This table is a deliberate verbatim copy of LICENCE_ALIASES in
+# mcp_server/memory/licence.py (the worker image doesn't ship that
+# package); tests/test_licence.py asserts the two are identical.
+_LICENCE_UNKNOWN = "unknown"
+_LICENCE_ALIASES: dict[str, tuple[str, str | None]] = {
+    "own": ("own", None),
+    "open": ("open", None),
+    "restricted": ("restricted", None),
+    "unknown": ("unknown", None),
+    "self": ("own", None),
+    "internal": ("own", None),
+    "in-house": ("own", None),
+    "original": ("own", None),
+    "": ("unknown", None),
+    "undetermined": ("unknown", None),
+    "unclassified": ("unknown", None),
+    "tbd": ("unknown", None),
+    "ogl": ("open", "OGL v3.0"),
+    "ogl-3": ("open", "OGL v3.0"),
+    "ogl-3.0": ("open", "OGL v3.0"),
+    "ogl-uk-3.0": ("open", "OGL v3.0"),
+    "open-government-licence": ("open", "OGL v3.0"),
+    "public-domain": ("open", "Public domain"),
+    "pd": ("open", "Public domain"),
+    "cc0": ("open", "CC0 1.0"),
+    "cc0-1.0": ("open", "CC0 1.0"),
+    "cc-by": ("open", "CC BY 4.0"),
+    "cc-by-4.0": ("open", "CC BY 4.0"),
+    "cc-by-3.0": ("open", "CC BY 3.0"),
+    "cc-by-sa": ("open", "CC BY-SA 4.0"),
+    "cc-by-sa-4.0": ("open", "CC BY-SA 4.0"),
+    "cc-by-sa-3.0": ("open", "CC BY-SA 3.0"),
+    "mit": ("open", "MIT"),
+    "apache-2.0": ("open", "Apache 2.0"),
+    "apache": ("open", "Apache 2.0"),
+    "bsd": ("open", "BSD"),
+    "bsd-2-clause": ("open", "BSD 2-Clause"),
+    "bsd-3-clause": ("open", "BSD 3-Clause"),
+    "gfdl": ("open", "GFDL"),
+    "cc-by-nc": ("restricted", "CC BY-NC 4.0"),
+    "cc-by-nc-4.0": ("restricted", "CC BY-NC 4.0"),
+    "cc-by-nd": ("restricted", "CC BY-ND 4.0"),
+    "cc-by-nd-4.0": ("restricted", "CC BY-ND 4.0"),
+    "cc-by-nc-sa": ("restricted", "CC BY-NC-SA 4.0"),
+    "cc-by-nc-sa-4.0": ("restricted", "CC BY-NC-SA 4.0"),
+    "cc-by-nc-nd": ("restricted", "CC BY-NC-ND 4.0"),
+    "cc-by-nc-nd-4.0": ("restricted", "CC BY-NC-ND 4.0"),
+    "all-rights-reserved": ("restricted", "All rights reserved"),
+    "arr": ("restricted", "All rights reserved"),
+    "copyright": ("restricted", "All rights reserved"),
+    "proprietary": ("restricted", "Proprietary"),
+    "commercial": ("restricted", "Commercial"),
+    "paywalled": ("restricted", "Paywalled"),
+    "crown-copyright": ("restricted", "Crown copyright (not under OGL)"),
+}
+_MAX_LICENCE_NOTE = 200
+
+
+def _licence_required() -> bool:
+    return os.getenv("RSS_REQUIRE_LICENCE", "").strip().lower() in ("true", "1", "yes")
+
+
+def _licence_key(raw: Any) -> str:
+    """Alias-table lookup key, mirroring memory/licence.py _normalise_key.
+
+    A non-string YAML value (`licence: no` parses as False) is a mistyped
+    declaration, not an absent one, so it is stringified rather than folded
+    to the empty-string alias — it then misses the table and gets logged.
+    """
+    declared = raw if isinstance(raw, str) else ("" if raw is None else str(raw))
+    return "-".join(declared.strip().lower().replace("_", " ").replace("-", " ").split())
+
+
+def _resolve_licence(feed_config: dict[str, Any]) -> dict[str, str] | None:
+    """Licence hash fields for a feed's articles, or None to refuse the feed.
+
+    Mirrors memory/licence.py resolve_licence: the declared value resolves
+    case- and separator-insensitively through the alias table, a recognised
+    identifier keeps its canonical spelling as ``licence_note``, and an
+    explicit ``licence_note:`` on the feed overrides that. An unrecognised
+    declaration is logged and treated as unknown rather than guessed at.
+    With RSS_REQUIRE_LICENCE on, a feed with no usable declaration is
+    refused — the ingest-time gate for stores that must not accrue records
+    nobody has vetted.
+    """
+    raw = feed_config.get("licence")
+    declared = raw if isinstance(raw, str) else ("" if raw is None else str(raw))
+    resolved = _LICENCE_ALIASES.get(_licence_key(raw))
+    if resolved is None:
+        logger.warning(
+            "Feed %s: unrecognised licence %r, treating as %s",
+            feed_config.get("name", feed_config.get("url", "?")), declared, _LICENCE_UNKNOWN,
+        )
+        resolved = (_LICENCE_UNKNOWN, None)
+    licence_class, note = resolved
+
+    if licence_class == _LICENCE_UNKNOWN and _licence_required():
+        logger.error(
+            "Feed %s refused: RSS_REQUIRE_LICENCE is on and the feed declares "
+            "no usable licence (got %r)",
+            feed_config.get("name", feed_config.get("url", "?")), declared,
+        )
+        return None
+
+    explicit_note = " ".join(str(feed_config.get("licence_note") or "").split())
+    note = (explicit_note or note or "")[:_MAX_LICENCE_NOTE]
+    fields = {"licence": licence_class}
+    if note:
+        fields["licence_note"] = note
+    return fields
+
+
 _embedder: SentenceTransformer | None = None
 _valkey_client: valkey.Valkey | None = None
 
@@ -90,6 +209,15 @@ def _sync_feed_influence(client: valkey.Valkey, feeds: list[dict[str, Any]]) -> 
             entry["mode"] = str(feed["mode"])
         if feed.get("project"):
             entry["project"] = str(feed["project"])
+        # Only a resolvable licence is mirrored (see memory/feed_influence.py
+        # normalise_feed_entry — an unrecognised value would break skill
+        # bundle import on the receiving side).
+        raw_licence = feed.get("licence")
+        if raw_licence is not None and raw_licence != "" and _licence_key(raw_licence) in _LICENCE_ALIASES:
+            entry["licence"] = str(raw_licence)
+            note = " ".join(str(feed.get("licence_note") or "").split())
+            if note:
+                entry["licence_note"] = note[:_MAX_LICENCE_NOTE]
         mapping[name] = json.dumps(entry, ensure_ascii=False, sort_keys=True)
 
     pipe = client.pipeline(transaction=False)
@@ -254,7 +382,14 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
     max_articles = int(os.getenv("RSS_MAX_ARTICLES_PER_FEED", "20"))
     max_digest = int(os.getenv("RSS_MAX_DIGEST_ENTRIES", "2"))
 
-    stats = {"added": 0, "skipped": 0, "errors": 0}
+    stats = {"added": 0, "skipped": 0, "errors": 0, "refused": 0}
+
+    # The licence gate runs before any network I/O: a refused feed costs
+    # nothing and, more to the point, stores nothing.
+    licence_fields = _resolve_licence(feed_config)
+    if licence_fields is None:
+        stats["refused"] = 1
+        return stats
 
     try:
         feed = feedparser.parse(url)
@@ -385,6 +520,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
                 "created_at": now,
                 "updated_at": now,
                 "expires_at": expires_at,
+                **licence_fields,
                 "vector": vector_bytes,
             }
             store_pipe.hset(article["key"], mapping=fields)
@@ -435,7 +571,7 @@ def ingest_all_feeds(feeds_config_path: str = "/app/feeds.yml") -> dict[str, Any
         logger.warning("No feeds configured in %s", feeds_config_path)
         return {"status": "no_feeds", "feeds_processed": 0}
 
-    total_stats: dict[str, int] = {"added": 0, "skipped": 0, "errors": 0}
+    total_stats: dict[str, int] = {"added": 0, "skipped": 0, "errors": 0, "refused": 0}
 
     for feed_config in feeds:
         try:
@@ -447,8 +583,9 @@ def ingest_all_feeds(feeds_config_path: str = "/app/feeds.yml") -> dict[str, Any
             total_stats["errors"] += 1
 
     logger.info(
-        "Ingestion complete: feeds=%d, added=%d, skipped=%d, errors=%d",
+        "Ingestion complete: feeds=%d, added=%d, skipped=%d, errors=%d, refused=%d",
         len(feeds), total_stats["added"], total_stats["skipped"], total_stats["errors"],
+        total_stats["refused"],
     )
 
     return {

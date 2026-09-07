@@ -8,6 +8,14 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
+from memory.licence import (
+    LICENCE_CLASSES,
+    LICENCE_LABELS,
+    classify_memories,
+    is_classifiable_key,
+    resolve_licence,
+    validate_licence_note,
+)
 from memory.tags import retag_memory
 
 from .. import deps
@@ -96,6 +104,9 @@ async def memory_detail(request: Request) -> HTMLResponse:
         "deprioritised_reason": data.get("deprioritised_reason", ""),
         "source_url": data.get("source_url", ""),
         "feed_name": data.get("feed_name", ""),
+        "licence": data.get("licence") or "",
+        "licence_label": LICENCE_LABELS.get(data.get("licence") or "", "Not recorded"),
+        "licence_note": data.get("licence_note") or "",
         "recall_count": int(data.get("recall_count") or 0),
         "last_recalled": fmt_ts(data.get("last_recalled")) if data.get("last_recalled") else "Never",
         "created_at": fmt_ts(data.get("created_at")),
@@ -107,9 +118,57 @@ async def memory_detail(request: Request) -> HTMLResponse:
         request=request,
         memory=memory,
         tag_error=request.query_params.get("tag_error", ""),
+        licence_error=request.query_params.get("licence_error", ""),
+        licence_classes=[(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES],
         current_page="memories",
     )
     return HTMLResponse(content)
+
+
+async def memory_licence(request: Request) -> RedirectResponse:
+    """POST /memory/{key:path}/licence — record a memory's redistribution rights.
+
+    Same engine as the set_licence MCP tool (memory/licence.py
+    classify_memories): the class must resolve, the note is optional and
+    bounded, facts extracted from the memory follow it, and a
+    reclassification never keeps the old class's note. Only the four
+    licence-bearing namespaces are accepted — skills are derived, and
+    nothing else under a mem:/meta: prefix is a memory.
+    """
+    key = request.path_params["key"]
+    if not is_classifiable_key(key):
+        return RedirectResponse(url=f"/memory/{key}", status_code=303)
+    current = deps.store.get_fields_multi([key], ("licence", "licence_note"))[0]
+    if current is None:
+        return RedirectResponse(url=f"/memory/{key}", status_code=303)
+
+    form = await request.form()
+    try:
+        licence_class, derived_note = resolve_licence(form.get("licence", ""))
+        note = validate_licence_note(form.get("licence_note", ""))
+        note = _note_for_reclassification(current, licence_class, note) or derived_note
+        classify_memories(deps.store, [key], licence_class, note)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/memory/{key}?licence_error={quote(str(exc))}", status_code=303
+        )
+    return RedirectResponse(url=f"/memory/{key}", status_code=303)
+
+
+def _note_for_reclassification(
+    current: dict, new_class: str, submitted: str | None,
+) -> str | None:
+    """Drop a pre-filled note that belonged to the class being replaced.
+
+    The form pre-fills the stored note, so switching Open → Restricted and
+    pressing Save would otherwise carry "CC BY 4.0" onto the restricted
+    record. A note the human actually typed (different from what was
+    pre-filled) is kept.
+    """
+    if (submitted and new_class != (current.get("licence") or "")
+            and submitted == (current.get("licence_note") or "")):
+        return None
+    return submitted
 
 
 async def memory_retag(request: Request) -> RedirectResponse:
@@ -131,5 +190,6 @@ async def memory_retag(request: Request) -> RedirectResponse:
 routes = [
     # Must precede the greedy {key:path} detail route
     Route("/memory/{key:path}/tags", memory_retag, methods=["POST"]),
+    Route("/memory/{key:path}/licence", memory_licence, methods=["POST"]),
     Route("/memory/{key:path}", memory_detail),
 ]

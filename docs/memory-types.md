@@ -46,6 +46,8 @@ These appear on every namespace unless noted:
 | `vector` | 1,536-byte float32 blob | Embedding. What gets embedded varies by type (see each spec). |
 | `recall_count` | stringified int | Incremented (HINCRBY) each time recall returns the memory. Feeds `/telemetry` and `/metrics`. |
 | `last_recalled` | unix seconds string | Set alongside `recall_count`. |
+| `licence` | `own` \| `open` \| `restricted` \| `unknown` | Redistribution rights (v6.6.1), set at write time and never derived from ranking. `own` for conversation-sourced writes, what the feed declares for RSS articles (`unknown` if it declares nothing), inherited from the source for extracted facts. Indexed as a tag on every writable namespace. Backfilled on upgrade: conversation namespaces `own`, articles and untraceable knowledge `unknown`. Skills carry none — a compiled skill is derived from its sources. |
+| `licence_note` | string, max 200 chars | Optional detail alongside `licence`: the specific identifier (`OGL v3.0`, `CC BY 4.0`) or where it was checked. Written as `""` when a reclassification clears it. |
 
 ## Lifecycle states
 
