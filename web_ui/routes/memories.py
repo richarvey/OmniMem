@@ -14,6 +14,7 @@ from memory.provenance import PROVENANCE_CHOICES, PROVENANCE_CLASSES
 from .. import deps
 
 PAGE_SIZE = 25
+_LISTABLE_NAMESPACES = ("episodic", "project", "knowledge", "preference")
 
 
 def _get_all_memories(
@@ -28,7 +29,9 @@ def _get_all_memories(
     else — extracted facts and remember() writes never have one. licence
     narrows to one redistribution class; "unknown" is the classify queue.
     """
-    ns_list = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
+    # Only the four memory namespaces are listable here — skills have their
+    # own pages and carry no classification.
+    ns_list = [namespace] if namespace in _LISTABLE_NAMESPACES else list(_LISTABLE_NAMESPACES)
     memories = []
     projects = set()
 
@@ -121,6 +124,8 @@ def _recall_heat(last_recalled: str | None) -> str:
 async def memories_list(request: Request) -> HTMLResponse:
     """GET /memories — browse with filters and pagination."""
     namespace = request.query_params.get("namespace", "")
+    if namespace not in _LISTABLE_NAMESPACES:
+        namespace = ""
     state = request.query_params.get("state", "")
     project = request.query_params.get("project", "")
     source = request.query_params.get("source", "")

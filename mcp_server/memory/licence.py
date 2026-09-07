@@ -216,10 +216,12 @@ def effective_licence(doc: dict, namespace: str) -> str:
 
     A read-time fallback for records the backfill has not reached — written
     by a worker image that predates the field during a rolling upgrade, or
-    read between an upgrade and the restart that backfills. Mirrors
-    migrate_licence exactly, so a record reports the same value before and
-    after the backfill: an article or an imported memory is unknown, a
-    conversation write or a fact extracted from one is own.
+    read between an upgrade and the restart that backfills. Follows
+    migrate_licence's rules: an article or an imported memory is unknown, a
+    conversation write is own. A fact is own too — its source is always a
+    conversation write — with one gap: this cannot consult the source, so a
+    fact whose source was explicitly classified open or restricted reads
+    own until the backfill or a cascade reaches it.
     An out-of-vocabulary stored value reads as absent rather than passing
     through, so a filter can never fail to match what recall reports.
     """

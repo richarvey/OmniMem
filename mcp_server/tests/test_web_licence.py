@@ -52,6 +52,19 @@ class TestMemoriesList:
         assert "licence-unknown" in resp.text
         assert "mem:episodic:01RAW" in web_client.get("/memories?licence=own").text
 
+    def test_skill_namespace_is_not_listable(self, web_client, fake_store, fake_embedder):
+        import time
+        now = str(time.time())
+        fake_store.upsert("skill", "mem:skill:gen:python-local", {
+            "name": "python-local", "state": "active", "generated": "true", "body": "---\n",
+            "created_at": now, "updated_at": now, "content": "skill",
+        }, fake_embedder.embed("python"))
+        _seed(fake_store, fake_embedder)
+        resp = web_client.get("/memories?namespace=skill")
+        assert resp.status_code == 200
+        assert "mem:skill:gen:python-local" not in resp.text
+        assert "mem:episodic:01O" in resp.text  # falls back to all four namespaces
+
     def test_bad_licence_filter_is_ignored(self, web_client, fake_store, fake_embedder):
         _seed(fake_store, fake_embedder)
         resp = web_client.get("/memories?licence=cc-by")

@@ -175,6 +175,13 @@ class TestMigrateLicence:
         # enriched), so own — the same answer the read-time fallback gives
         assert fake_store.get("mem:knowledge:01F3")["licence"] == "own"
 
+    def test_imported_fact_is_unknown_not_own(self, fake_store):
+        # A fact that arrived in a bundle: its source lives on another
+        # instance, and imported means unknown whatever the namespace
+        _put(fake_store, "mem:knowledge:01IF", enriched_from="mem:episodic:REMOTE", imported_at="1")
+        migrate_licence(fake_store)
+        assert fake_store.get("mem:knowledge:01IF")["licence"] == "unknown"
+
     def test_article_with_enriched_from_is_still_an_article(self, fake_store):
         # An RSS article never carries enriched_from, but if one did the
         # feed_name must win: it is third-party content, not a derivative
@@ -823,6 +830,20 @@ class TestEnrichmentPayloadClassification:
         assert facts and facts[0]["licence"] == "restricted"
         assert facts[0]["licence_note"] == "EULA"
         assert facts[0]["provenance"] == "retrieved"
+
+    def test_live_record_beats_payload_snapshot(self, monkeypatch, fake_store, fake_embedder):
+        """A reclassification between enqueue and processing is inherited;
+        the payload only fills in what the record lacks."""
+        self._facts(monkeypatch)
+        store_memory(fake_store, fake_embedder, "mem:episodic:01SRC", "content")
+        fake_store.set_fields("mem:episodic:01SRC", {"licence": "restricted"})
+        EnrichmentWorker(fake_store, fake_embedder)._enrich({
+            "key": "mem:episodic:01SRC", "namespace": "episodic",
+            "classification": {"licence": "own", "provenance": "asserted"},
+        })
+        facts = [fake_store.get(k) for k in fake_store.scan_prefix("mem:knowledge:")]
+        assert facts[0]["licence"] == "restricted"   # live record
+        assert facts[0]["provenance"] == "asserted"  # payload filled the gap
 
     def test_remember_document_queues_its_classification(self, fake_store, monkeypatch):
         import json

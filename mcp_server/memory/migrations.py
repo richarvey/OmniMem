@@ -210,16 +210,18 @@ def migrate_licence(store) -> None:
     knowledge_keys = store.scan_prefix("mem:knowledge:")
     knowledge_by_value: dict[str, list[str]] = {}
     rows = store.get_fields_multi(
-        knowledge_keys, ("licence", "feed_name", "enriched_from"),
+        knowledge_keys, ("licence", "feed_name", "enriched_from", "imported_at"),
     )
     for key, row in zip(knowledge_keys, rows):
         row = row or {}
         if row.get("licence"):
             continue
         source = row.get("enriched_from")
-        if source and not row.get("feed_name"):
+        if source and not row.get("feed_name") and not row.get("imported_at"):
             pending_facts.append((key, source))
         else:
+            # Articles, plain writes, and anything imported — including an
+            # imported fact, whose source lives on another instance.
             knowledge_by_value.setdefault(LICENCE_UNKNOWN, []).append(key)
 
     inherited = 0

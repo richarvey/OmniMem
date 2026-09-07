@@ -108,9 +108,10 @@ class EnrichmentWorker:
 
         # A fact is a derivative of its source, so it carries exactly the
         # source's redistribution rights and provenance — never the
-        # namespace defaults it lands in. The write that queued the job
-        # already knew them, so they ride in the payload; the store read is
-        # the fallback for jobs queued before an upgrade.
+        # namespace defaults it lands in. The live record wins (a
+        # reclassification between enqueue and now must be inherited); the
+        # payload, written by the call that queued the job, fills in for a
+        # source that is gone or was never stamped.
         source_licence: dict[str, str] = {}
         declared = payload.get("classification")
 
@@ -125,7 +126,7 @@ class EnrichmentWorker:
                     [key], ("event_date", "created_at", "licence", "licence_note", "provenance")
                 )
                 src = rows[0] if rows and rows[0] else {}
-                source_licence = _licence_of(declared or src)
+                source_licence = _licence_of({**(declared or {}), **src})
                 if not source_created_at:
                     source_event_date = source_event_date or src.get("event_date")
                     source_created_at = src.get("created_at")
@@ -141,7 +142,7 @@ class EnrichmentWorker:
                 return
             source_event_date = data.get("event_date") or source_event_date
             source_created_at = data.get("created_at") or source_created_at
-            source_licence = _licence_of(declared or data)
+            source_licence = _licence_of({**(declared or {}), **data})
             facts = extract_facts(content)
 
         if not facts:

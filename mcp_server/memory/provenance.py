@@ -141,11 +141,12 @@ def effective_provenance(doc: dict, namespace: str, key: str | None = None) -> s
     A read-time fallback for records the backfill has not reached — an
     article ingested by a worker image that predates the field during a
     rolling upgrade, or a read between an upgrade and the restart that
-    backfills. Mirrors migrate_provenance exactly, so a record reports the
-    same value before and after the backfill: an article is retrieved, a
-    preference or a project context entry (its key is mem:project:{name})
-    asserted, and everything else — a fact whose source can't be consulted
-    here, a legacy plain knowledge write, an episodic memory — concluded.
+    backfills. Follows migrate_provenance's rules: an article is retrieved,
+    a preference or a project context entry (its key is mem:project:{name})
+    asserted, and everything else — a legacy plain knowledge write, an
+    episodic memory — concluded. A fact is concluded too, since its source
+    can't be consulted here; the backfill inherits the source's class, so
+    a fact of a preference reads concluded until then.
     Note this is NOT the write-time default (a new plain knowledge write is
     retrieved): an unstamped record is by definition a legacy one. An
     out-of-vocabulary stored value reads as absent rather than passing
