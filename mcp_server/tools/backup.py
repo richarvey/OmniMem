@@ -205,9 +205,10 @@ def restore_from_file(
     # backfill only runs at startup — without this, restored records would
     # sit in an invisible third state (neither classified nor "unknown")
     # until the next restart. Idempotent, so a modern dump costs one scan.
-    from memory.migrations import migrate_licence
+    from memory.migrations import migrate_licence, migrate_provenance
 
     migrate_licence(store)
+    migrate_provenance(store)
 
     # Re-embed restored memories so they are immediately searchable.
     # Backups exclude binary vector data (decode_responses=True prevents

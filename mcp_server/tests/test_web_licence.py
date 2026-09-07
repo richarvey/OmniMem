@@ -48,9 +48,23 @@ class TestMemoriesList:
 
     def test_filter_labels_are_associated(self, web_client):
         resp = web_client.get("/memories")
-        for name in ("namespace", "state", "project", "licence", "sort"):
+        for name in ("namespace", "state", "project", "licence", "provenance", "sort"):
             assert f'for="filter-{name}"' in resp.text
             assert f'id="filter-{name}"' in resp.text
+
+    def test_every_filter_carries_every_other_filter(self, web_client):
+        """Changing one dropdown must not silently reset another."""
+        import re
+        html = web_client.get("/memories").text
+        names = ("namespace", "state", "project", "licence", "provenance", "sort")
+        for name in names:
+            include = re.search(
+                rf'name="{name}"\s+hx-get="/memories"[^>]*hx-include="([^"]+)"', html,
+            ).group(1)
+            for other in names:
+                if other != name:
+                    assert f"[name='{other}']" in include, (name, other)
+            assert "[name='source']" in include
 
     def test_filter_survives_in_pagination_params(self, web_client, fake_store, fake_embedder):
         for i in range(30):

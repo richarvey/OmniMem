@@ -117,6 +117,10 @@ _LICENCE_ALIASES: dict[str, tuple[str, str | None]] = {
     "crown-copyright": ("restricted", "Crown copyright (not under OGL)"),
 }
 _MAX_LICENCE_NOTE = 200
+# Provenance class (v6.6.2): an ingested article always comes from an
+# external source. Must match PROVENANCE_RETRIEVED in
+# mcp_server/memory/provenance.py.
+_PROVENANCE_RETRIEVED = "retrieved"
 
 
 def _licence_required() -> bool:
@@ -521,6 +525,7 @@ def ingest_feed(feed_config: dict[str, Any]) -> dict[str, int]:
                 "updated_at": now,
                 "expires_at": expires_at,
                 **licence_fields,
+                "provenance": _PROVENANCE_RETRIEVED,
                 "vector": vector_bytes,
             }
             store_pipe.hset(article["key"], mapping=fields)

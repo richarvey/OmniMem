@@ -26,6 +26,7 @@ Written by the RSS worker. Keyed by `sha256(article_url)[:16]` for URL-level ded
 | `expires_at` | unix seconds string | yes | `created_at + MAX_KNOWLEDGE_AGE_DAYS` (default 30 days). Auto-maintenance archives articles past this. Only records with **both** `feed_name` and `expires_at` are ever auto-archived; promotion clears it. |
 | `licence` | licence class | yes | What the feed declares via `licence:` in feeds.yml, resolved through the alias table (`ogl-3.0` → `open`); `unknown` when the feed declares nothing. With `RSS_REQUIRE_LICENCE=true` an undeclared feed is refused instead. Pre-v6.6.1 articles are backfilled as `unknown`. |
 | `licence_note` | string | no | The canonical identifier when the feed declared one (`OGL v3.0`), or the feed's explicit `licence_note:`. |
+| `provenance` | `retrieved` | yes | Always `retrieved` for an ingested article. |
 | `vector` | 384-dim float32 blob | yes | Embedding of the summary. |
 
 ## 2. Extracted facts (enrichment)
@@ -45,13 +46,14 @@ When `INGEST_MODE=full`, `remember()` stores the raw memory and queues it; the e
 | `project` | string | Inherited from the source. |
 | `event_date` | unix seconds string | Fallback chain: the fact's own extracted date → the source's `event_date` → the source's `created_at`. Keeps temporal queries able to find extracted facts. |
 | `licence` / `licence_note` | licence class / string | Inherited from the source memory — a fact is a derivative and has exactly its source's rights. A source with no licence yields `unknown`. |
+| `provenance` | provenance class | Inherited from the source memory — extraction is restatement, not reasoning, so a fact of something the human asserted is still asserted. A source with no provenance yields `concluded`. |
 | `vector` | 384-dim float32 blob | Embedding of the fact text. |
 
 Facts are dedup-checked (cosine 0.92) against the target namespace before writing.
 
 ## 3. Manual writes
 
-`remember(namespace="knowledge")` stores the standard core fields (`content`, `state`, `surface_score`, `experience_weight`, `created_at`, `updated_at`, `tags`, optional `project`, `licence`, `vector`) under a ULID key. No `feed_name` and no `expires_at`, so manual knowledge never auto-expires. Knowledge writes are never queued for enrichment (facts extracting facts would recurse). The `licence` defaults to `unknown` here — knowledge is the namespace that routinely holds third-party material — so pass `licence=` when you know where the content came from.
+`remember(namespace="knowledge")` stores the standard core fields (`content`, `state`, `surface_score`, `experience_weight`, `created_at`, `updated_at`, `tags`, optional `project`, `licence`, `vector`) under a ULID key. No `feed_name` and no `expires_at`, so manual knowledge never auto-expires. Knowledge writes are never queued for enrichment (facts extracting facts would recurse). The `licence` defaults to `unknown` here — knowledge is the namespace that routinely holds third-party material — so pass `licence=` when you know where the content came from. `provenance` defaults to `retrieved` for a new write; a legacy plain knowledge write is backfilled `concluded` on upgrade, because it carries no evidence of where it came from and the system produced it.
 
 ## Promotion fields (v6.2, added by `promote_knowledge()`)
 
@@ -109,8 +111,8 @@ promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python", rules=[
 
 ## Indexed fields
 
-`idx:knowledge` indexes: `vector` (HNSW cosine), `feed_name` (tag), `topics` (tag), `state` (tag), `project` (tag), `licence` (tag), `published_at`, `surface_score`, `created_at`, `updated_at`, `recall_count`, `expires_at` (numeric).
+`idx:knowledge` indexes: `vector` (HNSW cosine), `feed_name` (tag), `topics` (tag), `state` (tag), `project` (tag), `licence` (tag), `provenance` (tag), `published_at`, `surface_score`, `created_at`, `updated_at`, `recall_count`, `expires_at` (numeric).
 
 ## Search return whitelist
 
-`_NAMESPACE_RETURN_FIELDS["knowledge"]` returns `content`, `source_url`, `feed_name`, `published_at`, `topics`, `state`, `surface_score`, timestamps, recall counters, `expires_at`, `project`, `event_date`, `tags`, `enriched_from`, `licence`, and `licence_note`. Notably absent: `title`, `skill_domains`, `promoted_at`, `skill_rules` — those are fetched by key where needed.
+`_NAMESPACE_RETURN_FIELDS["knowledge"]` returns `content`, `source_url`, `feed_name`, `published_at`, `topics`, `state`, `surface_score`, timestamps, recall counters, `expires_at`, `project`, `event_date`, `tags`, `enriched_from`, `licence`, `licence_note`, and `provenance`. Notably absent: `title`, `skill_domains`, `promoted_at`, `skill_rules` — those are fetched by key where needed.

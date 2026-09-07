@@ -8,6 +8,7 @@ from collections import Counter
 from typing import Any
 
 from memory.licence import LICENCE_OWN
+from memory.provenance import PROVENANCE_ASSERTED, PROVENANCE_CONCLUDED
 from memory.lifecycle import MemoryState
 from memory.project_domains import (
     invalidate_domain_cache,
@@ -89,8 +90,10 @@ def set_project_context(
         "created_at": now,
         "updated_at": now,
         # A project context is written by the human or the agent about their
-        # own work — ours to redistribute.
+        # own work — ours to redistribute, and a statement of what the
+        # project is rather than an inference about it.
         "licence": LICENCE_OWN,
+        "provenance": PROVENANCE_ASSERTED,
     }
     if notes:
         fields["notes"] = notes
@@ -736,6 +739,14 @@ def compile_project_context(
             "surface_score": "1.0",
             "updated_at": now,
             "licence": LICENCE_OWN,
+            # A compiled draft is the system's synthesis of the memories,
+            # not a statement the human made — set_project_context() is the
+            # asserted path. But a recompile carries the existing
+            # description, stack and goals forward verbatim, so it carries
+            # the provenance a human already vouched for as well.
+            "provenance": (
+                (existing_data or {}).get("provenance") or PROVENANCE_CONCLUDED
+            ),
         }
         if existing_data is None:
             fields["created_at"] = now

@@ -20,7 +20,7 @@
     <label for="filter-namespace">Namespace</label>
     <select id="filter-namespace" class="form-select" name="namespace"
             hx-get="/memories" hx-target="#results" hx-push-url="true"
-            hx-include="[name='state'],[name='project'],[name='sort'],[name='source'],[name='licence']">
+            hx-include="[name='state'],[name='project'],[name='sort'],[name='source'],[name='licence'],[name='provenance']">
       <option value="">All</option>
       <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
       <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
@@ -32,7 +32,7 @@
     <label for="filter-state">State</label>
     <select id="filter-state" class="form-select" name="state"
             hx-get="/memories" hx-target="#results" hx-push-url="true"
-            hx-include="[name='namespace'],[name='project'],[name='sort'],[name='source'],[name='licence']">
+            hx-include="[name='namespace'],[name='project'],[name='sort'],[name='source'],[name='licence'],[name='provenance']">
       <option value="">All</option>
       <option value="active"{% if state == 'active' %} selected{% endif %}>Active</option>
       <option value="deprioritised"{% if state == 'deprioritised' %} selected{% endif %}>Deprioritised</option>
@@ -43,7 +43,7 @@
     <label for="filter-project">Project</label>
     <select id="filter-project" class="form-select" name="project"
             hx-get="/memories" hx-target="#results" hx-push-url="true"
-            hx-include="[name='namespace'],[name='state'],[name='sort'],[name='source'],[name='licence']">
+            hx-include="[name='namespace'],[name='state'],[name='sort'],[name='source'],[name='licence'],[name='provenance']">
       <option value="">All</option>
       {% for p in projects %}
       <option value="{{ p }}"{% if project == p %} selected{% endif %}>{{ p }}</option>
@@ -54,7 +54,7 @@
     <label for="filter-licence">Licence</label>
     <select id="filter-licence" class="form-select" name="licence"
             hx-get="/memories" hx-target="#results" hx-push-url="true"
-            hx-include="[name='namespace'],[name='state'],[name='project'],[name='sort'],[name='source']">
+            hx-include="[name='namespace'],[name='state'],[name='project'],[name='sort'],[name='source'],[name='provenance']">
       <option value="">All</option>
       {% for value, label in licence_classes %}
       <option value="{{ value }}"{% if licence == value %} selected{% endif %}>{{ label }}</option>
@@ -62,10 +62,21 @@
     </select>
   </div>
   <div class="form-group">
+    <label for="filter-provenance">Provenance</label>
+    <select id="filter-provenance" class="form-select" name="provenance"
+            hx-get="/memories" hx-target="#results" hx-push-url="true"
+            hx-include="[name='namespace'],[name='state'],[name='project'],[name='sort'],[name='source'],[name='licence']">
+      <option value="">All</option>
+      {% for value, label in provenance_classes %}
+      <option value="{{ value }}"{% if provenance == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
     <label for="filter-sort">Sort</label>
     <select id="filter-sort" class="form-select" name="sort"
             hx-get="/memories" hx-target="#results" hx-push-url="true"
-            hx-include="[name='namespace'],[name='state'],[name='project'],[name='source'],[name='licence']">
+            hx-include="[name='namespace'],[name='state'],[name='project'],[name='source'],[name='licence'],[name='provenance']">
       <option value="newest"{% if sort == 'newest' %} selected{% endif %}>Newest</option>
       <option value="oldest"{% if sort == 'oldest' %} selected{% endif %}>Oldest</option>
     </select>

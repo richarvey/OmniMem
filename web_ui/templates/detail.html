@@ -85,6 +85,11 @@
       {{ memory.licence_label }}{% if memory.licence_note %} <span style="color:var(--text-dim)">· {{ memory.licence_note }}</span>{% endif %}
     </div>
   </div>
+
+  <div class="meta-item">
+    <div class="meta-label">Provenance</div>
+    <div class="meta-value">{{ memory.provenance_label }}</div>
+  </div>
   {% endif %}
 </div>
 
@@ -114,6 +119,31 @@
   </form>
   {% if licence_error %}
   <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ licence_error }}</p>
+  {% endif %}
+</div>
+
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Provenance</h3>
+  <p style="font-size:0.85rem;color:var(--text-dim);margin:0 0 0.5rem">
+    Where did this come from? Retrieved from an external source, concluded by the system's
+    own reasoning, or asserted by you. Mark a memory you vouch for as asserted.
+  </p>
+  <form method="POST" action="/memory/{{ memory.key }}/provenance" style="max-width:40rem">
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <label for="provenance-select" class="visually-hidden">Provenance</label>
+      <select id="provenance-select" name="provenance" class="form-select" style="flex:0 1 16rem">
+        {% if not memory.provenance %}
+        <option value="" disabled selected>Not recorded — choose one</option>
+        {% endif %}
+        {% for value, label in provenance_classes %}
+        <option value="{{ value }}"{% if memory.provenance == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm">Save provenance</button>
+    </div>
+  </form>
+  {% if provenance_error %}
+  <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ provenance_error }}</p>
   {% endif %}
 </div>
 {% endif %}

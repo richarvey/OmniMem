@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 
 from .embedder import Embedder
+from .licence import effective_licence
+from .provenance import effective_provenance
 from .lifecycle import MemoryLifecycle, MemoryState
 from .query_expansion import expand_query
 from .store import ValkeyStore
@@ -146,11 +148,14 @@ class RecallResult:
     contradictions: list[dict] = field(default_factory=list)
     event_date: float | None = None
     enriched_from: str | None = None
-    # Redistribution rights (v6.6.1). Carried through untouched: it is
-    # reported, never scored on — landing the field and changing what recall
-    # does with it are deliberately separate releases.
+    # Redistribution rights (v6.6.1) and provenance (v6.6.2). Carried
+    # through untouched: reported, never scored on — landing a field and
+    # changing what recall does with it are deliberately separate releases.
+    # Resolved at read time with the backfill's defaults, so a record a
+    # lagging writer stamped nothing on still reports something honest.
     licence: str | None = None
     licence_note: str | None = None
+    provenance: str | None = None
 
 
 class RecallPipeline:
@@ -365,8 +370,9 @@ class RecallPipeline:
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),
-                    licence=doc.get("licence"),
+                    licence=effective_licence(doc, ns),
                     licence_note=doc.get("licence_note"),
+                    provenance=effective_provenance(doc, ns),
                 ))
 
         # Step 9b: Query expansion — run additional searches for each variant
@@ -551,8 +557,9 @@ class RecallPipeline:
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),
-                    licence=doc.get("licence"),
+                    licence=effective_licence(doc, ns),
                     licence_note=doc.get("licence_note"),
+                    provenance=effective_provenance(doc, ns),
                 ))
         return out
 

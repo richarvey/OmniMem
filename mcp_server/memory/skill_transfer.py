@@ -33,6 +33,7 @@ from typing import Any
 
 from .feed_influence import load_feed_influences, validate_feed_skills
 from .licence import LICENCE_UNKNOWN, MAX_LICENCE_NOTE, resolve_licence
+from .provenance import PROVENANCE_CLASSES, default_provenance
 from .skills import (
     SKILL_KEY_PREFIX,
     discovery_text,
@@ -648,6 +649,13 @@ def apply_skill_import(store, embedder, bundle: dict[str, Any]) -> dict[str, Any
         # memories are someone else's work by definition, so the honest
         # value is unknown, not this instance's namespace default.
         fields.setdefault("licence", LICENCE_UNKNOWN)
+        # Provenance travels with the memory; a pre-6.6.2 bundle carries
+        # none, and the namespace default is the honest reading of what
+        # the exporting instance would have stamped.
+        # An out-of-vocabulary value from a hand-edited or forked bundle
+        # would be stored forever and match no filter; fall back instead.
+        if fields.get("provenance") not in PROVENANCE_CLASSES:
+            fields["provenance"] = default_provenance(key.split(":")[1])
         fields["imported_at"] = now
         namespace = key.split(":")[1]
         vector = embedder.embed(fields["content"])

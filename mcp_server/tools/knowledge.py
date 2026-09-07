@@ -33,7 +33,8 @@ def recent_knowledge(
         licence: Filter to one redistribution class: 'own', 'open',
             'restricted', or 'unknown'.
     """
-    from memory.licence import validate_licence_class
+    from memory.licence import effective_licence, validate_licence_class
+    from memory.provenance import effective_provenance
 
     store = _get_deps()
     now = time.time()
@@ -50,7 +51,8 @@ def recent_knowledge(
     all_data = store.get_fields_multi(
         keys,
         ("state", "created_at", "feed_name", "topics", "title", "content",
-         "source_url", "published_at", "expires_at", "licence", "licence_note"),
+         "source_url", "published_at", "expires_at", "licence", "licence_note",
+         "provenance"),
     )
     results = []
     for key, data in zip(keys, all_data):
@@ -62,7 +64,7 @@ def recent_knowledge(
             continue
         if feed_name and data.get("feed_name") != feed_name:
             continue
-        if licence and data.get("licence") != licence:
+        if licence and effective_licence(data, "knowledge") != licence:
             continue
         if topics:
             try:
@@ -81,8 +83,9 @@ def recent_knowledge(
             "created_at": data.get("created_at"),
             "expires_at": data.get("expires_at"),
             "topics": json.loads(data.get("topics", "[]")) if data.get("topics") else None,
-            "licence": data.get("licence"),
+            "licence": effective_licence(data, "knowledge"),
             "licence_note": data.get("licence_note"),
+            "provenance": effective_provenance(data, "knowledge"),
         }))
 
     results.sort(key=lambda x: float(x.get("created_at") or "0"), reverse=True)

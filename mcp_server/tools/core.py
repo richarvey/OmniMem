@@ -14,14 +14,10 @@ from memory.contradiction import check_contradiction_heuristic
 from memory.dedup import check_duplicate, find_all_duplicates
 from memory.enrichment import enqueue, enqueue_batch
 from memory.embedder import Embedder
-from memory.licence import (
-    LICENCE_UNKNOWN,
-    default_licence,
-    licence_fields,
-    resolve_licence,
-)
+from memory.licence import LICENCE_UNKNOWN, effective_licence, licence_for_write
 from memory.lifecycle import MemoryLifecycle, MemoryState
 from memory.project_domains import resolve_projects_for_domains
+from memory.provenance import effective_provenance, provenance_for_write
 from memory.recall import RecallPipeline
 from memory.store import ValkeyStore
 from memory.tags import MAX_TAGS, MAX_TAG_LENGTH, retag_memory, validate_tags as _validate_tags
@@ -95,17 +91,6 @@ def _resolve_mode(mode: str | None) -> str:
     return mode
 
 
-def _resolve_write_licence(licence: str | None, namespace: str) -> dict[str, str]:
-    """Licence hash fields for a write: the declared licence, or the
-    namespace default (own for conversation namespaces, unknown for
-    knowledge). Raises ValueError on an unrecognised identifier."""
-    # An empty string means "not given" (clients that serialise unset
-    # optionals as "" must get the namespace default, not unknown).
-    if not licence:
-        return licence_fields(default_licence(namespace))
-    return licence_fields(*resolve_licence(licence))
-
-
 def _licence_notice(entries: list[dict[str, Any]]) -> dict[str, Any] | None:
     """A trailing notice listing results whose licence is still unknown.
 
@@ -145,6 +130,7 @@ def remember(
     force: bool = False,
     mode: str | None = None,
     licence: str | None = None,
+    provenance: str | None = None,
 ) -> dict[str, Any]:
     """Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
 
@@ -166,6 +152,16 @@ def remember(
             to 'own' for episodic/project/preference and 'unknown' for
             knowledge. Pass it explicitly whenever the content came from
             somewhere else — an article, a document, a vendor page.
+        provenance: Where the content comes from — 'asserted' (the human
+            stated it: a preference, a rule, a fact they gave you),
+            'concluded' (your own reasoning or write-up of work done), or
+            'retrieved' (an external source: an article, documentation, a
+            search result). Defaults to 'concluded' for episodic and project
+            memories, 'asserted' for preferences, 'retrieved' for knowledge.
+            Pass
+            'asserted' when the human dictated the content — a later
+            session will treat your own conclusions as your conclusions,
+            not as independent evidence.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -174,7 +170,8 @@ def remember(
     _validate_project_name(project)
     _validate_tags(tags)
     mode = _resolve_mode(mode)
-    licence_data = _resolve_write_licence(licence, namespace)
+    licence_data = licence_for_write(licence, namespace)
+    provenance_class = provenance_for_write(provenance, namespace)
 
     # Full mode: store raw immediately, then enqueue for background
     # fact extraction. Caller gets instant response; enrichment worker
@@ -227,6 +224,7 @@ def remember(
         "updated_at": now,
         "tags": json.dumps(tags or []),
         **licence_data,
+        "provenance": provenance_class,
     }
     if project:
         fields["project"] = project
@@ -245,6 +243,7 @@ def remember(
 
     result: dict[str, Any] = {
         "key": key, "namespace": namespace, "licence": licence_data["licence"],
+        "provenance": provenance_class,
     }
     if _enrich_after:
         result["enrichment"] = "queued"
@@ -262,6 +261,7 @@ def remember_document(
     chunk_size: int | None = None,
     mode: str | None = None,
     licence: str | None = None,
+    provenance: str | None = None,
 ) -> dict[str, Any]:
     """Index a long-form document by splitting it into chunks and storing each chunk as a memory.
 
@@ -283,6 +283,9 @@ def remember_document(
             reserved source, 'open' (or its identifier, e.g. 'ogl-3.0') for a
             redistributable one. Defaults to 'own' outside the knowledge
             namespace and 'unknown' inside it.
+        provenance: 'retrieved' for a document from elsewhere, 'asserted'
+            for one the human wrote, 'concluded' for your own output — see
+            remember(). Applied to every chunk.
     """
     store, embedder, _, _ = _get_deps()
 
@@ -291,7 +294,8 @@ def remember_document(
     _validate_project_name(project)
     _validate_tags(tags)
     mode = _resolve_mode(mode)
-    licence_data = _resolve_write_licence(licence, namespace)
+    licence_data = licence_for_write(licence, namespace)
+    provenance_class = provenance_for_write(provenance, namespace)
     if chunk_strategy not in CHUNK_STRATEGIES:
         raise ValueError(
             f"Invalid chunk_strategy '{chunk_strategy}'. "
@@ -334,6 +338,7 @@ def remember_document(
             "chunk_index": str(idx),
             "chunk_strategy": chunk_strategy,
             **licence_data,
+            "provenance": provenance_class,
         }
         if project:
             fields["project"] = project
@@ -370,6 +375,7 @@ def remember_document(
         "namespace": namespace,
         "mode": mode,
         "licence": licence_data["licence"],
+        "provenance": provenance_class,
         "enrichment": "batch_queued" if (_enrich_after and _batch_mode) else ("queued" if _enrich_after else "none"),
     }
 
@@ -534,6 +540,8 @@ def recall(
             entry["licence"] = r.licence
         if r.licence_note:
             entry["licence_note"] = r.licence_note
+        if r.provenance:
+            entry["provenance"] = r.provenance
         output.append(entry)
 
     notice = _licence_notice(output)
@@ -621,6 +629,8 @@ def recall_index(
             entry["reinstate_candidate"] = True
         if r.licence:
             entry["licence"] = r.licence
+        if r.provenance:
+            entry["provenance"] = r.provenance
 
         index_tokens = len(snippet) // 4 + 10  # snippet + metadata overhead
         total_index_tokens += index_tokens
@@ -686,10 +696,10 @@ def recall_detail(
                 pass
         if data.get("source_url"):
             entry["source_url"] = data["source_url"]
-        if data.get("licence"):
-            entry["licence"] = data["licence"]
+        entry["licence"] = effective_licence(data, entry["namespace"])
         if data.get("licence_note"):
             entry["licence_note"] = data["licence_note"]
+        entry["provenance"] = effective_provenance(data, entry["namespace"])
         if data.get("breakthrough"):
             entry["breakthrough"] = data["breakthrough"]
         if data.get("effort_score"):

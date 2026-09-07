@@ -66,6 +66,7 @@ Recording an `abandoned` outcome with `effort_score >= 4` auto-suppresses each a
 | `event_date` | unix seconds string | Optional temporal anchor. When present and a recall query mentions a date, the temporal boost (1.0-1.5x) applies. |
 | `enriched_from` | key string | Present in the search return whitelist for consistency; extracted facts themselves live in the knowledge and preference namespaces, not here. |
 | `licence` / `licence_note` | licence class / string | Redistribution rights (v6.6.1). `own` by default — an episodic memory is a write-up of work done here — but pass `licence=` to `remember()` when the content is someone else's (a pasted document, a vendor page). See [memory types](memory-types.md#common-fields). |
+| `provenance` | provenance class | `concluded` by default — an episodic memory is the agent's write-up of the work. Pass `provenance="asserted"` to `remember()` when the human dictated it, or `"retrieved"` for a pasted external document. |
 
 ### Skill eligibility (v6, added by `bless()`)
 
@@ -134,7 +135,7 @@ bless(memory_key="mem:episodic:01KQ...")   # episodic keys only
 
 ## Indexed fields
 
-`idx:episodic` indexes: `vector` (HNSW cosine), `project` (tag), `state` (tag), `tags` (tag), `outcome` (tag), `licence` (tag), `surface_score`, `created_at`, `updated_at`, `effort_score`, `iterations`, `experience_weight`, `recall_count` (numeric).
+`idx:episodic` indexes: `vector` (HNSW cosine), `project` (tag), `state` (tag), `tags` (tag), `outcome` (tag), `licence` (tag), `provenance` (tag), `surface_score`, `created_at`, `updated_at`, `effort_score`, `iterations`, `experience_weight`, `recall_count` (numeric).
 
 State and project filters are pushed into FT.SEARCH as tag filters so archived or out-of-project documents don't consume KNN candidate slots. Tag values are interpolated raw after allowlist validation — see the valkey-search gotcha in CLAUDE.md.
 

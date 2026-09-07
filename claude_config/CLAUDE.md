@@ -78,6 +78,8 @@ At the beginning of every session:
 
 **Say where content came from.** Every memory carries a `licence` — its redistribution rights. `remember()` defaults to `own` (a decision, a fix, a preference written here) and `knowledge` writes to `unknown`, so pass `licence=` whenever the content is someone else's: `licence="restricted"` for a summary of a paywalled document or vendor page, `licence="open"` (or the identifier, `"cc-by-4.0"`, `"ogl-3.0"`) for a redistributable source. `remember_document()` is the write most likely to be third-party material, so always say. This field is about redistribution *rights* only; it says nothing about who may see the memory.
 
+**Say who is speaking.** Every memory also carries a `provenance`: `asserted` (the human stated it), `concluded` (your own reasoning or write-up), or `retrieved` (an external source). `remember()` defaults to `concluded` for episodic and project memories, `asserted` for preferences, `retrieved` for knowledge (project *context* set with `set_project_context()` is `asserted`). Pass `provenance="asserted"` when the human dictated the content, and `"retrieved"` when you are storing what a document or page said — a later session must be able to tell your conclusions from evidence, or your own inferences get recalled as independent corroboration for the reasoning that produced them. Recall reports `provenance` on every result; when a `concluded` memory is the only support for a claim, say so rather than presenting it as established. Reclassify with `set_provenance(keys=[...], provenance="asserted")` when the human vouches for something.
+
 Use this tagging vocabulary for consistency:
 
 |Category|Example tags                                                        |

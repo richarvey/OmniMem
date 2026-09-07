@@ -14,18 +14,22 @@ from memory.dedup import check_duplicate
 from memory.licence import (
     LICENCE_CLASSES,
     LICENCE_LABELS,
-    default_licence,
-    licence_fields,
-    resolve_licence,
+    licence_for_write,
     validate_licence_note,
 )
 from memory.lifecycle import MemoryState
+from memory.provenance import (
+    PROVENANCE_CLASSES,
+    PROVENANCE_LABELS,
+    provenance_for_write,
+)
 
 from .. import deps
 
 logger = logging.getLogger(__name__)
 
 _LICENCE_CHOICES = [(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES]
+_PROVENANCE_CHOICES = [(value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES]
 
 
 def _render_form(request: Request, values: dict, error=None, duplicate=None) -> HTMLResponse:
@@ -34,6 +38,7 @@ def _render_form(request: Request, values: dict, error=None, duplicate=None) -> 
         request=request, current_page="create",
         error=error, duplicate=duplicate, values=values,
         licence_classes=_LICENCE_CHOICES,
+        provenance_classes=_PROVENANCE_CHOICES,
     ))
 
 
@@ -41,7 +46,7 @@ async def create_form(request: Request) -> HTMLResponse:
     """GET /create — memory creation form."""
     return _render_form(request, {
         "content": "", "project": "", "namespace": "episodic", "tags": "",
-        "force": False, "licence": "", "licence_note": "",
+        "force": False, "licence": "", "licence_note": "", "provenance": "",
     })
 
 
@@ -55,6 +60,7 @@ async def create_memory(request: Request) -> HTMLResponse:
     force = form.get("force") == "on"
     licence_raw = form.get("licence", "").strip()
     licence_note_raw = form.get("licence_note", "").strip()
+    provenance_raw = form.get("provenance", "").strip()
 
     values = {
         "content": content_text,
@@ -64,6 +70,7 @@ async def create_memory(request: Request) -> HTMLResponse:
         "force": force,
         "licence": licence_raw,
         "licence_note": licence_note_raw,
+        "provenance": provenance_raw,
     }
 
     # Validate
@@ -73,17 +80,14 @@ async def create_memory(request: Request) -> HTMLResponse:
     if namespace not in {"episodic", "project", "knowledge", "preference"}:
         namespace = "episodic"
 
-    # Redistribution rights: an empty choice takes the namespace default
-    # (own for conversation namespaces, unknown for knowledge), same as the
-    # remember() tool.
+    # Licence and provenance: an empty choice takes the namespace default,
+    # through the same helpers as the remember() tool.
     try:
-        if licence_raw:
-            licence_class, derived_note = resolve_licence(licence_raw)
-        else:
-            licence_class, derived_note = default_licence(namespace), None
-        licence_data = licence_fields(
-            licence_class, validate_licence_note(licence_note_raw) or derived_note,
-        )
+        licence_data = licence_for_write(licence_raw, namespace)
+        note = validate_licence_note(licence_note_raw)
+        if note:
+            licence_data["licence_note"] = note
+        provenance_class = provenance_for_write(provenance_raw, namespace)
     except ValueError as exc:
         return _render_form(request, values, error=str(exc))
 
@@ -115,6 +119,7 @@ async def create_memory(request: Request) -> HTMLResponse:
         "updated_at": now,
         "tags": json.dumps(tags),
         **licence_data,
+        "provenance": provenance_class,
     }
     if project:
         fields["project"] = project

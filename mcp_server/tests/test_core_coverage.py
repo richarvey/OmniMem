@@ -138,7 +138,7 @@ class TestRecallOptionalFields:
         # Manually set source_url
         fake_store.set_field("mem:knowledge:src01", "source_url", "https://example.com/article")
         results = recall("Valkey performance", namespaces=["knowledge"])
-        matched = [r for r in results if r["key"] == "mem:knowledge:src01"]
+        matched = [r for r in results if r.get("key") == "mem:knowledge:src01"]
         if matched:
             assert matched[0].get("source_url") == "https://example.com/article"
 

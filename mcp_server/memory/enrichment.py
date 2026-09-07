@@ -23,6 +23,7 @@ import ulid
 from .dedup import check_duplicate
 from .extraction import extract_facts, ExtractedFact
 from .licence import LICENCE_UNKNOWN
+from .provenance import PROVENANCE_CONCLUDED
 from .lifecycle import MemoryState
 
 if TYPE_CHECKING:
@@ -106,8 +107,8 @@ class EnrichmentWorker:
         source_created_at = payload.get("created_at")
 
         # A fact is a derivative of its source, so it carries exactly the
-        # source's redistribution rights — never the namespace default it
-        # lands in. A source with no licence at all yields unknown.
+        # source's redistribution rights and provenance — never the
+        # namespace defaults it lands in.
         source_licence: dict[str, str] = {}
 
         if batch_mode and batch_content:
@@ -118,7 +119,7 @@ class EnrichmentWorker:
             # so the facts still get a temporal anchor.
             if key:
                 rows = self._store.get_fields_multi(
-                    [key], ("event_date", "created_at", "licence", "licence_note")
+                    [key], ("event_date", "created_at", "licence", "licence_note", "provenance")
                 )
                 src = rows[0] if rows and rows[0] else {}
                 source_licence = _licence_of(src)
@@ -212,8 +213,18 @@ class EnrichmentWorker:
 
 
 def _licence_of(source: dict) -> dict[str, str]:
-    """Licence fields a derived fact inherits from its source memory."""
-    inherited = {"licence": source.get("licence") or LICENCE_UNKNOWN}
+    """Classification a derived fact inherits from its source memory.
+
+    A fact is a restatement: it carries the source's redistribution
+    rights and the source's provenance (an extracted fact of something the
+    human asserted is still asserted — extraction is not reasoning). A
+    source with no provenance yields concluded: the fact exists because
+    the system produced it.
+    """
+    inherited = {
+        "licence": source.get("licence") or LICENCE_UNKNOWN,
+        "provenance": source.get("provenance") or PROVENANCE_CONCLUDED,
+    }
     if source.get("licence_note"):
         inherited["licence_note"] = source["licence_note"]
     return inherited

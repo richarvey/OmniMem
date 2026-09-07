@@ -76,7 +76,7 @@ class TestResolveLicence:
             assert note is None or (isinstance(note, str) and note)
             # The table must be keyed in its own normalised form or lookups
             # would miss it.
-            assert lic._normalise_key(key) == key
+            assert lic.normalise_alias_key(key) == key
 
     def test_labels_cover_every_class(self):
         assert set(lic.LICENCE_LABELS) == set(lic.LICENCE_CLASSES)

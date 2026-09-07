@@ -67,6 +67,7 @@ Not just a key-value store with an MCP wrapper. OmniMem models how memory actual
 - **[The skill compiler](docs/skill-compiler.md)** — distils reinforced lessons and dead ends into loadable skills, behind a propose-and-accept gate so bad lessons cannot become policy silently.
 - **[Auto-maintenance](docs/features.md#automatic-maintenance)** — duplicates archived, contradictions flagged, expired knowledge cleaned up, all in the background.
 - **[Redistribution rights](docs/rss-knowledge.md#licence-and-redistribution-rights)** — every memory records whether it may be redistributed (`own`, `open`, `restricted`, `unknown`), decided at ingest from what the feed declares. Recall points out what nobody has classified so you can say while the content is in front of you.
+- **[Provenance](docs/memory-types.md#common-fields)** — every memory says whether the human asserted it, the system concluded it, or it was retrieved from elsewhere, so a later session can tell evidence from inference instead of citing its own reasoning as corroboration.
 - **[Web UI](docs/web-ui.md)** — browse, search, and manage everything from an htmx dashboard, with telemetry and a Prometheus `/metrics` endpoint.
 
 The ranking formula behind every recall:

@@ -12,17 +12,15 @@ from typing import Any
 
 from memory.licence import (
     classify_memories,
-    is_classifiable_key,
     licence_fields,
     resolve_licence,
     validate_licence_note,
 )
+from memory.lineage import partition_keys
 
 from . import _compact
 
 logger = logging.getLogger(__name__)
-
-MAX_KEYS_PER_CALL = 200
 
 
 def _get_deps():
@@ -96,22 +94,9 @@ def set_licence(
             ),
         })
 
-    keys = keys or []
-    if len(keys) > MAX_KEYS_PER_CALL:
-        return {"error": f"Too many keys ({len(keys)}); max {MAX_KEYS_PER_CALL} per call"}
-    valid = [k for k in keys if isinstance(k, str) and is_classifiable_key(k)]
-    skills = [k for k in keys if isinstance(k, str) and k.startswith("mem:skill:")]
-    if skills:
-        # A compiled skill is derived from its sources; it carries no
-        # licence of its own. Classify the memories it cites instead.
-        return {
-            "error": "Compiled skills carry no licence — classify the source "
-                     "memories in the skill's manifest instead",
-            "skill_keys": skills,
-        }
-    if not valid:
-        return {"error": "No valid memory keys given (mem:episodic:, mem:project:, "
-                         "mem:knowledge: or mem:preference:)"}
+    valid, skipped, error = partition_keys(keys or [], "licence")
+    if error:
+        return error
 
     outcome = classify_memories(store, valid, licence_class, note)
     if outcome["classified"]:
@@ -127,6 +112,7 @@ def set_licence(
         "keys": outcome["classified"],
         "cascaded_facts": outcome["cascaded"],
         "not_found": outcome["not_found"],
+        "skipped": skipped,
     })
 
 

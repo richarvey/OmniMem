@@ -16,6 +16,12 @@ from memory.licence import (
     resolve_licence,
     validate_licence_note,
 )
+from memory.provenance import (
+    PROVENANCE_CLASSES,
+    PROVENANCE_LABELS,
+    classify_provenance,
+    resolve_provenance,
+)
 from memory.tags import retag_memory
 
 from .. import deps
@@ -107,6 +113,8 @@ async def memory_detail(request: Request) -> HTMLResponse:
         "licence": data.get("licence") or "",
         "licence_label": LICENCE_LABELS.get(data.get("licence") or "", "Not recorded"),
         "licence_note": data.get("licence_note") or "",
+        "provenance": data.get("provenance") or "",
+        "provenance_label": PROVENANCE_LABELS.get(data.get("provenance") or "", "Not recorded"),
         "recall_count": int(data.get("recall_count") or 0),
         "last_recalled": fmt_ts(data.get("last_recalled")) if data.get("last_recalled") else "Never",
         "created_at": fmt_ts(data.get("created_at")),
@@ -120,9 +128,31 @@ async def memory_detail(request: Request) -> HTMLResponse:
         tag_error=request.query_params.get("tag_error", ""),
         licence_error=request.query_params.get("licence_error", ""),
         licence_classes=[(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES],
+        provenance_error=request.query_params.get("provenance_error", ""),
+        provenance_classes=[(value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES],
         current_page="memories",
     )
     return HTMLResponse(content)
+
+
+async def memory_provenance(request: Request) -> RedirectResponse:
+    """POST /memory/{key:path}/provenance — reclassify where a memory came from.
+
+    Same engine as the set_provenance MCP tool: facts extracted from the
+    memory follow it, and updated_at is left alone.
+    """
+    key = request.path_params["key"]
+    if not is_classifiable_key(key) or deps.store.get_fields_multi([key], ("created_at",))[0] is None:
+        return RedirectResponse(url=f"/memory/{key}", status_code=303)
+
+    form = await request.form()
+    try:
+        classify_provenance(deps.store, [key], resolve_provenance(form.get("provenance", "")))
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/memory/{key}?provenance_error={quote(str(exc))}", status_code=303
+        )
+    return RedirectResponse(url=f"/memory/{key}", status_code=303)
 
 
 async def memory_licence(request: Request) -> RedirectResponse:
@@ -191,5 +221,6 @@ routes = [
     # Must precede the greedy {key:path} detail route
     Route("/memory/{key:path}/tags", memory_retag, methods=["POST"]),
     Route("/memory/{key:path}/licence", memory_licence, methods=["POST"]),
+    Route("/memory/{key:path}/provenance", memory_provenance, methods=["POST"]),
     Route("/memory/{key:path}", memory_detail),
 ]

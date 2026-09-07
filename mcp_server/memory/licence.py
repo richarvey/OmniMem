@@ -44,6 +44,12 @@ two tables are identical; keep them in step.
 
 from __future__ import annotations
 
+from .lineage import (  # noqa: F401 — is_classifiable_key/stamp_lineage re-exported
+    is_classifiable_key,
+    normalise_alias_key,
+    stamp_lineage,
+)
+
 LICENCE_OWN = "own"
 LICENCE_OPEN = "open"
 LICENCE_RESTRICTED = "restricted"
@@ -138,24 +144,6 @@ LICENCE_ALIASES: dict[str, tuple[str, str | None]] = {
 _CONVERSATION_NAMESPACES = frozenset({"episodic", "project", "preference"})
 
 
-# Only these namespaces carry a licence. Skills are derived from their
-# sources; everything else under mem: (and every meta:/topics:/log: key) is
-# not a memory at all.
-_CLASSIFIABLE_PREFIXES = tuple(
-    f"mem:{ns}:" for ns in ("episodic", "project", "knowledge", "preference")
-)
-
-
-def is_classifiable_key(key: str) -> bool:
-    """True for a key in a namespace that carries a licence."""
-    return key.startswith(_CLASSIFIABLE_PREFIXES)
-
-
-def _normalise_key(raw: str) -> str:
-    """Case- and separator-insensitive lookup key: 'CC BY 4.0' → 'cc-by-4.0'."""
-    return "-".join(raw.strip().lower().replace("_", " ").replace("-", " ").split())
-
-
 def resolve_licence(raw: str | None) -> tuple[str, str | None]:
     """Resolve a declared licence to ``(class, note)``.
 
@@ -165,9 +153,8 @@ def resolve_licence(raw: str | None) -> tuple[str, str | None]:
     class). Raises ValueError for anything unrecognised — a guess here is a
     misclassification waiting to be sold.
     """
-    key = _normalise_key(raw or "")
     try:
-        return LICENCE_ALIASES[key]
+        return LICENCE_ALIASES[normalise_alias_key(raw)]
     except KeyError:
         raise ValueError(
             f"Unrecognised licence {raw!r}. Use one of "
@@ -209,6 +196,29 @@ def default_licence(namespace: str) -> str:
     return LICENCE_OWN if namespace in _CONVERSATION_NAMESPACES else LICENCE_UNKNOWN
 
 
+def licence_for_write(raw: str | None, namespace: str) -> dict[str, str]:
+    """Licence hash fields for a new write: the declared licence, or the
+    namespace default. An empty string means "not given" — clients that
+    serialise unset optionals as "" must get the default, not unknown.
+    Shared by the remember() tools and the web UI's create form."""
+    if not raw:
+        return licence_fields(default_licence(namespace))
+    return licence_fields(*resolve_licence(raw))
+
+
+def effective_licence(doc: dict, namespace: str) -> str:
+    """The licence a stored record has, or would have had: a read-time
+    fallback for records written before the field existed or by a worker
+    image that predates it (a rolling upgrade). Mirrors the backfill: an
+    article is unknown, a conversation write is own."""
+    stored = doc.get("licence")
+    if stored:
+        return stored
+    if doc.get("feed_name") or doc.get("imported_at"):
+        return LICENCE_UNKNOWN
+    return default_licence(namespace)
+
+
 def licence_fields(
     licence: str, note: str | None = None
 ) -> dict[str, str]:
@@ -227,48 +237,12 @@ def classify_memories(
     """Record a licence on stored memories and cascade it to their facts.
 
     The single write path behind the set_licence tool and the web UI's
-    detail form, so the two cannot drift. Returns ``{"classified": [...],
-    "cascaded": [...], "not_found": [...]}``.
-
-    Two rules live here. A reclassification must not leave the old
-    licence's note behind (a record marked restricted with "CC BY 4.0"
-    beside it), so an absent note is written as an empty string — a bulk
-    HSET cannot drop a field. And a fact extracted from a memory carries
-    exactly its source's rights, so the facts linked to each classified key
-    (``enriched_from`` pointing at it, or ``source_doc_id`` naming it or
-    the document it was a chunk of) take the same value. ``updated_at`` is
-    deliberately left alone: this is metadata, not a content edit, and the
-    skill compiler reads a bumped ``updated_at`` as "source changed".
+    detail form, so the two cannot drift. A reclassification must not leave
+    the old licence's note behind (a record marked restricted with
+    "CC BY 4.0" beside it), so an absent note is written as an empty string
+    — a bulk HSET cannot drop a field. See memory/lineage.py for the cascade
+    and the deliberate absence of an ``updated_at`` bump.
     """
     fields = licence_fields(licence, note)
     fields.setdefault("licence_note", "")
-
-    rows = store.get_fields_multi(keys, ("created_at", "state", "doc_id"))
-    found = [k for k, row in zip(keys, rows) if row]
-    missing = [k for k, row in zip(keys, rows) if not row]
-    if not found:
-        return {"classified": [], "cascaded": [], "not_found": missing}
-
-    # Facts name their source by key (enriched_from) or by the document the
-    # source was a chunk of (source_doc_id, which batch enrichment sets to
-    # the doc_id rather than any one chunk's key).
-    source_ids = set(found)
-    for row in rows:
-        if row and row.get("doc_id"):
-            source_ids.add(row["doc_id"])
-    cascaded: list[str] = []
-    for ns in ("knowledge", "preference"):
-        fact_keys = store.scan_prefix(f"mem:{ns}:")
-        if not fact_keys:
-            continue
-        fact_rows = store.get_fields_multi(fact_keys, ("enriched_from", "source_doc_id"))
-        cascaded.extend(
-            k for k, row in zip(fact_keys, fact_rows)
-            if row and k not in source_ids and (
-                row.get("enriched_from") in source_ids
-                or row.get("source_doc_id") in source_ids
-            )
-        )
-
-    store.set_fields_multi(found + cascaded, fields)
-    return {"classified": found, "cascaded": cascaded, "not_found": missing}
+    return stamp_lineage(store, keys, fields)

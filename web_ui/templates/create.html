@@ -75,6 +75,19 @@
     </div>
   </div>
 
+  <div class="form-group">
+    <label for="provenance">Provenance</label>
+    <select id="provenance" name="provenance" class="form-select">
+      <option value="">Default for namespace</option>
+      {% for value, label in provenance_classes %}
+      <option value="{{ value }}"{% if values.provenance == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <small style="color:var(--text-muted);margin-top:0.25rem;display:block">
+      Where it came from. Defaults to asserted for project and preference, retrieved for knowledge, concluded otherwise.
+    </small>
+  </div>
+
   <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
     <input type="checkbox" name="force" id="force"{% if values.force %} checked{% endif %}>
     <label for="force" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text)">Force save (skip duplicate check)</label>

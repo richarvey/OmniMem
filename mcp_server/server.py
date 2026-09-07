@@ -150,9 +150,11 @@ def _init() -> None:
     # seed work-type domains from each project's stack field so the v6.6
     # domain filter isn't empty on the first run after an upgrade, and
     # backfill the v6.6.1 licence field with honest defaults (own for
-    # conversation namespaces, unknown for articles).
+    # conversation namespaces, unknown for articles) and the v6.6.2
+    # provenance class (retrieved / concluded / asserted).
     from memory.migrations import (
         migrate_licence,
+        migrate_provenance,
         migrate_missing_state,
         migrate_project_domains,
         migrate_project_names,
@@ -164,6 +166,7 @@ def _init() -> None:
     migrate_rss_article_projects(store)
     migrate_project_domains(store)
     migrate_licence(store)
+    migrate_provenance(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker
@@ -198,6 +201,7 @@ def _register_tools() -> None:
     from tools.briefing import briefing
     from tools.knowledge import recent_knowledge, promote_knowledge
     from tools.licence import set_licence
+    from tools.provenance import set_provenance
     from tools.queue import queue_status
     from tools.skills import compile_skill, find_skills, get_skill, bless
 
@@ -258,6 +262,7 @@ def _register_tools() -> None:
     mcp.tool()(recent_knowledge)
     mcp.tool()(promote_knowledge)
     mcp.tool()(set_licence)
+    mcp.tool()(set_provenance)
 
     # Queue tools
     mcp.tool()(queue_status)

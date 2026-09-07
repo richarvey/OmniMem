@@ -8,6 +8,7 @@ from starlette.responses import HTMLResponse
 from starlette.routing import Route
 
 from memory.licence import LICENCE_CLASSES, LICENCE_LABELS
+from memory.provenance import PROVENANCE_CLASSES, PROVENANCE_LABELS
 
 from .. import deps
 
@@ -17,6 +18,7 @@ PAGE_SIZE = 25
 def _get_all_memories(
     namespace: str | None, state: str | None, project: str | None,
     source: str | None = None, licence: str | None = None,
+    provenance: str | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Fetch and filter memories, returning (memories, distinct_projects) in a single pass.
 
@@ -38,7 +40,7 @@ def _get_all_memories(
         all_data = deps.store.get_fields_multi(
             keys,
             ("content", "state", "project", "project_name", "updated_at",
-             "created_at", "feed_name", "last_recalled", "licence"),
+             "created_at", "feed_name", "last_recalled", "licence", "provenance"),
         )
         for key, data in zip(keys, all_data):
             if data is None:
@@ -60,6 +62,8 @@ def _get_all_memories(
                 continue
             if licence and (data.get("licence") or "") != licence:
                 continue
+            if provenance and (data.get("provenance") or "") != provenance:
+                continue
 
             try:
                 updated_at = float(data.get("updated_at", "0"))
@@ -79,6 +83,7 @@ def _get_all_memories(
                 "project": mem_project,
                 "feed_name": data.get("feed_name") or "",
                 "licence": data.get("licence") or "",
+                "provenance": data.get("provenance") or "",
                 "updated_at": updated_at,
                 "created_at": created_at,
                 "heat": _recall_heat(data.get("last_recalled")),
@@ -116,6 +121,9 @@ async def memories_list(request: Request) -> HTMLResponse:
     licence = request.query_params.get("licence", "")
     if licence not in LICENCE_CLASSES:
         licence = ""
+    provenance = request.query_params.get("provenance", "")
+    if provenance not in PROVENANCE_CLASSES:
+        provenance = ""
     sort = request.query_params.get("sort", "newest")
     page = max(1, int(request.query_params.get("page", "1")))
 
@@ -125,6 +133,7 @@ async def memories_list(request: Request) -> HTMLResponse:
         project=project or None,
         source=source or None,
         licence=licence or None,
+        provenance=provenance or None,
     )
 
     # Articles never change after ingestion, but migrations and backfills can
@@ -167,6 +176,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         params.append(f"&source={source}")
     if licence:
         params.append(f"&licence={licence}")
+    if provenance:
+        params.append(f"&provenance={provenance}")
     if sort != "newest":
         params.append(f"&sort={sort}")
     extra_params = "".join(params)
@@ -199,6 +210,8 @@ async def memories_list(request: Request) -> HTMLResponse:
         source=source,
         licence=licence,
         licence_classes=[(value, LICENCE_LABELS[value]) for value in LICENCE_CLASSES],
+        provenance=provenance,
+        provenance_classes=[(value, PROVENANCE_LABELS[value]) for value in PROVENANCE_CLASSES],
         back_url=back_url,
         sort=sort,
         projects=projects,

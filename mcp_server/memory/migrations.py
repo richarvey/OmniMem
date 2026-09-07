@@ -220,11 +220,17 @@ def migrate_licence(store) -> None:
 
     inherited = 0
     if pending_facts:
-        source_rows = store.get_fields_multi(
-            [source for _, source in pending_facts], ("licence",),
-        )
-        for (key, _), source_row in zip(pending_facts, source_rows):
-            value = (source_row or {}).get("licence")
+        # Sources stamped in this pass resolve in memory; the rest with one
+        # lookup per distinct source, not per fact.
+        stamped = {k: LICENCE_OWN for k in own_keys}
+        stamped.update({k: LICENCE_UNKNOWN for k in imported_keys})
+        unresolved = sorted({src for _, src in pending_facts if src not in stamped})
+        source_rows = store.get_fields_multi(unresolved, ("licence",))
+        stamped.update({
+            src: (row or {}).get("licence") for src, row in zip(unresolved, source_rows)
+        })
+        for key, source in pending_facts:
+            value = stamped.get(source)
             if value:
                 inherited += 1
             knowledge_by_value.setdefault(value or LICENCE_UNKNOWN, []).append(key)
@@ -241,4 +247,100 @@ def migrate_licence(store) -> None:
             "Migration: backfilled licence on %d memories (%d own, %d unknown, "
             "%d extracted facts inherited their source's licence)",
             total, len(own_keys), unknown, inherited,
+        )
+
+
+def _is_project_context(key: str, row: dict) -> bool:
+    """A context entry lives at mem:project:{project_name}; a ULID-keyed
+    project memory from remember(namespace="project") sets project_name
+    too but never matches its own key. Stack or goals is the fallback for
+    contexts written before project_name was stamped consistently."""
+    name = row.get("project_name")
+    if name and key == f"mem:project:{name}":
+        return True
+    return bool(row.get("stack") or row.get("goals"))
+
+
+def migrate_provenance(store) -> None:
+    """Backfill the provenance class (v6.6.2).
+
+    Knowledge with a ``feed_name`` is an article — retrieved. Preferences
+    and project context entries (keyed by their project_name) are what the
+    human told us — asserted. Extracted facts (``enriched_from``, in the
+    knowledge or preference namespace) are restatements and inherit their
+    source, exactly as live enrichment stamps them; a fact whose source is
+    gone is concluded, since it exists only because the system produced
+    it. Every other record — episodic memories, ULID-keyed project
+    memories, plain knowledge writes — is the agent's own account and
+    becomes concluded (a plain knowledge write made today defaults to
+    retrieved, but a legacy one carries no evidence of where it came from).
+
+    That last default is the deliberate, uncomfortable choice: an episodic
+    memory is the write-up of work that really happened, and calling the
+    lot "concluded" undersells the most valuable material in the store.
+    But it is honest about who wrote it, and the human can vouch for any
+    memory afterwards with set_provenance(..., "asserted"). Idempotent:
+    only records with no ``provenance`` field are touched. Runs at startup
+    and after a backup restore.
+    """
+    from .provenance import (
+        PROVENANCE_ASSERTED,
+        PROVENANCE_CONCLUDED,
+        PROVENANCE_RETRIEVED,
+    )
+
+    assigned: dict[str, str] = {}
+    pending_facts: list[tuple[str, str]] = []  # (fact key, source key)
+
+    # Everything that is not an extracted fact gets its class from what it
+    # is. Facts are deferred: they inherit from their source, which may be
+    # assigned in this same pass — so sources are resolved from the
+    # in-memory assignments first and the store second, never relying on
+    # the order the namespaces happened to be written in.
+    for ns in ("episodic", "project", "preference", "knowledge"):
+        keys = store.scan_prefix(f"mem:{ns}:")
+        if not keys:
+            continue
+        rows = store.get_fields_multi(
+            keys, ("provenance", "project_name", "stack", "goals", "feed_name", "enriched_from"),
+        )
+        for key, row in zip(keys, rows):
+            row = row or {}
+            if row.get("provenance"):
+                continue
+            if row.get("feed_name"):
+                assigned[key] = PROVENANCE_RETRIEVED
+            elif row.get("enriched_from"):
+                pending_facts.append((key, row["enriched_from"]))
+            elif ns == "preference" or (ns == "project" and _is_project_context(key, row)):
+                assigned[key] = PROVENANCE_ASSERTED
+            else:
+                assigned[key] = PROVENANCE_CONCLUDED
+
+    inherited = 0
+    if pending_facts:
+        # One lookup per distinct source, not per fact.
+        unresolved = sorted({src for _, src in pending_facts if src not in assigned})
+        source_rows = store.get_fields_multi(unresolved, ("provenance",))
+        stored = {
+            src: (row or {}).get("provenance") for src, row in zip(unresolved, source_rows)
+        }
+        for key, source in pending_facts:
+            value = assigned.get(source) or stored.get(source)
+            if value:
+                inherited += 1
+            assigned[key] = value or PROVENANCE_CONCLUDED
+
+    by_value: dict[str, list[str]] = {}
+    for key, value in assigned.items():
+        by_value.setdefault(value, []).append(key)
+    for value, keys in by_value.items():
+        store.set_fields_multi(keys, {"provenance": value})
+
+    total = len(assigned)
+    if total:
+        logger.info(
+            "Migration: backfilled provenance on %d memories "
+            "(%d extracted facts inherited their source's class)",
+            total, inherited,
         )
