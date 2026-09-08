@@ -548,3 +548,75 @@ class TestFindSkillsFloor:
         assert entry["score"] < 0.45
         assert entry["confidence"] == "low"
         assert "weak" in result["note"]
+
+
+# ---------------------------------------------------------------------------
+# #30 — the floor is for agents, not for the human-facing search page
+# ---------------------------------------------------------------------------
+
+
+class TestWebSearchKeepsWeakMatches:
+    def test_weak_match_is_shown_and_labelled(
+        self, web_client, fake_store, fake_embedder, monkeypatch,
+    ):
+        """A person can dismiss a bad match at a glance, and an empty page for
+        a memory they know is stored is the worse answer. So the web search
+        opts out of the floor and marks what falls below it instead."""
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.4")
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:weak1",
+            "notes about traefik routers and middlewares", project="omnimem",
+        )
+        resp = web_client.get("/search/results", params={
+            "query": "traefik something quite different and otherwise unrelated",
+            "top_k": "5",
+        })
+        assert resp.status_code == 200
+        assert "mem:episodic:weak1" in resp.text
+        assert "weak match" in resp.text
+
+    def test_strong_match_is_not_labelled_weak(
+        self, web_client, fake_store, fake_embedder, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.4")
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:strong1",
+            "valkey vector search tuning", project="omnimem",
+        )
+        resp = web_client.get("/search/results", params={
+            "query": "valkey vector search tuning", "top_k": "5",
+        })
+        assert "mem:episodic:strong1" in resp.text
+        assert "weak match" not in resp.text
+
+
+class TestMinScoreOverride:
+    def test_per_call_override_beats_the_env_default(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.9")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:o1",
+            "postgres connection pooling notes for the B service",
+        )
+        query = "postgres connection pooling tips"
+        assert pipeline.recall(query, namespaces=["episodic"]) == []
+        assert pipeline.recall(
+            query, namespaces=["episodic"], min_score=0.0,
+        ), "min_score=0 must switch the floor off for this call"
+
+    def test_override_can_also_tighten(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:o2",
+            "postgres connection pooling notes for the B service",
+        )
+        query = "postgres connection pooling tips"
+        assert pipeline.recall(query, namespaces=["episodic"])
+        assert pipeline.recall(
+            query, namespaces=["episodic"], min_score=0.99,
+        ) == []

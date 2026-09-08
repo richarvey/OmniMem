@@ -4,6 +4,8 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.routing import Route
 
+from memory.recall import recall_min_score
+
 from .. import deps
 
 
@@ -35,11 +37,19 @@ async def search_results(request: Request) -> HTMLResponse:
     namespaces = [namespace] if namespace else None
     project_filter = project or None
 
+    # No relevance floor here, deliberately. The floor exists because recall
+    # output is spent as an agent's context and a plausible-looking irrelevant
+    # result can send it chasing a connection that isn't there. A person
+    # reading a search page pays neither cost, and an empty page for a memory
+    # they know is in the store would be a worse answer than a weak match they
+    # can dismiss at a glance. Weak results are marked instead (issue #30).
+    floor = recall_min_score()
     recall_results = deps.pipeline.recall(
         query=query,
         namespaces=namespaces,
         top_k=top_k,
         project_filter=project_filter,
+        min_score=0.0,
     )
 
     results = []
@@ -47,6 +57,7 @@ async def search_results(request: Request) -> HTMLResponse:
         results.append({
             "key": r.key,
             "namespace": r.namespace,
+            "weak_match": bool(floor) and r.score < floor,
             "content": r.content[:300],
             "score": round(r.adjusted_score, 4),
             "state": r.state,

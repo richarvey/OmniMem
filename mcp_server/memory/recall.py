@@ -220,6 +220,7 @@ class RecallPipeline:
         top_k: int | None = None,
         project_filter: str | list[str] | None = None,
         expand_queries: bool | None = None,
+        min_score: float | None = None,
     ) -> list[RecallResult]:
         """Full recall pipeline: abandoned fast-path, search, score, rank.
 
@@ -238,6 +239,13 @@ class RecallPipeline:
         top_k is a ceiling, not a quota: results below RECALL_MIN_SCORE are
         dropped rather than padding the list out, so an empty or short return
         is normal and means what it says. See recall_min_score().
+
+        min_score overrides that floor for one call, and 0 switches it off.
+        The floor exists because recall output is spent as an agent's context
+        and a plausible-looking irrelevant result can send it off after a
+        connection that isn't there. Neither cost applies to a human reading
+        a list on screen, so the web UI passes 0 and marks the weak results
+        instead of hiding them.
         """
         project_filter = normalise_project_filter(project_filter)
         project_set = set(project_filter)
@@ -495,7 +503,7 @@ class RecallPipeline:
         # before the query was even embedded, and a reinstate candidate was
         # matched on its own hints. Filtering those on a score they didn't
         # earn their place with would silently disable both features.
-        floor = recall_min_score()
+        floor = recall_min_score() if min_score is None else max(0.0, min_score)
         if floor > 0:
             kept = [
                 r for r in results

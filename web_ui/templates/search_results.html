@@ -13,6 +13,9 @@
     {% if r.reinstate_candidate %}
     <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent)">reinstate candidate</span>
     {% endif %}
+    {% if r.weak_match %}
+    <span class="badge badge-weak" title="Below the relevance floor recall() applies. Shown here because you can judge it yourself.">weak match</span>
+    {% endif %}
     {% if r.project %}
     <span style="color:var(--text-dim);font-size:0.75rem">{{ r.project }}</span>
     {% endif %}

@@ -857,6 +857,15 @@ a.stat-card:hover .stat-ns {
 
 .held-back-count { color: var(--text-dim); }
 
+/* Search results below recall()'s relevance floor. The web UI deliberately
+   shows them (a person can dismiss a bad match at a glance, and an empty page
+   for a memory they know exists is the worse answer) but says so. */
+.badge-weak {
+  background: var(--bg-input);
+  color: var(--text-dim);
+  border: 1px dashed var(--border-strong);
+}
+
 /* Memories table — six columns; the dashboard's five-column recent activity
    table reuses this, and the missing Actions column's share redistributes
    across its columns. */
