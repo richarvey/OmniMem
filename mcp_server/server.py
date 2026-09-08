@@ -143,12 +143,27 @@ def _check_index_drift(store) -> None:
         logger.info("Index drift check: all indexes match their record counts")
         return
 
-    total = sum(abs(v) for v in drift.values())
-    logger.warning(
-        "Index drift on %d namespace(s), %d entries total: %s. "
-        "Call reindex() to clear it — data-safe, rebuilds the index only.",
-        len(drift), total,
-        ", ".join(f"{ns} {delta:+d}" for ns, delta in sorted(drift.items())),
+    detail = ", ".join(f"{ns} {delta:+d}" for ns, delta in sorted(drift.items()))
+    orphans = {ns: d for ns, d in drift.items() if d > 0}
+    if orphans:
+        logger.warning(
+            "Index drift on %d namespace(s): %s. The positive counts are "
+            "index entries with no backing record (%d in total); call "
+            "reindex() to clear them — data-safe, rebuilds the index only.",
+            len(drift), detail, sum(orphans.values()),
+        )
+        return
+
+    # Negative only: the index is behind the records rather than ahead. At
+    # startup that is usually a recreated index still catching up —
+    # store.connect() runs _migrate_indexes() moments earlier, and
+    # reindex_namespace already documents that FT.INFO num_docs takes a moment
+    # to settle after a recreate. Worth saying, not worth alarming about, and
+    # reindex() is not the remedy for it.
+    logger.info(
+        "Index counts are behind the record counts (%s) — expected shortly "
+        "after an index rebuild; re-check with health() once settled.",
+        detail,
     )
 
 
@@ -334,12 +349,11 @@ def health() -> dict:
             # One SCAN of mem:* for every namespace instead of one full
             # keyspace SCAN per namespace. Shared with briefing() and the
             # startup check so all three agree on what drift is.
+            from memory.store import drift_note
+
             result.update(store.index_report())
             if result["drift"]:
-                result["drift_note"] = (
-                    "Index entries without a backing record. Clear with "
-                    "reindex(); it is data-safe and only rebuilds the index."
-                )
+                result["drift_note"] = drift_note(result["drift"])
     except Exception:
         result["valkey_error"] = "connection_failed"
 

@@ -8,6 +8,7 @@ from typing import Any
 
 from memory.classification import classification_fields
 from memory.skills import SKILL_KEY_PREFIX
+from memory.store import drift_note
 
 from . import _compact
 
@@ -255,9 +256,8 @@ def briefing(
     if drift:
         result["index_drift"] = {
             "namespaces": drift,
-            "total_entries": sum(abs(v) for v in drift.values()),
-            "note": "Index entries without a backing record. Call reindex() "
-                    "to clear them — data-safe, rebuilds the index only.",
+            "orphaned_entries": sum(d for d in drift.values() if d > 0),
+            "note": drift_note(drift),
         }
 
     # 6. New knowledge articles

@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from memory.lifecycle import MemoryLifecycle
-from memory.recall import RecallPipeline, recall_min_score
+from memory.recall import RecallPipeline, is_phantom, recall_min_score
 from memory.skill_compiler import (
     _HELD_BACK_MAX_CHARS,
     _held_back_preview,
@@ -22,7 +22,7 @@ from memory.skill_compiler import (
     _insufficient_note,
 )
 from memory.skills import Rule
-from memory.store import ValkeyStore
+from memory.store import ValkeyStore, drift_note
 from tests.conftest import store_memory
 
 
@@ -620,3 +620,129 @@ class TestMinScoreOverride:
         assert pipeline.recall(
             query, namespaces=["episodic"], min_score=0.99,
         ) == []
+
+
+# ---------------------------------------------------------------------------
+# Review findings on the first cut of these fixes
+# ---------------------------------------------------------------------------
+
+
+class TestPromotedSourceSurvivesTheFloor:
+    def test_source_inherits_the_facts_raw_score(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        """A short extracted fact matches a query far better than the long
+        verbatim memory it came from. Step 10b drops the fact and promotes the
+        source in its place; if only adjusted_score travels, the floor then
+        throws the promoted source away on a similarity it no longer shows and
+        recall returns nothing despite a 1.0 match."""
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.4")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+
+        src = store_memory(
+            fake_store, fake_embedder, "mem:episodic:src1",
+            "we spent the afternoon going through the reverse proxy "
+            "configuration in detail and eventually settled on the traefik "
+            "staging router rule",
+        )
+        fact = store_memory(
+            fake_store, fake_embedder, "mem:knowledge:fact1",
+            "traefik staging router rule",
+            namespace="knowledge", surface_score="0.5",
+        )
+        fake_store.set_field(fact, "enriched_from", src)
+
+        results = pipeline.recall(
+            "traefik staging router rule",
+            namespaces=["episodic", "knowledge"], top_k=5,
+        )
+        assert [r.key for r in results] == [src], results
+        assert results[0].score == pytest.approx(1.0), (
+            "the source stands in for the fact, so it must carry the score "
+            "that earned the result its place"
+        )
+
+    def test_unpromoted_source_keeps_its_own_score(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        """Promotion is conditional on the fact ranking higher. When the
+        source already outranks its fact, nothing is copied across."""
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        src = store_memory(
+            fake_store, fake_embedder, "mem:episodic:src2",
+            "postgres connection pooling tips",
+        )
+        fact = store_memory(
+            fake_store, fake_embedder, "mem:knowledge:fact2",
+            "an unrelated note about garden furniture",
+            namespace="knowledge", surface_score="0.5",
+        )
+        fake_store.set_field(fact, "enriched_from", src)
+        results = pipeline.recall(
+            "postgres connection pooling tips",
+            namespaces=["episodic", "knowledge"], top_k=5,
+        )
+        hit = next(r for r in results if r.key == src)
+        assert hit.score == pytest.approx(1.0)
+
+
+class TestPhantomDetection:
+    def test_only_key_and_score_is_a_phantom(self):
+        assert is_phantom({"key": "mem:episodic:x", "similarity_score": "0.4"})
+        assert is_phantom({"key": "mem:episodic:x"})
+
+    def test_a_record_with_any_field_is_not_a_phantom(self):
+        assert not is_phantom({
+            "key": "mem:project:widgets", "similarity_score": "0.1",
+            "content": "", "created_at": "1788870766", "state": "active",
+        })
+
+    def test_empty_content_alone_is_not_a_phantom(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        """compile_project_context(auto_save=True) writes content="" when the
+        project has no description yet — the real text is in current_state.
+        Treating empty content as the phantom signal made every such project
+        permanently unrecallable and told the operator to run reindex(),
+        which cannot help."""
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0")
+        import tools as tools_pkg
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        monkeypatch.setattr(tools_pkg, "_pipeline", pipeline)
+
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:w1",
+            "ship the widget parser rewrite", project="widgets",
+        )
+        from tools.project import compile_project_context
+        compile_project_context("widgets", auto_save=True)
+        assert fake_store.get("mem:project:widgets").get("content") == "", (
+            "precondition: the saved context must have empty content"
+        )
+
+        results = pipeline.recall(
+            "ship the widget parser", namespaces=["project"], top_k=5,
+        )
+        assert "mem:project:widgets" in [r.key for r in results]
+
+
+class TestDriftNote:
+    def test_orphans_point_at_reindex(self):
+        note = drift_note({"episodic": 145, "knowledge": 530})
+        assert "675 index entries with no backing record" in note
+        assert "reindex()" in note
+        assert "not pick" not in note
+
+    def test_a_lagging_index_does_not_point_at_reindex(self):
+        note = drift_note({"knowledge": -3})
+        assert "3 records the index has not picked up" in note
+        assert "reindex() does not fix" in note
+
+    def test_both_directions_are_described_separately(self):
+        note = drift_note({"episodic": 2, "knowledge": -1})
+        assert "2 index entries" in note
+        assert "1 record the index has not picked up" in note
+
+    def test_singulars(self):
+        assert "1 index entry with no backing record" in drift_note({"a": 1})

@@ -201,6 +201,31 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 
+def drift_note(drift: dict[str, int]) -> str:
+    """Plain-English reading of an index_report drift map.
+
+    Positive and negative drift are different faults with different remedies,
+    so one sentence cannot describe both: reindex() clears orphaned entries
+    and does nothing for an index that is merely behind.
+    """
+    orphans = sum(d for d in drift.values() if d > 0)
+    missing = -sum(d for d in drift.values() if d < 0)
+    parts: list[str] = []
+    if orphans:
+        parts.append(
+            f"{orphans} index entr{'y' if orphans == 1 else 'ies'} with no "
+            "backing record. Clear with reindex(); it is data-safe and only "
+            "rebuilds the index."
+        )
+    if missing:
+        parts.append(
+            f"{missing} record{'' if missing == 1 else 's'} the index has not "
+            "picked up — usually an index still settling after a rebuild, "
+            "which reindex() does not fix. Re-check with health()."
+        )
+    return " ".join(parts)
+
+
 class ValkeyStore:
     """Manages Valkey connection, vector indexes, and CRUD operations."""
 

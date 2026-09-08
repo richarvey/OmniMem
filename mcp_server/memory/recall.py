@@ -115,6 +115,28 @@ def _candidate_k(top_k: int, project_filter: Any) -> int:
     return k
 
 
+# Fields FT.SEARCH attaches to every hit regardless of whether the document
+# still exists. Anything else present means there is a real hash behind it.
+_PHANTOM_IGNORED_FIELDS = frozenset({"key", "similarity_score"})
+
+
+def is_phantom(doc: dict[str, Any]) -> bool:
+    """True when a search hit has no backing record (issue #28).
+
+    An index entry whose hash is gone comes back as a document id and a score
+    and nothing else. Deliberately not "content is empty": a project context
+    saved with no description carries content="" and is a perfectly real
+    record whose text lives in current_state, so testing content alone made
+    every such project unrecallable and told the operator to run reindex(),
+    which cannot help. Absence of every field is the honest signal.
+    """
+    return not any(
+        value not in (None, "")
+        for field_name, value in doc.items()
+        if field_name not in _PHANTOM_IGNORED_FIELDS
+    )
+
+
 def recall_min_score() -> float:
     """Relevance floor for recall results (issue #30). 0 disables it.
 
@@ -313,13 +335,10 @@ class RecallPipeline:
 
                 content = doc.get("content", "")
 
-                # Step 4b: Drop phantom hits (issue #28). An index entry whose
-                # backing hash is gone comes back as a doc id with no fields.
-                # remember() rejects empty content, so in a memory namespace
-                # an empty content field means the record isn't there any
-                # more — without this the phantom is returned as a result with
-                # no text, burning a top_k slot on nothing.
-                if not content.strip():
+                # Step 4b: Drop phantom hits (issue #28) — an index entry
+                # whose backing hash is gone, which would otherwise be
+                # returned as a result with no text, burning a top_k slot.
+                if is_phantom(doc):
                     logger.warning(
                         "Skipping phantom search hit %s in %s — indexed but "
                         "no backing record. Run reindex() to clear it.",
@@ -488,6 +507,16 @@ class RecallPipeline:
             if source is not None:
                 if r.adjusted_score > source.adjusted_score:
                     source.adjusted_score = r.adjusted_score
+                    # The raw score has to travel with it. The source is
+                    # standing in for the fact, so the fact's similarity is
+                    # what earned this result its place — and the relevance
+                    # floor below reads `score`. Promoting only the adjusted
+                    # score left the two numbers describing different
+                    # results, and the floor then threw away a source that
+                    # had just been promoted on a match it no longer showed:
+                    # a short fact matching at 1.0 against a long verbatim
+                    # source at 0.39 returned nothing at all.
+                    source.score = max(source.score, r.score)
                 continue  # drop the fact; its source stands in for it
             deduped.append(r)
         results = deduped
@@ -560,7 +589,7 @@ class RecallPipeline:
                     continue
                 content = doc.get("content", "")
                 # Phantom guard, parity with the main loop (issue #28).
-                if not content.strip():
+                if is_phantom(doc):
                     continue
                 if suppressed_topics:
                     content_lower = content.lower()
