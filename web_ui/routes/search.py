@@ -42,8 +42,8 @@ async def search_results(request: Request) -> HTMLResponse:
     # result can send it chasing a connection that isn't there. A person
     # reading a search page pays neither cost, and an empty page for a memory
     # they know is in the store would be a worse answer than a weak match they
-    # can dismiss at a glance. Weak results are marked instead (issue #30).
-    floor = recall_min_score()
+    # can dismiss at a glance. The pipeline's own weak_match flag still marks
+    # them, so the page says which results are doubtful (issue #30).
     recall_results = deps.pipeline.recall(
         query=query,
         namespaces=namespaces,
@@ -57,7 +57,7 @@ async def search_results(request: Request) -> HTMLResponse:
         results.append({
             "key": r.key,
             "namespace": r.namespace,
-            "weak_match": bool(floor) and r.score < floor,
+            "weak_match": r.weak_match or r.score < recall_min_score(),
             "content": r.content[:300],
             "score": round(r.adjusted_score, 4),
             "state": r.state,

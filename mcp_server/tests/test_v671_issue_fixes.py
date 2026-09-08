@@ -574,6 +574,7 @@ class TestWebSearchKeepsWeakMatches:
         a memory they know is stored is the worse answer. So the web search
         opts out of the floor and marks what falls below it instead."""
         monkeypatch.setenv("RECALL_MIN_SCORE", "0.4")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.4")
         store_memory(
             fake_store, fake_embedder, "mem:episodic:weak1",
             "notes about traefik routers and middlewares", project="omnimem",
@@ -590,6 +591,7 @@ class TestWebSearchKeepsWeakMatches:
         self, web_client, fake_store, fake_embedder, monkeypatch,
     ):
         monkeypatch.setenv("RECALL_MIN_SCORE", "0.4")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.4")
         store_memory(
             fake_store, fake_embedder, "mem:episodic:strong1",
             "valkey vector search tuning", project="omnimem",
