@@ -65,7 +65,7 @@ rss_worker/           # Background RSS ingestion
   feeds.yml           # Feed definitions (url, name, topics, optional project label)
 
 claude_config/        # CLAUDE.md template for end-users to copy into their projects
-scripts/              # health_check.sh, restore_backup.sh
+scripts/              # health_check.sh, restore_backup.sh, embedding_bench.py (ingest/recall benchmark + equivalence check for backend swaps, see docs/embedding-benchmark.md)
 ```
 
 ## Running Locally

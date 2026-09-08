@@ -20,6 +20,7 @@ Everything that used to live in one very long README, now in sensible pieces. St
 ## Internals
 
 - [Architecture](architecture.md) — the four containers, the recall pipeline, and key design decisions
+- [Embedding benchmark](embedding-benchmark.md) — ingest and recall numbers before and after an embedding backend change, with an equivalence check
 - [Memory types overview](memory-types.md) — the storage model shared by all five namespaces
   - [Episodic](memory-episodic.md) · [Project](memory-project.md) · [Knowledge](memory-knowledge.md) · [Preference](memory-preference.md) · [Skill](memory-skill.md)
 
