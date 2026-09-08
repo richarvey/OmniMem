@@ -120,13 +120,101 @@ def _rule_counts(rules: list[Rule]) -> dict[str, int]:
     return counts
 
 
+# held_back exists so a human can decide what to bless, and the substance of
+# a rule is reliably in the second half of the sentence — rule.text[:80] cut
+# "the in-scope extraction..." to "the in-s" and handed over the setup without
+# the point (issue #32). Full text now; this cap is a safety valve for a
+# pathological rule, not a display convention, and when it fires it cuts on a
+# word boundary and says so rather than looking like a complete sentence.
+_HELD_BACK_MAX_CHARS = 500
+
+
+def _held_back_text(text: str) -> tuple[str, bool]:
+    """Rule text for review, trimmed only if pathologically long."""
+    if len(text) <= _HELD_BACK_MAX_CHARS:
+        return text, False
+    cut = text[:_HELD_BACK_MAX_CHARS]
+    # Prefer the last word boundary, but not if that throws most of it away.
+    boundary = cut.rfind(" ")
+    if boundary > _HELD_BACK_MAX_CHARS // 2:
+        cut = cut[:boundary]
+    return cut.rstrip() + "…", True
+
+
+def _pool_concentration(pool: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """How much of a domain's pool comes from its single busiest project.
+
+    A domain drawn almost entirely from one project can't clear the
+    reinforcement gate on merit: "the domain" and "that project's history"
+    are the same set of memories, so recurrence measures how much happened in
+    one codebase rather than what generalises across several (issue #33).
+    """
+    if not pool:
+        return None
+    counts: dict[str, int] = {}
+    for item in pool:
+        name = (item.get("project") or "").strip()
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return None
+    top, count = max(counts.items(), key=lambda kv: (kv[1], kv[0]))
+    return {
+        "projects": len(counts),
+        "top_project": top,
+        "top_project_share": f"{count}/{len(pool)}",
+    }
+
+
+def _insufficient_note(
+    domain: str, pool: list[dict[str, Any]], held_back: list[Rule],
+) -> str:
+    """Explain why nothing compiled, and point at the lever that helps.
+
+    Deliberately does NOT suggest lowering min_reinforcement. When the
+    candidates are project narrative rather than generalisable claims, a
+    lower gate admits the noise instead of finding signal — it turns a domain
+    that correctly compiled nothing into one that compiles the wrong thing
+    (issue #33).
+    """
+    parts = [
+        "No lesson recurs across enough memories to earn a rule. A single "
+        "episode is a memory; a pattern earns a skill rule."
+    ]
+    if held_back and all(r.reinforcement <= 1 for r in held_back):
+        parts.append(
+            f"All {len(held_back)} candidates appear exactly once, so nothing "
+            "was close to the gate."
+        )
+    concentration = _pool_concentration(pool)
+    if concentration and concentration["projects"] == 1:
+        parts.append(
+            f"Every candidate comes from one project "
+            f"({concentration['top_project']}), so '{domain}' and that "
+            "project's history are the same set of memories here. A narrower "
+            "domain that spans real work in several projects is more likely "
+            "to clear the gate than a broad one."
+        )
+    parts.append(
+        "Read the held_back text: candidates written as narrative of what "
+        "happened can never become rules however often they recur, while a "
+        "generalisable claim can. bless() the ones that already read as "
+        "rules."
+    )
+    return " ".join(parts)
+
+
 def _held_back_preview(held_back: list[Rule], limit: int = 10) -> list[dict[str, Any]]:
     preview = []
     for rule in held_back[:limit]:
+        if rule.kind == "dont" and rule.name:
+            text, truncated = f"Avoid {rule.name}", False
+        else:
+            text, truncated = _held_back_text(rule.text)
         preview.append(_compact({
             "kind": rule.kind,
-            "rule": (f"Avoid {rule.name}" if rule.kind == "dont" and rule.name
-                     else rule.text[:80]),
+            "rule": text,
+            "truncated": True if truncated else None,
             "reinforcement": rule.reinforcement,
             "sources": rule.sources,
         }))
@@ -246,10 +334,9 @@ def _propose(
             "domain": domain,
             "pool_size": len(pool),
             "min_reinforcement": min_reinforcement,
+            "pool_concentration": _pool_concentration(pool),
             "held_back": _held_back_preview(held_back),
-            "note": "No lesson recurs across enough memories to earn a rule. "
-                    "A single episode is a memory; a pattern earns a skill "
-                    "rule. Lower min_reinforcement or bless() a strong lesson.",
+            "note": _insufficient_note(domain, pool, held_back),
         })
     # Promoted references join after the gate: promotion is the vetting, so
     # they neither need reinforcement nor consume it. Feed rules likewise —

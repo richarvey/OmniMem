@@ -223,17 +223,19 @@ def find_skills(query_or_domain: str) -> dict[str, Any]:
                 f"{below_floor} scored below it. Nothing stored covers this "
                 "work — compile_skill(domain=...) creates a skill for it."
             )
-        return _compact({"skills": [], "note": note})
+        # Not _compact: an empty list is the answer here, and compacting
+        # would drop the `skills` key altogether and leave the caller
+        # guessing whether discovery ran.
+        return {"skills": [], "note": note}
 
-    return _compact({
-        "skills": results[:10],
-        "note": (
-            "Best match is a weak one — read the description before "
-            "loading it, and treat 'no relevant skill' as a valid answer."
-            if all(r["confidence"] == "low" for r in results[:10])
-            else None
-        ),
-    })
+    top = results[:10]
+    out: dict[str, Any] = {"skills": top}
+    if all(entry["confidence"] == "low" for entry in top):
+        out["note"] = (
+            "Best match is a weak one — read the description before loading "
+            "it, and treat 'no relevant skill' as a valid answer."
+        )
+    return out
 
 
 def get_skill(skill_id: str) -> dict[str, Any]:

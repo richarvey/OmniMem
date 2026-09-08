@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from memory.classification import classification_fields
+from memory.skills import SKILL_KEY_PREFIX
 
 from . import _compact
 
@@ -18,6 +19,44 @@ def _get_deps():
     return _store, _embedder, _lifecycle, _pipeline
 
 
+def _skill_source_keys(store) -> set[str]:
+    """Memory keys that compiled into a skill.
+
+    The staleness clock measures time since last update, and a memory that
+    earned a place in a compiled skill stops being touched precisely because
+    it graduated: it reaches sessions as part of the skill instead of through
+    direct recall. Left alone, the metric inverts — the memories the system's
+    own reinforcement logic rates most durable are the ones it flags for
+    cleanup (issue #34).
+
+    Read from each skill's stored source_manifest rather than stamped onto
+    the memories at compile time, so deleting or recompiling a skill takes
+    the exemption with it and no marker is ever left behind pointing at a
+    skill that no longer exists. promote_knowledge() solves the same problem
+    for RSS articles by clearing expires_at.
+    """
+    try:
+        keys = store.scan_prefix(SKILL_KEY_PREFIX)
+        if not keys:
+            return set()
+        sources: set[str] = set()
+        for row in store.get_fields_multi(keys, ("source_manifest",)):
+            if not row:
+                continue
+            try:
+                manifest = json.loads(row.get("source_manifest") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(manifest, list):
+                sources.update(k for k in manifest if isinstance(k, str))
+        return sources
+    except Exception as exc:
+        # Never let this cost the caller a briefing — the worst case without
+        # it is the pre-6.7.1 behaviour.
+        logger.warning("Could not read skill source manifests: %s", exc)
+        return set()
+
+
 def _scan_episodic_once(
     store,
     stale_days: int,
@@ -26,6 +65,7 @@ def _scan_episodic_once(
     """Single pass over episodic memories for stale, reinstate, and contradiction data."""
     now = time.time()
     stale_cutoff = now - (stale_days * 86400)
+    skill_sources = _skill_source_keys(store)
 
     stale: list[dict[str, Any]] = []
     reinstate_candidates: list[dict[str, Any]] = []
@@ -51,10 +91,11 @@ def _scan_episodic_once(
             if doc_project != project_filter:
                 continue
 
-        # Stale: active memories not updated recently
+        # Stale: active memories not updated recently, except those that
+        # compiled into a skill (issue #34).
         if state == "active":
             updated_at = float(data.get("updated_at", "0"))
-            if updated_at < stale_cutoff:
+            if updated_at < stale_cutoff and key not in skill_sources:
                 age_days = int((now - updated_at) / 86400)
                 stale.append({
                     "key": key,
@@ -202,6 +243,22 @@ def briefing(
         result["contradiction_warnings"] = episodic["contradictions"]
     if episodic["reinstate"]:
         result["reinstate_candidates"] = episodic["reinstate"]
+
+    # 5b. Index drift (issue #28). It was only ever a field in health(), and
+    # nothing prompts an operator to call health() — which is how 762 orphans
+    # accumulated unnoticed. The briefing is the one call every session makes.
+    try:
+        drift = store.index_report()["drift"]
+    except Exception as exc:
+        logger.warning("Briefing index drift check failed: %s", exc)
+        drift = {}
+    if drift:
+        result["index_drift"] = {
+            "namespaces": drift,
+            "total_entries": sum(abs(v) for v in drift.values()),
+            "note": "Index entries without a backing record. Call reindex() "
+                    "to clear them — data-safe, rebuilds the index only.",
+        }
 
     # 6. New knowledge articles
     if include_knowledge:

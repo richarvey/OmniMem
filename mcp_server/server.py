@@ -118,6 +118,40 @@ if _oauth_provider:
 _start_time = time.time()
 
 
+def _check_index_drift(store) -> None:
+    """Log index drift at startup so it doesn't go unnoticed (issue #28).
+
+    Drift was previously only visible as a field in `health`, which nothing
+    prompts an operator to call — 762 orphaned entries accumulated across
+    four namespaces on a live instance before anyone looked. This reports it
+    once per boot; it does not self-heal, because dropping and recreating
+    every index automatically on startup is a much bigger hammer than the
+    problem, and reindex() is one call away.
+
+    Costs one SCAN of mem:*. Set INDEX_DRIFT_CHECK=false to skip it.
+    """
+    if os.getenv("INDEX_DRIFT_CHECK", "true").strip().lower() in ("false", "0", "no"):
+        return
+    try:
+        report = store.index_report()
+    except Exception as exc:
+        logger.warning("Index drift check failed: %s", exc)
+        return
+
+    drift = report["drift"]
+    if not drift:
+        logger.info("Index drift check: all indexes match their record counts")
+        return
+
+    total = sum(abs(v) for v in drift.values())
+    logger.warning(
+        "Index drift on %d namespace(s), %d entries total: %s. "
+        "Call reindex() to clear it — data-safe, rebuilds the index only.",
+        len(drift), total,
+        ", ".join(f"{ns} {delta:+d}" for ns, delta in sorted(drift.items())),
+    )
+
+
 def _init() -> None:
     """Initialise shared dependencies: Valkey store, embedder, lifecycle, pipeline."""
     from memory.embedder import Embedder
@@ -167,6 +201,8 @@ def _init() -> None:
     migrate_project_domains(store)
     migrate_licence(store)
     migrate_provenance(store)
+
+    _check_index_drift(store)
 
     # Start background enrichment worker for async fact extraction
     from memory.enrichment import EnrichmentWorker
@@ -295,30 +331,15 @@ def health() -> dict:
             store.client.ping()
             result["valkey_connected"] = True
 
-            # One SCAN of mem:* for all four namespaces instead of one full
-            # keyspace SCAN per namespace.
-            try:
-                actual_counts = store.count_all_records()
-            except Exception:
-                actual_counts = {}
-
-            for namespace in ("episodic", "project", "knowledge", "preference", "skill"):
-                idx_name = f"idx:{namespace}"
-                num_docs: int | str
-                try:
-                    info = store.client.ft(idx_name).info()
-                    num_docs = int(info.get("num_docs", 0))
-                except Exception:
-                    num_docs = "unavailable"
-                result["indexes"][idx_name] = num_docs
-
-                if namespace in actual_counts:
-                    actual = actual_counts[namespace]
-                    result["records"][namespace] = actual
-                    if isinstance(num_docs, int) and num_docs != actual:
-                        result["drift"][namespace] = num_docs - actual
-                else:
-                    result["records"][namespace] = "unavailable"
+            # One SCAN of mem:* for every namespace instead of one full
+            # keyspace SCAN per namespace. Shared with briefing() and the
+            # startup check so all three agree on what drift is.
+            result.update(store.index_report())
+            if result["drift"]:
+                result["drift_note"] = (
+                    "Index entries without a backing record. Clear with "
+                    "reindex(); it is data-safe and only rebuilds the index."
+                )
     except Exception:
         result["valkey_error"] = "connection_failed"
 

@@ -14,10 +14,10 @@
 {% endif %}
 <pre class="skill-draft">{{ result.draft or result.diff }}</pre>
 {% if result.held_back %}
-<p class="section-note">
-  Held back (not enough reinforcement yet):
-  {% for h in result.held_back %}{{ h.rule }}{% if not loop.last %}; {% endif %}{% endfor %}
-</p>
+<p class="section-note">Held back (not enough reinforcement yet):</p>
+<ul class="held-back-list">
+  {% for h in result.held_back %}<li>{{ h.rule }}</li>{% endfor %}
+</ul>
 {% endif %}
 <form hx-post="/skills/commit" hx-target="#compile-result" style="margin-top:0.75rem;text-align:right">
   <input type="hidden" name="domain" value="{{ result.domain }}">
@@ -59,10 +59,10 @@
   </span>
 </div>
 {% if result.held_back %}
-<p class="section-note">
-  Held back:
-  {% for h in result.held_back %}{{ h.rule }} ({{ h.reinforcement }}x){% if not loop.last %}; {% endif %}{% endfor %}
-</p>
+<p class="section-note">Held back — these are what you would be blessing:</p>
+<ul class="held-back-list">
+  {% for h in result.held_back %}<li>{{ h.rule }} <span class="held-back-count">({{ h.reinforcement }}x)</span></li>{% endfor %}
+</ul>
 {% endif %}
 
 {% else %}

@@ -25,6 +25,9 @@ _VALID_KEY_PREFIXES = (
 # Valid namespace names for search index lookups
 _VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference", "skill"}
 
+# Same namespaces, in a fixed order for anything that reports on all of them.
+INDEX_ORDER = ("episodic", "project", "knowledge", "preference", "skill")
+
 VECTOR_DIM = 384
 VECTOR_ALGORITHM = "HNSW"
 DISTANCE_METRIC = "COSINE"
@@ -660,6 +663,46 @@ class ValkeyStore:
             "actual_records": actual,
             "removed_phantoms": max(0, before - actual),
         }
+
+    def index_report(self) -> dict[str, dict[str, Any]]:
+        """Index num_docs vs actual record count, per namespace.
+
+        The single place that comparison is made: health() reports it,
+        briefing() surfaces it, and startup logs it, so the three can't
+        disagree about what drift is (issue #28).
+
+        A positive drift is index entries with no backing record — deletes
+        the search module didn't observe. Those are what reindex() clears.
+        Negative drift is the rarer opposite (records the index hasn't picked
+        up yet) and is reported the same way rather than hidden.
+        """
+        indexes: dict[str, int | str] = {}
+        records: dict[str, int | str] = {}
+        drift: dict[str, int] = {}
+
+        try:
+            actual_counts = self.count_all_records()
+        except Exception:
+            actual_counts = {}
+
+        for namespace in INDEX_ORDER:
+            idx_name = f"idx:{namespace}"
+            try:
+                info = self.client.ft(idx_name).info()
+                num_docs: int | str = int(info.get("num_docs", 0))
+            except Exception:
+                num_docs = "unavailable"
+            indexes[idx_name] = num_docs
+
+            if namespace in actual_counts:
+                actual = actual_counts[namespace]
+                records[namespace] = actual
+                if isinstance(num_docs, int) and num_docs != actual:
+                    drift[namespace] = num_docs - actual
+            else:
+                records[namespace] = "unavailable"
+
+        return {"indexes": indexes, "records": records, "drift": drift}
 
     def scan_prefix(self, prefix: str) -> list[str]:
         """Return all keys matching a prefix using SCAN."""
