@@ -141,6 +141,9 @@ class TestRecall:
 
 class TestRecallIndex:
     def test_returns_snippets_not_full_content(self, no_relevance_floor):
+        # "A"*50 against "A"*500 is two distinct tokens with no overlap:
+        # near-zero in the fake, and only 0.265 on the real model. The
+        # subject here is snippet shape, not whether the pair matches.
         long_content = "A" * 500
         remember(long_content)
         result = recall_index("A" * 50)
@@ -240,7 +243,7 @@ class TestRecallDetail:
         assert results[0]["state"] == "active"
         assert results[0]["namespace"] == "episodic"
 
-    def test_index_then_detail_workflow(self, no_relevance_floor):
+    def test_index_then_detail_workflow(self):
         """End-to-end: recall_index to find, recall_detail to expand."""
         remember("Progressive disclosure is a UX pattern for managing complexity")
         remember("Token budgeting reduces API costs by limiting context size")

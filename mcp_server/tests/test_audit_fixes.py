@@ -109,7 +109,7 @@ class TestEnrichmentDedup:
 
 class TestRecallStarvation:
     def test_project_filter_finds_memory_beyond_top_20(
-        self, fake_store, fake_embedder, lifecycle, no_relevance_floor,
+        self, fake_store, fake_embedder, lifecycle,
     ):
         pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
 

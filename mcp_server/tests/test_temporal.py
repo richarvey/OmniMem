@@ -84,7 +84,7 @@ def test_temporal_boost_falloff_midway():
 
 
 def test_pipeline_temporal_boost_prefers_dated_match(
-    fake_store, fake_embedder, pipeline, no_relevance_floor
+    fake_store, fake_embedder, pipeline
 ):
     """Two memories with similar content but different event_dates — the
     one matching the query date should rank higher."""

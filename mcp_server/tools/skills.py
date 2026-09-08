@@ -39,10 +39,12 @@ def _get_deps():
     return _store, _embedder
 
 
-# Skills need their own floor, well below recall's (issue #31). Their
-# discovery vector is name + description + domain — long, human-written prose
-# — and cosine similarity against it lands much lower than against a memory's
-# content, so recall's 0.4 would reject nearly every real match.
+# Skills need their own floor, unrelated to recall's (issue #31). Their
+# discovery vector is name + description + domain — a short, deliberately
+# written summary of what the skill is for — matched against a query about
+# the work at hand. That is a different comparison from a query against a
+# memory's raw content, and unlike recall's it separates cleanly, which is
+# why a hard cut is defensible here and only a conservative one is there.
 #
 # Measured on the three compiled skills in a live store, all-MiniLM-L6-v2:
 #

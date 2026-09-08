@@ -137,6 +137,44 @@ def is_phantom(doc: dict[str, Any]) -> bool:
     )
 
 
+# Two thresholds, because on all-MiniLM-L6-v2 the honest answer is that
+# relevant and irrelevant raw similarities OVERLAP, so no single cut is both
+# safe and useful. Measured with the shipped ONNX embedder over query/memory
+# pairs written in this repo's own style:
+#
+#   true positives   0.189 ("why do we get a 421 misdirected request" against
+#                    the FastMCP Host/Origin write-up) .. 0.633
+#   false positives  -0.06 .. 0.242 ("search index drift" against the
+#                    responsive-tables note, on shared generic tokens)
+#
+# A cut at 0.4 kept 6 of 8 true positives — it discards a quarter of correct
+# answers, and the user experiences that as "recall forgot something I know
+# is in there", with nothing on screen to say a filter fired. A cut low
+# enough to keep them all (0.15) leaves the worst noise in. So: drop only
+# what is unambiguously noise, and MARK the band in between rather than
+# guess. The marking is what actually addresses issue #30's harm, which was
+# never the row count — it was an agent finding a connection to a WWDC
+# Spotlight note because nothing said not to.
+#
+# Two mechanisms push real matches down and are worth knowing before
+# retuning: the model truncates at 256 tokens while remember() accepts 50k
+# chars un-chunked, so a long write-up embeds as its first 256 tokens; and a
+# short keyword query against long prose scores low by construction.
+_RECALL_MIN_SCORE_DEFAULT = 0.15
+_RECALL_WEAK_SCORE_DEFAULT = 0.35
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        logger.warning("%s is not a number (%r); using %.2f", name, raw, default)
+        return default
+
+
 def recall_min_score() -> float:
     """Relevance floor for recall results (issue #30). 0 disables it.
 
@@ -151,20 +189,24 @@ def recall_min_score() -> float:
     and abandoned experiences (weight 0.1), both of which are exactly what
     you want back when nothing better matches.
 
-    0.4 is the observed cliff on all-MiniLM-L6-v2: in the run recorded on
-    issue #30 the two on-topic results scored 1.133 and 0.475 and the three
-    off-topic ones 0.384, 0.362 and 0.349, matching on generic tokens the
-    query happened to share.
+    Deliberately NOT the 0.4 suggested on the issue. The numbers quoted there
+    (1.133, 0.475, 0.384) are adjusted scores — 1.133 is not a reachable
+    cosine — so that cliff was read off a different scale from the one being
+    compared against here, and transferring it cost real results. See the
+    measurements above the constants.
     """
-    try:
-        floor = float(os.getenv("RECALL_MIN_SCORE", "0.4"))
-    except (TypeError, ValueError):
-        logger.warning(
-            "RECALL_MIN_SCORE is not a number (%r); using 0.4",
-            os.getenv("RECALL_MIN_SCORE"),
-        )
-        return 0.4
-    return max(0.0, floor)
+    return _float_env("RECALL_MIN_SCORE", _RECALL_MIN_SCORE_DEFAULT)
+
+
+def recall_weak_score() -> float:
+    """Below this a kept result is flagged weak_match. 0 disables the flag.
+
+    The band between the floor and this is where relevant and irrelevant
+    genuinely overlap, and no threshold sorts them. Saying so is more useful
+    than pretending otherwise in either direction: dropping the band loses
+    real answers, returning it silently is what issue #30 was about.
+    """
+    return _float_env("RECALL_WEAK_SCORE", _RECALL_WEAK_SCORE_DEFAULT)
 
 
 def compute_experience_weight(effort_score: int, outcome: str) -> float:
@@ -196,6 +238,10 @@ class RecallResult:
     outcome: str | None = None
     experience_weight: float = 1.0
     result_type: str = "memory"
+    # True when the raw similarity is above the floor but inside the band
+    # where relevant and irrelevant overlap (issue #30). The caller is being
+    # told: this came back, and it may still be nothing.
+    weak_match: bool = False
     breakthrough: str | None = None
     contradictions: list[dict] = field(default_factory=list)
     event_date: float | None = None
@@ -533,13 +579,11 @@ class RecallPipeline:
         # matched on its own hints. Filtering those on a score they didn't
         # earn their place with would silently disable both features.
         floor = recall_min_score() if min_score is None else max(0.0, min_score)
+        exempt = lambda r: (  # noqa: E731 - reads better than a def here
+            r.result_type == "abandoned_warning" or r.reinstate_candidate
+        )
         if floor > 0:
-            kept = [
-                r for r in results
-                if r.score >= floor
-                or r.result_type == "abandoned_warning"
-                or r.reinstate_candidate
-            ]
+            kept = [r for r in results if r.score >= floor or exempt(r)]
             dropped = len(results) - len(kept)
             if dropped:
                 logger.debug(
@@ -547,6 +591,13 @@ class RecallPipeline:
                     floor, dropped, len(results), query[:60],
                 )
             results = kept
+
+        # Mark, don't hide, the band where the two distributions overlap.
+        weak_cut = recall_weak_score()
+        if weak_cut > 0:
+            for r in results:
+                if r.score < weak_cut and not exempt(r):
+                    r.weak_match = True
 
         # Step 11: Return top_k
         final = results[:top_k]

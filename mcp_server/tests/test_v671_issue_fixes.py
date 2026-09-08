@@ -13,7 +13,12 @@ import numpy as np
 import pytest
 
 from memory.lifecycle import MemoryLifecycle
-from memory.recall import RecallPipeline, is_phantom, recall_min_score
+from memory.recall import (
+    RecallPipeline,
+    is_phantom,
+    recall_min_score,
+    recall_weak_score,
+)
 from memory.skill_compiler import (
     _HELD_BACK_MAX_CHARS,
     _held_back_preview,
@@ -45,9 +50,11 @@ def _wire_tools(fake_store, fake_embedder, monkeypatch):
 
 
 class TestRecallMinScore:
-    def test_default_is_the_measured_cliff(self, monkeypatch):
+    def test_defaults(self, monkeypatch):
         monkeypatch.delenv("RECALL_MIN_SCORE", raising=False)
-        assert recall_min_score() == 0.4
+        monkeypatch.delenv("RECALL_WEAK_SCORE", raising=False)
+        assert recall_min_score() == 0.15
+        assert recall_weak_score() == 0.35
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("RECALL_MIN_SCORE", "0.15")
@@ -59,7 +66,9 @@ class TestRecallMinScore:
 
     def test_garbage_falls_back_to_default(self, monkeypatch):
         monkeypatch.setenv("RECALL_MIN_SCORE", "not-a-number")
-        assert recall_min_score() == 0.4
+        assert recall_min_score() == 0.15
+        monkeypatch.setenv("RECALL_MIN_SCORE", "")
+        assert recall_min_score() == 0.15
 
     def test_negative_is_clamped_not_inverted(self, monkeypatch):
         monkeypatch.setenv("RECALL_MIN_SCORE", "-1")
@@ -150,7 +159,9 @@ class TestRecallMinScore:
     ):
         """The warning fires on a keyword scan before the query is embedded,
         so it never had a similarity to be judged on."""
-        monkeypatch.setenv("RECALL_MIN_SCORE", "0.99")
+        # Above 1.0 deliberately: the warning is constructed with score 1.0,
+        # so any floor at or below that would pass with the exemption removed.
+        monkeypatch.setenv("RECALL_MIN_SCORE", "1.5")
         pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
         store_memory(
             fake_store, fake_embedder, "mem:episodic:aband1",
@@ -746,3 +757,283 @@ class TestDriftNote:
 
     def test_singulars(self):
         assert "1 index entry with no backing record" in drift_note({"a": 1})
+
+
+# ---------------------------------------------------------------------------
+# Coverage gaps found in review
+# ---------------------------------------------------------------------------
+
+
+class TestWeakMatchBand:
+    def test_result_between_floor_and_weak_cut_is_flagged(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.1")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.9")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:w1",
+            "postgres connection pooling notes for the B service",
+        )
+        [hit] = pipeline.recall(
+            "postgres connection pooling tips", namespaces=["episodic"],
+        )
+        assert 0.1 <= hit.score < 0.9
+        assert hit.weak_match is True
+
+    def test_strong_result_is_not_flagged(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.1")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.35")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        content = "postgres connection pooling tips"
+        store_memory(fake_store, fake_embedder, "mem:episodic:w2", content)
+        [hit] = pipeline.recall(content, namespaces=["episodic"])
+        assert hit.weak_match is False
+
+    def test_zero_disables_the_flag(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:w3", "a note about nothing",
+        )
+        results = pipeline.recall("entirely other subject", namespaces=["episodic"])
+        assert results and all(r.weak_match is False for r in results)
+
+    def test_recall_tool_surfaces_the_flag(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        from tools.core import recall as recall_tool
+
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.1")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.9")
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:w4",
+            "postgres connection pooling notes for the B service",
+        )
+        entries = [
+            e for e in recall_tool("postgres connection pooling tips")
+            if e.get("key") == "mem:episodic:w4"
+        ]
+        assert entries and entries[0]["weak_match"] is True
+
+    def test_reinstate_candidate_is_never_flagged_or_dropped(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        """A deprioritised memory surfaces on its own hints, not on vector
+        similarity, so neither the floor nor the weak band applies to it."""
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0.9")
+        monkeypatch.setenv("RECALL_WEAK_SCORE", "0.95")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        store_memory(
+            fake_store, fake_embedder, "mem:episodic:dep1",
+            "we shelved the graphql gateway experiment",
+            state="deprioritised",
+            reinstate_hints=["graphql"],
+            deprioritised_reason="parked",
+        )
+        results = pipeline.recall(
+            "should we revisit graphql", namespaces=["episodic"],
+        )
+        candidates = [r for r in results if r.reinstate_candidate]
+        assert candidates, results
+        assert candidates[0].weak_match is False
+
+
+class TestVariantPhantomGuard:
+    def test_expansion_variants_skip_phantoms(
+        self, fake_store, fake_embedder, lifecycle, monkeypatch,
+    ):
+        monkeypatch.setenv("RECALL_MIN_SCORE", "0")
+        pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
+        real = store_memory(
+            fake_store, fake_embedder, "mem:episodic:v1",
+            "docker compose healthcheck for valkey",
+        )
+        monkeypatch.setattr(
+            "memory.recall.expand_query",
+            lambda query, store=None: ["valkey healthcheck compose"],
+        )
+        original = fake_store.search
+
+        def _with_phantom(namespace, vector, top_k=10, filter_expr=None):
+            docs = original(namespace, vector, top_k=top_k, filter_expr=filter_expr)
+            return [{"key": "mem:episodic:ghost2", "similarity_score": "0.01"}] + docs
+
+        monkeypatch.setattr(fake_store, "search", _with_phantom)
+        results = pipeline.recall(
+            "docker compose healthcheck", namespaces=["episodic"],
+            expand_queries=True,
+        )
+        assert "mem:episodic:ghost2" not in [r.key for r in results]
+        assert real in [r.key for r in results]
+
+
+class TestBriefingSurfacesDrift:
+    """Surfacing drift in the one call every session makes was the point of
+    #28 — health() alone is what nobody looks at."""
+
+    def _wire(self, monkeypatch, fake_store, drift):
+        import tools as tools_pkg
+        monkeypatch.setattr(
+            fake_store, "index_report",
+            lambda: {"indexes": {}, "records": {}, "drift": drift},
+            raising=False,
+        )
+        monkeypatch.setattr(tools_pkg, "_store", fake_store)
+
+    def test_drift_appears_with_counts_and_advice(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        from tools.briefing import briefing
+
+        self._wire(monkeypatch, fake_store, {"episodic": 145, "knowledge": 530})
+        result = briefing()
+        assert result["index_drift"]["orphaned_entries"] == 675
+        assert result["index_drift"]["namespaces"]["knowledge"] == 530
+        assert "reindex()" in result["index_drift"]["note"]
+
+    def test_no_drift_means_no_entry(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        from tools.briefing import briefing
+
+        self._wire(monkeypatch, fake_store, {})
+        assert "index_drift" not in briefing()
+
+    def test_a_failing_report_does_not_break_the_briefing(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        import tools as tools_pkg
+        from tools.briefing import briefing
+
+        def _boom():
+            raise RuntimeError("valkey gone")
+
+        monkeypatch.setattr(fake_store, "index_report", _boom, raising=False)
+        monkeypatch.setattr(tools_pkg, "_store", fake_store)
+        assert "index_drift" not in briefing()
+
+
+class TestStartupDriftCheck:
+    def _server(self):
+        import importlib
+        import sys
+        sys.modules.pop("server", None)
+        return importlib.import_module("server")
+
+    def _store(self, drift):
+        class _S:
+            def index_report(self_inner):
+                return {"indexes": {}, "records": {}, "drift": drift}
+        return _S()
+
+    def test_orphans_warn_and_name_reindex(self, monkeypatch, caplog):
+        monkeypatch.delenv("INDEX_DRIFT_CHECK", raising=False)
+        server = self._server()
+        with caplog.at_level("INFO"):
+            server._check_index_drift(self._store({"episodic": 145}))
+        assert "reindex()" in caplog.text
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+
+    def test_a_lagging_index_does_not_warn(self, monkeypatch, caplog):
+        """Expected moments after _migrate_indexes() recreates an index, and
+        reindex() is not the remedy — so it must not read as a fault."""
+        monkeypatch.delenv("INDEX_DRIFT_CHECK", raising=False)
+        server = self._server()
+        with caplog.at_level("INFO"):
+            server._check_index_drift(self._store({"knowledge": -4}))
+        assert not any(r.levelname == "WARNING" for r in caplog.records)
+        assert "reindex()" not in caplog.text
+
+    def test_clean_store_says_so(self, monkeypatch, caplog):
+        monkeypatch.delenv("INDEX_DRIFT_CHECK", raising=False)
+        server = self._server()
+        with caplog.at_level("INFO"):
+            server._check_index_drift(self._store({}))
+        assert "all indexes match" in caplog.text
+
+    @pytest.mark.parametrize("value", ["false", "0", "no", "FALSE"])
+    def test_opt_out(self, monkeypatch, value):
+        monkeypatch.setenv("INDEX_DRIFT_CHECK", value)
+        server = self._server()
+
+        class _Boom:
+            def index_report(self):
+                raise AssertionError("must not be called when opted out")
+
+        server._check_index_drift(_Boom())
+
+    def test_a_failing_report_is_logged_not_raised(self, monkeypatch, caplog):
+        monkeypatch.delenv("INDEX_DRIFT_CHECK", raising=False)
+        server = self._server()
+
+        class _Boom:
+            def index_report(self):
+                raise RuntimeError("scan failed")
+
+        with caplog.at_level("WARNING"):
+            server._check_index_drift(_Boom())
+        assert "drift check failed" in caplog.text
+
+
+class TestFindSkillsRemainingGaps:
+    def _skill(self, store, embedder, domain, description):
+        key = f"mem:skill:gen:{domain}-local"
+        store.upsert(
+            "skill", key,
+            {
+                "name": f"{domain}-local", "description": description,
+                "domain": domain, "state": "active", "generated": "true",
+                "body": "---\n---\n", "source_manifest": "[]",
+                "created_at": str(time.time()), "updated_at": str(time.time()),
+            },
+            embedder.embed(f"{domain}-local {description} {domain}"),
+        )
+        return key
+
+    def test_zero_floor_returns_everything(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        from tools.skills import find_skills
+
+        monkeypatch.setenv("SKILL_MIN_SCORE", "0")
+        self._skill(fake_store, fake_embedder, "opentofu", "infrastructure code")
+        self._skill(fake_store, fake_embedder, "preferences", "house style")
+        assert len(find_skills("something wholly unrelated")["skills"]) == 2
+
+    def test_a_strong_match_suppresses_the_weak_note(
+        self, fake_store, fake_embedder, monkeypatch,
+    ):
+        from tools.skills import find_skills
+
+        monkeypatch.setenv("SKILL_MIN_SCORE", "0.05")
+        self._skill(fake_store, fake_embedder, "opentofu", "infrastructure code")
+        self._skill(fake_store, fake_embedder, "preferences", "house style")
+        result = find_skills("opentofu infrastructure code")
+        assert result["skills"][0]["confidence"] == "high"
+        assert "note" not in result
+
+
+class TestHeldBackAndPoolEdges:
+    def test_a_long_run_with_no_spaces_still_cuts(self):
+        text = "x" * 900
+        cut, truncated = _held_back_text(text)
+        assert truncated is True
+        assert cut == "x" * _HELD_BACK_MAX_CHARS + "…"
+
+    def test_a_late_space_does_not_gut_the_text(self):
+        """The word-boundary cut is skipped when it would throw away more
+        than half, so a rule with one space near the start keeps its bulk."""
+        text = "a " + "x" * 900
+        cut, _ = _held_back_text(text)
+        assert len(cut) > _HELD_BACK_MAX_CHARS // 2
+
+    def test_pool_concentration_tie_break_is_deterministic(self):
+        pool = [{"project": "alpha"}, {"project": "beta"}]
+        first = _pool_concentration(pool)["top_project"]
+        assert first == _pool_concentration(list(reversed(pool)))["top_project"]

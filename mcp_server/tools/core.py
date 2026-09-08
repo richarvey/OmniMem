@@ -475,9 +475,13 @@ def recall(
     'licence_notice' (no key) lists them so the human can classify.
 
     top_k is a ceiling, not a quota. Results below the relevance floor
-    (RECALL_MIN_SCORE, default 0.4) are dropped instead of padding the list,
-    so fewer results than you asked for — including none — is a normal answer
-    and means nothing else was relevant.
+    (RECALL_MIN_SCORE, default 0.15) are dropped instead of padding the list,
+    so fewer results than you asked for — including none — is a normal answer.
+
+    A result flagged `weak_match` scored inside the band where relevant and
+    irrelevant results genuinely overlap on this model. Read it, but do not
+    build on it and do not go looking for a connection to the query: if it
+    is not obviously about what you asked, it isn't.
 
     Args:
         query: What you're looking for.
@@ -530,6 +534,8 @@ def recall(
             entry["project"] = r.project
         if r.result_type != "memory":
             entry["result_type"] = r.result_type
+        if r.weak_match:
+            entry["weak_match"] = True
         if r.tags:
             entry["tags"] = r.tags
         if r.reinstate_candidate:
@@ -575,8 +581,9 @@ def recall_index(
 ) -> dict[str, Any]:
     """Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
 
-    Shares recall()'s relevance floor (RECALL_MIN_SCORE, default 0.4), so
-    top_k is a ceiling and a short or empty result set is a real answer.
+    Shares recall()'s relevance floor (RECALL_MIN_SCORE, default 0.15) and
+    its `weak_match` flag, so top_k is a ceiling and a short or empty result
+    set is a real answer.
 
     Args:
         query: What you're looking for.
@@ -640,6 +647,8 @@ def recall_index(
             entry["project"] = r.project
         if r.result_type != "memory":
             entry["result_type"] = r.result_type
+        if r.weak_match:
+            entry["weak_match"] = True
         if r.tags:
             entry["tags"] = r.tags
         if r.reinstate_candidate:
