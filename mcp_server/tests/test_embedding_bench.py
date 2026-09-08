@@ -180,6 +180,13 @@ class TestCompare:
         assert tk["score_abs_delta_max"] == round(abs(0.85 - 0.8), 6)
         assert any("top-k overlap" in w for w in cmp["warnings"])
 
+    def test_old_report_with_narrower_content_key_still_compares(self):
+        before = _report("a", top={"q1": [{"key": "k1", "score": 0.9, "content": "A" * 80}]})
+        after = _report("b", top={"q1": [{"key": "NEW", "score": 0.9, "content": "A" * 200}]})
+        cmp = bench.compare(before, after)
+        assert cmp["equivalence"]["top_k"]["mean_jaccard"] == 1.0
+        assert cmp["equivalence"]["top_k"]["top1_identical"] == 1
+
     def test_no_shared_material(self):
         after = _report("b", top={})
         after["equivalence"]["vector_sample"] = []

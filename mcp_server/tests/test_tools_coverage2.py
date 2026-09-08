@@ -570,13 +570,12 @@ class TestIngesterBranches:
     def test_get_embedder_lazy_loads_and_caches(self, monkeypatch):
         fake_model = MagicMock(name="model")
         factory = MagicMock(return_value=fake_model)
-        monkeypatch.setattr(ingester, "SentenceTransformer", factory)
+        monkeypatch.setattr(ingester, "build_model", factory)
         monkeypatch.setattr(ingester, "_embedder", None)
-        monkeypatch.setenv("EMBEDDING_MODEL", "test-model")
 
         assert ingester._get_embedder() is fake_model
         assert ingester._get_embedder() is fake_model
-        factory.assert_called_once_with("test-model")
+        factory.assert_called_once_with()
 
     def test_get_valkey_lazy_connects_and_caches(self, monkeypatch):
         fake_client = MagicMock(name="valkey-client")

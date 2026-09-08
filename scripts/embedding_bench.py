@@ -43,6 +43,7 @@ suite exercises the same functions against the in-memory fakes.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import math
 import os
@@ -247,12 +248,21 @@ def _backend_info(embedder: Any) -> dict[str, Any]:
         "platform": platform.platform(),
         "machine": platform.machine(),
     }
-    for module_name in ("sentence_transformers", "torch", "onnxruntime", "optimum", "tokenizers"):
+    # Versions from package metadata, never by importing: importing torch to
+    # ask its version would add hundreds of MB to the ONNX run's peak RSS.
+    for dist in ("sentence-transformers", "torch", "onnxruntime", "tokenizers"):
         try:
-            module = __import__(module_name)
-            info[module_name] = getattr(module, "__version__", "present")
-        except ImportError:
-            info[module_name] = None
+            info[dist.replace("-", "_")] = importlib.metadata.version(dist)
+        except importlib.metadata.PackageNotFoundError:
+            info[dist.replace("-", "_")] = None
+    info["backend"] = getattr(embedder, "backend", None)
+    engine = getattr(embedder, "model", None)
+    for attr in ("repo", "onnx_file", "pooling", "revision", "max_seq_length"):
+        if hasattr(engine, attr):
+            info[f"engine_{attr}"] = getattr(engine, attr)
+    info["loaded_modules"] = sorted(
+        m for m in ("torch", "sentence_transformers", "onnxruntime") if m in sys.modules
+    )
     return info
 
 
@@ -378,7 +388,7 @@ def run_benchmark(
         recall_ms.append(ms)
         top[query] = [
             {"key": r.key, "score": round(float(r.adjusted_score), 6),
-             "content": r.content[:80]}
+             "content": r.content[:200]}
             for r in results if r.result_type != "abandoned_warning"
         ]
     report["speed"]["recall_ms"] = _percentiles(recall_ms)
@@ -424,10 +434,16 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom) if denom else 0.0
 
 
-def _content_key(entry: dict[str, Any]) -> str:
+def _content_key(entry: dict[str, Any], width: int) -> str:
     """Match results across runs by content, not key — every run writes
-    fresh ULIDs."""
-    return entry.get("content", "")
+    fresh ULIDs. Truncated to the shorter of the two reports' widths so a
+    report from an older harness still compares."""
+    return entry.get("content", "")[:width]
+
+
+def _content_width(*tops: dict[str, list[dict[str, Any]]]) -> int:
+    lengths = [len(e.get("content", "")) for top in tops for entries in top.values() for e in entries]
+    return max(1, min(lengths)) if lengths else 1
 
 
 def compare(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
@@ -508,18 +524,19 @@ def compare(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     top1_same = 0
     score_deltas: list[float] = []
     shared_queries = [q for q in b_top if q in a_top]
+    width = _content_width(b_top, a_top)
     for query in shared_queries:
         b_list = b_top[query]
         a_list = a_top[query]
-        b_set = {_content_key(e) for e in b_list}
-        a_set = {_content_key(e) for e in a_list}
+        b_set = {_content_key(e, width) for e in b_list}
+        a_set = {_content_key(e, width) for e in a_list}
         union = b_set | a_set
         overlaps.append(len(b_set & a_set) / len(union) if union else 1.0)
-        if b_list and a_list and _content_key(b_list[0]) == _content_key(a_list[0]):
+        if b_list and a_list and _content_key(b_list[0], width) == _content_key(a_list[0], width):
             top1_same += 1
-        b_scores = {_content_key(e): e["score"] for e in b_list}
+        b_scores = {_content_key(e, width): e["score"] for e in b_list}
         for entry in a_list:
-            ck = _content_key(entry)
+            ck = _content_key(entry, width)
             if ck in b_scores:
                 score_deltas.append(abs(entry["score"] - b_scores[ck]))
     if shared_queries:
@@ -545,16 +562,14 @@ def format_comparison(cmp: dict[str, Any]) -> str:
     lines = ["# Embedding benchmark: before vs after", ""]
     b_backend = cmp["before"].get("backend", {})
     a_backend = cmp["after"].get("backend", {})
-    lines.append(
-        f"Before: `{cmp['before'].get('label') or 'before'}` "
-        f"(sentence-transformers {b_backend.get('sentence_transformers')}, "
-        f"torch {b_backend.get('torch')}, onnxruntime {b_backend.get('onnxruntime')})"
-    )
-    lines.append(
-        f"After: `{cmp['after'].get('label') or 'after'}` "
-        f"(sentence-transformers {a_backend.get('sentence_transformers')}, "
-        f"torch {a_backend.get('torch')}, onnxruntime {a_backend.get('onnxruntime')})"
-    )
+    for side, backend in (("Before", b_backend), ("After", a_backend)):
+        label = cmp[side.lower()].get("label") or side.lower()
+        lines.append(
+            f"{side}: `{label}` — backend {backend.get('backend')}, modules loaded "
+            f"{backend.get('loaded_modules')} (installed: sentence-transformers "
+            f"{backend.get('sentence_transformers')}, torch {backend.get('torch')}, "
+            f"onnxruntime {backend.get('onnxruntime')})"
+        )
     lines += ["", "## Speed", "", "| Metric | Before | After | Change |", "|---|---:|---:|---:|"]
     for name, d in cmp["speed"].items():
         better = d["change_pct"] < 0
@@ -590,9 +605,9 @@ def format_report(report: dict[str, Any]) -> str:
     lines = [f"# Embedding benchmark run: {report.get('label') or 'unlabelled'}", ""]
     b = report["backend"]
     lines.append(
-        f"Backend: {b.get('embedder_class')} / {b.get('model')} — sentence-transformers "
-        f"{b.get('sentence_transformers')}, torch {b.get('torch')}, onnxruntime {b.get('onnxruntime')} "
-        f"on {b.get('machine')}"
+        f"Backend: {b.get('backend')} ({b.get('embedder_class')} / {b.get('model')}), modules loaded "
+        f"{b.get('loaded_modules')}; installed: sentence-transformers {b.get('sentence_transformers')}, "
+        f"torch {b.get('torch')}, onnxruntime {b.get('onnxruntime')}; on {b.get('machine')}"
     )
     lines.append(f"Corpus: {report['corpus']['size']} memories, {report['corpus']['queries']} queries")
     lines += ["", "| Metric | Value |", "|---|---:|"]

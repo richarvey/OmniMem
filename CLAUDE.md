@@ -8,8 +8,10 @@ v6.6 adds work-type domains on projects: a project declares what kinds of work i
 
 v6.6.1 adds a `licence` field on every memory: its redistribution rights (`own`, `open`, `restricted`, `unknown`), decided at ingest and never derived from ranking. v6.6.2 adds `provenance` (`retrieved`, `concluded`, `asserted`): who is speaking, so a later session can tell evidence from inference.
 
-**Version**: 6.6.2
-**Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), sentence-transformers (all-MiniLM-L6-v2, 384-dim), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser, PyTorch CPU-only
+v6.7 swaps the embedding backend from sentence-transformers on PyTorch to ONNX Runtime: same vectors, a third of the latency, no PyTorch in the images.
+
+**Version**: 6.7.0
+**Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), ONNX Runtime + tokenizers running all-MiniLM-L6-v2 (384-dim; sentence-transformers/PyTorch is an optional rollback backend since 6.7), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser
 
 ## Project Structure
 
@@ -18,7 +20,8 @@ mcp_server/           # MCP server — FastMCP SSE transport
   server.py           # Entry point: init store/embedder/lifecycle/pipeline, register tools
   memory/             # Core engine (shared with web_ui)
     store.py          # ValkeyStore: connection pool, HNSW vector indexes, CRUD
-    embedder.py       # Singleton SentenceTransformer (all-MiniLM-L6-v2, 384-dim)
+    embedder.py       # Singleton Embedder with EMBEDDING_BACKEND switch: onnx (default) or torch (optional rollback)
+    onnx_embedding.py # v6.7 ONNX Runtime + tokenizers engine (pooling from the model's config, dimension/seq-length checks, offline-first fetch, pinned default revision)
     lifecycle.py      # MemoryState enum, state transitions, topic suppression
     recall.py         # RecallPipeline: abandoned fast-path → vector search → scoring
     dedup.py          # Cosine similarity duplicate detection (threshold 0.92)
@@ -94,9 +97,9 @@ For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
 - **ULIDs** for memory keys (sortable, collision-free)
 - **SSE transport** (stateless, simpler than WebSocket for MCP)
 - **Valkey** over Redis (open source fork)
-- **CPU-only PyTorch** (no GPU dependency)
+- **ONNX Runtime embeddings, PyTorch optional** (v6.7) — `memory/onnx_embedding.py` runs the maintainer-exported `onnx/model.onnx` from the model's HF repo with `onnxruntime` and the Rust `tokenizers`, doing mean pooling + L2 normalisation in numpy. Verified cosine 1.0000 against sentence-transformers on the same texts and identical top-10 on the benchmark corpus (`scripts/embedding_bench.py`); single-text embed ~8 ms vs ~22 ms, load ~0.8 s vs 2.6–7.8 s (torch varied run to run with the disk cache), peak RSS ~300 MB vs ~920 MB. `EMBEDDING_BACKEND=torch` restores the old path (needs `requirements-torch.txt`, not in the images). **The RSS worker image now ships `memory/`** (built from the repo root with `-f rss_worker/Dockerfile`, like web_ui; compose, `build_and_push.sh` and `docker.yml` all changed) and calls `memory.embedder.build_model()` — the same backend switch, dimension check and error messages as the server, probed once at worker boot so a bad config fails at start. That also makes the worker's `_LICENCE_ALIASES` and `_sync_feed_influence` copies removable in a follow-up. The engine reads the model's `1_Pooling/config.json` (mean/cls/max; anything else is refused — a CLS-pooled model like bge mean-pooled would land in a different space from its stored vectors, silently), selects the token output by name and checks it is rank 3, bounds `EMBEDDING_MAX_SEQ_LENGTH` (below 3 falls back to the default, above the graph's `max_position_embeddings` is clamped), looks in the HF cache before touching the network, pins the default model to a known commit (`DEFAULT_MODEL_REVISION`; `EMBEDDING_MODEL_REVISION` overrides), accepts a local directory as `EMBEDDING_MODEL`, and turns a missing ONNX export into an `EmbeddingModelError` that names the torch fallback and the offline pre-fetch. `Embedder.load()` refuses a model whose dimension isn't `VECTOR_DIM`. Images set `HF_HOME=/app/hf-cache` and compose mounts one shared `hf_cache` volume across the three services (all run as uid 1000). Quantised graphs (`EMBEDDING_ONNX_FILE=onnx/model_qint8_arm64.onnx`) are faster but not vector-equivalent: bench and re-embed before switching. `EMBEDDING_MODEL` may be a local directory (air-gapped); the worker's compose entry sets `EMBEDDING_THREADS=1` (`OMP_NUM_THREADS` only ever throttled torch). `test_real_model_matches_reference_vectors` runs the real model only with `OMNIMEM_REAL_EMBED_TESTS=1`
 - **Shared `memory/` package** between MCP server and web UI (no code duplication)
-- **Debian-slim Docker base** — Alpine doesn't work (PyTorch has no musllinux wheels)
+- **Debian-slim Docker base** — chosen when PyTorch (no musllinux wheels) ruled out Alpine; PyTorch is gone since 6.7 but the base stays, onnxruntime/tokenizers ship manylinux wheels too and nothing is gained by fighting musl
 - **In-memory fakes** for testing (no Docker-in-tests complexity)
 - **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
 - **Auto skill scan** (v6.4.1) — time-gated in `briefing()` (`meta:skill_scan:last_run`, `SKILL_SCAN_INTERVAL_HOURS` default 24, 0 disables): proposes new skills for domains whose lessons clear the reinforcement gate (cross-project by default, `SKILL_SCAN_CROSS_PROJECT`) and drafts for changed skills (fed the `pending_skill_updates` domains so change detection runs once). Stash-only — the propose-and-accept gate is untouched. Noise gate: `meta:skill_scan:seen:{domain}-{user}` holds the last auto-proposed body sha (volatile-stripped), so an ignored/expired draft is never re-proposed until the compiled output changes; the scan withdraws its own stash when the sha matches. Domains with any live proposal stash (human or auto) are skipped entirely
@@ -165,7 +168,7 @@ Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feed
   - **`403 Forbidden Origin`** — hits the browser login POST to `/oauth/login` after Host is fixed. The proxy usually terminates TLS and forwards over http, so the ASGI scope scheme is `http` and FastMCP's derived origin is `http://host`, while the browser sends `Origin: https://host`. Scheme mismatch → 403. Fixing Host alone is not enough; the https origin must be trusted too.
 
   `server.py` fixes both automatically: it derives the hostname and the full `scheme://host[:port]` origin from `OAUTH_BASE_URL` / `MCP_PUBLIC_URL` (plus optional comma-separated `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`) and writes `fastmcp.settings.http_allowed_hosts` and `http_allowed_origins` before `mcp.run()`. The underlying FastMCP knobs are `FASTMCP_HTTP_ALLOWED_HOSTS` / `FASTMCP_HTTP_ALLOWED_ORIGINS` — both pydantic `list[str]`, so values must be **JSON arrays** (`["mcp.example.com"]`, `["https://mcp.example.com"]`); a bare string fails to parse.
-- **PyTorch is the Alpine blocker** — not sentence-transformers or numpy. PyTorch only publishes manylinux (glibc) wheels. Any project using PyTorch (directly or transitively) cannot use Alpine. The ~2.2GB image size is mostly PyTorch, not the Debian base. Alpine with gcompat shim also fails (pip rejects at download/hash verification stage).
+- **PyTorch was the Alpine blocker and most of the image** — it only publishes manylinux (glibc) wheels, and the old ~2.2GB image was mostly PyTorch. Gone since 6.7 (ONNX Runtime backend); still true for anyone setting `EMBEDDING_BACKEND=torch`. Alpine with a gcompat shim also failed (pip rejects at download/hash verification).
 - **inotify doesn't work for Docker bind mounts** — mtime polling (10s interval, configurable via `FEEDS_WATCH_INTERVAL`) is more portable. The RSS worker uses this for feeds.yml change detection.
 - **Projects without `set_project_context()`** only exist as ULID memories — the web UI detail view won't work for them until a proper context entry is created. Template conditionally disables links for these.
 - **RSS summariser fallback** — Haiku API calls retry up to 2 times with backoff. Fallback truncation is 800 chars (was 300, bumped in v0.2.2).

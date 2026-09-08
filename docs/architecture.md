@@ -29,7 +29,7 @@ flowchart TB
 | `rss_worker` | — | Background feed ingestion |
 | `web_ui` | 8080 | Web dashboard + `/metrics` Prometheus endpoint |
 
-Embeddings are computed locally by sentence-transformers (all-MiniLM-L6-v2, 384 dimensions) — no API calls for storage or recall. The Anthropic API is only used for the optional extras: RSS summaries, fact extraction, query expansion, and Tier 2 contradiction checks.
+Embeddings are computed locally — all-MiniLM-L6-v2, 384 dimensions, run through ONNX Runtime with the Rust tokenizers library since 6.7 (the same vectors sentence-transformers produced, without PyTorch) — no API calls for storage or recall. The Anthropic API is only used for the optional extras: RSS summaries, fact extraction, query expansion, and Tier 2 contradiction checks.
 
 ## The recall pipeline
 
@@ -63,7 +63,7 @@ Key design decisions:
 
 - **ULIDs** for memory keys — sortable, collision-free
 - **Valkey** over Redis — open source fork, with valkey-search providing HNSW vector indexes
-- **CPU-only PyTorch** — no GPU dependency, runs on a Raspberry Pi
+- **ONNX Runtime for embeddings** (6.7) — the model's maintainer-exported ONNX graph, mean pooling and normalisation in numpy. Cosine 1.0 against the sentence-transformers output, roughly a third of the single-text latency, a tenth of the load time, a third of the resident memory, and no PyTorch in the image. `EMBEDDING_BACKEND=torch` brings the old path back as a rollback
 - **Shared `memory/` package** between the MCP server and web UI — no code duplication
-- **Debian-slim Docker base** — PyTorch publishes no musllinux wheels, so Alpine is out
+- **Debian-slim Docker base** — chosen when PyTorch (no musllinux wheels) ruled Alpine out; PyTorch is gone since 6.7 but the base stays, because onnxruntime and tokenizers ship manylinux wheels too and nothing is gained by fighting musl
 - **Multi-arch images** for amd64 and arm64

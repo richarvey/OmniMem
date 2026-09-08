@@ -28,6 +28,7 @@ services:
       - "127.0.0.1:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
     volumes:
       - ./backups:/app/backups
+      - hf_cache:/app/hf-cache
     env_file:
       - .env
     environment:
@@ -35,15 +36,23 @@ services:
     restart: unless-stopped
 
   rss_worker:
-    build: ./rss_worker
+    build:
+      context: .
+      dockerfile: rss_worker/Dockerfile
     depends_on:
       valkey:
         condition: service_healthy
     volumes:
       - ./rss_worker/feeds.yml:/app/feeds.yml
+      - hf_cache:/app/hf-cache
     env_file:
       - .env
     environment:
+      # Keep the worker's embedding threads down: it runs beside the MCP
+      # server and its throughput is bounded by feed fetches, not the CPU.
+      # EMBEDDING_THREADS is the ONNX Runtime knob; OMP_NUM_THREADS only
+      # matters for the optional torch backend.
+      - EMBEDDING_THREADS=1
       - OMP_NUM_THREADS=1
       - TOKENIZERS_PARALLELISM=false
     restart: unless-stopped
@@ -59,6 +68,7 @@ services:
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
     volumes:
       - ./backups:/app/backups
+      - hf_cache:/app/hf-cache
       - ./rss_worker/feeds.yml:/app/feeds.yml
     env_file:
       - .env
@@ -66,3 +76,8 @@ services:
 
 volumes:
   valkey_data:
+  # The embedding model's files (~90 MB), shared by all three services so a
+  # recreated container starts from cache instead of huggingface.co. All
+  # three images run as the first non-root user (uid 1000), so one volume
+  # serves them all.
+  hf_cache:

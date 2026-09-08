@@ -643,6 +643,7 @@ class TestWorkerMain:
     def test_main_wires_scheduler_and_watcher(self, monkeypatch, worker):
         calls = []
         monkeypatch.setattr(worker, "_wait_for_valkey", lambda: calls.append("wait"))
+        monkeypatch.setattr(worker, "_get_embedder", lambda: calls.append("model"))
         monkeypatch.setattr(worker, "run_ingestion", lambda: calls.append("ingest"))
         monkeypatch.setenv("RSS_SCHEDULE_HOURS", "2")
 
@@ -663,7 +664,7 @@ class TestWorkerMain:
 
         worker.main()
 
-        assert calls == ["wait", "ingest"]
+        assert calls == ["wait", "model", "ingest"]
         scheduler.add_job.assert_called_once_with(
             worker.run_ingestion,
             "interval",

@@ -1,0 +1,7 @@
+# Optional: the pre-6.7 PyTorch embedding backend (EMBEDDING_BACKEND=torch).
+# Not installed in the images. Used as the rollback path and as the reference
+# for scripts/embedding_bench.py comparisons. Install the CPU wheel first or
+# pip will pull CUDA builds:
+#   pip install --prefer-binary torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-torch.txt
+sentence-transformers>=2.7.0

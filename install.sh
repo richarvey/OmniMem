@@ -343,7 +343,7 @@ fi
 step "Pulling images and starting services"
 
 if confirm "Pull the images and start OmniMem now?" "y"; then
-  note "Pulling images (first pull is ~2 GB, mostly PyTorch — grab a coffee)"
+  note "Pulling images (first pull is under a gigabyte for the MCP server since 6.7 — no PyTorch)"
   "${COMPOSE[@]}" pull < /dev/null
   note "Starting services ..."
   "${COMPOSE[@]}" up -d < /dev/null

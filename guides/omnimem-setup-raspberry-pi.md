@@ -117,7 +117,9 @@ mcp_server:
 
 rss_worker:
   image: richarvey/omnimem-rss:latest
-  # build: ./rss_worker
+  # build:
+    #   context: .
+    #   dockerfile: rss_worker/Dockerfile
 
 web_ui:
   image: richarvey/omnimem-web:latest
@@ -302,7 +304,7 @@ docker run --rm -v omnimem_valkey_data:/data -v $(pwd)/backups:/backup \
 
 ## Troubleshooting
 
-**Build fails with out-of-memory errors** — The Pi 4 (4 GB) can run tight during the Docker build, especially when pip installs torch/sentence-transformers. Add a swap file:
+**Build fails with out-of-memory errors** — The Pi 4 (4 GB) can run tight during the Docker build (much less so since 6.7, which dropped PyTorch from the images). Add a swap file:
 
 ```bash
 sudo fallocate -l 2G /swapfile

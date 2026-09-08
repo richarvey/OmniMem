@@ -10,7 +10,7 @@ import valkey
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 
-from ingester import ingest_all_feeds
+from ingester import _get_embedder, ingest_all_feeds
 
 load_dotenv()
 
@@ -86,6 +86,11 @@ def _watch_feeds_file(scheduler: BlockingScheduler) -> None:
 def main() -> None:
     """Entry point: wait for Valkey, run initial ingestion, then schedule repeats."""
     _wait_for_valkey()
+
+    # Load the embedding model now: a bad EMBEDDING_BACKEND or a model the
+    # backend can't run must stop the container at boot with the reason,
+    # not fail quietly inside every feed cycle.
+    _get_embedder()
 
     # Run immediately on startup
     run_ingestion()

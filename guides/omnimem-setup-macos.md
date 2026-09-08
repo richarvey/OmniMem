@@ -89,7 +89,9 @@ mcp_server:
 
 rss_worker:
   image: richarvey/omnimem-rss:latest
-  # build: ./rss_worker
+  # build:
+    #   context: .
+    #   dockerfile: rss_worker/Dockerfile
 
 web_ui:
   image: richarvey/omnimem-web:latest

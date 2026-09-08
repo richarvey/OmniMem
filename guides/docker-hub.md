@@ -19,7 +19,7 @@ Pre-built Docker images are available on Docker Hub. This is the quickest way to
 | `richarvey/omnimem-web` | Web UI | Starlette dashboard on port 8080 |
 | `richarvey/omnimem-rss` | RSS worker | Background feed ingestion via Claude Haiku |
 
-All images are built from `python:3.12-slim` with CPU-only PyTorch.
+All images are built from `python:3.12-slim`. Since 6.7 embeddings run on ONNX Runtime, so no PyTorch ships in any image (the MCP server image is 634 MB on arm64, down from 2.04 GB).
 
 ## Quick start
 

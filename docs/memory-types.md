@@ -21,7 +21,7 @@ Every memory is a single Valkey hash. All field values are strings (Valkey hashe
 - **Lists and objects** are JSON-encoded strings, e.g. `tags` is `'["docker", "arm64"]'`.
 - **Booleans** are `"1"`/absent (`blessed`) or `"true"`/absent (`generated`).
 
-The one exception is `vector`: a binary blob of 384 float32 values (1,536 bytes), the sentence-transformers all-MiniLM-L6-v2 embedding of the memory's content. It is written by `store.upsert()` and read only through the binary-safe client (`store.get_vectors_multi()`); the regular text-mode client never touches it.
+The one exception is `vector`: a binary blob of 384 float32 values (1,536 bytes), the all-MiniLM-L6-v2 embedding of the memory's content (computed by ONNX Runtime since 6.7; identical to the sentence-transformers output). It is written by `store.upsert()` and read only through the binary-safe client (`store.get_vectors_multi()`); the regular text-mode client never touches it.
 
 ## Keys
 

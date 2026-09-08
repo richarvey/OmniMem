@@ -232,18 +232,23 @@ class TestEmbedder:
     def _isolate_singleton(self, monkeypatch):
         from memory import embedder as embedder_module
 
-        class FakeST:
+        class FakeEngine:
             def __init__(self, name):
                 self.name = name
+
+            def load(self):
+                pass
 
             def encode(self, texts, normalize_embeddings=True):
                 if isinstance(texts, str):
                     return np.ones(4)
                 return [np.ones(4) for _ in texts]
 
-        monkeypatch.setattr(embedder_module, "SentenceTransformer", FakeST)
+        monkeypatch.setattr(embedder_module, "build_model", lambda backend=None: FakeEngine(backend))
         monkeypatch.setattr(embedder_module.Embedder, "_instance", None)
         monkeypatch.setattr(embedder_module.Embedder, "_model", None)
+        monkeypatch.setattr(embedder_module.Embedder, "_backend", None)
+        monkeypatch.delenv("EMBEDDING_BACKEND", raising=False)
         yield
 
     def test_singleton_load_and_embed(self):
@@ -252,8 +257,10 @@ class TestEmbedder:
         a, b = Embedder(), Embedder()
         assert a is b
         assert a.is_loaded is False
+        assert a.backend is None
         a.load()
         assert a.is_loaded is True
+        assert a.backend == "onnx"
         a.load()  # idempotent
         assert a.embed("text").dtype == np.float32
         assert len(a.embed_batch(["x", "y"])) == 2
@@ -264,6 +271,91 @@ class TestEmbedder:
         e = Embedder()
         assert e.model is not None
         assert e.is_loaded is True
+
+    def test_backend_env_selects_torch(self, monkeypatch):
+        from memory.embedder import Embedder
+
+        monkeypatch.setenv("EMBEDDING_BACKEND", "Torch")
+        e = Embedder()
+        e.load()
+        assert e.backend == "torch"
+        assert e.model.name == "torch"
+
+    def test_unknown_backend_rejected(self, monkeypatch):
+        from memory.embedder import Embedder, configured_backend
+
+        monkeypatch.setenv("EMBEDDING_BACKEND", "tensorflow")
+        with pytest.raises(ValueError, match="EMBEDDING_BACKEND='tensorflow'"):
+            configured_backend()
+        with pytest.raises(ValueError):
+            Embedder().load()
+
+
+class TestBuildModel:
+    def test_onnx_backend_loads_engine(self, monkeypatch):
+        from memory import embedder as embedder_module
+        from memory import onnx_embedding
+
+        loaded = []
+
+        class FakeEngine:
+            dimension = 384
+
+            def __init__(self, name):
+                self.name = name
+
+            def load(self):
+                loaded.append(self.name)
+
+        monkeypatch.setattr(onnx_embedding, "OnnxSentenceEmbedding", FakeEngine)
+        monkeypatch.setenv("EMBEDDING_MODEL", "bge-small")
+        engine = embedder_module.build_model("onnx")
+        assert engine.name == "bge-small" and loaded == ["bge-small"]
+
+    def test_wrong_dimension_is_refused(self, monkeypatch):
+        from memory import embedder as embedder_module
+        from memory import onnx_embedding
+
+        class WideEngine:
+            dimension = 768
+
+            def __init__(self, name):
+                pass
+
+            def load(self):
+                pass
+
+        monkeypatch.setattr(onnx_embedding, "OnnxSentenceEmbedding", WideEngine)
+        with pytest.raises(RuntimeError, match="768-dimensional vectors but the store's indexes are built for 384"):
+            embedder_module.build_model("onnx")
+        # An engine that can't tell (symbolic output shape) is let through
+        embedder_module.check_dimension(None, "x")
+
+    def test_torch_backend_uses_sentence_transformers(self, monkeypatch):
+        import sys
+        import types
+        from memory import embedder as embedder_module
+
+        class FakeST:
+            def __init__(self, name):
+                self.name = name
+
+            def get_sentence_embedding_dimension(self):
+                return 384
+
+        fake = types.ModuleType("sentence_transformers")
+        fake.SentenceTransformer = FakeST
+        monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+        monkeypatch.setenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        assert embedder_module.build_model("torch").name == "all-MiniLM-L6-v2"
+
+    def test_torch_backend_missing_package_is_explained(self, monkeypatch):
+        import sys
+        from memory import embedder as embedder_module
+
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+        with pytest.raises(RuntimeError, match="requirements-torch.txt"):
+            embedder_module.build_model("torch")
 
 
 # ---------------------------------------------------------------------------

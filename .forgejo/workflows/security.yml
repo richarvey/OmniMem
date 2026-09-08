@@ -69,8 +69,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov genbadge[coverage]
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r mcp_server/requirements.txt -r web_ui/requirements.txt
+          pip install -r mcp_server/requirements.txt -r web_ui/requirements.txt -r rss_worker/requirements.txt
 
       - name: Run tests with coverage
         working-directory: mcp_server

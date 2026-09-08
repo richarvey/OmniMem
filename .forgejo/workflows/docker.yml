@@ -95,5 +95,6 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:${{ github.ref_name }}" \
             --tag "docker.io/${{ vars.DOCKERHUB_USERNAME }}/omnimem-rss:latest" \
+            --file rss_worker/Dockerfile \
             --push \
-            rss_worker/
+            .

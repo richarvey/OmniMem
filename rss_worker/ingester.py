@@ -14,9 +14,13 @@ import feedparser
 import numpy as np
 import valkey
 import yaml
-from sentence_transformers import SentenceTransformer
 
 from summariser import extract_items, summarise
+
+# The shared memory package ships in the worker image since 6.7 (built from
+# the repo root, like web_ui), so the embedding backend is the server's own
+# code rather than a copy.
+from memory.embedder import build_model
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +181,7 @@ def _resolve_licence(feed_config: dict[str, Any]) -> dict[str, str] | None:
     return fields
 
 
-_embedder: SentenceTransformer | None = None
+_embedder: Any = None
 _valkey_client: valkey.Valkey | None = None
 
 # Feed→skill influence mirror. The skill compiler runs in the MCP server and
@@ -233,13 +237,14 @@ def _sync_feed_influence(client: valkey.Valkey, feeds: list[dict[str, Any]]) -> 
     return len(mapping)
 
 
-def _get_embedder() -> SentenceTransformer:
-    """Lazy-load the embedding model."""
+def _get_embedder() -> Any:
+    """Lazy-load the embedding model through the same backend switch the
+    server uses (EMBEDDING_BACKEND: onnx, or torch if installed). Called
+    once at worker start so a bad configuration fails at boot, not on the
+    first feed with entries."""
     global _embedder
     if _embedder is None:
-        model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-        logger.info("Loading embedding model: %s", model_name)
-        _embedder = SentenceTransformer(model_name)
+        _embedder = build_model()
     return _embedder
 
 
