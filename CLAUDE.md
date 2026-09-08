@@ -10,7 +10,7 @@ v6.6.1 adds a `licence` field on every memory: its redistribution rights (`own`,
 
 v6.7 swaps the embedding backend from sentence-transformers on PyTorch to ONNX Runtime: same vectors, a third of the latency, no PyTorch in the images.
 
-**Version**: 6.7.0
+**Version**: 6.7.1
 **Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), ONNX Runtime + tokenizers running all-MiniLM-L6-v2 (384-dim; sentence-transformers/PyTorch is an optional rollback backend since 6.7), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser
 
 ## Project Structure
