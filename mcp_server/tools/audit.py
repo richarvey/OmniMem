@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 
 _VALID_NAMESPACES = {"episodic", "project", "knowledge", "preference"}
 
+# reindex also covers `skill`: it is a real search index (health reports it),
+# and dropping it is as data-safe as any other — the SKILL.md body lives in
+# the hash, not the index. The audit namespaces stay at four because a skill
+# is not a memory and carries none of the fields that view reports.
+_REINDEXABLE_NAMESPACES = _VALID_NAMESPACES | {"skill"}
+
+# Ordered for stable output; sorted() would put the namespaces in an order
+# that reads as arbitrary in the response.
+_REINDEX_ORDER = ("episodic", "project", "knowledge", "preference", "skill")
+
 
 def _get_deps():
     from tools import _store, _embedder
@@ -37,7 +47,8 @@ def memory_audit(
 
     Args:
         project: Filter to a project.
-        namespace: Filter to 'episodic', 'project', or 'knowledge'.
+        namespace: Filter to 'episodic', 'project', 'knowledge', or
+            'preference'. If omitted, covers all four.
         include_archived: Include archived memories (default False).
         limit: Max entries to return (default 100, max 500).
         offset: Entries to skip for pagination (default 0).
@@ -56,7 +67,10 @@ def memory_audit(
             )
         prefixes.append(f"mem:{namespace}:")
     else:
-        prefixes.extend(["mem:episodic:", "mem:project:", "mem:knowledge:"])
+        # Derived from the accepted set, not a hand-written list: the literal
+        # three-prefix version silently left `mem:preference:` out of every
+        # unscoped audit even though `preference` was an accepted filter.
+        prefixes.extend(f"mem:{ns}:" for ns in sorted(_VALID_NAMESPACES))
 
     entries: list[dict[str, Any]] = []
     matching_total = 0
@@ -261,24 +275,29 @@ def reindex(namespace: str | None = None) -> dict[str, Any]:
     """Drop and recreate Valkey search indexes to clear orphaned vector entries.
 
     Use when `health` reports a drift between index num_docs and actual
-    record counts (typically caused by deletes that the search module
-    didn't observe — e.g. when keyspace notifications were disabled).
+    record counts — index entries left behind by deletes the search module
+    didn't observe. Enabling keyspace notifications
+    (`--notify-keyspace-events AKE`, set in the shipped compose files since
+    #11) is what stops new drift accumulating; it does not clear entries
+    that accumulated before, which is what this call is for.
 
     Data-safe: only the index is dropped, not the underlying memory hashes.
+    Skills included — the SKILL.md body lives in the hash, so a skill
+    survives its index being rebuilt like any other record.
 
     Args:
-        namespace: 'episodic', 'project', or 'knowledge'. If omitted,
-                   reindexes all three.
+        namespace: 'episodic', 'project', 'knowledge', 'preference', or
+                   'skill'. If omitted, reindexes all five.
     """
     store, _ = _get_deps()
 
-    if namespace is not None and namespace not in _VALID_NAMESPACES:
+    if namespace is not None and namespace not in _REINDEXABLE_NAMESPACES:
         raise ValueError(
             f"Invalid namespace '{namespace}'. "
-            f"Must be one of: {', '.join(sorted(_VALID_NAMESPACES))}"
+            f"Must be one of: {', '.join(sorted(_REINDEXABLE_NAMESPACES))}"
         )
 
-    targets = [namespace] if namespace else ["episodic", "project", "knowledge", "preference"]
+    targets = [namespace] if namespace else list(_REINDEX_ORDER)
     results = [store.reindex_namespace(ns) for ns in targets]
 
     return {

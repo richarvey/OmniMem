@@ -140,7 +140,7 @@ class TestRecall:
 
 
 class TestRecallIndex:
-    def test_returns_snippets_not_full_content(self):
+    def test_returns_snippets_not_full_content(self, no_relevance_floor):
         long_content = "A" * 500
         remember(long_content)
         result = recall_index("A" * 50)
@@ -240,7 +240,7 @@ class TestRecallDetail:
         assert results[0]["state"] == "active"
         assert results[0]["namespace"] == "episodic"
 
-    def test_index_then_detail_workflow(self):
+    def test_index_then_detail_workflow(self, no_relevance_floor):
         """End-to-end: recall_index to find, recall_detail to expand."""
         remember("Progressive disclosure is a UX pattern for managing complexity")
         remember("Token budgeting reduces API costs by limiting context size")

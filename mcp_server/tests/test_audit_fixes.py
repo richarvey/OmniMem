@@ -108,7 +108,9 @@ class TestEnrichmentDedup:
 
 
 class TestRecallStarvation:
-    def test_project_filter_finds_memory_beyond_top_20(self, fake_store, fake_embedder, lifecycle):
+    def test_project_filter_finds_memory_beyond_top_20(
+        self, fake_store, fake_embedder, lifecycle, no_relevance_floor,
+    ):
         pipeline = RecallPipeline(fake_store, fake_embedder, lifecycle)
 
         # 30 near-identical memories for project A dominate the KNN ranking

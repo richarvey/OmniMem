@@ -175,7 +175,7 @@ class TestRecallSupplementNotReplace:
         assert fact not in keys, "fact must be suppressed when its source is present"
 
     def test_source_promoted_when_fact_ranks_higher(
-        self, fake_store, fake_embedder, lifecycle,
+        self, fake_store, fake_embedder, lifecycle, no_relevance_floor,
     ):
         """If the fact outranks its source (e.g. compact wording embeds closer
         to the query), the source must stand in AT the fact's rank — the fact

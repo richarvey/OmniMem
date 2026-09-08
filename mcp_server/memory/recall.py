@@ -115,6 +115,36 @@ def _candidate_k(top_k: int, project_filter: Any) -> int:
     return k
 
 
+def recall_min_score() -> float:
+    """Relevance floor for recall results (issue #30). 0 disables it.
+
+    Gates on the RAW similarity, not the adjusted score, and that distinction
+    is the whole design. Raw similarity is the only number here that measures
+    "is this about the same subject". The multipliers stacked on top of it
+    express policy — this is old, this approach was abandoned, this is a
+    derived fact whose verbatim source should outrank it — and policy belongs
+    in the ranking, not in the decision to show a memory at all. Gating on the
+    adjusted score would silently hide the two classes of memory that are
+    deliberately scored down: enriched facts (surface_score 0.5, issue #20)
+    and abandoned experiences (weight 0.1), both of which are exactly what
+    you want back when nothing better matches.
+
+    0.4 is the observed cliff on all-MiniLM-L6-v2: in the run recorded on
+    issue #30 the two on-topic results scored 1.133 and 0.475 and the three
+    off-topic ones 0.384, 0.362 and 0.349, matching on generic tokens the
+    query happened to share.
+    """
+    try:
+        floor = float(os.getenv("RECALL_MIN_SCORE", "0.4"))
+    except (TypeError, ValueError):
+        logger.warning(
+            "RECALL_MIN_SCORE is not a number (%r); using 0.4",
+            os.getenv("RECALL_MIN_SCORE"),
+        )
+        return 0.4
+    return max(0.0, floor)
+
+
 def compute_experience_weight(effort_score: int, outcome: str) -> float:
     """Compute experience weight from effort score (1-5) and outcome."""
     base = {"succeeded": 1.0, "pivoted": 0.7, "abandoned": 0.1}.get(outcome, 1.0)
@@ -204,6 +234,10 @@ class RecallPipeline:
         the query is expanded into N variants via Claude Haiku and results are
         unioned across all variants, deduplicated by key, and ranked by best
         adjusted_score.
+
+        top_k is a ceiling, not a quota: results below RECALL_MIN_SCORE are
+        dropped rather than padding the list out, so an empty or short return
+        is normal and means what it says. See recall_min_score().
         """
         project_filter = normalise_project_filter(project_filter)
         project_set = set(project_filter)
@@ -270,6 +304,20 @@ class RecallPipeline:
                     continue
 
                 content = doc.get("content", "")
+
+                # Step 4b: Drop phantom hits (issue #28). An index entry whose
+                # backing hash is gone comes back as a doc id with no fields.
+                # remember() rejects empty content, so in a memory namespace
+                # an empty content field means the record isn't there any
+                # more — without this the phantom is returned as a result with
+                # no text, burning a top_k slot on nothing.
+                if not content.strip():
+                    logger.warning(
+                        "Skipping phantom search hit %s in %s — indexed but "
+                        "no backing record. Run reindex() to clear it.",
+                        doc.get("key", "<no key>"), ns,
+                    )
+                    continue
 
                 # Step 5: Filter suppressed topics (using pre-fetched list)
                 if suppressed_topics:
@@ -437,6 +485,32 @@ class RecallPipeline:
         results = deduped
         results.sort(key=lambda r: r.adjusted_score, reverse=True)
 
+        # Step 10c: Relevance floor (issue #30). top_k is a ceiling, not a
+        # quota — returning two results when only two are relevant is the
+        # correct answer, and cheaper than three chunks of context an agent
+        # then has to work out are noise.
+        #
+        # Two result types are exempt because neither is here on vector
+        # similarity: an abandoned-approach warning fired on a keyword scan
+        # before the query was even embedded, and a reinstate candidate was
+        # matched on its own hints. Filtering those on a score they didn't
+        # earn their place with would silently disable both features.
+        floor = recall_min_score()
+        if floor > 0:
+            kept = [
+                r for r in results
+                if r.score >= floor
+                or r.result_type == "abandoned_warning"
+                or r.reinstate_candidate
+            ]
+            dropped = len(results) - len(kept)
+            if dropped:
+                logger.debug(
+                    "Relevance floor %.3f dropped %d of %d results for %r",
+                    floor, dropped, len(results), query[:60],
+                )
+            results = kept
+
         # Step 11: Return top_k
         final = results[:top_k]
 
@@ -477,6 +551,9 @@ class RecallPipeline:
                 if state_str in (MemoryState.ARCHIVED.value, MemoryState.DELETED.value):
                     continue
                 content = doc.get("content", "")
+                # Phantom guard, parity with the main loop (issue #28).
+                if not content.strip():
+                    continue
                 if suppressed_topics:
                     content_lower = content.lower()
                     if any(topic in content_lower for topic in suppressed_topics):

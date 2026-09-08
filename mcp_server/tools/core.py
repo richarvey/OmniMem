@@ -474,10 +474,16 @@ def recall(
     licence is still unknown, a trailing entry with result_type
     'licence_notice' (no key) lists them so the human can classify.
 
+    top_k is a ceiling, not a quota. Results below the relevance floor
+    (RECALL_MIN_SCORE, default 0.4) are dropped instead of padding the list,
+    so fewer results than you asked for — including none — is a normal answer
+    and means nothing else was relevant.
+
     Args:
         query: What you're looking for.
         top_k: Max results (default 5).
-        namespaces: Namespaces to search ('episodic', 'project', 'knowledge'). All by default.
+        namespaces: Namespaces to search ('episodic', 'project', 'knowledge',
+            'preference'). All four by default.
         project_filter: Restrict to a project.
         expand_queries: If True, generate alternative phrasings via Claude Haiku and union
             the results. Default follows the RECALL_EXPAND_QUERIES env var.
@@ -568,6 +574,9 @@ def recall_index(
     domain_filter: list[str] | str | None = None,
 ) -> dict[str, Any]:
     """Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
+
+    Shares recall()'s relevance floor (RECALL_MIN_SCORE, default 0.4), so
+    top_k is a ceiling and a short or empty result set is a real answer.
 
     Args:
         query: What you're looking for.

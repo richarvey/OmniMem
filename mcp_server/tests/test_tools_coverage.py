@@ -152,11 +152,18 @@ class TestAudit:
         )
         result = reindex()
         assert result["status"] == "ok"
-        assert calls == ["episodic", "project", "knowledge", "preference"]
+        # All five indexes, skill included (issue #29).
+        assert calls == [
+            "episodic", "project", "knowledge", "preference", "skill",
+        ]
 
         calls.clear()
         reindex("episodic")
         assert calls == ["episodic"]
+
+        calls.clear()
+        reindex("skill")
+        assert calls == ["skill"]
 
 
 class TestSkillTools:

@@ -39,6 +39,48 @@ def _get_deps():
     return _store, _embedder
 
 
+# Skills need their own floor, well below recall's (issue #31). Their
+# discovery vector is name + description + domain — long, human-written prose
+# — and cosine similarity against it lands much lower than against a memory's
+# content, so recall's 0.4 would reject nearly every real match.
+#
+# Measured on the three compiled skills in a live store, all-MiniLM-L6-v2:
+#
+#   true positives    "opentofu" -> opentofu-local            1.0 (domain)
+#                     "accessibility" -> wcag                 0.6189
+#                     "what git forge and commit style"       0.4735
+#                     "modal dialog, keyboard + screen reader" 0.3042
+#   false positives   "python" -> preferences-local           0.2341
+#                     "k8s ingress + cert-manager" -> tofu    0.2153
+#                     everything else                        <= 0.19
+#
+# Lowest true positive 0.3042, highest false positive 0.2341. 0.25 sits
+# almost exactly in that gap, ~0.05 clear of both sides. The verbose query
+# scoring lowest than the one-word one is the pattern to keep in mind if this
+# is ever retuned: length dilutes similarity, so the floor has to clear the
+# worst honest query, not the best.
+_SKILL_MIN_SCORE_DEFAULT = 0.25
+
+# Above this a semantic match is as trustworthy as an exact domain hit.
+# Below it the caller gets the result but is told not to bank on it.
+_SKILL_HIGH_CONFIDENCE = 0.45
+
+
+def skill_min_score() -> float:
+    """Relevance floor for find_skills. 0 disables it."""
+    raw = os.getenv("SKILL_MIN_SCORE")
+    if raw is None or not raw.strip():
+        return _SKILL_MIN_SCORE_DEFAULT
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        logger.warning(
+            "SKILL_MIN_SCORE is not a number (%r); using %.2f",
+            raw, _SKILL_MIN_SCORE_DEFAULT,
+        )
+        return _SKILL_MIN_SCORE_DEFAULT
+
+
 def compile_skill(
     domain: str,
     mode: str = "propose",
@@ -83,6 +125,12 @@ def compile_skill(
 def find_skills(query_or_domain: str) -> dict[str, Any]:
     """Discover compiled skills: ranked skill IDs and descriptions for a query or domain. Load the winner intact with get_skill().
 
+    Returns only skills that clear the relevance floor (SKILL_MIN_SCORE,
+    default 0.25), so an empty list is a real answer — it means nothing
+    stored covers this work, not that discovery failed. Each entry carries a
+    `confidence` of 'high' or 'low'; don't load a 'low' one without reading
+    its description first.
+
     Args:
         query_or_domain: A domain tag ('python') or a free-text description
             of the work at hand.
@@ -114,6 +162,15 @@ def find_skills(query_or_domain: str) -> dict[str, Any]:
             "generated": row.get("generated") == "true",
             "score": round(score, 4),
             "match": match,
+            # The documented flow is find, then get_skill() on the winner, and
+            # a bare ranked list gives no way to tell a good winner from the
+            # least-bad of a weak field. A skill loads whole, so picking wrong
+            # costs far more context than a stray recall hit (issue #31).
+            "confidence": (
+                "high"
+                if match == "domain" or score >= _SKILL_HIGH_CONFIDENCE
+                else "low"
+            ),
         })
 
     results: list[dict[str, Any]] = []
@@ -144,14 +201,37 @@ def find_skills(query_or_domain: str) -> dict[str, Any]:
         similarity = max(0.0, 1.0 - float(doc.get("similarity_score", "1.0")))
         semantic.append((similarity, doc.get("generated") == "true", key, doc))
     semantic.sort(key=lambda t: (-t[0], t[1], t[2]))
+    floor = skill_min_score()
+    below_floor = 0
     for similarity, _, key, doc in semantic:
+        # An exact domain hit is an identity match and never scored; only the
+        # semantic tail is gated.
+        if similarity < floor:
+            below_floor += 1
+            continue
         results.append(_entry(key, doc, similarity, "semantic"))
+
+    if not results:
+        note = (
+            "No skill matched. Known skills exist for other domains — "
+            "call find_skills with a broader query or compile_skill to "
+            "create one."
+        )
+        if below_floor:
+            note = (
+                f"No skill cleared the relevance floor ({floor:.2f}); "
+                f"{below_floor} scored below it. Nothing stored covers this "
+                "work — compile_skill(domain=...) creates a skill for it."
+            )
+        return _compact({"skills": [], "note": note})
 
     return _compact({
         "skills": results[:10],
-        "note": None if results else (
-            "No skill matched. Known skills exist for other domains — "
-            "call find_skills with a broader query or compile_skill to create one."
+        "note": (
+            "Best match is a weak one — read the description before "
+            "loading it, and treat 'no relevant skill' as a valid answer."
+            if all(r["confidence"] == "low" for r in results[:10])
+            else None
         ),
     })
 
