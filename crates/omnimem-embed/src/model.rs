@@ -5,8 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use tracing::warn;
+use tracing::{info, warn};
 
+use crate::download::{self, Downloader, Fetched};
 use crate::engine::Pooling;
 use crate::error::EmbedError;
 
@@ -112,6 +113,9 @@ pub(crate) struct ModelFiles {
 }
 
 impl ModelFiles {
+    /// A local directory, the cached snapshot, or a fresh download of the
+    /// files the engine reads. Downloading needs the network and is skipped
+    /// under `HF_HUB_OFFLINE`.
     pub(crate) fn locate(config: &EmbedConfig) -> Result<Self, EmbedError> {
         let repo = config.repo();
         if Path::new(&repo).is_dir() {
@@ -121,37 +125,82 @@ impl ModelFiles {
             });
         }
         let revision = config.effective_revision();
-        let snapshot =
-            hf_snapshot_dir(&repo, &revision).ok_or_else(|| EmbedError::ModelUnavailable {
+        if let Some(snapshot) = hf_snapshot_dir(&repo, &revision) {
+            return Ok(Self {
+                repo,
+                root: snapshot,
+            });
+        }
+        if download::offline() {
+            return Err(EmbedError::ModelUnavailable {
                 repo: repo.clone(),
                 file: config.onnx_file.clone(),
                 detail: format!(
-                    "revision {revision} is not in the Hugging Face cache at {}",
+                    "revision {revision} is not in the Hugging Face cache at {} and HF_HUB_OFFLINE is set",
                     hub_cache_dir().display()
                 ),
-            })?;
-        Ok(Self {
-            repo,
-            root: snapshot,
-        })
+            });
+        }
+
+        let downloader = Downloader::from_env(hub_cache_dir())?;
+        let commit = downloader.resolve_commit(&repo, &revision)?;
+        info!(%repo, %revision, %commit, "model not cached; downloading");
+        for file in [config.onnx_file.as_str(), TOKENIZER_FILE] {
+            if let Fetched::Absent = downloader.fetch(&repo, &commit, file)? {
+                return Err(EmbedError::ModelUnavailable {
+                    repo: repo.clone(),
+                    file: file.to_owned(),
+                    detail: "the repository has no such file".to_owned(),
+                });
+            }
+        }
+        for file in [POOLING_CONFIG_FILE, SBERT_CONFIG_FILE, MODEL_CONFIG_FILE] {
+            downloader.fetch(&repo, &commit, file)?;
+        }
+        let root = hub_cache_dir()
+            .join(format!("models--{}", repo.replace('/', "--")))
+            .join("snapshots")
+            .join(&commit);
+        Ok(Self { repo, root })
     }
 
     pub(crate) fn repo(&self) -> &str {
         &self.repo
     }
 
-    /// A file the engine can't run without.
+    /// The commit this snapshot is, when it lives in the hub cache.
+    fn snapshot_commit(&self) -> Option<String> {
+        let parent = self.root.parent()?;
+        (parent.file_name()? == "snapshots")
+            .then(|| {
+                self.root
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+            })
+            .flatten()
+    }
+
+    /// A file the engine can't run without. A cached snapshot missing it
+    /// (one filled by the pre-6.7 torch backend holds the weights but not the
+    /// ONNX graph) fetches it, unless offline.
     pub(crate) fn required(&self, file: &str) -> Result<PathBuf, EmbedError> {
         let path = self.root.join(file);
         if path.is_file() {
-            Ok(path)
-        } else {
-            Err(EmbedError::ModelUnavailable {
-                repo: self.repo.clone(),
-                file: file.to_owned(),
-                detail: format!("{} does not exist", path.display()),
-            })
+            return Ok(path);
         }
+        if let Some(commit) = self.snapshot_commit()
+            && !download::offline()
+        {
+            let downloader = Downloader::from_env(hub_cache_dir())?;
+            if let Fetched::Present(fetched) = downloader.fetch(&self.repo, &commit, file)? {
+                return Ok(fetched);
+            }
+        }
+        Err(EmbedError::ModelUnavailable {
+            repo: self.repo.clone(),
+            file: file.to_owned(),
+            detail: format!("{} does not exist", path.display()),
+        })
     }
 
     /// A repo config file, or `None` when the repo lacks it or it's unreadable.

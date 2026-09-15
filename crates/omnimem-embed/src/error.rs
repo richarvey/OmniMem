@@ -30,6 +30,12 @@ pub enum EmbedError {
     )]
     BadOutput { name: String, shape: Vec<i64> },
 
+    /// The hub couldn't be reached or answered with an error. Distinct from
+    /// `ModelUnavailable`: offline, "not cached" is the whole story; online,
+    /// a failed fetch must not be mistaken for a model with no such file.
+    #[error("downloading the model failed: {0}")]
+    Download(String),
+
     #[error("tokeniser error: {0}")]
     Tokenizer(String),
 
@@ -44,10 +50,13 @@ pub enum EmbedError {
 }
 
 impl EmbedError {
-    /// True when the model simply isn't present, as opposed to present and
-    /// broken. Tests skip on this; startup reports it with the fix.
+    /// True when the model isn't present and couldn't be fetched, as opposed
+    /// to present and broken. Tests skip on this; startup reports it with the fix.
     pub fn is_model_unavailable(&self) -> bool {
-        matches!(self, EmbedError::ModelUnavailable { .. })
+        matches!(
+            self,
+            EmbedError::ModelUnavailable { .. } | EmbedError::Download(_)
+        )
     }
 }
 

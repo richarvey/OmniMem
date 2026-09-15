@@ -1,6 +1,6 @@
 [package]
-name = "omnimem-embed"
-description = "Sentence embeddings on ONNX Runtime, vector-equivalent to OmniMem 6.7's Python engine"
+name = "omnimem-store"
+description = "OmniMem's store: records in SQLite, vectors searched exactly in memory, 6.x backup import and export"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,13 +11,9 @@ publish.workspace = true
 
 [dependencies]
 omnimem-core.workspace = true
-ort.workspace = true
-reqwest.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokenizers.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
+ulid.workspace = true

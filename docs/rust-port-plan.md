@@ -8,6 +8,14 @@ It ships two ways: as desktop installers (an MSI for Windows, a DMG for macOS, a
 
 The Python tree stays in the repository as the reference implementation until the Rust binary reaches parity, then goes in one commit.
 
+## Progress
+
+| Phase | State | Evidence |
+|---|---|---|
+| 0. Foundation | **Done** | Rust vectors match the Python engine's full reference vectors (`crates/omnimem-embed/tests/fixtures`) within 1e-4, cosine > 0.99999. Model download into the shared Hugging Face cache, tested against a local HTTP server |
+| 1. Store | **Done, two items carried** | Real 6.6.2 production backup (3,500 memories, 4,356 keys): imported and embedded in 147 s (debug build, sharing the CPU), 12.8 MB database. All 32 query/namespace searches return an **identical ordered top-10** to the Python engine's exact search over the same data. Export round-trips every field of every memory, adding only the v7 identity fields. Carried: `migrate_project_domains` (needs the engine's domain normalisation, phase 3) and proving the Flatpak's offline ONNX Runtime source (phase 9 prep) |
+| 2. Core MCP | Next | |
+
 ## Decisions
 
 Settled on 2026-09-15:

@@ -12,6 +12,7 @@
 //! pinned revision for the default model so an upstream re-export can never
 //! move vectors under a live store.
 
+mod download;
 mod engine;
 mod error;
 mod model;
@@ -21,3 +22,13 @@ pub use error::EmbedError;
 pub use model::{
     DEFAULT_MAX_SEQ_LENGTH, DEFAULT_MODEL, DEFAULT_MODEL_REVISION, DEFAULT_ONNX_FILE, EmbedConfig,
 };
+
+impl omnimem_core::TextEmbedder for Embedder {
+    fn dimension(&self) -> usize {
+        Embedder::dimension(self)
+    }
+
+    fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, omnimem_core::EmbeddingError> {
+        Ok(self.embed_batch(texts)?)
+    }
+}

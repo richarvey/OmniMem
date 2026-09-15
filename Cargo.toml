@@ -14,6 +14,17 @@ publish = false
 [workspace.dependencies]
 omnimem-core = { path = "crates/omnimem-core" }
 omnimem-embed = { path = "crates/omnimem-embed" }
+omnimem-store = { path = "crates/omnimem-store" }
+
+# Storage: SQLite compiled in, so the binary needs no system library.
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+# HTTP (model download now; Anthropic API and RSS later). rustls, not the
+# platform TLS stack, so every installer behaves the same.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
+
+# CLI
+clap = { version = "4.6", features = ["derive", "env"] }
 
 # Errors and logging
 thiserror = "2.0"
