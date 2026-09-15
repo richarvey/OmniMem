@@ -95,6 +95,52 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   #top>div:first-child>:nth-child(4){animation-delay:1.1s}
   #top>div:nth-child(2){animation-delay:1.3s}
   @media (prefers-reduced-motion:reduce){#top>div:first-child>*,#top>div:nth-child(2){animation:none}}
+  /* Site header (a port of the header-2 component): transparent at the top,
+     a floating bar once scrolled, and a full-screen menu below 960px */
+  .omm-header{position:sticky;top:0;z-index:50;margin:0 auto;width:100%;max-width:1200px;border:1px solid transparent;border-width:0 0 1px;border-radius:0;background:transparent;transition:max-width .25s ease-out,top .25s ease-out,border-color .25s ease-out,background-color .25s ease-out,box-shadow .25s ease-out,border-radius .25s ease-out}
+  .omm-header[data-scrolled="true"][data-open="false"]{background:rgba(11,12,14,.95);border-color:rgb(38,42,49)}
+  @supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
+    .omm-header[data-scrolled="true"][data-open="false"]{background:rgba(11,12,14,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  }
+  .omm-header[data-open="true"]{background:rgba(11,12,14,.96);border-color:rgb(38,42,49)}
+  .omm-header-bar{display:flex;align-items:center;justify-content:space-between;gap:24px;height:62px;padding:0 28px;transition:height .25s ease-out,padding .25s ease-out}
+  .omm-wordmark,.omm-wordmark:hover{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:16px;color:#e7e9ec;letter-spacing:-.02em;display:flex;align-items:center;flex:0 0 auto}
+  .omm-wordmark-bracket{color:#868c96}
+  .omm-header-links{flex:1 1 0%;min-width:0;display:flex;gap:2px;align-items:center;justify-content:center}
+  .omm-nav-link{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#969ca5;padding:7px 10px;border-radius:6px;white-space:nowrap;transition:color .15s,background-color .15s}
+  .omm-nav-link:hover{color:#e7e9ec;background:#16191e}
+  .omm-nav-cta,.omm-nav-cta:hover{font-family:"Ubuntu Mono",monospace;font-size:12.5px;font-weight:500;color:#0b0c0e;background:#63bd85;padding:8px 15px;border-radius:7px;white-space:nowrap;text-align:center;transition:background-color .15s}
+  .omm-nav-cta:hover{background:#7fcb9b}
+  .omm-header-cta{flex:0 0 auto}
+  .omm-nav-link:focus-visible,.omm-nav-cta:focus-visible,.omm-wordmark:focus-visible,.omm-menu-toggle:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
+  .omm-menu-toggle{display:none;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:1px solid rgb(38,42,49);border-radius:8px;background:transparent;color:#e7e9ec;cursor:pointer;flex:0 0 auto;transition:background-color .15s}
+  .omm-menu-toggle:hover{background:#16191e}
+  .omm-menu-icon{transition:transform .3s ease-out}
+  .omm-menu-line{transition:stroke-dasharray .3s ease-out,stroke-dashoffset .3s ease-out}
+  .omm-menu-line-outer{stroke-dasharray:12 63}
+  .omm-header[data-open="true"] .omm-menu-icon{transform:rotate(-45deg)}
+  .omm-header[data-open="true"] .omm-menu-line-outer{stroke-dasharray:20 300;stroke-dashoffset:-32.42}
+  .omm-mobile-menu{position:fixed;top:56px;right:0;bottom:0;left:0;z-index:50;display:flex;flex-direction:column;overflow:hidden;background:rgba(11,12,14,.96);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid rgb(38,42,49)}
+  .omm-mobile-menu[hidden]{display:none}
+  .omm-mobile-menu-inner{display:flex;flex-direction:column;justify-content:space-between;gap:8px;height:100%;width:100%;padding:16px 20px 24px;overflow-y:auto;animation:omm-menu-in .3s ease-out both}
+  @keyframes omm-menu-in{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+  .omm-mobile-links{display:grid;gap:4px}
+  .omm-mobile-links .omm-nav-link{display:block;font-size:15px;padding:12px 14px}
+  .omm-mobile-cta,.omm-mobile-cta:hover{display:block;width:100%;font-size:14px;padding:13px 16px}
+  @media (min-width:961px){
+    .omm-header[data-scrolled="true"][data-open="false"]{top:16px;max-width:1000px;border-width:1px;border-radius:12px;box-shadow:0 12px 32px -14px rgba(0,0,0,.75)}
+    .omm-header[data-scrolled="true"][data-open="false"] .omm-header-bar{height:52px;padding:0 12px}
+    .omm-mobile-menu{display:none!important}
+  }
+  @media (max-width:960px){
+    .omm-header-bar{height:56px;padding:0 20px}
+    .omm-header-links,.omm-header-cta{display:none}
+    .omm-menu-toggle{display:inline-flex}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .omm-header,.omm-header-bar,.omm-menu-icon,.omm-menu-line,.omm-nav-link,.omm-nav-cta,.omm-menu-toggle{transition:none}
+    .omm-mobile-menu-inner{animation:none}
+  }
 @media (max-width:960px){
 header[data-screen-label="Hero"]{grid-template-columns:1fr!important;gap:40px!important}
 #in-action>div>:last-child{grid-template-columns:1fr!important}
@@ -103,7 +149,6 @@ header[data-screen-label="Hero"]{grid-template-columns:1fr!important;gap:40px!im
 #features>div>:last-child{grid-template-columns:1fr 1fr!important}
 }
 @media (max-width:680px){
-.omm-navlinks{flex-wrap:nowrap!important;overflow-x:auto!important;justify-content:flex-start!important}
 
 header[data-screen-label="Hero"]{padding:44px 20px 40px!important;gap:32px!important}
 [style*="max-width: 1200px"]{padding-left:20px!important;padding-right:20px!important}
@@ -232,25 +277,45 @@ section[data-screen-label="Works with"] [style*="width: 1px"]{display:none!impor
 </head>
 <body>
 
-<div id="dc-root"><div class="sc-host" data-sc-name="index"><div style="min-height: 100vh; background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.024) 1px, transparent 0px) 0% 0% / 44px 44px rgb(11, 12, 14);"><nav data-screen-label="Nav" style="position: sticky; top: 0px; z-index: 50; backdrop-filter: blur(12px); background: rgba(11, 12, 14, 0.78); border-bottom: 1px solid rgb(27, 30, 36);">
-  <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px; height: 62px; display: flex; align-items: center; gap: 28px;">
-    <a href="#top" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-weight: 700; font-size: 16px; color: rgb(231, 233, 236); letter-spacing: -0.02em; display: flex; align-items: center;">
-      <span style="color: rgb(134, 140, 150);">&lt;</span><span>OmniMem</span><span style="color: rgb(134, 140, 150);">&gt;</span>
+<div id="dc-root"><div class="sc-host" data-sc-name="index"><div style="min-height: 100vh; background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.024) 1px, transparent 0px) 0% 0% / 44px 44px rgb(11, 12, 14);"><header class="omm-header" data-screen-label="Nav" data-scrolled="false" data-open="false">
+  <nav class="omm-header-bar" aria-label="Main">
+    <a href="#top" class="omm-wordmark">
+      <span class="omm-wordmark-bracket">&lt;</span><span>OmniMem</span><span class="omm-wordmark-bracket">&gt;</span>
     </a>
-    <div class="omm-navlinks" style="flex: 1 1 0%; min-width: 0px; display: flex; gap: 2px; align-items: center; justify-content: center; flex-wrap: wrap;">
-      <a data-spy="problem" href="#problem" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Why</a>
-      <a data-spy="in-action" href="#in-action" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">In action</a>
-      <a data-spy="features" href="#features" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Features</a>
-      <a data-spy="lifecycle" href="#lifecycle" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Lifecycle</a>
-      <a data-spy="skills" href="#skills" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Skills</a>
-      <a data-spy="comparison" href="#comparison" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Compare</a>
-      <a data-spy="architecture" href="#architecture" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Architecture</a>
-      <a data-spy="quickstart" href="#quickstart" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(150, 156, 165); padding: 7px 10px; border-radius: 6px; white-space: nowrap;">Get started</a>
+    <div class="omm-header-links">
+      <a data-spy="problem" href="#problem" class="omm-nav-link">Why</a>
+      <a data-spy="in-action" href="#in-action" class="omm-nav-link">In action</a>
+      <a data-spy="features" href="#features" class="omm-nav-link">Features</a>
+      <a data-spy="lifecycle" href="#lifecycle" class="omm-nav-link">Lifecycle</a>
+      <a data-spy="skills" href="#skills" class="omm-nav-link">Skills</a>
+      <a data-spy="comparison" href="#comparison" class="omm-nav-link">Compare</a>
+      <a data-spy="architecture" href="#architecture" class="omm-nav-link">Architecture</a>
+      <a data-spy="quickstart" href="#quickstart" class="omm-nav-link">Get started</a>
     </div>
-    <div style="display: flex; gap: 10px; align-items: center; flex: 0 0 auto;">
-      <a href="https://code.squarecows.com/ric/omnimem" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(11, 12, 14); background: rgb(99, 189, 133); padding: 8px 15px; border-radius: 7px; font-weight: 500; white-space: nowrap;">Source</a>
+    <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-header-cta">Source</a>
+    <button type="button" class="omm-menu-toggle" aria-controls="omm-mobile-menu" aria-expanded="false" aria-label="Open menu">
+      <svg class="omm-menu-icon" viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path class="omm-menu-line omm-menu-line-outer" d="M27 10 13 10C10.8 10 9 8.2 9 6 9 3.5 10.8 2 13 2 15.2 2 17 3.8 17 6L17 26C17 28.2 18.8 30 21 30 23.2 30 25 28.2 25 26 25 23.8 23.2 22 21 22L7 22"></path>
+        <path class="omm-menu-line omm-menu-line-middle" d="M7 16 27 16"></path>
+      </svg>
+    </button>
+  </nav>
+  <div id="omm-mobile-menu" class="omm-mobile-menu" hidden>
+    <div class="omm-mobile-menu-inner">
+      <div class="omm-mobile-links">
+        <a data-spy="problem" href="#problem" class="omm-nav-link">Why</a>
+        <a data-spy="in-action" href="#in-action" class="omm-nav-link">In action</a>
+        <a data-spy="features" href="#features" class="omm-nav-link">Features</a>
+        <a data-spy="lifecycle" href="#lifecycle" class="omm-nav-link">Lifecycle</a>
+        <a data-spy="skills" href="#skills" class="omm-nav-link">Skills</a>
+        <a data-spy="comparison" href="#comparison" class="omm-nav-link">Compare</a>
+        <a data-spy="architecture" href="#architecture" class="omm-nav-link">Architecture</a>
+        <a data-spy="quickstart" href="#quickstart" class="omm-nav-link">Get started</a>
+      </div>
+      <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-mobile-cta">Source</a>
     </div>
-  </div></nav><main><div class="omm-flow"><canvas class="omm-flow-canvas" aria-hidden="true"></canvas><header id="top" data-screen-label="Hero" style="max-width: 1200px; margin: 0px auto; padding: 74px 28px 60px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;">
+  </div>
+</header><main><div class="omm-flow"><canvas class="omm-flow-canvas" aria-hidden="true"></canvas><header id="top" data-screen-label="Hero" style="max-width: 1200px; margin: 0px auto; padding: 74px 28px 60px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;">
   <div>
     <div style="display: inline-flex; align-items: center; gap: 10px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11.5px; color: rgb(150, 156, 165); border: 1px solid rgb(38, 42, 49); border-radius: 100px; padding: 6px 13px; margin-bottom: 28px;">
       <span style="width: 7px; height: 7px; border-radius: 50%; background: rgb(99, 189, 133); box-shadow: rgba(99, 189, 133, 0.18) 0px 0px 0px 3px;"></span>
@@ -982,6 +1047,48 @@ if ('IntersectionObserver' in window && secs.length) {
     });
     start();
   }
+})();
+</script>
+<script>
+/* Site header: a port of the header-2 component. It floats once the page
+   has scrolled; below 960px the links move into a full-screen menu that
+   locks page scrolling while open and closes on a link, Escape or widening
+   the window. */
+(function(){
+  var header = document.querySelector('.omm-header');
+  var toggle = header && header.querySelector('.omm-menu-toggle');
+  var menu = document.getElementById('omm-mobile-menu');
+  if (!header || !toggle || !menu) return;
+
+  function isOpen(){ return header.getAttribute('data-open') === 'true'; }
+
+  function setOpen(open){
+    header.setAttribute('data-open', open ? 'true' : 'false');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    menu.hidden = !open;
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+
+  function onScroll(){
+    header.setAttribute('data-scrolled', window.scrollY > 10 ? 'true' : 'false');
+  }
+
+  toggle.addEventListener('click', function(){ setOpen(!isOpen()); });
+  menu.addEventListener('click', function(e){
+    if (e.target.closest && e.target.closest('a')) setOpen(false);
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && isOpen()) { setOpen(false); toggle.focus(); }
+  });
+
+  var desktop = window.matchMedia('(min-width: 961px)');
+  var onWiden = function(e){ if (e.matches) setOpen(false); };
+  if (desktop.addEventListener) desktop.addEventListener('change', onWiden);
+  else if (desktop.addListener) desktop.addListener(onWiden);
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 })();
 </script>
 </body>
