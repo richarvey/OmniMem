@@ -83,6 +83,18 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   ::selection{background:rgba(99,189,133,0.28);color:#fff}
   @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
   @keyframes caret{0%,100%{opacity:1}50%{opacity:0.15}}
+  /* Hero particle field behind the hero and install sections (a port of the Aether Flow hero) */
+  .omm-flow{position:relative;overflow:hidden;isolation:isolate}
+  .omm-flow-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+  .omm-flow>header,.omm-flow>#install{position:relative;z-index:1}
+  @keyframes omm-fade-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+  #top>div:first-child>*,#top>div:nth-child(2){animation:omm-fade-up .8s ease-in-out both}
+  #top>div:first-child>:nth-child(1){animation-delay:.5s}
+  #top>div:first-child>:nth-child(2){animation-delay:.7s}
+  #top>div:first-child>:nth-child(3){animation-delay:.9s}
+  #top>div:first-child>:nth-child(4){animation-delay:1.1s}
+  #top>div:nth-child(2){animation-delay:1.3s}
+  @media (prefers-reduced-motion:reduce){#top>div:first-child>*,#top>div:nth-child(2){animation:none}}
 @media (max-width:960px){
 header[data-screen-label="Hero"]{grid-template-columns:1fr!important;gap:40px!important}
 #in-action>div>:last-child{grid-template-columns:1fr!important}
@@ -238,7 +250,7 @@ section[data-screen-label="Works with"] [style*="width: 1px"]{display:none!impor
     <div style="display: flex; gap: 10px; align-items: center; flex: 0 0 auto;">
       <a href="https://code.squarecows.com/ric/omnimem" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(11, 12, 14); background: rgb(99, 189, 133); padding: 8px 15px; border-radius: 7px; font-weight: 500; white-space: nowrap;">Source</a>
     </div>
-  </div></nav><main><header id="top" data-screen-label="Hero" style="max-width: 1200px; margin: 0px auto; padding: 74px 28px 60px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;">
+  </div></nav><main><div class="omm-flow"><canvas class="omm-flow-canvas" aria-hidden="true"></canvas><header id="top" data-screen-label="Hero" style="max-width: 1200px; margin: 0px auto; padding: 74px 28px 60px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;">
   <div>
     <div style="display: inline-flex; align-items: center; gap: 10px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11.5px; color: rgb(150, 156, 165); border: 1px solid rgb(38, 42, 49); border-radius: 100px; padding: 6px 13px; margin-bottom: 28px;">
       <span style="width: 7px; height: 7px; border-radius: 50%; background: rgb(99, 189, 133); box-shadow: rgba(99, 189, 133, 0.18) 0px 0px 0px 3px;"></span>
@@ -282,7 +294,7 @@ section[data-screen-label="Works with"] [style*="width: 1px"]{display:none!impor
     </div>
     <button type="button" data-copy="" aria-label="Copy install command" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(150, 156, 165); background: transparent; border: 1px solid rgb(38, 42, 49); border-radius: 5px; padding: 3px 9px; cursor: pointer; flex: 0 0 auto;">copy</button>
   </div>
-  <p style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(134, 140, 150); margin: 14px 0px 0px;">Paste that into your terminal — or follow the <a href="#quickstart">manual setup</a> below.</p></div><section data-screen-label="Works with" style="border-top: 1px solid rgb(27, 30, 36); background: rgb(13, 14, 17); padding: 38px 0px;">
+  <p style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(134, 140, 150); margin: 14px 0px 0px;">Paste that into your terminal — or follow the <a href="#quickstart">manual setup</a> below.</p></div></div><section data-screen-label="Works with" style="border-top: 1px solid rgb(27, 30, 36); background: rgb(13, 14, 17); padding: 38px 0px;">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap; justify-content: center; text-align: center;">
       <div style="display: flex; flex-direction: column; gap: 4px; min-width: 210px; text-align: left;">
@@ -846,6 +858,131 @@ if ('IntersectionObserver' in window && secs.length) {
   }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
   secs.forEach(function(s){ obs.observe(s); });
 }
+</script>
+<script>
+/* Hero particle field: a vanilla port of the Aether Flow hero, in site green.
+   Sized to the top sections rather than the window, so the mouse lines up
+   after scrolling; paused while off screen; a single still frame for anyone
+   who prefers reduced motion. */
+(function(){
+  var wrap = document.querySelector('.omm-flow');
+  var canvas = wrap && wrap.querySelector('canvas');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+  var still = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var W = 0, H = 0, particles = [], frame = 0, visible = true;
+  var mouse = { x: null, y: null, radius: 200 };
+
+  function Particle(x, y, dx, dy, size){
+    this.x = x; this.y = y; this.dx = dx; this.dy = dy; this.size = size;
+  }
+  Particle.prototype.update = function(){
+    if (this.x > W || this.x < 0) this.dx = -this.dx;
+    if (this.y > H || this.y < 0) this.dy = -this.dy;
+    if (mouse.x !== null) {
+      var mx = mouse.x - this.x, my = mouse.y - this.y;
+      var d = Math.sqrt(mx * mx + my * my);
+      if (d > 0 && d < mouse.radius + this.size) {
+        var force = (mouse.radius - d) / mouse.radius;
+        this.x -= mx / d * force * 5;
+        this.y -= my / d * force * 5;
+      }
+    }
+    this.x += this.dx;
+    this.y += this.dy;
+  };
+
+  function init(){
+    particles = [];
+    var count = Math.floor(W * H / 9000);
+    for (var i = 0; i < count; i++) {
+      var size = Math.random() * 2 + 1;
+      particles.push(new Particle(
+        Math.random() * (W - size * 4) + size * 2,
+        Math.random() * (H - size * 4) + size * 2,
+        Math.random() * 0.4 - 0.2,
+        Math.random() * 0.4 - 0.2,
+        size
+      ));
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, W, H);
+    var i, j, a, b;
+    ctx.fillStyle = 'rgba(99, 189, 133, 0.7)';
+    for (i = 0; i < particles.length; i++) {
+      a = particles[i];
+      if (!still) a.update();
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Links fade with distance; near the pointer they turn light. Capped so
+    // the hero text stays easy to read over them.
+    var reach = (W / 7) * (H / 7);
+    ctx.lineWidth = 1;
+    for (i = 0; i < particles.length; i++) {
+      a = particles[i];
+      var near = mouse.x !== null && Math.hypot(a.x - mouse.x, a.y - mouse.y) < mouse.radius;
+      for (j = i + 1; j < particles.length; j++) {
+        b = particles[j];
+        var d2 = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+        if (d2 >= reach) continue;
+        var opacity = (1 - d2 / 20000) * 0.45;
+        if (opacity <= 0) continue;
+        ctx.strokeStyle = (near ? 'rgba(231, 233, 236, ' : 'rgba(99, 189, 133, ') + opacity.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function loop(){ draw(); frame = requestAnimationFrame(loop); }
+  function start(){ if (!still && !frame && visible && !document.hidden) frame = requestAnimationFrame(loop); }
+  function stop(){ if (frame) { cancelAnimationFrame(frame); frame = 0; } }
+
+  function resize(){
+    var rect = wrap.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    init();
+    if (still) draw();
+  }
+
+  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(wrap);
+  else window.addEventListener('resize', resize);
+  resize();
+
+  if (!still) {
+    window.addEventListener('mousemove', function(e){
+      var rect = canvas.getBoundingClientRect();
+      var x = e.clientX - rect.left, y = e.clientY - rect.top;
+      var inside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
+      mouse.x = inside ? x : null;
+      mouse.y = inside ? y : null;
+    });
+    document.addEventListener('mouseout', function(e){
+      if (!e.relatedTarget) { mouse.x = null; mouse.y = null; }
+    });
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function(entries){
+        visible = entries[0].isIntersecting;
+        if (visible) start(); else stop();
+      }).observe(wrap);
+    }
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) stop(); else start();
+    });
+    start();
+  }
+})();
 </script>
 </body>
 </html>
