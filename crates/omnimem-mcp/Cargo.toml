@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 axum.workspace = true
+omnimem-core.workspace = true
 omnimem-engine.workspace = true
 rmcp.workspace = true
 serde.workspace = true
@@ -21,6 +22,5 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-omnimem-core.workspace = true
 omnimem-store.workspace = true
 reqwest = { workspace = true }

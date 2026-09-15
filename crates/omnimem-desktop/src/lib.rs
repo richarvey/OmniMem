@@ -10,7 +10,8 @@
 mod icon;
 mod model;
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,8 @@ use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use omnimem_app::{
     Instance, ServiceState, acquire, feeds_path, request_show, run_services, take_show_request,
 };
-use omnimem_settings::{Panel, StaticOverhead};
+use omnimem_core::env::{install_overlay, parse_settings};
+use omnimem_settings::{Panel, SecretStore, StaticOverhead, secret_settings};
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
 use tao::window::{Window, WindowBuilder};
@@ -425,6 +427,73 @@ impl App {
     }
 }
 
+/// The settings the configuration page writes, beside the database.
+const SETTINGS_FILE: &str = "omnimem.env";
+/// The keychain service every OmniMem secret is filed under.
+const KEYCHAIN_SERVICE: &str = "OmniMem";
+
+/// Secrets in the OS keychain: Keychain Services on macOS, Credential
+/// Manager on Windows, the Secret Service elsewhere.
+struct Keychain;
+
+fn keychain_entry(name: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, name).map_err(|e| e.to_string())
+}
+
+impl SecretStore for Keychain {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        match keychain_entry(name)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        keychain_entry(name)?
+            .set_password(value)
+            .map_err(|e| e.to_string())
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        match keychain_entry(name)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+/// Give the services the desktop app's settings: `omnimem.env` from the data
+/// folder, then the secrets in the keychain. Runs once, before anything reads
+/// a setting; an environment variable of the same name still wins.
+fn install_settings(data_dir: &Path, keychain: Option<&Keychain>) {
+    let path = data_dir.join(SETTINGS_FILE);
+    let mut values = match std::fs::read_to_string(&path) {
+        Ok(text) => parse_settings(&text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "could not read the settings file");
+            BTreeMap::new()
+        }
+    };
+    if let Some(keychain) = keychain {
+        for name in secret_settings() {
+            if std::env::var_os(name).is_some() {
+                continue;
+            }
+            match keychain.get(name) {
+                Ok(Some(value)) => {
+                    values.insert(name.to_owned(), value);
+                }
+                Ok(None) => {}
+                Err(problem) => warn!(setting = name, problem, "could not read the keychain"),
+            }
+        }
+    }
+    info!(settings = values.len(), "loaded the desktop app's settings");
+    install_overlay(values);
+}
+
 /// Run the desktop app until Quit. A second launch asks the first to show
 /// its window and returns.
 pub fn run(options: DesktopOptions) -> Result<()> {
@@ -442,6 +511,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         }
     };
     take_show_request(&options.data_dir);
+    // The smoke test runs where there is no keychain to ask.
+    let keychain = (!options.smoke_test).then_some(Keychain);
+    install_settings(&options.data_dir, keychain.as_ref());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -469,6 +541,10 @@ pub fn run(options: DesktopOptions) -> Result<()> {
     let login = start_at_login();
     let panel = Panel::new();
     panel.set_feeds_path(feeds_path(&options.db));
+    panel.set_settings_path(options.data_dir.join(SETTINGS_FILE));
+    if let Some(keychain) = keychain {
+        panel.set_secret_store(Arc::new(keychain));
+    }
     let overhead = omnimem_app::context_overhead();
     panel.set_static_overhead(StaticOverhead {
         instructions_chars: overhead.instructions_chars,

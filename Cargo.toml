@@ -98,6 +98,10 @@ tray-icon = "0.25"
 arboard = "3.6"
 auto-launch = "0.6"
 open = "5.4"
+# The desktop app's secrets (the Anthropic key, the MCP token) in the OS
+# keychain: Keychain on macOS, Credential Manager on Windows, Secret Service
+# over pure-Rust D-Bus elsewhere.
+keyring = "4.2"
 
 # The settings panel: templates rendered in-process, and axum routes called
 # without a socket.

@@ -23,8 +23,7 @@ const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"]
 const STATES: [&str; 3] = ["active", "deprioritised", "archived"];
 
 fn ttl() -> Duration {
-    let seconds = std::env::var("DASHBOARD_STATS_TTL")
-        .ok()
+    let seconds = omnimem_core::env::var("DASHBOARD_STATS_TTL")
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(60);
     Duration::from_secs(seconds)

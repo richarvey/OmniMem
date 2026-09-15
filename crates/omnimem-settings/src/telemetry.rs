@@ -35,8 +35,7 @@ const METRICS_RESET_KEY: &str = "meta:tool_metrics_reset";
 const CHARS_PER_TOKEN: usize = 4;
 
 fn cold_days() -> i64 {
-    std::env::var("TELEMETRY_COLD_DAYS")
-        .ok()
+    omnimem_core::env::var("TELEMETRY_COLD_DAYS")
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(60)
 }

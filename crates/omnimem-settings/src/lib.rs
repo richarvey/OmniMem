@@ -14,6 +14,7 @@
 mod assets;
 mod backups;
 mod choices;
+mod configuration;
 mod create;
 mod dashboard;
 mod detail;
@@ -51,6 +52,8 @@ use omnimem_engine::Engine;
 use serde_json::Value;
 use tower::ServiceExt;
 
+pub use configuration::{SecretStore, secret_settings};
+
 /// The largest response body the panel hands back (a backup download).
 const MAX_RESPONSE_BYTES: usize = 512 * 1024 * 1024;
 
@@ -78,6 +81,8 @@ pub(crate) struct Shared {
     feeds_path: RwLock<Option<PathBuf>>,
     downloads_dir: RwLock<Option<PathBuf>>,
     static_overhead: RwLock<StaticOverhead>,
+    settings_path: RwLock<Option<PathBuf>>,
+    secret_store: RwLock<Option<Arc<dyn SecretStore>>>,
     templates: Environment<'static>,
     caches: Mutex<Caches>,
 }
@@ -120,6 +125,15 @@ impl PanelState {
             .unwrap_or_default()
     }
 
+    /// `omnimem.env`, when the app has a settings file (the desktop app).
+    pub(crate) fn settings_path(&self) -> Option<PathBuf> {
+        self.0.settings_path.read().ok().and_then(|p| p.clone())
+    }
+
+    pub(crate) fn secret_store(&self) -> Option<Arc<dyn SecretStore>> {
+        self.0.secret_store.read().ok().and_then(|s| s.clone())
+    }
+
     pub(crate) fn templates(&self) -> &Environment<'static> {
         &self.0.templates
     }
@@ -150,6 +164,8 @@ impl Panel {
             feeds_path: RwLock::new(None),
             downloads_dir: RwLock::new(None),
             static_overhead: RwLock::new(StaticOverhead::default()),
+            settings_path: RwLock::new(None),
+            secret_store: RwLock::new(None),
             templates: render::environment(),
             caches: Mutex::new(Caches::default()),
         }));
@@ -239,6 +255,10 @@ impl Panel {
             .route("/backups/{filename}/download", get(backups::download))
             .route("/backups/{filename}/restore", post(backups::restore))
             .route("/backups/{filename}/delete", post(backups::delete))
+            .route(
+                "/configuration",
+                get(configuration::form).post(configuration::save),
+            )
             .route("/static/{*path}", get(assets::serve))
             .route("/_panel/echo", post(pages::echo))
             .route("/_panel/redirect", post(pages::redirect))
@@ -274,6 +294,21 @@ impl Panel {
     pub fn set_static_overhead(&self, overhead: StaticOverhead) {
         if let Ok(mut slot) = self.state.0.static_overhead.write() {
             *slot = overhead;
+        }
+    }
+
+    /// The settings file the configuration page edits. Without one the page
+    /// says configuration belongs to the environment.
+    pub fn set_settings_path(&self, path: PathBuf) {
+        if let Ok(mut slot) = self.state.0.settings_path.write() {
+            *slot = Some(path);
+        }
+    }
+
+    /// Where the configuration page keeps secrets.
+    pub fn set_secret_store(&self, store: Arc<dyn SecretStore>) {
+        if let Ok(mut slot) = self.state.0.secret_store.write() {
+            *slot = Some(store);
         }
     }
 

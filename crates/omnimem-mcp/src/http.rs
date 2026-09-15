@@ -1,7 +1,6 @@
 //! The HTTP side: streamable HTTP at `/mcp`, bearer auth, Host and Origin
 //! allowlists, and the fail-closed rule for public binds.
 
-use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -69,8 +68,7 @@ impl Default for ServerConfig {
 }
 
 fn var(name: &str) -> Option<String> {
-    env::var(name)
-        .ok()
+    omnimem_core::env::var(name)
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty())
 }

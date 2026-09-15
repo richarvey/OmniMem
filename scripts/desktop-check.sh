@@ -31,6 +31,7 @@ docker run --rm \
     --env HOME=/cache/home \
     --env CARGO_HOME=/cache/cargo \
     --env CARGO_TARGET_DIR=/cache/target \
+    --env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" \
     --volume "$repo:/work" \
     --volume "$cache:/cache" \
     --volume "$HOME/.cargo/registry:/cache/cargo/registry" \

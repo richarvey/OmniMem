@@ -57,8 +57,7 @@ impl Default for EmbedConfig {
 impl EmbedConfig {
     pub fn from_env() -> Self {
         let text = |name: &str| {
-            env::var(name)
-                .ok()
+            omnimem_core::env::var(name)
                 .map(|v| v.trim().to_owned())
                 .filter(|v| !v.is_empty())
         };

@@ -45,8 +45,8 @@ pub struct RssConfig {
 }
 
 fn number<T: std::str::FromStr>(name: &str, default: T) -> T {
-    match std::env::var(name).map(|v| v.trim().to_owned()) {
-        Ok(raw) if !raw.is_empty() => raw.parse().unwrap_or_else(|_| {
+    match omnimem_core::env::var(name).map(|v| v.trim().to_owned()) {
+        Some(raw) if !raw.is_empty() => raw.parse().unwrap_or_else(|_| {
             warn!("{name}={raw:?} is not a number; using the default");
             default
         }),
@@ -57,8 +57,7 @@ fn number<T: std::str::FromStr>(name: &str, default: T) -> T {
 impl RssConfig {
     /// `default_feeds_path` is used when `FEEDS_CONFIG_PATH` is unset.
     pub fn from_env(default_feeds_path: PathBuf) -> Self {
-        let feeds_path = std::env::var("FEEDS_CONFIG_PATH")
-            .ok()
+        let feeds_path = omnimem_core::env::var("FEEDS_CONFIG_PATH")
             .filter(|p| !p.trim().is_empty())
             .map_or(default_feeds_path, PathBuf::from);
         Self {
@@ -69,7 +68,7 @@ impl RssConfig {
             max_digest_entries: number("RSS_MAX_DIGEST_ENTRIES", 2),
             max_page_bytes: number("RSS_MAX_PAGE_BYTES", 10 * 1024 * 1024),
             max_knowledge_age_days: number("MAX_KNOWLEDGE_AGE_DAYS", 30),
-            require_licence: std::env::var("RSS_REQUIRE_LICENCE").is_ok_and(|v| {
+            require_licence: omnimem_core::env::var("RSS_REQUIRE_LICENCE").is_some_and(|v| {
                 matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes")
             }),
         }

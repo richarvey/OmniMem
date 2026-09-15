@@ -54,8 +54,7 @@ impl Downloader {
     /// `HF_ENDPOINT` and `HF_TOKEN`, as the Python library reads them.
     pub(crate) fn from_env(cache: PathBuf) -> Result<Self, EmbedError> {
         let var = |name: &str| {
-            env::var(name)
-                .ok()
+            omnimem_core::env::var(name)
                 .map(|v| v.trim().to_owned())
                 .filter(|v| !v.is_empty())
         };
@@ -162,7 +161,7 @@ impl Downloader {
 
 /// `HF_HUB_OFFLINE` set to a true value.
 pub(crate) fn offline() -> bool {
-    env::var("HF_HUB_OFFLINE")
+    omnimem_core::env::var("HF_HUB_OFFLINE")
         .map(|v| {
             matches!(
                 v.trim().to_ascii_lowercase().as_str(),

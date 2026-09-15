@@ -6,6 +6,7 @@
 
 pub mod classification;
 pub mod embedding;
+pub mod env;
 pub mod hash;
 pub mod key;
 pub mod llm;

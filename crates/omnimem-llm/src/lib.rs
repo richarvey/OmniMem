@@ -41,13 +41,13 @@ impl AnthropicConfig {
     /// From `ANTHROPIC_API_KEY`. `None` when no usable key is set, which
     /// includes the `.env.example` placeholder 6.x also ignored.
     pub fn from_env() -> Option<Self> {
-        let key = std::env::var("ANTHROPIC_API_KEY").ok()?;
+        let key = omnimem_core::env::var("ANTHROPIC_API_KEY")?;
         let key = key.trim();
         if key.is_empty() || key == PLACEHOLDER_KEY {
             return None;
         }
         let mut config = Self::new(key);
-        if let Ok(base) = std::env::var("ANTHROPIC_BASE_URL")
+        if let Some(base) = omnimem_core::env::var("ANTHROPIC_BASE_URL")
             && !base.trim().is_empty()
         {
             config.base_url = base.trim().trim_end_matches('/').to_owned();

@@ -1,6 +1,5 @@
 //! Tunables, with 6.x's environment variables and defaults.
 
-use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -114,8 +113,7 @@ impl Default for EngineConfig {
 }
 
 fn text(name: &str) -> Option<String> {
-    env::var(name)
-        .ok()
+    omnimem_core::env::var(name)
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty())
 }
