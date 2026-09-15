@@ -10,6 +10,7 @@ use crate::contradiction::has_negation_pair;
 use crate::error::invalid;
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{now_secs, now_str, py_json, take_chars};
+use crate::skills::{py_str, py_truthy};
 use crate::{Engine, Result};
 
 const SCAN_CAP: usize = 200;
@@ -80,9 +81,9 @@ impl Engine {
         Ok(())
     }
 
-    /// Tier 1 heuristic scan, similarity-gated. Tier 2 (the Claude API)
-    /// arrives with phase 5; until then `use_api` behaves as 6.x did with no
-    /// API key configured, confirming nothing.
+    /// Tier 1 heuristic scan, similarity-gated. With `use_api`, tier 2 asks
+    /// Claude about each heuristic match and keeps only the confirmed ones;
+    /// with no API key that confirms nothing, as in 6.x.
     pub fn check_contradictions(
         &self,
         query: Option<&str>,
@@ -161,17 +162,35 @@ impl Engine {
                 {
                     continue;
                 }
-                if use_api {
-                    continue;
-                }
-                self.link_contradiction(key_a, key_b, "Opposing language patterns detected.")?;
-                found.push(json!({
+                let mut entry = json!({
                     "key_a": key_a,
                     "key_b": key_b,
                     "content_a": take_chars(content_a, 80),
                     "content_b": take_chars(content_b, 80),
                     "method": "heuristic",
-                }));
+                });
+                let mut explanation = "Opposing language patterns detected.".to_owned();
+                if use_api {
+                    let verdict = self.check_contradiction_api(content_a, content_b);
+                    if !verdict.get("is_contradiction").is_some_and(py_truthy) {
+                        continue;
+                    }
+                    let stated = verdict
+                        .get("explanation")
+                        .cloned()
+                        .unwrap_or_else(|| json!(""));
+                    explanation = stated
+                        .as_str()
+                        .map_or_else(|| py_str(&stated), str::to_owned);
+                    entry["method"] = "api_confirmed".into();
+                    entry["confidence"] = verdict
+                        .get("confidence")
+                        .cloned()
+                        .unwrap_or_else(|| json!(0.0));
+                    entry["explanation"] = stated;
+                }
+                self.link_contradiction(key_a, key_b, &explanation)?;
+                found.push(entry);
             }
             if comparisons >= COMPARISON_CAP || found.len() >= RESULTS_CAP {
                 break;

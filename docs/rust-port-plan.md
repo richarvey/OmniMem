@@ -2,7 +2,7 @@
 
 **Status**: in progress on `v7.0.x`. This is the working plan; update it as phases land.
 
-OmniMem 7 is one Rust binary. It replaces four containers (Valkey with the search module, the Python MCP server, the Python web UI and the Python RSS worker) with a single process that holds its own vector store, serves MCP, runs RSS ingestion on a schedule and serves the web UI, which is where settings live.
+OmniMem 7 is one Rust binary. It replaces four containers (Valkey with the search module, the Python MCP server, the Python web UI and the Python RSS worker) with a single process that holds its own vector store, serves MCP and runs RSS ingestion on a schedule. Settings, and everything the 6.x web UI showed, live in a panel inside the desktop app. Over the network it serves MCP and the OAuth flow that protects it, and nothing else.
 
 It ships three ways: as desktop installers (an MSI for Windows, a DMG for macOS, a Flatpak for Linux) that run OmniMem with a tray or menu bar icon and a native settings window; as headless Linux packages (`.deb`, `.rpm` and a tarball) that install a systemd service with no desktop dependencies; and as a headless Docker image.
 
@@ -17,6 +17,7 @@ The Python tree stays in the repository as the reference implementation until th
 | 2. Core MCP | **Done, one check left** | `omnimem-engine` ports the recall pipeline (abandoned fast-path, scoring with surface, recency, experience and temporal multipliers, reinstate candidates, fact collapse, relevance floor and weak band, recall logging and counters), lifecycle and suppression, dedup, the tier-1 contradiction check, chunking, domain routing and the core tool behaviours. `omnimem-mcp` serves 20 tools over streamable HTTP with 6.x's verbatim descriptions, bearer auth, Host/Origin allowlists and fail-closed public binds; `omnimem serve` runs it. Checked with a real MCP session against the imported production store and the real model: recall 65 to 90 ms on a debug build. Left: connecting Claude Code itself. Deferred to phase 5: query expansion (`expand_queries` is accepted and ignored). Enrichment jobs are queued durably but nothing consumes them yet |
 | 3. Experience, projects, briefing | **Done, two items move to phase 4** | 23 more tools, 43 in all: experience (`record_experience`, `log_abandoned`, `get_experience`, `experience_summary`, `warn_if_abandoned`), projects (context, domains, state, bulk delete, deprioritise and reinstate, `compile_project_context`), audit (`memory_audit`, `why_did_you_mention`, `explain_memory`, `reindex`), `set_licence` and `set_provenance` through one lineage stamp, tier-1 `check_contradictions`, `recent_knowledge`, and `briefing` with auto-maintenance (dedup archive, contradiction scan, article expiry). `migrate_project_domains` runs at startup and after import or restore. 17 new engine tests; 133 across the workspace, clippy clean. Checked over a real MCP session on the imported production store with the real model: every new tool answers, 2 to 146 ms on a debug build (`briefing` 139 ms, `memory_audit` over 3,497 memories 134 ms), and `reindex` reports vectors equal to records in all five namespaces. Not yet compared field by field with the Python tools, which needs a Valkey loaded with the same backup. Moved to phase 4 with the skill compiler: the briefing's skill sections and `promote_knowledge`. `reindex` now reloads vectors and can never find phantoms |
 | 4. Skills | **Done** | `compile_skill` (propose and write, the stale-proposal and authored-work refusals, export), `find_skills`, `get_skill`, `bless` and `promote_knowledge` with extracted rules: 48 tools. The briefing's skill sections (suggestions, pending updates, the time-gated auto scan with its seen-sha gate, the knowledge watch), feed influence read from the mirrored `meta:feed:influence` hash, and skill transfer bundles (export, validate, plan, apply, feed merge) in the engine for the web UI to call. The pure functions are checked against a golden fixture the 6.7.1 Python wrote for the same inputs (`crates/omnimem-engine/tests/fixtures/skills_golden.json`): lesson extraction, rule-change summaries, review notes and four rendered bodies, byte for byte. Real data, the imported production store with the real model: `opentofu` and `preferences` recompile **unchanged**; `wcag-accessibility` proposes exactly one kind of change, seven Feed watch articles from a feed whose influence (7) was set after that skill was compiled, which 6.x would propose too. `find_skills` scores match the Python ONNX engine on the same store to four places (0.6189, 0.4922, 0.3426; `python` at 0.2341 is under the floor in both). A briefing with skills takes 430 ms on a debug build, and 6.7 s when the daily auto scan runs. 157 workspace tests. Left for later phases: writing the feed mirror (phase 6) and the web UI's export and import screens (phase 7). The skill banner still says Valkey, because changing it would turn every recompile into a diff; that changes at cut-over |
+| 5. LLM features | **Done, one live check left** | `omnimem-llm` is a blocking Anthropic Messages client that keeps the SDK behaviour 6.x relied on (two retries on connection failures, 408, 409, 429 and 5xx, honouring `retry-after`), behind a `LanguageModel` trait in `omnimem-core` so the engine is tested with a scripted model. The engine ports fact extraction with the 6.x prompt, fence stripping and event-date parsing; the enrichment worker, a thread in `serve` draining the durable queue (preferences routed to `preference`, the event-date fallback chain, licence and provenance inherited from the live source, duplicate facts skipped, batch mode); query expansion with the `qexp:` cache, each variant scored through the same path as the query; and contradiction tier 2 with the 6.x prompt. 171 workspace tests, including the client against a local HTTP server. Smoke-tested on the imported production store with no key: `serve` says the features are off, a full-mode `remember` queues a job the worker drains within a second, `recall(expand_queries=True)` answers from the original query, and `check_contradictions(use_api=True)` confirms nothing, as 6.x degraded. Left: a run against the real API with `ANTHROPIC_API_KEY` set. Two deliberate differences: the worker looks at the queue every second where 6.x blocked on `BRPOP`, and the request timeout is two minutes rather than the SDK's ten |
 
 ## Decisions
 
@@ -29,10 +30,11 @@ Settled on 2026-09-15:
 | Scope | **Parity port, v7 schema from day one** | Feature-for-feature, in phases. The new store includes `origin_id`, `content_hash`, `epoch` and `classification` from the start, because shaping an empty store correctly costs nothing. `cluster_profile` and the rest of the Mycelium adapter (`docs/v7-change-spec.md`) follow parity |
 | Layout | **Cargo workspace beside the Python** | `crates/` at the repo root. The Python suite documents what the Rust tests must prove |
 | Installers | **MSI, DMG, Flatpak** | One per desktop platform, each running OmniMem with a tray or menu bar icon that shows it is running and opens settings |
-| Settings UI | **Native app window** | The tray icon opens a window embedding the settings pages (tao + wry), not a browser tab |
+| Settings UI | **A settings panel inside the app, never served over HTTP** | The tray icon opens a native window (tao + wry) whose pages are handed to the webview through a custom protocol and IPC, so no network listener serves them and nothing else on the machine or the network can reach them. It replaces the 6.x web UI entirely: the dashboard, memory, project, skill, feed, telemetry and backup pages move into the panel |
+| HTTP surface | **`/mcp`, the OAuth 2.1 endpoints and `/healthz`, nothing else** | MCP clients need `/mcp`, and the OAuth flow (including the login page a browser is sent to) protects it. No web UI, no `/metrics` and no web sessions over HTTP |
 | Build hosts | **Mac and Windows runners added to Forgejo** | Each installer is built and tested on its own OS. `sqcows` builds the Flatpak and the Docker image |
 | Signing | **Apple Developer ID; no Windows certificate yet** | The .app and DMG are signed and notarised. The MSI ships unsigned, and its signing step runs as soon as a certificate secret exists |
-| Headless Linux | **`.deb`, `.rpm` and `.tar.gz`, each with a systemd unit** | For servers and desktops without GNOME: the binary built without the `desktop` feature, so no GTK, WebKitGTK or tray dependency. Settings are the web UI in a browser, or environment variables |
+| Headless Linux | **`.deb`, `.rpm` and `.tar.gz`, each with a systemd unit** | For servers and desktops without GNOME: the binary built without the `desktop` feature, so no GTK, WebKitGTK or tray dependency. Configured through `/etc/omnimem/omnimem.env` and the CLI: there is no web UI, and no desktop to host the settings panel |
 | Architectures | **x86_64 and arm64 everywhere** | MSI x64 and ARM64, a universal macOS binary, Flatpak x86_64 and aarch64. ONNX Runtime publishes prebuilt libraries for all six targets |
 
 ## Architecture
@@ -41,7 +43,7 @@ Settled on 2026-09-15:
 flowchart LR
     subgraph omnimem["omnimem (one process)"]
         mcp["MCP server<br/>streamable HTTP + OAuth"]
-        web["Web UI + settings<br/>axum + minijinja + htmx"]
+        panel["Settings panel<br/>in-app webview, custom protocol + IPC"]
         rss["RSS scheduler<br/>tokio task"]
         enrich["Enrichment queue<br/>tokio task"]
         engine["Memory engine<br/>recall, lifecycle, skills"]
@@ -49,9 +51,9 @@ flowchart LR
         store[("SQLite file<br/>+ in-memory vectors")]
     end
     agent["Claude / MCP clients"] --> mcp
-    browser["Browser"] --> web
+    user["Desktop user"] --> panel
     mcp --> engine
-    web --> engine
+    panel --> engine
     rss --> engine
     enrich --> engine
     engine --> embed
@@ -73,7 +75,7 @@ One embedder instance serves every caller. Today each of the three Python servic
 | `omnimem-llm` | Anthropic client with the summariser's retry classes | `extraction.py`, `query_expansion.py`, `summariser.py`, contradiction tier 2 |
 | `omnimem-mcp` | The 48 tools, instructions, telemetry, auth (bearer and OAuth 2.1 server), Host/Origin guard | `server.py`, `tools/`, `oauth/`, `middleware/` |
 | `omnimem-rss` | Feed fetch and parse, summary and digest modes, licence gate, scheduler | `rss_worker/` |
-| `omnimem-web` | Routes, templates, static assets, sessions, `/metrics`, settings pages | `web_ui/` |
+| `omnimem-settings` | The settings panel's pages (dashboard, memories, projects, skills, feeds, telemetry, backups, configuration), rendered in-process and handed to the desktop window over a custom protocol. No HTTP routes | `web_ui/` |
 | `omnimem-desktop` | Tray and menu bar icon, the settings window, single-instance lock, start at login, first-run model fetch | new |
 | `omnimem` | The binary: config, startup, subcommands (`serve`, `import`, `export`, `reindex`, `embed`). Built with the `desktop` feature for the installers, without it for Docker | `docker-compose.yml` wiring |
 
@@ -85,7 +87,7 @@ SQLite in WAL mode, one file (default `./data/omnimem.db`).
 - **`vectors`**: `key` → 384 little-endian float32 bytes, the same encoding Valkey stored
 - **`memory_tags`**, **`memory_domains`**: join tables, so tag and domain filters are real queries (in 6.x `tags` were JSON strings and unsearchable)
 - **`kv`**: `key`, `value`, `expires_at`. Replaces every `meta:*`, `qexp:*` and `topics:suppressed` key, with expiry enforced on read and swept periodically
-- **`recall_log`**, **`tool_metrics`**, **`enrich_queue`** (durable, so a crash no longer loses a job), **`oauth_clients`**, **`oauth_codes`**, **`oauth_tokens`**, **`web_sessions`**
+- **`recall_log`**, **`tool_metrics`**, **`enrich_queue`** (durable, so a crash no longer loses a job), **`oauth_clients`**, **`oauth_codes`**, **`oauth_tokens`**
 - **`memories_fts`**: FTS5 over content, for later hybrid search
 
 Vector search: on start, load every vector into one contiguous matrix per namespace, kept in step with writes. A query computes dot products (vectors are unit length) against rows that pass the filter, then takes the top k. Filters are SQL, so the valkey-search tag-query quirks (`{a|b}` alternation, escaped values, `FT.DROPINDEX` arity) and index drift disappear with Valkey.
@@ -96,7 +98,7 @@ Numbers stored as REAL and INTEGER, not Python `str(float)`. Where a number is r
 
 ### What runs
 
-The installed app is the same binary as the server, started in desktop mode. The engine, MCP server, RSS scheduler and web UI run on a tokio runtime in background threads, and the main thread owns the platform event loop (tao), which the tray and the window need on every OS and which macOS requires to be the main thread.
+The installed app is the same binary as the server, started in desktop mode. The engine, MCP server and RSS scheduler run on a tokio runtime in background threads, and the main thread owns the platform event loop (tao), which the tray and the window need on every OS and which macOS requires to be the main thread.
 
 - **Tray / menu bar icon** (`tray-icon` + `muda`): present while OmniMem runs. The icon shows state (running, starting, needs attention) and the menu offers:
   - status line: memory count and the MCP address
@@ -105,14 +107,14 @@ The installed app is the same binary as the server, started in desktop mode. The
   - **Copy MCP URL**: for pasting into a client's config
   - **Start at login** (checkbox)
   - **Quit**
-- **Settings window** (`wry` in a `tao` window): loads the local web UI's settings pages over loopback, using a per-launch session token passed to the webview, so the window never shows a login page and nothing else on the machine can reuse the session. One window at a time; closing it leaves OmniMem running in the tray. Windows uses WebView2 (present on Windows 10 and 11, bootstrapped by the MSI where missing), macOS uses WKWebView, Linux uses WebKitGTK
-- **Settings pages** (web UI, phase 7): everything that is an environment variable today and matters on a desktop, including the MCP port and auth token, the Anthropic API key, RSS feeds and schedule, recall and skill thresholds, data folder, backups. Changes are written to a config file in the data folder; ones that need a restart (port, data folder) say so
+- **Settings window** (`wry` in a `tao` window): the panel's pages come from the process through a custom protocol (`omnimem://`) and changes go back over IPC, so there is no loopback server, no session and no login page, and nothing outside the window can reach them. One window at a time; closing it leaves OmniMem running in the tray. Windows uses WebView2 (present on Windows 10 and 11, bootstrapped by the MSI where missing), macOS uses WKWebView, Linux uses WebKitGTK
+- **Settings panel** (phase 7): the 6.x web UI's pages (dashboard, memories, projects, skills with export and import, feeds, telemetry, backups), plus everything that is an environment variable today and matters on a desktop, including the MCP port and auth token, the Anthropic API key, RSS feeds and schedule, recall and skill thresholds, data folder, backups. Changes are written to a config file in the data folder; ones that need a restart (port, data folder) say so
 - **Single instance**: a lock file in the data folder. Launching a second copy brings the settings window forward instead of starting another server
 - **Start at login**: `auto-launch` on Windows (Run key) and macOS (login item); on Linux the Flatpak asks the Background portal
 - **First run**: if the embedding model isn't cached, the tray shows "Downloading model" while the engine fetches it (the phase 0 download piece), then starts serving
 - **Data location** (`directories`): `%APPDATA%\OmniMem` on Windows, `~/Library/Application Support/OmniMem` on macOS, `$XDG_DATA_HOME/omnimem` on Linux (inside the Flatpak, `~/.var/app/<app-id>/data/omnimem`). The database, config, backups and model cache live there
 
-Headless mode (`omnimem serve`, or a build without the `desktop` feature) has no tray, no window and no GUI dependencies, and is what the Docker image runs.
+Headless mode (`omnimem serve`, or a build without the `desktop` feature) has no tray, no window and no GUI dependencies, and is what the Docker image runs. It has no settings panel either: it is configured by environment variables (or `/etc/omnimem/omnimem.env`) and the CLI.
 
 ### Installers
 
@@ -143,7 +145,7 @@ Setting up the two runners is a prerequisite: register each in host mode with th
 |---|---|
 | GNOME shows no tray icons without the AppIndicator extension | The settings window can also be opened from the app's launcher entry; relaunching focuses it. Document the extension |
 | Flatpak's offline build versus `ort`'s binary download | ONNX Runtime provided as a manifest source, as above; verified early rather than at release time |
-| WebView2 missing on older or locked-down Windows | Evergreen bootstrapper in the MSI; if it still fails, the tray offers Settings in the browser instead |
+| WebView2 missing on older or locked-down Windows | Evergreen bootstrapper in the MSI; if it still fails, the tray says so and settings fall back to the config file in the data folder, since there is deliberately no browser version |
 | An unsigned MSI triggers SmartScreen | Documented until a certificate is bought |
 
 ## Compatibility contract
@@ -155,10 +157,10 @@ What a 6.x user must not notice:
 3. **Recall scoring**: floor, weak band, recency decay, experience weight, temporal boost, reinstate 0.6, fact collapse and ordering exactly as `memory/recall.py`
 4. **Skill bodies**: `render_skill_md` byte-identical, including `json.dumps` escaping non-ASCII in the description line, or every existing skill shows a spurious diff after import
 5. **Files**: backup JSON, skill bundle zips (format v2, reads v1), `feeds.yml`
-6. **Configuration**: every 6.x environment variable honoured with its default, except the Valkey ones, which are dropped. New settings also live in the web UI
-7. **Web UI**: the same routes, so bookmarks and links keep working
+6. **Configuration**: every 6.x environment variable honoured with its default, except the Valkey and web UI ones (`WEB_UI_*`), which are dropped. Settings can also be changed in the desktop app's settings panel
+7. **Web UI**: not kept. Its pages move into the settings panel, which is not reachable over HTTP, so bookmarks to the 6.x web UI stop working. `/metrics` goes with it; the telemetry it exposed is shown in the panel
 
-Deliberately not kept: Valkey, SSE transport (streamable HTTP only), `EMBEDDING_BACKEND=torch`, the per-process suppressed-topics cache (one process now), at-most-once enrichment.
+Deliberately not kept: Valkey, the web UI and `/metrics` over HTTP, SSE transport (streamable HTTP only), `EMBEDDING_BACKEND=torch`, the per-process suppressed-topics cache (one process now), at-most-once enrichment.
 
 ## Phases
 
@@ -173,8 +175,8 @@ Each phase ends with a commit that builds, passes its tests, and is usable for w
 | **4. Skills** | Compiler, propose-and-accept, find/get/bless, scan, knowledge watch, promotion, transfer bundles | Imported skills recompile with no diff |
 | **5. LLM features** | Enrichment queue, fact extraction, query expansion, contradiction tier 2 | Behaviour matches with `ANTHROPIC_API_KEY` set and degrades the same without it |
 | **6. RSS** | Feeds, summary and digest modes, licence gate, scheduler, feed influence | A feeds.yml from 6.x ingests the same articles |
-| **7. Web UI and settings** | All routes and templates on minijinja, sessions, `/metrics`, settings pages for what is environment-only today | Every page renders against an imported store |
-| **8. OAuth and hardening** | OAuth 2.1 server (register, authorize, token with PKCE, refresh rotation with grace window, revoke), Host/Origin guard, fail-closed public bind | claude.ai connects through a reverse proxy |
+| **7. Settings panel** | The 6.x web UI's pages and a configuration page for what is environment-only today, as the desktop app's settings panel: rendered in-process (minijinja) and served to the window over a custom protocol and IPC, with skill export and import on the phase 4 transfer engine | Every panel page renders against an imported store, and the only HTTP routes the binary serves are `/mcp`, OAuth and `/healthz` |
+| **8. OAuth and hardening** | OAuth 2.1 server (register, authorize, token with PKCE, refresh rotation with grace window, revoke), Host/Origin guard, fail-closed public bind. The OAuth login page is the only HTML served over HTTP | claude.ai connects through a reverse proxy |
 | **9. Desktop and installers** | `omnimem-desktop` (tray, settings window, single instance, start at login, first-run model fetch), MSI, DMG and Flatpak packaging, headless `.deb`, `.rpm` and tarball with a systemd unit, Mac and Windows runners, `release.yml` with signing and notarisation | A tagged build produces every installer; each installs cleanly on its OS and architectures; the desktop ones show the icon and open settings, and the headless ones start the service on a system with no desktop libraries installed |
 | **10. Cut-over** | Headless Docker image, docs, delete the Python tree | 7.0.0 |
 | **11. Mycelium** | `cluster_profile`, freshness, by_hash, classification filter, epoch bumps | `docs/v7-change-spec.md` |
@@ -195,6 +197,6 @@ The desktop shell doesn't have to wait for phase 9 in full: a tray icon and wind
 | `dateparser` | No Rust crate parses relative dates in prose ("last Tuesday") the same way | Port the pre-filter regex, handle the phrases the temporal tests cover, golden-test against Python on a phrase corpus, and accept documented differences beyond it |
 | OAuth 2.1 server | `rmcp` provides no authorisation server; FastMCP did | Hand-build on axum with the storage semantics in the inventory, including the rotation grace window |
 | `render_skill_md` | Must match `json.dumps` defaults and `difflib.unified_diff` output | Implement the json escaping exactly; port unified diff and golden-test it |
-| Templates | 35 Jinja2 templates | minijinja is close to Jinja2; port verbatim and fix filters as found |
+| Templates | 35 Jinja2 templates, written for htmx over HTTP | minijinja is close to Jinja2; port them into the panel, with htmx requests going over IPC instead of HTTP |
 | Regex lookaround | The sentence chunker uses lookbehind | `fancy-regex`, already a dependency of the tokeniser |
 | `feedparser` | Normalises many malformed feeds | `feed-rs`, with the 6.x feed list as a test corpus |

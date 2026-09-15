@@ -1,8 +1,8 @@
 //! The recall pipeline (`memory/recall.py`): abandoned fast-path, vector
 //! search, scoring, fact collapse, the relevance floor, and recall logging.
 //!
-//! Query expansion is not here yet (phase 5); `expand_queries` is accepted
-//! and has no effect until it is.
+//! Query expansion searches and scores each variant the same way, and the
+//! dedupe keeps every key's best score.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -146,6 +146,16 @@ pub(crate) fn tags_truthy(tags: &Value) -> bool {
     is_truthy(tags)
 }
 
+/// What one recall searches, shared by the query and its expansion variants.
+struct Scope<'a> {
+    namespaces: &'a [String],
+    projects: &'a [String],
+    per_ns_k: usize,
+    suppressed: &'a [String],
+    query_date: Option<chrono::NaiveDateTime>,
+    now: f64,
+}
+
 impl Engine {
     /// Every abandoned approach across episodic memories, cached.
     pub(crate) fn abandoned_entries(&self) -> Result<Arc<Vec<AbandonedEntry>>> {
@@ -237,6 +247,7 @@ impl Engine {
         top_k: Option<i64>,
         projects: &[String],
         min_score: Option<f64>,
+        expand_queries: Option<bool>,
     ) -> Result<Vec<RecallResult>> {
         let top_k = top_k.unwrap_or(self.config.recall_top_k).clamp(1, 50);
         let namespaces: Vec<String> = match namespaces {
@@ -281,102 +292,32 @@ impl Engine {
         let vector = self.embed(query)?;
         let now = now_secs();
         let suppressed = self.suppressed_topics()?;
-        let query_date = parse_query_date(query);
-        let filter = SearchFilter {
-            states: vec!["active".into(), "deprioritised".into()],
-            projects: projects.to_vec(),
+        let scope = Scope {
+            namespaces: &namespaces,
+            projects,
+            per_ns_k: candidate_k(top_k, projects),
+            suppressed: &suppressed,
+            query_date: parse_query_date(query),
+            now,
         };
-        let per_ns_k = candidate_k(top_k, projects);
+        results.extend(self.score_hits(&vector, Some(query), &scope)?);
 
-        for ns in &namespaces {
-            let Ok(namespace) = ns.parse::<Namespace>() else {
-                continue;
-            };
-            for hit in self
-                .store
-                .search(namespace, &vector, per_ns_k, &filter, None)?
+        // Query expansion: each variant is searched and scored the same way,
+        // and the dedupe below keeps every key's best score.
+        if expand_queries.unwrap_or(self.config.expand_queries) {
+            let variants = self.expand_query(query);
+            for variant in variants
+                .iter()
+                .filter(|v| !v.is_empty() && v.as_str() != query)
             {
-                let doc = &hit.fields;
-                let state = doc.get("state").map(String::as_str).unwrap_or("active");
-                if matches!(state, "archived" | "deleted") {
-                    continue;
-                }
-                let content = doc.get("content").cloned().unwrap_or_default();
-                if !suppressed.is_empty() {
-                    let lower = content.to_lowercase();
-                    if suppressed.iter().any(|t| lower.contains(t.as_str())) {
-                        continue;
-                    }
-                }
-                let doc_project = text(doc, "project").or_else(|| text(doc, "project_name"));
-                if !projects.is_empty()
-                    && !doc_project.is_some_and(|p| projects.iter().any(|q| q == p))
-                {
-                    continue;
-                }
-
-                let raw_score = (1.0 - f64::from(hit.distance)).max(0.0);
-                let surface = number(doc, "surface_score", 1.0);
-                let created_at = number(doc, "created_at", now);
-                let age_days = (now - created_at) / 86_400.0;
-                let mut recency = 1.0;
-                if age_days > self.config.recency_decay_days {
-                    let excess = (age_days - self.config.recency_decay_days) / 30.0;
-                    recency = (1.0 - 0.05 * excess).max(0.3);
-                }
-                let exp_weight = number(doc, "experience_weight", 1.0);
-                let event_date = doc
-                    .get("event_date")
-                    .filter(|v| !v.is_empty())
-                    .and_then(|v| v.trim().parse::<f64>().ok());
-                let temporal = match (query_date, event_date) {
-                    (Some(q), Some(e)) => temporal_boost(q, e),
-                    _ => 1.0,
-                };
-                let mut adjusted = raw_score * surface * recency * exp_weight * temporal;
-
-                let mut reinstate = false;
-                if state == "deprioritised" && check_reinstate_eligibility(doc, query) {
-                    reinstate = true;
-                    adjusted = 0.6;
-                }
-                let contradictions = doc
-                    .get("contradictions")
-                    .filter(|v| !v.is_empty())
-                    .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok())
-                    .unwrap_or_default();
-
-                results.push(RecallResult {
-                    key: hit.key.clone(),
-                    namespace: ns.clone(),
-                    content,
-                    score: raw_score,
-                    adjusted_score: adjusted,
-                    state: state.to_owned(),
-                    project: doc_project.map(str::to_owned),
-                    source_url: doc.get("source_url").cloned(),
-                    published_at: doc.get("published_at").cloned(),
-                    reinstate_candidate: reinstate,
-                    tags: parse_tags(doc.get("tags").map(String::as_str)),
-                    deprioritised_reason: doc.get("deprioritised_reason").cloned(),
-                    effort_score: integer(doc, "effort_score"),
-                    outcome: doc.get("outcome").cloned(),
-                    experience_weight: exp_weight,
-                    result_type: if ns == "knowledge" {
-                        "knowledge"
-                    } else {
-                        "memory"
-                    },
-                    weak_match: false,
-                    breakthrough: doc.get("breakthrough").cloned(),
-                    lesson: doc.get("lesson").cloned(),
-                    contradictions,
-                    event_date,
-                    enriched_from: doc.get("enriched_from").cloned(),
-                    licence: Some(effective_licence(doc, ns).to_owned()),
-                    licence_note: doc.get("licence_note").cloned(),
-                    provenance: Some(effective_provenance(doc, ns, Some(&hit.key)).to_owned()),
-                });
+                let vector = self.embed(variant)?;
+                results.extend(self.score_hits(&vector, None, &scope)?);
+            }
+            if !variants.is_empty() {
+                debug!(
+                    variants = variants.len(),
+                    "query expansion produced variants"
+                );
             }
         }
 
@@ -463,6 +404,118 @@ impl Engine {
         }
         results.truncate(top_k as usize);
         self.log_recall_event(query, &results);
+        Ok(results)
+    }
+
+    /// Search every namespace for one query vector and score the hits.
+    /// `reinstate_query` is the original query, which reinstate candidates
+    /// match on; expansion variants pass `None`, as 6.x's `_search_variant`
+    /// never flagged one.
+    fn score_hits(
+        &self,
+        vector: &[f32],
+        reinstate_query: Option<&str>,
+        scope: &Scope<'_>,
+    ) -> Result<Vec<RecallResult>> {
+        let filter = SearchFilter {
+            states: vec!["active".into(), "deprioritised".into()],
+            projects: scope.projects.to_vec(),
+        };
+        let mut results = Vec::new();
+        for ns in scope.namespaces {
+            let Ok(namespace) = ns.parse::<Namespace>() else {
+                continue;
+            };
+            for hit in self
+                .store
+                .search(namespace, vector, scope.per_ns_k, &filter, None)?
+            {
+                let doc = &hit.fields;
+                let state = doc.get("state").map(String::as_str).unwrap_or("active");
+                if matches!(state, "archived" | "deleted") {
+                    continue;
+                }
+                let content = doc.get("content").cloned().unwrap_or_default();
+                if !scope.suppressed.is_empty() {
+                    let lower = content.to_lowercase();
+                    if scope.suppressed.iter().any(|t| lower.contains(t.as_str())) {
+                        continue;
+                    }
+                }
+                let doc_project = text(doc, "project").or_else(|| text(doc, "project_name"));
+                if !scope.projects.is_empty()
+                    && !doc_project.is_some_and(|p| scope.projects.iter().any(|q| q == p))
+                {
+                    continue;
+                }
+
+                let raw_score = (1.0 - f64::from(hit.distance)).max(0.0);
+                let surface = number(doc, "surface_score", 1.0);
+                let created_at = number(doc, "created_at", scope.now);
+                let age_days = (scope.now - created_at) / 86_400.0;
+                let mut recency = 1.0;
+                if age_days > self.config.recency_decay_days {
+                    let excess = (age_days - self.config.recency_decay_days) / 30.0;
+                    recency = (1.0 - 0.05 * excess).max(0.3);
+                }
+                let exp_weight = number(doc, "experience_weight", 1.0);
+                let event_date = doc
+                    .get("event_date")
+                    .filter(|v| !v.is_empty())
+                    .and_then(|v| v.trim().parse::<f64>().ok());
+                let temporal = match (scope.query_date, event_date) {
+                    (Some(q), Some(e)) => temporal_boost(q, e),
+                    _ => 1.0,
+                };
+                let mut adjusted = raw_score * surface * recency * exp_weight * temporal;
+
+                let mut reinstate = false;
+                if state == "deprioritised"
+                    && let Some(query) = reinstate_query
+                    && check_reinstate_eligibility(doc, query)
+                {
+                    reinstate = true;
+                    adjusted = 0.6;
+                }
+                let contradictions = doc
+                    .get("contradictions")
+                    .filter(|v| !v.is_empty())
+                    .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok())
+                    .unwrap_or_default();
+
+                results.push(RecallResult {
+                    key: hit.key.clone(),
+                    namespace: ns.clone(),
+                    content,
+                    score: raw_score,
+                    adjusted_score: adjusted,
+                    state: state.to_owned(),
+                    project: doc_project.map(str::to_owned),
+                    source_url: doc.get("source_url").cloned(),
+                    published_at: doc.get("published_at").cloned(),
+                    reinstate_candidate: reinstate,
+                    tags: parse_tags(doc.get("tags").map(String::as_str)),
+                    deprioritised_reason: doc.get("deprioritised_reason").cloned(),
+                    effort_score: integer(doc, "effort_score"),
+                    outcome: doc.get("outcome").cloned(),
+                    experience_weight: exp_weight,
+                    result_type: if ns == "knowledge" {
+                        "knowledge"
+                    } else {
+                        "memory"
+                    },
+                    weak_match: false,
+                    breakthrough: doc.get("breakthrough").cloned(),
+                    lesson: doc.get("lesson").cloned(),
+                    contradictions,
+                    event_date,
+                    enriched_from: doc.get("enriched_from").cloned(),
+                    licence: Some(effective_licence(doc, ns).to_owned()),
+                    licence_note: doc.get("licence_note").cloned(),
+                    provenance: Some(effective_provenance(doc, ns, Some(&hit.key)).to_owned()),
+                });
+            }
+        }
         Ok(results)
     }
 

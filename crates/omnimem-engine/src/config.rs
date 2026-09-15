@@ -8,6 +8,12 @@ use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
+    /// `FACT_EXTRACTION_MODEL`
+    pub fact_extraction_model: String,
+    /// `QUERY_EXPANSION_MODEL`
+    pub query_expansion_model: String,
+    /// `RECALL_EXPAND_COUNT`: variants per expanded query, 1 to 10.
+    pub recall_expand_count: i64,
     /// `MEMORY_RECALL_TOP_K`
     pub recall_top_k: i64,
     /// `RECALL_MIN_SCORE`: floor on raw similarity; 0 disables.
@@ -71,6 +77,9 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
+            fact_extraction_model: "claude-haiku-4-5-20251001".to_owned(),
+            query_expansion_model: "claude-haiku-4-5-20251001".to_owned(),
+            recall_expand_count: 3,
             recall_top_k: 5,
             recall_min_score: 0.15,
             recall_weak_score: 0.35,
@@ -138,6 +147,9 @@ impl EngineConfig {
             .filter(|u| crate::domains::is_valid_domain(u))
             .unwrap_or(d.skill_user);
         Self {
+            fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
+            query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
+            recall_expand_count: number("RECALL_EXPAND_COUNT", d.recall_expand_count),
             recall_top_k: number("MEMORY_RECALL_TOP_K", d.recall_top_k),
             recall_min_score: number("RECALL_MIN_SCORE", d.recall_min_score).max(0.0),
             recall_weak_score: number("RECALL_WEAK_SCORE", d.recall_weak_score).max(0.0),

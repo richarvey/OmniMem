@@ -8,7 +8,9 @@ pub mod classification;
 pub mod embedding;
 pub mod hash;
 pub mod key;
+pub mod llm;
 
 pub use embedding::{EmbeddingError, TextEmbedder, VECTOR_DIM};
 pub use hash::{content_hash, normalise_content};
 pub use key::{KeyError, MemoryKey, Namespace};
+pub use llm::{LanguageModel, LlmError};

@@ -26,6 +26,7 @@ pub mod feeds;
 mod knowledge;
 mod lifecycle;
 mod lineage;
+mod llm;
 mod maintenance;
 mod projects;
 pub mod pyfmt;
@@ -38,13 +39,14 @@ mod temporal;
 mod tools;
 pub mod transfer;
 
+pub use llm::ExtractedFact;
 pub use projects::migrate_project_domains;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use omnimem_core::TextEmbedder;
+use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
 pub use config::EngineConfig;
@@ -61,6 +63,7 @@ type Cached<T> = Mutex<Option<(Instant, Arc<T>)>>;
 pub struct Engine {
     store: Arc<Store>,
     embedder: Arc<dyn TextEmbedder>,
+    llm: Option<Arc<dyn LanguageModel>>,
     config: EngineConfig,
     abandoned: Cached<Vec<recall::AbandonedEntry>>,
     domain_map: Cached<BTreeMap<String, Vec<String>>>,
@@ -73,6 +76,7 @@ impl Engine {
             store,
             embedder,
             config,
+            llm: None,
             abandoned: Mutex::new(None),
             domain_map: Mutex::new(None),
             started: Instant::now(),
@@ -85,6 +89,14 @@ impl Engine {
 
     pub fn config(&self) -> &EngineConfig {
         &self.config
+    }
+
+    /// Turn on the Claude Haiku features: fact extraction, query expansion
+    /// and contradiction tier 2. Without a model they degrade as 6.x did
+    /// with no API key.
+    pub fn with_llm(mut self, llm: Arc<dyn LanguageModel>) -> Self {
+        self.llm = Some(llm);
+        self
     }
 
     pub(crate) fn embed(&self, text: &str) -> Result<Vec<f32>> {

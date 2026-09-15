@@ -1,12 +1,13 @@
 //! The OmniMem binary.
 //!
 //! `serve` runs the MCP server; the other commands bring a 6.x backup across
-//! and inspect the store. The web UI and RSS scheduler join `serve` in later
-//! phases.
+//! and inspect the store. `serve` also runs the enrichment
+//! worker; the RSS scheduler joins it in phase 6.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
@@ -14,9 +15,11 @@ use clap::{Parser, Subcommand};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_embed::{EmbedConfig, Embedder};
 use omnimem_engine::{Engine, EngineConfig};
+use omnimem_llm::{AnthropicClient, AnthropicConfig};
 use omnimem_mcp::ServerConfig;
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 
 #[derive(Parser)]
 #[command(
@@ -120,18 +123,35 @@ fn serve(db: &Path) -> Result<()> {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map_or_else(|| PathBuf::from("backups"), |p| p.join("backups"));
-    let engine = Arc::new(Engine::new(
-        store,
-        embedder,
-        EngineConfig::from_env(backup_dir),
-    ));
+    let mut engine = Engine::new(store, embedder, EngineConfig::from_env(backup_dir));
+    match AnthropicConfig::from_env() {
+        Some(llm) => {
+            let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
+            engine = engine.with_llm(Arc::new(client));
+            info!(
+                "ANTHROPIC_API_KEY set: fact extraction, query expansion and contradiction tier 2 are on"
+            );
+        }
+        None => info!(
+            "ANTHROPIC_API_KEY not set: fact extraction, query expansion and contradiction tier 2 are off"
+        ),
+    }
+    let engine = Arc::new(engine);
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker = {
+        let (engine, stop) = (engine.clone(), stop.clone());
+        std::thread::Builder::new()
+            .name("enrichment-worker".into())
+            .spawn(move || engine.run_enrichment_worker(&stop))
+            .context("starting the enrichment worker")?
+    };
     let config = ServerConfig::from_env();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("starting the async runtime")?;
-    runtime.block_on(async move {
+    let served = runtime.block_on(async move {
         let shutdown = CancellationToken::new();
         let signal = shutdown.clone();
         tokio::spawn(async move {
@@ -139,7 +159,12 @@ fn serve(db: &Path) -> Result<()> {
             signal.cancel();
         });
         omnimem_mcp::serve(engine, config, None, shutdown).await
-    })?;
+    });
+    stop.store(true, Ordering::Relaxed);
+    if worker.join().is_err() {
+        eprintln!("the enrichment worker panicked");
+    }
+    served?;
     Ok(())
 }
 

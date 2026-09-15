@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::store::{Fields, load_fields, memory_namespace, merge_memory};
 use crate::time::now;
-use crate::{Result, Store, StoreError};
+use crate::{Result, Store};
 
 impl Store {
     /// Append a job. Returns its id.
@@ -31,6 +31,8 @@ impl Store {
     }
 
     /// The oldest job, left in the queue until [`Store::complete_enrichment`].
+    /// A payload that isn't valid JSON comes back as `null`, so the worker can
+    /// drop it instead of stalling on it.
     pub fn next_enrichment(&self) -> Result<Option<(i64, Value)>> {
         let row: Option<(i64, String)> = self
             .conn()
@@ -40,15 +42,7 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        row.map(|(id, raw)| {
-            serde_json::from_str(&raw)
-                .map(|v| (id, v))
-                .map_err(|source| StoreError::CorruptRecord {
-                    key: format!("enrich_queue:{id}"),
-                    source,
-                })
-        })
-        .transpose()
+        Ok(row.map(|(id, raw)| (id, serde_json::from_str(&raw).unwrap_or(Value::Null))))
     }
 
     pub fn complete_enrichment(&self, id: i64) -> Result<()> {

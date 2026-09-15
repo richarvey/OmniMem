@@ -531,7 +531,7 @@ impl Engine {
         top_k: i64,
         namespaces: Option<&[String]>,
         project_filter: Option<&str>,
-        _expand_queries: Option<bool>,
+        expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
@@ -541,7 +541,14 @@ impl Engine {
         if empty_scope {
             return Ok(Value::Array(notice.into_iter().collect()));
         }
-        let results = self.recall_results(query, namespaces, Some(top_k), &projects, None)?;
+        let results = self.recall_results(
+            query,
+            namespaces,
+            Some(top_k),
+            &projects,
+            None,
+            expand_queries,
+        )?;
         let mut output: Vec<Value> = notice.into_iter().collect();
         output.extend(results.iter().map(recall_entry));
         if let Some(n) = licence_notice(&output) {
@@ -558,7 +565,7 @@ impl Engine {
         namespaces: Option<&[String]>,
         project_filter: Option<&str>,
         snippet_length: i64,
-        _expand_queries: Option<bool>,
+        expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
@@ -573,7 +580,14 @@ impl Engine {
             }));
         }
         let snippet_length = snippet_length.clamp(50, 500) as usize;
-        let results = self.recall_results(query, namespaces, Some(top_k), &projects, None)?;
+        let results = self.recall_results(
+            query,
+            namespaces,
+            Some(top_k),
+            &projects,
+            None,
+            expand_queries,
+        )?;
 
         let mut output = Vec::new();
         let (mut full_tokens, mut index_tokens) = (0usize, 0usize);
@@ -703,7 +717,7 @@ impl Engine {
 
     /// Recall with the default namespaces, for the key-or-query lifecycle tools.
     fn query_targets(&self, query: &str) -> Result<Vec<RecallResult>> {
-        self.recall_results(query, None, Some(3), &[], None)
+        self.recall_results(query, None, Some(3), &[], None, None)
     }
 
     pub fn deprioritise(
