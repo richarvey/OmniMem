@@ -12,3 +12,9 @@ clean-docker.sh
 CLAUDE.md
 .coverage
 bench/*.json
+target/
+.venv-test/
+.venv-ci/
+*.db
+*.db-wal
+*.db-shm

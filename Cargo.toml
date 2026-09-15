@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "7.0.0-dev"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+repository = "https://code.squarecows.com/ric/omnimem"
+authors = ["Ric Harvey <ric@squarecows.com>"]
+publish = false
+
+[workspace.dependencies]
+omnimem-core = { path = "crates/omnimem-core" }
+omnimem-embed = { path = "crates/omnimem-embed" }
+
+# Errors and logging
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialisation
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Runtime
+tokio = { version = "1.53", features = ["full"] }
+
+# Embeddings: ONNX Runtime plus the same Rust tokeniser the Python engine
+# wraps. fancy-regex instead of onig keeps the binary free of a C regex lib.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-24"] }
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
+
+# Identity and hashing (v7 schema)
+sha2 = "0.11"
+unicode-normalization = "0.1"
+ulid = "3.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+# The embedding maths is unusable unoptimised; keep tests quick.
+[profile.dev.package."*"]
+opt-level = 2
