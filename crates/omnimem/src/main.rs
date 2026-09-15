@@ -7,20 +7,15 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
+use omnimem_app::{data_dir, load_embedder, open_engine, run_services};
 use omnimem_core::{Namespace, TextEmbedder};
-use omnimem_embed::{EmbedConfig, Embedder};
-use omnimem_engine::{Engine, EngineConfig};
-use omnimem_llm::{AnthropicClient, AnthropicConfig};
-use omnimem_mcp::ServerConfig;
 use omnimem_rss::{Ingester, RssConfig};
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
 use tokio_util::sync::CancellationToken;
-use tracing::info;
 
 #[derive(Parser)]
 #[command(
@@ -29,17 +24,13 @@ use tracing::info;
     about = "Self-hosted semantic memory for AI agents"
 )]
 struct Cli {
-    /// SQLite database file.
-    #[arg(
-        long,
-        env = "OMNIMEM_DB",
-        default_value = "data/omnimem.db",
-        global = true
-    )]
-    db: PathBuf,
+    /// SQLite database file. Defaults to data/omnimem.db, or for the desktop
+    /// app to the per-user data folder.
+    #[arg(long, env = "OMNIMEM_DB", global = true)]
+    db: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -78,6 +69,15 @@ enum Command {
     },
     /// Embed text and print the vector's first components.
     Embed { text: String },
+    /// Run the desktop app: OmniMem behind a tray or menu bar icon with a
+    /// settings window. What `omnimem` does when given no command.
+    #[cfg(feature = "desktop")]
+    Desktop {
+        /// Build the tray and window, check the settings page answers over
+        /// IPC, and exit, without starting the services.
+        #[arg(long)]
+        smoke_test: bool,
+    },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
     /// ingested, without summarising or storing anything.
@@ -89,7 +89,16 @@ enum Command {
 
 fn main() -> Result<()> {
     let Cli { db, command } = Cli::parse();
-    let default_level = if matches!(command, Command::Serve | Command::Rss { .. }) {
+    let default_level = if !matches!(
+        command,
+        Some(
+            Command::Import { .. }
+                | Command::Export { .. }
+                | Command::Stats
+                | Command::Search { .. }
+                | Command::Embed { .. }
+        )
+    ) {
         "info"
     } else {
         "warn"
@@ -101,11 +110,17 @@ fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    let Some(command) = command else {
+        return run_default(db);
+    };
+    let db_path = db
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
     match command {
-        Command::Serve => serve(&db),
-        Command::Import { file, no_embed } => import(&db, &file, no_embed),
-        Command::Export { file } => export(&db, &file),
-        Command::Stats => stats(&db),
+        Command::Serve => serve(&db_path),
+        Command::Import { file, no_embed } => import(&db_path, &file, no_embed),
+        Command::Export { file } => export(&db_path, &file),
+        Command::Stats => stats(&db_path),
         Command::Search {
             query,
             namespace,
@@ -113,89 +128,44 @@ fn main() -> Result<()> {
             project,
             all_states,
             json,
-        } => search(&db, &query, &namespace, top_k, project, all_states, json),
+        } => search(
+            &db_path, &query, &namespace, top_k, project, all_states, json,
+        ),
         Command::Embed { text } => embed(&text),
-        Command::Rss { dry_run } => rss(&db, dry_run),
+        Command::Rss { dry_run } => rss(&db_path, dry_run),
+        #[cfg(feature = "desktop")]
+        Command::Desktop { smoke_test } => desktop(db, smoke_test),
     }
 }
 
-fn load_embedder() -> Result<Embedder> {
-    Embedder::load(&EmbedConfig::from_env()).context("loading the embedding model")
+/// No command: the desktop app when it is built in, otherwise the help.
+#[cfg(feature = "desktop")]
+fn run_default(db: Option<PathBuf>) -> Result<()> {
+    desktop(db, false)
+}
+
+#[cfg(not(feature = "desktop"))]
+fn run_default(_db: Option<PathBuf>) -> Result<()> {
+    use clap::CommandFactory;
+    Cli::command().print_help()?;
+    std::process::exit(2);
+}
+
+#[cfg(feature = "desktop")]
+fn desktop(db: Option<PathBuf>, smoke_test: bool) -> Result<()> {
+    let db = match db {
+        Some(db) => db,
+        None => omnimem_app::default_data_dir()?.join("omnimem.db"),
+    };
+    omnimem_desktop::run(omnimem_desktop::DesktopOptions {
+        data_dir: data_dir(&db),
+        db,
+        smoke_test,
+    })
 }
 
 fn serve(db: &Path) -> Result<()> {
-    let engine = Arc::new(open_engine(db)?);
-    let stop = Arc::new(AtomicBool::new(false));
-    let worker = {
-        let (engine, stop) = (engine.clone(), stop.clone());
-        std::thread::Builder::new()
-            .name("enrichment-worker".into())
-            .spawn(move || engine.run_enrichment_worker(&stop))
-            .context("starting the enrichment worker")?
-    };
-    // The RSS scheduler isn't joined on shutdown: a cycle can be waiting on a
-    // feed or the API, and every write it makes is its own transaction.
-    let rss = Ingester::new(
-        engine.clone(),
-        RssConfig::from_env(data_dir(db).join("feeds.yml")),
-    )
-    .map_err(|e| anyhow!("starting the RSS ingester: {e}"))?;
-    std::thread::Builder::new()
-        .name("rss-scheduler".into())
-        .spawn({
-            let stop = stop.clone();
-            move || rss.run(&stop)
-        })
-        .context("starting the RSS scheduler")?;
-    let config = ServerConfig::from_env();
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("starting the async runtime")?;
-    let served = runtime.block_on(async move {
-        let shutdown = CancellationToken::new();
-        let signal = shutdown.clone();
-        tokio::spawn(async move {
-            wait_for_shutdown_signal().await;
-            signal.cancel();
-        });
-        omnimem_mcp::serve(engine, config, None, shutdown).await
-    });
-    stop.store(true, Ordering::Relaxed);
-    if worker.join().is_err() {
-        eprintln!("the enrichment worker panicked");
-    }
-    served?;
-    Ok(())
-}
-
-/// The folder holding the database: backups and `feeds.yml` live beside it.
-fn data_dir(db: &Path) -> PathBuf {
-    db.parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
-}
-
-/// The store, migrated, with the embedder and (when a key is set) Claude.
-fn open_engine(db: &Path) -> Result<Engine> {
-    let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
-    store.run_migrations().context("running migrations")?;
-    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
-    let embedder = Arc::new(load_embedder()?);
-    let config = EngineConfig::from_env(data_dir(db).join("backups"));
-    let mut engine = Engine::new(store, embedder, config);
-    match AnthropicConfig::from_env() {
-        Some(llm) => {
-            let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
-            engine = engine.with_llm(Arc::new(client));
-            info!("ANTHROPIC_API_KEY set: Claude Haiku features and RSS summaries are on");
-        }
-        None => info!(
-            "ANTHROPIC_API_KEY not set: Claude Haiku features are off and RSS summaries fall back to truncation"
-        ),
-    }
-    Ok(engine)
+    run_services(db, CancellationToken::new(), true, &|_| {})
 }
 
 /// One RSS cycle by hand, or a dry run of what one would ingest.
@@ -210,23 +180,6 @@ fn rss(db: &Path, dry_run: bool) -> Result<()> {
     };
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
-}
-
-/// Ctrl-C, or SIGTERM from a container runtime.
-async fn wait_for_shutdown_signal() {
-    #[cfg(unix)]
-    {
-        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("installing the SIGTERM handler");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = term.recv() => {}
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
 }
 
 fn import(db: &Path, file: &Path, no_embed: bool) -> Result<()> {

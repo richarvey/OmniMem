@@ -1,6 +1,19 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Everything but the GUI crate, which needs GTK and WebKitGTK to build on Linux:
+# `cargo build` and `cargo test` here skip it, scripts/desktop-check.sh builds it.
+default-members = [
+    "crates/omnimem",
+    "crates/omnimem-app",
+    "crates/omnimem-core",
+    "crates/omnimem-embed",
+    "crates/omnimem-engine",
+    "crates/omnimem-llm",
+    "crates/omnimem-mcp",
+    "crates/omnimem-rss",
+    "crates/omnimem-store",
+]
 
 [workspace.package]
 version = "7.0.0-dev"
@@ -16,6 +29,8 @@ omnimem-core = { path = "crates/omnimem-core" }
 omnimem-embed = { path = "crates/omnimem-embed" }
 omnimem-store = { path = "crates/omnimem-store" }
 omnimem-engine = { path = "crates/omnimem-engine" }
+omnimem-app = { path = "crates/omnimem-app" }
+omnimem-desktop = { path = "crates/omnimem-desktop" }
 omnimem-llm = { path = "crates/omnimem-llm" }
 omnimem-rss = { path = "crates/omnimem-rss" }
 
@@ -69,6 +84,15 @@ sha1 = "0.11"
 # RSS: feed parsing (RSS 0.9x/1.0/2.0, Atom, JSON Feed) and feeds.yml.
 feed-rs = "2.4"
 serde_yaml_ng = "0.10"
+
+# Desktop: per-platform data folders, and (omnimem-desktop only) the event
+# loop, settings webview, tray and menu, clipboard and start at login.
+directories = "6.0"
+tao = "0.37"
+wry = "0.57"
+tray-icon = "0.25"
+arboard = "3.6"
+auto-launch = "0.6"
 zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]

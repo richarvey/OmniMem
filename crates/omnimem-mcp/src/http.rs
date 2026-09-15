@@ -120,6 +120,14 @@ impl ServerConfig {
         }
     }
 
+    /// The fail-closed rule: a non-loopback bind needs authentication.
+    pub fn validate(&self) -> Result<(), ServerError> {
+        if self.auth_token.is_none() && !LOOPBACK.contains(&self.host.as_str()) {
+            return Err(ServerError::Unauthenticated(self.host.clone()));
+        }
+        Ok(())
+    }
+
     fn allowed_hosts(&self) -> Vec<String> {
         let mut hosts: Vec<String> = ["localhost", "127.0.0.1", "::1"]
             .iter()
@@ -214,9 +222,7 @@ pub fn router(
     config: &ServerConfig,
     shutdown: CancellationToken,
 ) -> Result<Router, ServerError> {
-    if config.auth_token.is_none() && !LOOPBACK.contains(&config.host.as_str()) {
-        return Err(ServerError::Unauthenticated(config.host.clone()));
-    }
+    config.validate()?;
     let server = OmniMemServer::new(engine);
     let mut http_config = StreamableHttpServerConfig::default();
     http_config.allowed_hosts = config.allowed_hosts();

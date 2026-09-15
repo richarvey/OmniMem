@@ -1,6 +1,6 @@
 [package]
-name = "omnimem"
-description = "Self-hosted semantic memory for AI agents"
+name = "omnimem-app"
+description = "What the OmniMem server and desktop app share: services, data folder, single instance"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,23 +11,13 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
-omnimem-app.workspace = true
-omnimem-core.workspace = true
-omnimem-desktop = { workspace = true, optional = true }
+directories.workspace = true
 omnimem-embed.workspace = true
 omnimem-engine.workspace = true
 omnimem-llm.workspace = true
 omnimem-mcp.workspace = true
 omnimem-rss.workspace = true
 omnimem-store.workspace = true
-serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-
-[features]
-# The tray or menu bar app and its settings window. Needs GTK and WebKitGTK
-# to build on Linux; installers enable it, the headless builds leave it off.
-desktop = ["dep:omnimem-desktop"]
