@@ -1,118 +1,109 @@
 # Knowledge Memory Specification
 
-**Key formats**: `mem:knowledge:{16-hex URL hash}` (RSS articles) and `mem:knowledge:{ULID}` (extracted facts, manual writes)
-**Created by**: RSS worker (`rss_worker/ingester.py`), enrichment worker (`memory/enrichment.py`), `remember(namespace="knowledge")`
-**Index**: `idx:knowledge`
+**Key formats**: `mem:knowledge:{16 hex characters of the URL hash}` (RSS articles) and `mem:knowledge:{ULID}` (extracted facts and manual writes)
+**Created by**: the RSS scheduler, the enrichment worker, `remember(namespace="knowledge")`
 
-The knowledge namespace is reference material: RSS articles summarised at ingest, discrete facts extracted from conversation memories, and anything stored there directly. Three writers, three field shapes; all share the common core.
+Knowledge is reference material: RSS articles summarised when they're ingested, discrete facts pulled out of your conversation memories, and anything you store here directly. Three writers, three slightly different shapes, all on the [common fields](memory-types.md#common-fields).
 
 ## 1. RSS articles
 
-Written by the RSS worker. Keyed by `sha256(article_url)[:16]` for URL-level dedup; digest-mode feeds hash `url + ':' + item_index` so one page can yield several items.
+Written by the RSS scheduler that runs inside `omnimem serve` and the desktop app (or by hand with `omnimem rss`). The key is the first 16 hex characters of `sha256(article_url)`, so the same URL is never ingested twice. Digest-mode feeds hash `url:index`, so one page can yield several items.
 
-| Field | Format | Required | Description |
-|-------|--------|----------|-------------|
-| `content` | string | yes | The Claude Haiku summary (or the 800-char truncation fallback). Digest items render as `# title` plus Who/What/Why lines. This is what gets embedded. |
-| `title` | string | yes | Article title. **Not** in the search return whitelist, so it is absent from recall results; list views and `recent_knowledge()` fetch it explicitly. |
+| Field | Format | Always present | Description |
+|-------|--------|----------------|-------------|
+| `content` | string | yes | The Claude Haiku summary, or an 800-character truncation when there's no API key or the summary fails. A digest item is `# title` plus Who/What/Why lines. This is what gets embedded. |
+| `title` | string | yes | Article title. |
 | `source_url` | string | yes | The article URL. |
-| `feed_name` | string | yes | Which feed it came from. Presence of `feed_name` is what identifies a record as an RSS article (the web UI's Articles vs Learned Knowledge split, and expiry). |
-| `project` | string | yes | Project label, default `RSS`, overridable per feed via `project:` in feeds.yml. Must satisfy the project-name charset or the ingester falls back to `RSS`. Backfilled onto pre-v6.1.1 articles by a startup migration. |
-| `published_at` | unix seconds string | yes | From the feed entry; empty string when the feed gives no date. |
+| `feed_name` | string | yes | Which feed it came from. Having a `feed_name` is what makes a record an RSS article (the Articles and Learned Knowledge split in the settings panel, and expiry). |
+| `project` | string | yes | Project label: `RSS` unless the feed sets `project:` in `feeds.yml`. A label that isn't a valid project name falls back to `RSS`. |
+| `published_at` | unix seconds string | yes | From the feed entry; `""` when the feed gives no date. |
 | `topics` | JSON array of strings | yes | The feed's configured topics. |
-| `state` | lifecycle state | yes | `active` on creation. |
+| `state` | lifecycle state | yes | `active`. |
 | `surface_score` | float string | yes | `"1.0"`. |
 | `experience_weight` | float string | yes | `"1.0"`. |
 | `created_at` / `updated_at` | unix seconds strings | yes | Ingest time. |
-| `expires_at` | unix seconds string | yes | `created_at + MAX_KNOWLEDGE_AGE_DAYS` (default 30 days). Auto-maintenance archives articles past this. Only records with **both** `feed_name` and `expires_at` are ever auto-archived; promotion clears it. |
-| `licence` | licence class | yes | What the feed declares via `licence:` in feeds.yml, resolved through the alias table (`ogl-3.0` → `open`); `unknown` when the feed declares nothing. With `RSS_REQUIRE_LICENCE=true` an undeclared feed is refused instead. Pre-v6.6.1 articles are backfilled as `unknown`. |
-| `licence_note` | string | no | The canonical identifier when the feed declared one (`OGL v3.0`), or the feed's explicit `licence_note:`. |
-| `provenance` | `retrieved` | yes | Always `retrieved` for an ingested article. |
-| `vector` | 384-dim float32 blob | yes | Embedding of the summary. |
+| `expires_at` | unix seconds string | yes | Ingest time plus `MAX_KNOWLEDGE_AGE_DAYS` (default 30 days). Auto-maintenance archives active articles past it. Only records with both `feed_name` and a non-empty `expires_at` are ever expired, and promotion clears it. |
+| `licence` | licence class | yes | What the feed declares with `licence:` in `feeds.yml`, resolved through the alias table (`ogl-3.0` → `open`); `unknown` when it declares nothing. With `RSS_REQUIRE_LICENCE=true`, an undeclared feed is skipped instead. |
+| `licence_note` | string | no | The canonical identifier when the feed declared one (`OGL v3.0`), or the feed's own `licence_note:`. |
+| `provenance` | `retrieved` | yes | Always `retrieved`. |
 
 ## 2. Extracted facts (enrichment)
 
-When `INGEST_MODE=full`, `remember()` stores the raw memory and queues it; the enrichment worker extracts discrete facts via Claude and writes each as its own knowledge memory under a ULID key (preference-kind facts go to the preference namespace instead).
+With `INGEST_MODE=full` and an `ANTHROPIC_API_KEY`, a `remember()` stores the memory as written and queues it. The enrichment worker (a background thread in the same process) asks Claude for discrete facts and writes each one as its own knowledge memory under a ULID key. Facts that classify as preferences go to the [preference namespace](memory-preference.md) instead.
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `content` | string | The extracted fact text. |
+| `content` | string | The extracted fact. |
 | `state` | lifecycle state | `active`. |
-| `surface_score` | float string | **`"0.5"`** — deliberately half, so verbatim source chunks outrank their own facts on direct recall (issue #20). |
+| `surface_score` | float string | **`"0.5"`**: deliberately half, so the verbatim source outranks its own facts. |
 | `experience_weight` | float string | `"1.0"`. |
 | `created_at` / `updated_at` | unix seconds strings | Extraction time. |
-| `tags` | JSON array | Inherited from the source memory's write call. |
-| `source_doc_id` | string | The source's `doc_id` if it was a document chunk, else the source key. |
-| `enriched_from` | key string | The source memory's key. Recall suppresses a fact when its source memory already made the result cut. |
-| `project` | string | Inherited from the source. |
-| `event_date` | unix seconds string | Fallback chain: the fact's own extracted date → the source's `event_date` → the source's `created_at`. Keeps temporal queries able to find extracted facts. |
-| `licence` / `licence_note` | licence class / string | Inherited from the source memory — a fact is a derivative and has exactly its source's rights. The write that queued the job carries them in the payload, so they survive the source being deleted before enrichment runs; an unstamped source (only ever a conversation write) yields `own`. |
-| `provenance` | provenance class | Inherited from the source memory — extraction is restatement, not reasoning, so a fact of something the human asserted is still asserted. A source with no provenance yields `concluded`. |
-| `vector` | 384-dim float32 blob | Embedding of the fact text. |
+| `tags` | JSON array | The tags from the original write. |
+| `source_doc_id` | string | The source's `doc_id` if it was a document chunk, otherwise the source key. |
+| `enriched_from` | key string | The source memory's key. Recall drops a fact when its source already made the cut. |
+| `project` | string | The source's project, when it had one. |
+| `event_date` | unix seconds string | The fact's own date if Claude found one, else the source's `event_date`, else the source's `created_at`, so date-shaped queries still find it. |
+| `licence` / `licence_note` | licence class / string | Inherited from the source: a fact has exactly its source's rights. The live source record wins over what the queued job recorded; a source with no licence gives `own`. |
+| `provenance` | provenance class | Inherited from the source: extraction is restating, not reasoning. A source with none gives `concluded`. |
 
-Facts are dedup-checked (cosine 0.92) against the target namespace before writing.
+Every fact is dedup-checked (similarity 0.92, same project) against its target namespace before it's written. The queue lives in the database, so a job queued before a crash or a restart still runs.
 
 ## 3. Manual writes
 
-`remember(namespace="knowledge")` stores the standard core fields (`content`, `state`, `surface_score`, `experience_weight`, `created_at`, `updated_at`, `tags`, optional `project`, `licence`, `vector`) under a ULID key. No `feed_name` and no `expires_at`, so manual knowledge never auto-expires. Knowledge writes are never queued for enrichment (facts extracting facts would recurse). The `licence` defaults to `unknown` here — knowledge is the namespace that routinely holds third-party material — so pass `licence=` when you know where the content came from. `provenance` defaults to `retrieved` for a new write; a legacy plain knowledge write is backfilled `concluded` on upgrade, because it carries no evidence of where it came from and the system produced it.
+`remember(namespace="knowledge")` stores the standard core fields (`content`, `state`, `surface_score`, `experience_weight`, timestamps, `tags`, optional `project`, `licence`, `provenance`) under a ULID key. No `feed_name` and no `expires_at`, so manual knowledge never expires. Knowledge writes are never queued for enrichment (facts extracting facts would go round in circles).
 
-## Promotion fields (v6.2, added by `promote_knowledge()`)
+`licence` defaults to `unknown` here, because knowledge is where third-party material usually ends up, so pass `licence=` when you know where it came from. `provenance` defaults to `retrieved`.
 
-Promotion marks an article permanently useful and, with a domain, skill-eligible. These fields can appear on any knowledge record:
+## Promotion fields (added by `promote_knowledge()`)
+
+Promotion marks an article as worth keeping and, with a domain, feeds it to the skill compiler. These fields can appear on any knowledge record:
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `expires_at` | set to `""` | Cleared on any promotion, so the article survives maintenance. |
-| `skill_domains` | JSON array of strings | Domains this article is promoted to. The next `compile_skill()` for one of them renders the article into the skill's Reference section. Demoting removes the domain from the list. |
-| `promoted_at` | unix seconds string | When first promoted to a domain. Used by the briefing's pending-update detection. |
-| `skill_rules` | JSON array | Optional rules extracted from the article at promotion time, each `{"kind": "do"\|"watch"\|"dont"\|"note", "text": "..."}`. Max 20 per article, 400 chars each. Rendered one stance-prefixed Reference bullet per rule instead of a single summary line. Extraction happens at promotion under human review, never at compile, so compilation stays deterministic. Re-promote with `rules=[]` to revert to the summary form. |
+| `expires_at` | `""` | Cleared by any promotion, so the article survives maintenance. |
+| `skill_domains` | JSON array of strings | Domains it's promoted to, sorted. The next `compile_skill()` for one of them renders it in the skill's Reference section. Demoting removes the domain. |
+| `promoted_at` | unix seconds string | When it was first promoted to a domain. The briefing uses it to spot skills that need a recompile. |
+| `skill_rules` | JSON array | Optional rules pulled out of the article at promotion time, each `{"kind": "do"|"watch"|"dont"|"note", "text": "..."}`. At most 20 per article, 400 characters each. Each renders as its own Reference bullet instead of a single summary line. Extraction happens at promotion, under review, never at compile time, so compiling stays deterministic. Promote again with `rules=[]` to go back to the summary. |
 
-Promotion substitutes for reinforcement (the same reasoning as `bless()`): promoted references bypass the skill compiler's reinforcement gate but never count toward it, and they render in a separate Reference section, never in Do/Don't. Read is not lived experience.
+A promoted article can't be archived first: promoting an archived item is refused. Promotion counts as vetting, the same reasoning as `bless()`, so promoted references skip the reinforcement gate but never count towards it, and they render in their own Reference section, never in Do or Don't. Reading something isn't the same as living through it.
 
 ## Calling the tools
 
-RSS articles and extracted facts are written by their workers, not by tool calls. The callable surface is manual writes and promotion:
+RSS articles and extracted facts arrive on their own. What you can call is manual writes and promotion:
 
 ```python
-# Store knowledge directly. Never expires, never queued for enrichment.
+# Store knowledge directly. Never expires, never enriched.
 remember(
-    content="valkey-search tag filters need raw values, not escaped ones",
-    namespace="knowledge",          # routes the write here instead of episodic
+    content="SQLite WAL mode lets readers carry on while a write is in progress",
+    namespace="knowledge",
     project="omnimem",              # default None
-    tags=["valkey"],                # default None
-    force=False,                    # default; True skips the dedup check
-    mode="raw",                     # knowledge writes are never enriched, so 'raw' and
-)                                   # 'full' behave the same here
+    tags=["sqlite"],                # default None
+    licence="open",                 # default 'unknown' in this namespace
+)
 
 # Keep an article forever (clears expires_at). Only key is required.
 promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718")
 
 # Also make it skill-eligible: the next compile_skill("python") renders it
-# as one summary rule in the Reference section.
+# as a summary rule in the Reference section.
 promote_knowledge(
     key="mem:knowledge:a1b2c3d4e5f60718",
-    domain="python",                # default None — promotion without skill eligibility
-    demote=False,                   # default; True removes the domain again (next recompile
-)                                   # flags the dropped rule as a high-risk removal)
+    domain="python",                # default None: promotion without skill eligibility
+    demote=False,                   # default; True removes the domain again
+)
 
-# Articles with discrete guidance: extract the items at promotion, under review.
-# Each becomes its own stance-prefixed Reference bullet. Max 20 rules, 400 chars each.
+# Articles with discrete guidance: pull the rules out at promotion, under review.
 promote_knowledge(
     key="mem:knowledge:a1b2c3d4e5f60718",
     domain="python",
-    rules=[                         # default None; kind: 'do', 'dont', 'watch', or 'note'
-        {"kind": "dont", "text": "Never mutate a list while iterating it"},
+    rules=[                         # kind: 'do', 'dont', 'watch' or 'note'
+        {"kind": "dont", "text": "Never mutate a list while iterating over it"},
         {"kind": "do", "text": "Prefer pathlib over os.path for new code"},
     ],
 )
 
-# Re-promote with rules=[] to drop the extracted rules and revert to the summary form.
-promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python", rules=[])
+# The latest articles, for a quick look at what's arrived.
+recent_knowledge()
 ```
 
-## Indexed fields
-
-`idx:knowledge` indexes: `vector` (HNSW cosine), `feed_name` (tag), `topics` (tag), `state` (tag), `project` (tag), `licence` (tag), `provenance` (tag), `published_at`, `surface_score`, `created_at`, `updated_at`, `recall_count`, `expires_at` (numeric).
-
-## Search return whitelist
-
-`_NAMESPACE_RETURN_FIELDS["knowledge"]` returns `content`, `source_url`, `feed_name`, `published_at`, `topics`, `state`, `surface_score`, timestamps, recall counters, `expires_at`, `project`, `event_date`, `tags`, `enriched_from`, `licence`, `licence_note`, and `provenance`. Notably absent: `title`, `skill_domains`, `promoted_at`, `skill_rules` — those are fetched by key where needed.
+Feeds can also influence a skill directly without promoting each article: a feed's `skills:` scores in `feeds.yml` pull its latest articles into the skill's Feed watch section. See [RSS and knowledge](rss-knowledge.md).

@@ -1,8 +1,10 @@
 """Write reference_vectors.json: full vectors from the Python 6.7 ONNX engine.
 
 The Rust engine must reproduce these to within float noise, so the store a
-6.7 instance built needs no re-embedding and no threshold moves. Run from the
-repo root with the Python test environment, offline against the HF cache:
+6.7 instance built needs no re-embedding and no threshold moves. The Python
+tree is gone from v7, so run this from the repo root of a v6.7.x checkout
+(with this file copied in) and its Python test environment, offline against
+the HF cache:
 
     HF_HUB_OFFLINE=1 .venv-test/bin/python \
         crates/omnimem-embed/tests/fixtures/generate_reference.py

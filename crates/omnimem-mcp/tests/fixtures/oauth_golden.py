@@ -1,6 +1,13 @@
 """Capture 6.x OAuth HTTP behaviour (FastMCP 4 + mcp 2) as golden fixtures.
 
-Run from mcp_server/ so `oauth` imports. Everything random is masked.
+The Python tree is gone from v7, so run this from mcp_server/ in a checkout
+of the v6.7.x branch, where `oauth` imports:
+
+    PYTHONPATH=. uv run --no-project --python 3.12 --with 'fastmcp==4.0.3' \
+        --with 'mcp==2.1.1' --with valkey --with httpx \
+        python oauth_golden.py > oauth_golden.json
+
+Everything random is masked.
 """
 
 import base64

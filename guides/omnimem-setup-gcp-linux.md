@@ -1,259 +1,200 @@
 # Setting Up OmniMem on Google Cloud Platform (Linux)
 
-This guide covers deploying OmniMem on a GCP Compute Engine instance running Linux. The steps are straightforward — GCP-specific parts are clearly marked so the general Linux instructions transfer to any environment.
+This guide puts OmniMem on a Compute Engine VM. The GCP-specific parts are clearly marked, and the Linux parts work anywhere.
+
+OmniMem 7 is one binary with a SQLite file, so a small VM does the job. No Docker, no Valkey, no container sizing.
 
 ---
 
-## Prerequisites
+## What you need
 
-- A GCP account with a project and billing enabled
-- The `gcloud` CLI installed locally (or use Cloud Shell)
-- Basic familiarity with SSH and the terminal
-- An Anthropic API key (optional, for AI-powered features)
+- A GCP account with a project and billing switched on
+- The `gcloud` CLI installed locally, or Cloud Shell
+- To be comfortable with SSH and a terminal
+- An Anthropic API key if you want the Claude-powered extras (optional)
 
 ---
 
-## Step 1 — Create a Compute Engine instance
+## Step 1: Create a VM
 
-### Using gcloud CLI
+### With gcloud
 
 ```bash
 gcloud compute instances create omnimem \
   --zone=europe-west2-a \
-  --machine-type=e2-medium \
-  --image-family=ubuntu-2404-lts-amd64 \
-  --image-project=ubuntu-os-cloud \
-  --boot-disk-size=20GB \
+  --machine-type=e2-small \
+  --image-family=debian-12 \
+  --image-project=debian-cloud \
+  --boot-disk-size=10GB \
   --boot-disk-type=pd-balanced \
   --tags=omnimem
 ```
 
-### Choosing a machine type
+### Picking a machine type
 
-| Machine type | vCPUs | RAM | Cost (approx.) | Notes |
-|-------------|-------|-----|-----------------|-------|
-| `e2-small` | 2 | 2 GB | ~$12/month | Minimum — tight on RAM |
-| `e2-medium` | 2 | 4 GB | ~$24/month | Comfortable for single user |
-| `t2a-standard-1` | 1 | 4 GB | ~$22/month | ARM64 (Tau T2A) — native arm64 images |
-| `e2-standard-2` | 2 | 8 GB | ~$48/month | Room for growth |
+OmniMem needs a few hundred MB of RAM, mostly for the embedding model:
 
-**ARM64 option:** GCP offers Tau T2A instances (arm64). OmniMem ships native arm64 images. To use one, change `--machine-type=t2a-standard-1` and `--image-family=ubuntu-2404-lts-arm64` in the command above.
+| Machine type | vCPUs | RAM | Notes |
+|-------------|-------|-----|-------|
+| `e2-small` | 2 | 2 GB | Comfortable for one person |
+| `e2-medium` | 2 | 4 GB | Room to run other things alongside |
+| `t2a-standard-1` | 1 | 4 GB | ARM64 (Tau T2A), native arm64 build |
 
-### Zone selection
+For arm64, use `--machine-type=t2a-standard-1` and `--image-family=debian-12-arm64`.
 
-Pick a zone close to where you'll be working to minimise latency. The example uses `europe-west2-a` (London).
+Pick a zone near where you work. The example uses `europe-west2-a`, London, because that's where I am.
 
-### Using the Console
+### Or in the Console
 
-Alternatively, create the instance via the GCP Console:
-
-1. Go to **Compute Engine → VM instances → Create instance**
-2. Set the name, region, and machine type
-3. Under **Boot disk**, click **Change** → Ubuntu 24.04 LTS, 20 GB balanced persistent disk
-4. Click **Create**
+1. **Compute Engine → VM instances → Create instance**
+2. Set the name, region and machine type
+3. **Boot disk → Change**: Debian 12 (or Ubuntu 24.04), 10 GB balanced persistent disk
+4. Add the network tag `omnimem`
+5. **Create**
 
 ---
 
-## Step 2 — Configure the firewall
+## Step 2: Firewall
 
-Create firewall rules to allow access to OmniMem's ports:
+You'll put OmniMem behind Caddy for HTTPS (step 6), so open 80 and 443 and keep 8765 closed:
 
 ```bash
-gcloud compute firewall-rules create allow-omnimem \
-  --allow tcp:8765,tcp:8080 \
-  --source-ranges=YOUR_IP/32 \
+gcloud compute firewall-rules create allow-omnimem-https \
+  --allow tcp:80,tcp:443 \
+  --source-ranges=0.0.0.0/0 \
   --target-tags=omnimem \
-  --description="Allow OmniMem MCP and web UI"
+  --description="HTTPS for OmniMem through Caddy"
 ```
 
-Replace `YOUR_IP/32` with your IP address. To find it: `curl ifconfig.me`.
-
-Do **not** use `0.0.0.0/0` as the source range unless you've configured authentication (step 5).
+If you'd rather reach OmniMem directly from a VPN instead, allow `tcp:8765` from your VPN range only. Never from `0.0.0.0/0`.
 
 ---
 
-## Step 3 — Connect and install Docker
+## Step 3: Install OmniMem
 
-SSH into the instance:
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
+
+SSH in:
 
 ```bash
 gcloud compute ssh omnimem --zone=europe-west2-a
 ```
 
-Install Docker:
+Download the `.deb` for your architecture from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+sudo apt install ./omnimem_<version>_amd64.deb
 ```
 
-Log out and reconnect:
+(On a T2A VM it's `omnimem_<version>_arm64.deb`.)
 
-```bash
-exit
-gcloud compute ssh omnimem --zone=europe-west2-a
-```
+You now have:
 
-Verify:
-
-```bash
-docker --version
-docker compose version
-```
+- a systemd service, `omnimem.service`, running `omnimem serve` as the `omnimem` system user
+- configuration in `/etc/omnimem/omnimem.env`
+- the database, `feeds.yml`, backups and the model cache in `/var/lib/omnimem`
 
 ---
 
-## Step 4 — Clone OmniMem
+## Step 4: Configure it
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git
-cd omnimem
+sudo nano /etc/omnimem/omnimem.env
 ```
 
----
-
-## Step 5 — Configure the environment
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Set the essentials:
-
-```bash
-VALKEY_PASSWORD=generate-a-strong-password-here
-ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
-```
-
-### Security for a remote server
-
-Since the instance is network-accessible, enable authentication:
-
-```bash
-MCP_AUTH_TOKEN=generate-a-long-random-token
-WEB_UI_AUTH_TOKEN=generate-another-random-token
-```
-
-Generate tokens:
+Generate an access token and add it, plus your Anthropic key if you have one:
 
 ```bash
 openssl rand -hex 32
 ```
 
-### Expose to the network
-
-Edit `docker-compose.yml` to change port bindings from localhost:
-
-```yaml
-# mcp_server ports:
-ports:
-  - "0.0.0.0:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
-
-# web_ui ports:
-ports:
-  - "0.0.0.0:${WEB_PORT:-8080}:8080"
+```bash
+MCP_AUTH_TOKEN=paste-the-token-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
 ```
+
+Leave `MCP_HOST` at `127.0.0.1`. Caddy reaches OmniMem over localhost, so it never has to listen anywhere else. If you do set `0.0.0.0` for the VPN route, OmniMem won't start without the token or OAuth.
+
+Everything else is in the [configuration reference](../docs/configuration.md).
 
 ---
 
-## Step 6 — Build and start
-
-### Option A — Use pre-built images from Docker Hub (recommended)
-
-Pre-built multi-arch images (amd64 + arm64) are published to Docker Hub, so you can skip the build entirely. Edit `docker-compose.yml` and replace the `build:` directives with `image:` for the three application services:
-
-```yaml
-mcp_server:
-  image: richarvey/omnimem-mcp:latest
-  # build: ./mcp_server        ← comment out or remove
-
-rss_worker:
-  image: richarvey/omnimem-rss:latest
-  # build:
-    #   context: .
-    #   dockerfile: rss_worker/Dockerfile
-
-web_ui:
-  image: richarvey/omnimem-web:latest
-  # build:                      ← comment out or remove
-  #   context: .
-  #   dockerfile: web_ui/Dockerfile
-```
-
-The `valkey` service already uses an upstream image, so it needs no change.
-
-Then start:
+## Step 5: Start it
 
 ```bash
-docker compose up -d
+sudo systemctl enable --now omnimem
+journalctl -u omnimem -f
 ```
 
-This pulls the images in under a minute rather than building from source.
-
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
-
-### Option B — Build from source
+The first start downloads the embedding model. Once the log says the MCP server is listening on `/mcp`:
 
 ```bash
-docker compose up -d
+curl http://127.0.0.1:8765/healthz
 ```
 
-First build takes 5–10 minutes. Monitor:
-
-```bash
-docker compose logs -f
-```
-
-All four services should come up:
-
-- `valkey` — `Ready to accept connections`
-- `mcp_server` — listening on port 8765
-- `rss_worker` — scheduler started
-- `web_ui` — serving on port 8080
+should answer `{"status": "ok"}`.
 
 ---
 
-## Step 7 — Verify
+## Step 6: HTTPS with Caddy
 
-Get your instance's external IP:
-
-```bash
-gcloud compute instances describe omnimem \
-  --zone=europe-west2-a \
-  --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
-```
-
-From your local machine:
+You'll need a domain pointing at the VM's external IP (see [static IP](#using-a-static-external-ip) below, or your DNS will point at the wrong thing after a restart).
 
 ```bash
-curl http://<external-ip>:8080
-curl -H "Authorization: Bearer your-mcp-token" http://<external-ip>:8765/health
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
 ```
 
-Or open `http://<external-ip>:8080` in your browser.
+`/etc/caddy/Caddyfile`:
 
----
-
-## Step 8 — Connect your AI tool
-
-On the machine where you run Claude Code, add to `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://<external-ip>:8765/sse",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
+```
+omnimem.yourdomain.com {
+    reverse_proxy localhost:8765
 }
 ```
 
-Auto-allow tools in `~/.claude/settings.json`:
+One port, one line. `/mcp`, the OAuth routes and `/healthz` all come from OmniMem on 8765.
+
+Tell OmniMem its public address in `/etc/omnimem/omnimem.env`, so it trusts the hostname:
+
+```bash
+MCP_PUBLIC_URL=https://omnimem.yourdomain.com
+```
+
+```bash
+sudo systemctl restart omnimem caddy
+```
+
+### Want claude.ai too?
+
+Add OAuth to the environment file and restart:
+
+```bash
+OAUTH_ENABLED=true
+OAUTH_BASE_URL=https://omnimem.yourdomain.com
+OAUTH_ADMIN_USER=admin
+OAUTH_ADMIN_PASSWORD=a-strong-password-here
+```
+
+Then follow [the claude.ai guide](claude-ai.md). Token-based clients keep working.
+
+---
+
+## Step 7: Connect your agent
+
+On the machine where you run Claude Code:
+
+```bash
+claude mcp add --transport http omnimem https://omnimem.yourdomain.com/mcp \
+  --header "Authorization: Bearer your-token-here" \
+  --scope user
+```
+
+And in `~/.claude/settings.json`, so you're not asked every call:
 
 ```json
 {
@@ -265,96 +206,14 @@ Auto-allow tools in `~/.claude/settings.json`:
 }
 ```
 
-### Using Streamable HTTP (recommended)
-
-Set `MCP_TRANSPORT=http` in `.env`, restart, and use:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "http://<external-ip>:8765/mcp",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
+The [connection guides](README.md) cover the other agents.
 
 ---
 
-## Step 9 — Set up HTTPS with a reverse proxy (recommended)
-
-For production use, terminate TLS in front of OmniMem. Caddy is the simplest option — automatic Let's Encrypt certificates with zero configuration.
-
-### Prerequisites
-
-- A domain pointing to your instance's external IP (e.g. `omnimem.yourdomain.com`)
-- Firewall rules allowing ports 80 and 443 (for Let's Encrypt):
+## Step 8: RSS feeds (optional)
 
 ```bash
-gcloud compute firewall-rules create allow-https \
-  --allow tcp:80,tcp:443 \
-  --source-ranges=0.0.0.0/0 \
-  --target-tags=omnimem
-```
-
-### Install and configure Caddy
-
-```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install caddy
-```
-
-Create `/etc/caddy/Caddyfile`:
-
-```
-omnimem.yourdomain.com {
-    handle /sse* {
-        reverse_proxy localhost:8765
-    }
-    handle /mcp* {
-        reverse_proxy localhost:8765
-    }
-    handle {
-        reverse_proxy localhost:8080
-    }
-}
-```
-
-```bash
-sudo systemctl restart caddy
-```
-
-Revert port bindings in `docker-compose.yml` back to `127.0.0.1` — Caddy handles external traffic.
-
-Update your Claude Code config:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "https://omnimem.yourdomain.com/sse",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
-
----
-
-## Step 10 — Configure RSS feeds (optional)
-
-```bash
-nano rss_worker/feeds.yml
+sudo -u omnimem nano /var/lib/omnimem/feeds.yml
 ```
 
 ```yaml
@@ -367,40 +226,37 @@ feeds:
     topics: ["go", "programming"]
 ```
 
+OmniMem notices the change by itself. See [RSS and knowledge](../docs/rss-knowledge.md).
+
 ---
 
-## Persistence and backups
+## Backups
 
-### Data persistence
+The database is one SQLite file in `/var/lib/omnimem`. Don't copy it live, take a backup.
 
-Memory data lives in the `valkey_data` Docker volume. It survives container restarts, rebuilds, and instance reboots (as long as the boot disk isn't deleted).
-
-### Automated backups
+### Nightly backups
 
 ```bash
-crontab -e
+sudo crontab -u omnimem -e
 ```
 
-Add a nightly backup:
-
 ```
-0 2 * * * cd /home/$USER/omnimem && docker run --rm -v omnimem_valkey_data:/data -v /home/$USER/omnimem/backups:/backup alpine tar czf /backup/valkey-$(date +\%Y\%m\%d).tar.gz -C /data .
+0 2 * * * /usr/bin/omnimem --db /var/lib/omnimem/omnimem.db export /var/lib/omnimem/backups/omnimem-$(date +\%Y\%m\%d).json
 ```
 
-### Backup to Cloud Storage
+### Off to Cloud Storage
 
 ```bash
-# Install gsutil (part of the Google Cloud SDK, already on GCE instances)
-gsutil cp backups/valkey-$(date +%Y%m%d).tar.gz gs://your-backup-bucket/omnimem/
+gcloud storage cp /var/lib/omnimem/backups/omnimem-$(date +%Y%m%d).json gs://your-backup-bucket/omnimem/
 ```
 
-Add to your cron job for automated offsite backups.
+Give the VM's service account write access to the bucket and add the copy to the cron job.
 
 ---
 
 ## Using a static external IP
 
-By default, GCE instances get an ephemeral external IP that can change on restart. To keep a stable IP:
+VMs get an ephemeral external IP by default, and it can change when the VM restarts. Reserve one:
 
 ```bash
 gcloud compute addresses create omnimem-ip --region=europe-west2
@@ -418,60 +274,60 @@ gcloud compute instances add-access-config omnimem \
 
 ## Updating
 
-If you're using Docker Hub images:
-
 ```bash
-cd omnimem
-docker compose pull
-docker compose up -d
+sudo apt install ./omnimem_<new-version>_amd64.deb
+sudo systemctl restart omnimem
 ```
 
-If you built from source:
-
-```bash
-cd omnimem
-git pull
-docker compose build
-docker compose up -d
-```
+The database migrates itself on start. Back up first anyway.
 
 ---
 
-## Cost management
+## Saving money
 
-### Stop when not in use
-
-If you don't need OmniMem running 24/7:
+### Stop it when you're not using it
 
 ```bash
 gcloud compute instances stop omnimem --zone=europe-west2-a
 gcloud compute instances start omnimem --zone=europe-west2-a
 ```
 
-Stopped instances don't incur compute charges (only disk storage). Your data persists.
+A stopped VM only costs its disk. Your memories are on that disk, so nothing's lost.
 
-### Preemptible / Spot instances
+### Spot VMs
 
-For non-critical or development use, create the instance with `--provisioning-model=SPOT` to save up to 60–91%. The trade-off is GCP can reclaim it with 30 seconds notice. Your Valkey data persists on the boot disk, so you just restart.
+For personal use, `--provisioning-model=SPOT` saves a lot, with the catch that GCP can take the VM back at short notice. OmniMem writes every change to disk as it goes, so a reclaimed VM just needs starting again.
+
+---
+
+## Docker instead
+
+If you'd rather run containers, the `richarvey/omnimem` image works on any VM. The firewall and Caddy steps still apply. See [Running OmniMem in Docker](docker.md).
+
+---
+
+## Coming from 6.x
+
+1. On the 6.x server, call `dump_to_file` and copy the JSON file across
+2. Import it:
+
+```bash
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db import backup.json
+sudo systemctl restart omnimem
+```
+
+The import re-embeds every memory at roughly 8 ms each. Then switch your clients from `/sse` to `/mcp` and delete the old firewall rule for port 8080.
 
 ---
 
 ## Troubleshooting
 
-**Cannot SSH** — Check that the firewall allows port 22 from your IP. GCP's default network includes this rule, but custom networks may not.
+**Can't SSH in**: the default network allows port 22, but custom networks might not.
 
-**Build runs out of memory** — On an `e2-small` (2 GB), add swap:
+**The service won't start**: `journalctl -u omnimem -e`. A non-local `MCP_HOST` without a token or OAuth is refused on purpose, and a half-configured OAuth setup names the missing setting.
 
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
+**421 Misdirected Request through Caddy**: set `MCP_PUBLIC_URL` (or `OAUTH_BASE_URL`) to the address clients use, and restart OmniMem.
 
-**Valkey crash-looping** — `docker compose logs valkey` — usually means `VALKEY_PASSWORD` isn't set in `.env`.
+**External IP changed after a restart**: reserve a static IP (above) and update DNS.
 
-**External IP changed after reboot** — Use a static IP (see section above) or update your DNS record and Claude Code config.
-
-**Let's Encrypt certificate not issuing** — Make sure ports 80 and 443 are open in the firewall and your DNS A record points to the instance's external IP. Caddy logs are at `journalctl -u caddy`.
+**Let's Encrypt won't issue a certificate**: ports 80 and 443 have to be open and your DNS A record has to point at the VM. `journalctl -u caddy` explains.

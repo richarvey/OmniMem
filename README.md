@@ -1,166 +1,147 @@
 # \<OmniMem\><br><sub><sub>[omnimem.org](https://omnimem.org)</sub></sub>
 
-[![Security Scans](https://code.squarecows.com/ric/omnimem/badges/workflows/security.yml/badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
-[![Docker Build](https://code.squarecows.com/ric/omnimem/badges/workflows/docker.yml/badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
-[![Coverage](https://code.squarecows.com/ric/omnimem/raw/branch/badges/coverage-badge.svg)](https://code.squarecows.com/ric/omnimem/actions)
-
-<sub>Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem) — issues and PRs there please.</sub>
+<sub>Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem). Issues and PRs there please.</sub>
 
 **Stop living the same session twice.**
 
-Every Claude Code session starts from zero. No memory of your project. No memory of what failed last week. No memory that you spent three hours last Tuesday discovering why `onnxruntime` explodes on Alpine before finding something that actually works.
+Every coding agent session starts from zero. No memory of your project. No memory of what failed last week. No memory that you spent three hours last Tuesday working out why `onnxruntime` explodes on Alpine before finding something that actually works.
 
-So you explain the project again. Claude suggests the same broken library again. Same alarm. Same song. You are Bill Murray and Claude is Punxsutawney.
+So you explain the project again. The agent suggests the same broken library again. Same alarm, same song. You're Bill Murray and your agent is Punxsutawney.
 
-OmniMem fixes that. It is a self-hosted MCP server that gives your AI agent persistent memory across sessions, projects, and machines. It runs on your own hardware and it is free forever.
+OmniMem fixes that. It's a self-hosted MCP server that gives your AI agent persistent memory across sessions, projects and machines. It runs on your own hardware and it's free.
 
 ```
 claude> use onnxruntime for the embeddings
 
 ⚠ WARNING: previously abandoned approach
 
-  onnxruntime — SIGILL crash on Alpine musl libc (effort: 4/5)
+  onnxruntime: SIGILL crash on Alpine musl libc (effort: 4/5)
   → switched to sentence-transformers instead
 ```
 
-That warning came from memory, not luck. The mistake you already paid for does not get to charge you twice.
+That warning came from memory, not luck. A mistake you've already paid for doesn't get to charge you twice.
+
+> [!IMPORTANT]
+> This is the **7.0 branch**: OmniMem rebuilt as one Rust binary. It isn't released yet. If you want something you can install today, 6.x lives on the `v6.7.x` branch and runs as a Docker Compose stack.
 
 ---
 
-## Get going quickly
+## One binary now
 
-> [!TIP]
-> One command gets the full stack running from the pre-built Docker Hub images:
->
-> ```bash
-> curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash
-> ```
->
-> Then point your agent at it — the [quick start](docs/quick-start.md) walks through the rest, or jump to the fuller [quick start section](#quick-start) below.
+OmniMem 6 was four containers: Valkey with vector search, a Python MCP server, a Python web UI and a Python RSS worker. OmniMem 7 is a single program that does all of it.
+
+- **On your desktop** it sits in the tray (or the menu bar on a Mac) with a settings window for everything the old web UI did.
+- **On a server** it's `omnimem serve`, a systemd service or a Docker container, configured with environment variables.
+
+Your memories live in one SQLite file. The embedding model runs locally with ONNX Runtime. Nothing leaves your machine unless you give it an Anthropic API key for the optional Claude Haiku features.
+
+---
+
+## Install
+
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](docs/quick-start.md#build-from-source)).
+
+| Where | What you get |
+|---|---|
+| Windows | `OmniMem-<version>-x64.msi` or `-arm64.msi`, a tray app |
+| macOS | `OmniMem-<version>.dmg`, a universal menu bar app |
+| Linux desktop | The `com.squarecows.OmniMem` Flatpak, a tray app |
+| Linux server | `.deb`, `.rpm` or a tarball with an `omnimem.service` systemd unit |
+| Containers | The `richarvey/omnimem` image, amd64 and arm64 |
+
+Then point your agent at `http://127.0.0.1:8765/mcp`. The [quick start](docs/quick-start.md) walks through the lot, including moving over from 6.x.
 
 ---
 
 ## What it remembers
 
-Five kinds of memory, all searched together at recall time:
+Five kinds of memory, all searched together when your agent recalls something:
 
-- **Episodic** — the decisions you made, the bugs you fixed, the patterns you discovered. The things that took real effort to learn and should not have to be re-learned every morning.
-- **Project context** — your stack, goals, and current state. The agent arrives at every session already briefed rather than starting cold.
-- **Knowledge** — RSS feeds you configure, fetched on a schedule, summarised by Claude Haiku, embedded, and stored. When a relevant article landed last week, it surfaces as a starting point worth reading. A feed can also influence a compiled skill directly, weighted by a score you set, so rebuilding the skill pulls in the feed's latest articles without hand-promoting each one.
-- **Preferences** — prescriptive rules about how you want to work ("always update the README after a feature lands"), extracted from your conversations automatically and surfaced whenever they apply.
-- **Skills** — SKILL.md documents compiled from your accumulated experience in a domain, so the agent works your way from the first prompt. Derived from the other namespaces, never hand-edited, and every change goes through your review. See [the skill compiler](docs/skill-compiler.md).
+- **Episodic**: the decisions you made, the bugs you fixed, the patterns you found. The hard-won stuff you shouldn't have to relearn every morning.
+- **Project context**: your stack, goals and current state, so the agent arrives briefed instead of cold.
+- **Knowledge**: RSS feeds you pick, fetched on a schedule, summarised by Claude Haiku (if you give it a key), embedded and stored. A feed can also feed a compiled skill directly.
+- **Preferences**: rules about how you like to work ("always update the README after a feature lands"), picked up from your conversations and surfaced when they apply.
+- **Skills**: SKILL.md documents compiled from your experience in a domain, so the agent works your way from the first prompt. Every change goes through your review. See [the skill compiler](docs/skill-compiler.md).
 
-The top recall result might be a decision from six months ago on a different project, a solution from yesterday, or an article that landed on Tuesday night. It does not matter where it came from as long as it is useful.
+The top result might be a decision from six months ago on another project, yesterday's fix, or an article that landed on Tuesday night. Doesn't matter where it came from, as long as it's useful.
 
 ---
 
 ## What makes it different
 
-Not just a key-value store with an MCP wrapper. OmniMem models how memory actually works: things fade over time, they sometimes contradict each other, and the hard-won stuff earns its place.
+It isn't a key-value store with an MCP wrapper. OmniMem models how memory actually works: things fade, they sometimes contradict each other, and the hard-won stuff earns its place.
 
-- **[The Graveyard](docs/features.md#the-graveyard)** — every dead end gets logged with what you tried, why it failed, and how much time you burned. The agent checks it before suggesting a library or pattern.
-- **[Experience scoring](docs/features.md#experience-scoring)** — something that took four attempts and a weird platform workaround to crack is gold. The harder it was, the more readily it surfaces next time.
-- **[Memory lifecycle](docs/features.md#memory-is-not-binary)** — `ACTIVE → DEPRIORITISED → ARCHIVED → DELETED`. "Forget about X" usually means stop bringing it up, not wipe it from existence. Deprioritised memories can earn their way back.
-- **[Contradiction detection](docs/features.md#contradiction-detection)** — if a new memory disagrees with something stored, OmniMem catches it. Fast heuristic on every write, optional deeper analysis via Claude Haiku.
-- **[Semantic deduplication](docs/features.md#semantic-deduplication)** — near-identical memories get flagged at write time and cleaned up in bulk with `find_duplicates()`.
-- **[One-call briefing](docs/features.md#session-briefing)** — a single `briefing()` returns project context, experience stats, stale memories, new articles, contradiction warnings, and skill suggestions. No three-step warm-up.
-- **[The skill compiler](docs/skill-compiler.md)** — distils reinforced lessons and dead ends into loadable skills, behind a propose-and-accept gate so bad lessons cannot become policy silently.
-- **[Auto-maintenance](docs/features.md#automatic-maintenance)** — duplicates archived, contradictions flagged, expired knowledge cleaned up, all in the background.
-- **[Redistribution rights](docs/rss-knowledge.md#licence-and-redistribution-rights)** — every memory records whether it may be redistributed (`own`, `open`, `restricted`, `unknown`), decided at ingest from what the feed declares. Recall points out what nobody has classified so you can say while the content is in front of you.
-- **[Provenance](docs/memory-types.md#common-fields)** — every memory says whether the human asserted it, the system concluded it, or it was retrieved from elsewhere, so a later session can tell evidence from inference instead of citing its own reasoning as corroboration.
-- **[Web UI](docs/web-ui.md)** — browse, search, and manage everything from an htmx dashboard, with telemetry and a Prometheus `/metrics` endpoint.
+- **[The graveyard](docs/features.md#the-graveyard)**: every dead end is logged with what you tried, why it failed and how long it cost you. The agent checks it before suggesting a library or pattern.
+- **[Experience scoring](docs/features.md#experience-scoring)**: something that took four attempts and a weird platform workaround to crack is gold. The harder it was, the more readily it comes back.
+- **[Memory lifecycle](docs/features.md#memory-is-not-binary)**: `ACTIVE → DEPRIORITISED → ARCHIVED → DELETED`. "Forget about X" usually means stop bringing it up, not wipe it from existence.
+- **[Contradiction detection](docs/features.md#contradiction-detection)**: a quick check on every write, and a deeper look with Claude Haiku when you want one.
+- **[Semantic deduplication](docs/features.md#semantic-deduplication)**: near-duplicates are flagged when they're written and cleaned up in bulk with `find_duplicates()`.
+- **[One-call briefing](docs/features.md#session-briefing)**: `briefing()` hands over project context, experience stats, stale memories, new articles, contradictions and skill suggestions in one go.
+- **[The skill compiler](docs/skill-compiler.md)**: turns reinforced lessons and dead ends into loadable skills, behind a propose-and-accept gate.
+- **[Auto-maintenance](docs/features.md#automatic-maintenance)**: duplicates archived, contradictions flagged, expired articles tidied, all in the background.
+- **[Licence and provenance](docs/memory-types.md#common-fields)**: every memory records whether it can be redistributed and who's speaking (you, the agent, or a source it retrieved), so a later session can tell evidence from inference.
+- **[The settings panel](docs/settings-panel.md)**: browse, search and manage everything from the desktop app's window. It's never served over HTTP.
 
-The ranking formula behind every recall:
+The ranking behind every recall:
 
 ```
 score = similarity x surface_score x recency x experience_weight
 ```
 
-Four factors decide what comes back. Semantic similarity alone is not enough — lifecycle state, age, and how hard the lesson was to learn all play a role.
+Similarity alone isn't enough, so lifecycle state, age and how hard a lesson was to learn all get a say.
 
 ---
 
 ## Works with any MCP agent
 
-One memory layer for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md), and [Open Design](guides/open-design.md).
+One memory for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md) and [Open Design](guides/open-design.md).
 
 ---
 
 ## Architecture
 
-Four containers. Nothing leaves your machine. Local embeddings via ONNX Runtime (no PyTorch), storage in Valkey with vector search, and both front doors share the same memory engine.
+One process. The MCP server, the RSS scheduler, the enrichment worker and (on the desktop) the settings window all share one memory engine, one embedder and one SQLite file.
 
 ```mermaid
-flowchart TB
-    agent["AI agent<br/>Claude Code · claude.ai · Cursor · Copilot · ..."]
-    browser["Browser"]
+flowchart LR
+    agent["AI agent<br/>Claude Code · claude.ai · Cursor · ..."]
+    user["You, in the settings window"]
 
-    agent -- "MCP · Streamable HTTP / SSE · :8765" --> mcp
-    browser -- "HTTP · :8080" --> webui
-
-    subgraph stack["Docker Compose stack"]
-        mcp["MCP server<br/>Python · FastMCP<br/><i>remember · recall · briefing<br/>compile_skill · record_experience</i>"]
-        webui["Web UI<br/>Starlette · htmx · Jinja2<br/><i>dashboard · search · skills<br/>projects · backups · /metrics</i>"]
-        rss["RSS worker<br/>feedparser · APScheduler<br/>Claude Haiku summaries"]
-        valkey[("Valkey + valkey-search<br/>HNSW vector indexes<br/><i>idx:episodic · idx:project · idx:knowledge<br/>idx:preference · idx:skill</i>")]
-
-        mcp <--> valkey
-        webui <--> valkey
-        rss --> valkey
+    subgraph omnimem["omnimem (one process)"]
+        mcp["MCP server<br/>streamable HTTP · bearer token · OAuth 2.1"]
+        panel["Settings panel<br/>desktop app only, no network"]
+        rss["RSS scheduler"]
+        enrich["Enrichment worker"]
+        engine["Memory engine<br/>recall · lifecycle · skills"]
+        embed["Embedder<br/>ONNX Runtime"]
+        store[("SQLite file<br/>vectors searched in memory")]
     end
+
+    agent -- ":8765/mcp" --> mcp
+    user --> panel
+    mcp --> engine
+    panel --> engine
+    rss --> engine
+    enrich --> engine
+    engine --> embed
+    engine --> store
 ```
 
-The full picture — the recall pipeline, storage model, and design decisions — is in [docs/architecture.md](docs/architecture.md).
+Over the network it serves `/mcp`, the OAuth routes and `/healthz`. That's the whole list. More in [docs/architecture.md](docs/architecture.md).
 
 ---
 
 ## Self-hosted, open source, yours
 
-No SaaS. No vendor lock-in. No context shipped to someone else's servers.
+No SaaS. No vendor lock-in. No context shipped off to someone else's servers.
 
-- **Valkey** is an open source Redis fork. All your data stays in a named Docker volume on your own machine.
-- **Multi-arch Docker images** for amd64 and arm64. It runs on a Raspberry Pi, AWS Graviton, or Apple Silicon just as well as x86.
-- **ONNX Runtime** runs the all-MiniLM-L6-v2 embeddings locally with no API calls and no PyTorch — the MCP image went from 2.0 GB to 634 MB in 6.7.
-- **MIT licensed** means fork it, extend it, run it wherever you want.
-- **One backup command** calls `dump_to_file()` and exports everything to a JSON file you own.
+- **One file** holds your memories. Back it up however you back up files, or use `dump_to_file()` for a portable JSON export.
+- **Local embeddings** with all-MiniLM-L6-v2 on ONNX Runtime: no API calls, no PyTorch, and the same vectors 6.x produced.
+- **x86_64 and arm64** everywhere, so it's as happy on a Raspberry Pi or a Graviton box as on a laptop.
+- **MIT licensed**: fork it, extend it, run it wherever you like.
 
-Expose the MCP port through your reverse proxy and every machine you work from shares the same memory. One deployment, everywhere — see [docs/remote-access.md](docs/remote-access.md).
-
----
-
-## Quick start
-
-The installer checks Docker is installed, generates secure passwords, writes a sensible `.env`, and starts everything from the pre-built Docker Hub images:
-
-```bash
-curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | bash
-```
-
-Or build from source:
-
-```bash
-git clone https://code.squarecows.com/ric/omnimem.git && cd omnimem
-cp .env.example .env
-# Set VALKEY_PASSWORD and ANTHROPIC_API_KEY in .env
-docker compose up -d
-```
-
-Then point your agent at it — **Claude Code** (`~/.claude.json`):
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
-    }
-  }
-}
-```
-
-The server delivers its usage guide to any connecting agent automatically via the MCP `instructions` field — no configuration file needed. The web dashboard is at `http://localhost:8080`.
-
-The full walkthrough, including auth tokens, permission settings, and the other agents, is in [docs/quick-start.md](docs/quick-start.md).
+Put the MCP port behind a reverse proxy and every machine you work from shares the same memory. See [docs/remote-access.md](docs/remote-access.md).
 
 ---
 
@@ -168,33 +149,33 @@ The full walkthrough, including auth tokens, permission settings, and the other 
 
 | | |
 |---|---|
-| [Quick start](docs/quick-start.md) | Installer, building from source, connecting your agent |
+| [Quick start](docs/quick-start.md) | Installing, building from source, moving from 6.x, connecting your agent |
+| [Configuration](docs/configuration.md) | Every setting, for the desktop app and headless installs |
 | [Features in depth](docs/features.md) | Lifecycle, graveyard, experience scoring, dedup, contradictions, briefing |
 | [The skill compiler](docs/skill-compiler.md) | Compiling experience into loadable skills |
-| [MCP tool reference](docs/mcp-tools.md) | All 30+ tools |
-| [Configuration reference](docs/configuration.md) | Every environment variable |
-| [RSS & knowledge](docs/rss-knowledge.md) | Passive knowledge ingestion and promotion |
-| [Multiple machines](docs/remote-access.md) | Reverse proxy, OAuth 2.1 for claude.ai, troubleshooting |
-| [Web UI](docs/web-ui.md) | The management dashboard and Prometheus metrics |
-| [Architecture](docs/architecture.md) | Containers, recall pipeline, design decisions |
+| [MCP tool reference](docs/mcp-tools.md) | All 48 tools |
+| [RSS and knowledge](docs/rss-knowledge.md) | Passive knowledge ingestion and promotion |
+| [Multiple machines](docs/remote-access.md) | Reverse proxies, OAuth 2.1 for claude.ai, troubleshooting |
+| [Settings panel](docs/settings-panel.md) | The desktop app's window, page by page |
+| [Architecture](docs/architecture.md) | The process, the recall pipeline, design decisions |
 | [Memory type specs](docs/memory-types.md) | The storage model, field by field |
 | [Connection guides](guides/) | Per-agent setup |
-| Deployment guides | [macOS](guides/omnimem-setup-macos.md) · [Raspberry Pi](guides/omnimem-setup-raspberry-pi.md) · [AWS](guides/omnimem-setup-aws-linux.md) · [GCP](guides/omnimem-setup-gcp-linux.md) · [Linux + Tailscale Funnel](guides/omnimem-setup-linux-tailscale.md) |
+| Deployment guides | [Docker](guides/docker.md) · [macOS](guides/omnimem-setup-macos.md) · [Raspberry Pi](guides/omnimem-setup-raspberry-pi.md) · [AWS](guides/omnimem-setup-aws-linux.md) · [GCP](guides/omnimem-setup-gcp-linux.md) · [Linux + Tailscale Funnel](guides/omnimem-setup-linux-tailscale.md) |
 
-Per-namespace storage specifications, if you want to know exactly what gets written to Valkey and by whom: [overview](docs/memory-types.md) · [episodic](docs/memory-episodic.md) · [project](docs/memory-project.md) · [knowledge](docs/memory-knowledge.md) · [preference](docs/memory-preference.md) · [skill](docs/memory-skill.md)
+Per-namespace specs, if you want to know exactly what gets stored and by whom: [overview](docs/memory-types.md) · [episodic](docs/memory-episodic.md) · [project](docs/memory-project.md) · [knowledge](docs/memory-knowledge.md) · [preference](docs/memory-preference.md) · [skill](docs/memory-skill.md)
 
 ---
 
 ## Contributing
 
-Issues and PRs are welcome. Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem) — issues and PRs there please. OmniMem is designed to be extended and the scoring pipeline is structured so new multipliers can be added without touching the core. New MCP tools, additional namespace types, and alternative embedding backends are all reasonable directions.
+Issues and PRs are welcome on [Squarecows](https://code.squarecows.com/ric/omnimem). It's a Cargo workspace (Rust 1.94 or newer): `cargo test` runs the suite with no GTK needed, and `scripts/desktop-check.sh` builds and smoke-tests the desktop app in a container. New MCP tools, extra scoring multipliers and other embedding models are all fair game.
 
 ---
 
 ## Licence
 
-MIT. Free to use, fork, and modify. No enterprise tier, no hosted version, no strings.
+MIT. Free to use, fork and modify. No enterprise tier, no hosted version, no strings.
 
 ---
 
-*Built by Ric Harvey @ [SquareCows Ltd](https://squarecows.com), an AI and automation consultancy for people who would rather own their tools.*
+*Built by Ric Harvey @ [SquareCows Ltd](https://squarecows.com), an AI and automation consultancy for people who'd rather own their tools.*

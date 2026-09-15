@@ -42,7 +42,7 @@ At the beginning of every session:
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
 - **Knowledge watch** — if the briefing includes `skill_knowledge_watch`, recent articles look relevant to a compiled skill; entries flagged `possible_contradiction` may mean the world moved under a rule. Surface them and, if the human agrees an article belongs in the skill, call `promote_knowledge(key, domain="<domain>")` then recompile
-- **Auto-proposed skills** — if the briefing includes `auto_proposed_skills`, the server's periodic scan found recurring cross-project lessons worth a new skill (or a changed skill worth a fresh draft) and has already stashed the proposal. Surface each one; review with `compile_skill(domain, mode="propose")` and accept with `mode="write"` only if the human agrees. Ignoring a draft declines it
+- **Auto-proposed skills** — if the briefing includes `auto_proposed_skills`, the server's periodic scan found recurring cross-project lessons worth a new skill (or a changed skill worth a fresh draft) and has already stashed the proposal. Surface each one to the human; review with `compile_skill(domain, mode="propose")` and only accept with `mode="write"` if they agree. Never accept one silently — an ignored draft simply expires, and the scan will not re-propose it until the underlying lessons change
 1. If the MCP server seems unresponsive or recall is slow, call `health()` and report the status to the human before continuing.
 
 -----
@@ -52,14 +52,16 @@ At the beginning of every session:
 **Before attempting any problem** where you would normally reach for documentation or a search engine:
 
 - Call `recall("<problem description>")` — you may find a prior solution, a relevant pattern, or a knowledge article that gives you a head start
-- If a recalled knowledge article seems relevant, mention it: *“I found an article from [source] about X — shall I use that as a research base?”*
+- If a recalled knowledge article seems relevant, mention it: *"I found an article from [source] about X — shall I use that as a research base?"*
+- **Fewer results than you asked for is a real answer.** `top_k` is a ceiling, not a quota: anything below the relevance floor (`RECALL_MIN_SCORE`) is dropped rather than padding the list. An empty return means nothing stored is relevant — say so and move on
+- **A result flagged `weak_match` may well be nothing.** It scored in the band where genuinely relevant and genuinely irrelevant results overlap on this embedding model, and no threshold can separate them, so you are being shown it rather than having it hidden from you. Read it; do not build on it, and do not reach for a connection between it and your query. "Nothing relevant came back" is a better answer than a connection you had to construct
 - **When the problem is about a kind of work rather than this project** — a Python gotcha, a CSS layout trap, a Docker build failure — add `domain_filter`: `recall("<problem>", domain_filter="python")` searches every project doing that kind of work. Compiled skills hold the lessons that already cleared the reinforcement gate; the domain filter reaches the raw memories underneath, including the ones that never became a rule. If the reply starts with a `domain_filter_notice` saying the filter was not applied, no project declares that domain and the results you are reading span everything — say so rather than presenting them as a targeted search
 - **If the reply ends with a `licence_notice`**, some results have no recorded redistribution licence — usually RSS articles from a feed that never declared one. When the human can say whether the source may be redistributed (an OGL or CC BY page is open; a paywalled or all-rights-reserved one is restricted), record it: `set_licence(keys=[...], licence="open")`, or `set_licence(feed_name="<feed>", licence="ogl-3.0")` to classify everything from one feed. Do not guess on their behalf — an unknown is honest, a wrong `open` is a liability
 
 **Before suggesting OR agreeing to any library, tool, or architectural approach** — including ones the human proposes:
 
 - Call `warn_if_abandoned("<library or approach name>")`
-- If a warning comes back, tell the human before proceeding: *“We tried [X] before and abandoned it because [reason] — shall we try again or look for alternatives?”*
+- If a warning comes back, tell the human before proceeding: *"We tried [X] before and abandoned it because [reason] — shall we try again or look for alternatives?"*
 - Do not skip this check because the human suggested the approach. Dead ends are dead ends regardless of who proposed them.
 
 **Store memories proactively.** When you learn something worth keeping, write it to OmniMem using `remember()`. Do not wait to be asked. Call `remember()` when you:
@@ -93,13 +95,13 @@ Always include at least one stack tag and one intent tag.
 
 **If an existing memory is missing tags or tagged wrongly**, fix it with `retag()` — `retag(key, add=[...])` and `retag(key, remove=[...])` adjust the existing set, `retag(key, tags=[...])` replaces it outright. Tags feed recall filtering and skill compiler domains, so tidying them is worthwhile.
 
-**If the human says** something like “forget about X”, “stop bringing up Y”, or “I don’t do that anymore”:
+**If the human says** something like "forget about X", "stop bringing up Y", or "I don't do that anymore":
 
 - Call `deprioritise()` with a clear reason
 - Add `reinstate_hints` if the memory might become relevant again in a different context
-- Do NOT hard delete unless they say “permanently delete” or “wipe”
+- Do NOT hard delete unless they say "permanently delete" or "wipe"
 
-**If a recalled memory keeps surfacing when it clearly shouldn’t:**
+**If a recalled memory keeps surfacing when it clearly shouldn't:**
 
 - Call `suppress_topic("<topic>")` and let the human know it has been suppressed
 
@@ -109,6 +111,8 @@ Always include at least one stack tag and one intent tag.
 - Runs a heuristic contradiction scan on active project memories
 
 When maintenance runs, the briefing response includes an `auto_maintenance` section showing what was cleaned up. You can still call `find_duplicates()` and `check_contradictions()` manually at any time. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable.
+
+**Auto skill scan** — at most once per `SKILL_SCAN_INTERVAL_HOURS` (default 24, 0 disables), a briefing also scans all projects for domains whose lessons recur strongly enough to earn a skill, and drafts proposals for changed skills. It only ever creates proposal stashes — the same thing `compile_skill(mode="propose")` creates — so every draft still needs a human accept via `mode="write"`. Results arrive in the briefing's `auto_proposed_skills` section.
 
 -----
 
@@ -159,7 +163,7 @@ If `effort_score >= 4` and `outcome == "abandoned"`, the system will automatical
 
 OmniMem can compile your accumulated experience in a domain into a loadable skill via `compile_skill("<domain>")` — do/don't/watch-out rules distilled from reinforced breakthroughs, gotchas, and the graveyard, each citing its source memories. Domains are tags: a memory tagged `python` feeds the `python` skill.
 
-**Loading.** When `briefing()` suggests a skill (or `find_skills("<query or domain>")` finds one), offer it to the human and load it with `get_skill("<skill_id>")` if they agree. Never load one silently. Once loaded, follow its operating contract: keep recording experience and dead ends while you work, so the next compile is better.
+**Loading.** When `briefing()` suggests a skill (or `find_skills("<query or domain>")` finds one), offer it to the human and load it with `get_skill("<skill_id>")` if they agree. Never load one silently. `find_skills` returns only skills that clear its relevance floor, so an empty list means no stored skill covers this work — that is the answer, not a prompt to load the closest thing. Each entry carries a `confidence`: on `low`, read the description and check it really fits before loading, because a skill loads whole and a wrong pick costs far more context than a stray recall hit. Once loaded, follow its operating contract: keep recording experience and dead ends while you work, so the next compile is better.
 
 **Compiling and updating.** Skills are derived output — never edit one by hand; update the underlying memories and recompile. The flow is always propose, review, accept:
 
@@ -174,6 +178,8 @@ The skill's `description` is the load trigger and is human-owned: the compiler d
 **Reference material.** Knowledge articles can feed a skill too, but only deliberately: `promote_knowledge(key, domain="<domain>")` marks an article skill-eligible, and the next compile renders it in a distinct Reference section citing the article. Promotion is the vetting step — never promote without the human agreeing the article belongs in the skill. Use it for durable reference (a spec, a canonical how-to), not volatile facts like version numbers; those stay in the knowledge namespace and are looked up with `recall()` at need. `demote=True` reverses a promotion.
 
 **Extracting rules from an article.** When an article contains discrete guidance (a "5 things to avoid" list, a best-practice post), don't settle for the one-line summary: read the article (`recall_detail` on its key), draft one rule per item as `{"kind": "do"|"watch"|"dont"|"note", "text": "..."}`, show the human the list, and pass the approved set as `promote_knowledge(key, domain="<domain>", rules=[...])`. Each becomes its own stance-prefixed bullet in the skill's Reference section ("Avoid: ...", "Do: ..."), all citing the article. Extraction happens at promotion under human review — never at compile — so re-promote with an edited list to revise, or `rules=[]` to revert to the summary line.
+
+**Feed influence.** An RSS feed can be tied to skill domains with an influence score (1-10), set on the feed in the web UI or as a `skills:` mapping in feeds.yml. Recompiling such a skill pulls the feed's latest articles into a distinct Feed watch section automatically — the score is how many recent articles the feed contributes — with no per-article promotion needed. These items are unvetted current signal, not procedure: when reviewing a compile diff, treat their churn as routine (it is classified low-risk), and suggest `promote_knowledge` for any feed-watch article worth keeping permanently. Feeds without an influence mapping never touch a skill except through promotion.
 
 -----
 
@@ -191,7 +197,7 @@ At the end of every session, without exception:
 
 ### Key Principles
 
-- **Prefer `deprioritise` over `forget`** — humans usually mean “stop surfacing this” not “destroy this forever”
+- **Prefer `deprioritise` over `forget`** — humans usually mean "stop surfacing this" not "destroy this forever"
 - **Always include a `reason` when deprioritising** — it helps future sessions understand the context
 - **Include `reinstate_hints` when relevant** — if a memory might matter again under different circumstances, say so
 - **Check the graveyard before agreeing to anything** — the list of what failed is as valuable as the list of what worked

@@ -1,283 +1,135 @@
 # Setting Up OmniMem on AWS (Linux)
 
-This guide covers deploying OmniMem on an AWS EC2 instance running Linux. The same steps apply to any Linux server — the AWS-specific parts are clearly marked so you can skip them if you're on bare metal, another cloud, or a VPS.
+This guide puts OmniMem on an EC2 instance. Nearly all of it applies to any Linux server, so if you're on bare metal, another cloud or a VPS, skip the AWS-specific bits and carry on.
+
+OmniMem 7 is one binary and one SQLite file, which makes this a lot less work than it used to be. No Docker, no Valkey, no working out how much RAM four containers want.
 
 ---
 
-## Prerequisites
+## What you need
 
 - An AWS account with EC2 access
-- Basic familiarity with SSH and the terminal
-- An Anthropic API key (optional, for AI-powered features)
+- To be comfortable with SSH and a terminal
+- An Anthropic API key if you want the Claude-powered extras (optional)
 
 ---
 
-## Step 1 — Launch an EC2 instance
+## Step 1: Launch an EC2 instance
 
 ### Instance type
 
-OmniMem's main resource requirement is RAM for the sentence-transformers embedding model. Recommended instances:
+OmniMem's appetite is mostly the embedding model, a few hundred MB of RAM. A small instance is plenty for one person:
 
-| Instance | vCPUs | RAM | Cost (approx.) | Notes |
-|----------|-------|-----|-----------------|-------|
-| `t3.small` | 2 | 2 GB | ~$15/month | Minimum viable — tight on RAM |
-| `t3.medium` | 2 | 4 GB | ~$30/month | Comfortable for single-user |
-| `t4g.medium` | 2 | 4 GB | ~$24/month | ARM64 (Graviton) — cheaper and native arm64 images |
-| `t4g.large` | 2 | 8 GB | ~$48/month | ARM64, room for growth |
+| Instance | vCPUs | RAM | Notes |
+|----------|-------|-----|-------|
+| `t4g.small` | 2 | 2 GB | ARM64 (Graviton). Comfortable for one person, and what I'd pick |
+| `t4g.medium` | 2 | 4 GB | ARM64, room to run other things alongside |
+| `t3.small` | 2 | 2 GB | x86_64, if you need Intel |
 
-**Graviton (arm64) instances are recommended** — they're cheaper and OmniMem ships native arm64 images, so no emulation overhead.
+**Graviton is the one to go for.** It's cheaper, and OmniMem ships a native arm64 build.
 
 ### AMI
 
-Use **Ubuntu 24.04 LTS** (or 22.04). Select the arm64 AMI if you chose a Graviton instance.
+**Ubuntu 24.04 LTS** or **Debian 12**. Pick the arm64 AMI for Graviton. (Amazon Linux works too, with the `.rpm`.)
 
 ### Storage
 
-The default 8 GB root volume is too small. Set it to **20 GB gp3** minimum.
+The default 8 GB root volume is enough. OmniMem's binary, model and database fit in well under a gigabyte; make it 16 GB gp3 if you want headroom for backups.
 
 ### Security group
 
-Create or select a security group with:
-
 | Port | Source | Purpose |
 |------|--------|---------|
-| 22 | Your IP | SSH access |
-| 8765 | Your IP / VPN CIDR | MCP server |
-| 8080 | Your IP / VPN CIDR | Web dashboard |
+| 22 | Your IP | SSH |
+| 443 | `0.0.0.0/0` | HTTPS through Caddy (step 6) |
+| 80 | `0.0.0.0/0` | Let's Encrypt certificate checks (step 6) |
 
-Do **not** open 8765 or 8080 to `0.0.0.0/0` unless you've configured authentication (step 4).
+Keep port 8765 closed to the world. OmniMem will listen on localhost and Caddy will forward to it. If you'd rather skip TLS and reach it only from a VPN, open 8765 to your VPN range instead, and never to `0.0.0.0/0`.
 
-### Key pair
+### Key pair and launch
 
-Create or select an SSH key pair. Download the `.pem` file.
-
-### Launch
-
-Launch the instance and note the public IP or DNS name.
+Create or pick an SSH key pair, launch, and note the public IP or DNS name.
 
 ---
 
-## Step 2 — Connect and install Docker
+## Step 2: Install OmniMem
 
-SSH into your instance:
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
+
+SSH in:
 
 ```bash
 ssh -i your-key.pem ubuntu@<instance-ip>
 ```
 
-Install Docker:
+Download the package for your architecture from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it. On Graviton with Ubuntu or Debian:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+sudo apt install ./omnimem_<version>_arm64.deb
 ```
 
-Log out and back in for the group change to take effect:
+On Amazon Linux use the `.rpm` (`omnimem-<version>.aarch64.rpm`, or `x86_64` on Intel):
 
 ```bash
-exit
-ssh -i your-key.pem ubuntu@<instance-ip>
+sudo dnf install ./omnimem-<version>.aarch64.rpm
 ```
 
-Verify:
+You now have:
 
-```bash
-docker --version
-docker compose version
-```
+- a systemd service, `omnimem.service`, running `omnimem serve` as the `omnimem` system user
+- configuration in `/etc/omnimem/omnimem.env`
+- the database, `feeds.yml`, backups and the model cache in `/var/lib/omnimem`
 
 ---
 
-## Step 3 — Clone OmniMem
+## Step 3: Configure it
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git
-cd omnimem
+sudo nano /etc/omnimem/omnimem.env
 ```
 
----
-
-## Step 4 — Configure the environment
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Set the essentials:
-
-```bash
-VALKEY_PASSWORD=generate-a-strong-password-here
-ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
-```
-
-### Security configuration for a remote server
-
-Since this instance is accessible over the network, you should enable authentication:
-
-```bash
-MCP_AUTH_TOKEN=generate-a-long-random-token
-WEB_UI_AUTH_TOKEN=generate-another-random-token
-```
-
-Generate random tokens with:
+Generate an access token and add it:
 
 ```bash
 openssl rand -hex 32
 ```
 
-### Exposing to the network
-
-Edit `docker-compose.yml` to change the port bindings from localhost to all interfaces:
-
-```yaml
-# mcp_server ports:
-ports:
-  - "0.0.0.0:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
-
-# web_ui ports:
-ports:
-  - "0.0.0.0:${WEB_PORT:-8080}:8080"
+```bash
+MCP_AUTH_TOKEN=paste-the-token-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
 ```
 
-This allows connections from outside the instance, controlled by your security group.
+Leave `MCP_HOST` at its default, `127.0.0.1`. Caddy is going to talk to OmniMem over localhost, so it never needs to listen anywhere else.
+
+If you do change `MCP_HOST` to `0.0.0.0` (the VPN route), OmniMem won't start without the token or OAuth. Good.
+
+The [configuration reference](../docs/configuration.md) has everything else.
 
 ---
 
-## Step 5 — Build and start
-
-### Option A — Use pre-built images from Docker Hub (recommended)
-
-Pre-built multi-arch images (amd64 + arm64) are published to Docker Hub, so you can skip the build entirely. Edit `docker-compose.yml` and replace the `build:` directives with `image:` for the three application services:
-
-```yaml
-mcp_server:
-  image: richarvey/omnimem-mcp:latest
-  # build: ./mcp_server        ← comment out or remove
-
-rss_worker:
-  image: richarvey/omnimem-rss:latest
-  # build:
-    #   context: .
-    #   dockerfile: rss_worker/Dockerfile
-
-web_ui:
-  image: richarvey/omnimem-web:latest
-  # build:                      ← comment out or remove
-  #   context: .
-  #   dockerfile: web_ui/Dockerfile
-```
-
-The `valkey` service already uses an upstream image, so it needs no change.
-
-Then start:
+## Step 4: Start it
 
 ```bash
-docker compose up -d
+sudo systemctl enable --now omnimem
+journalctl -u omnimem -f
 ```
 
-This pulls the images in under a minute rather than building from source. Especially useful on smaller instances where builds can exhaust RAM.
-
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
-
-### Option B — Build from source
+The first start downloads the embedding model. When the log says the MCP server is listening on `/mcp`, you're in business. Check it:
 
 ```bash
-docker compose up -d
+curl http://127.0.0.1:8765/healthz
 ```
 
-First build takes 5–10 minutes depending on instance type. Monitor progress:
-
-```bash
-docker compose logs -f
-```
-
-Wait for all four services to report healthy:
-
-- `valkey` — `Ready to accept connections`
-- `mcp_server` — listening on port 8765
-- `rss_worker` — scheduler started
-- `web_ui` — serving on port 8080
+That should answer `{"status": "ok"}`.
 
 ---
 
-## Step 6 — Verify
+## Step 5: HTTPS with Caddy
 
-From your local machine:
+Plain HTTP is fine inside a private network, but for anything on the internet you want TLS. Caddy sorts out Let's Encrypt certificates on its own, which is why I reach for it every time.
 
-```bash
-# Web dashboard
-curl http://<instance-ip>:8080
-
-# MCP health check
-curl http://<instance-ip>:8765/health
-
-# With auth token:
-curl -H "Authorization: Bearer your-mcp-token" http://<instance-ip>:8765/health
-```
-
-Or open `http://<instance-ip>:8080` in your browser.
-
----
-
-## Step 7 — Connect your AI tool
-
-On the machine where you run Claude Code, add to `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://<instance-ip>:8765/sse",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
-
-Auto-allow OmniMem tools in `~/.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__omnimem__*"
-    ]
-  }
-}
-```
-
-### Using Streamable HTTP (recommended)
-
-Set `MCP_TRANSPORT=http` in `.env`, restart, and use:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "http://<instance-ip>:8765/mcp",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
-
----
-
-## Step 8 — Set up HTTPS with a reverse proxy (recommended)
-
-Running OmniMem over plain HTTP works on a private network, but for anything exposed to the internet you should terminate TLS. The simplest approach is Caddy, which handles Let's Encrypt certificates automatically.
-
-### Prerequisites
-
-- A domain name pointing to your instance's IP (e.g. `omnimem.yourdomain.com`)
-- Port 80 and 443 open in your security group (for Let's Encrypt validation)
+You'll need a domain pointing at the instance, for example `omnimem.yourdomain.com`, and ports 80 and 443 open (step 1).
 
 ### Install Caddy
 
@@ -291,59 +143,78 @@ sudo apt install caddy
 
 ### Configure Caddy
 
-Create `/etc/caddy/Caddyfile`:
+`/etc/caddy/Caddyfile`:
 
 ```
 omnimem.yourdomain.com {
-    handle /sse* {
-        reverse_proxy localhost:8765
-    }
-    handle /mcp* {
-        reverse_proxy localhost:8765
-    }
-    handle {
-        reverse_proxy localhost:8080
-    }
+    reverse_proxy localhost:8765
 }
 ```
 
-Restart Caddy:
+That's the whole thing. OmniMem serves `/mcp`, the OAuth routes and `/healthz` on the one port, and there's no web UI to route separately any more.
+
+Tell OmniMem its public address, so it trusts that hostname, in `/etc/omnimem/omnimem.env`:
 
 ```bash
-sudo systemctl restart caddy
+MCP_PUBLIC_URL=https://omnimem.yourdomain.com
 ```
 
-Caddy will automatically obtain and renew a Let's Encrypt certificate.
+Then restart both:
 
-Update your Claude Code config to use the HTTPS URL:
+```bash
+sudo systemctl restart omnimem caddy
+```
+
+### Want claude.ai too?
+
+claude.ai connects with OAuth rather than a token. Add these to the environment file and restart OmniMem:
+
+```bash
+OAUTH_ENABLED=true
+OAUTH_BASE_URL=https://omnimem.yourdomain.com
+OAUTH_ADMIN_USER=admin
+OAUTH_ADMIN_PASSWORD=a-strong-password-here
+```
+
+Then follow [the claude.ai guide](claude-ai.md). Your token-based clients keep working alongside it.
+
+---
+
+## Step 6: Connect your agent
+
+On the machine where you run Claude Code:
+
+```bash
+claude mcp add --transport http omnimem https://omnimem.yourdomain.com/mcp \
+  --header "Authorization: Bearer your-token-here" \
+  --scope user
+```
+
+Allow the OmniMem tools without a prompt each time, in `~/.claude/settings.json`:
 
 ```json
 {
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "https://omnimem.yourdomain.com/sse",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
+  "permissions": {
+    "allow": [
+      "mcp__omnimem__*"
+    ]
   }
 }
 ```
 
-If you use the Caddy proxy approach, revert the port bindings in `docker-compose.yml` back to `127.0.0.1` — Caddy handles external connections and forwards locally.
+The [connection guides](README.md) cover the other agents.
 
 ---
 
-## Step 9 — Configure RSS feeds (optional)
+## Step 7: RSS feeds (optional)
 
 ```bash
-nano rss_worker/feeds.yml
+sudo -u omnimem nano /var/lib/omnimem/feeds.yml
 ```
 
 ```yaml
 feeds:
-  - name: "AWS Blog"
+  - name: "AWS News Blog"
     url: "https://aws.amazon.com/blogs/aws/feed/"
     topics: ["aws", "cloud"]
   - name: "Rust Blog"
@@ -351,79 +222,77 @@ feeds:
     topics: ["rust", "programming"]
 ```
 
+OmniMem picks up the change on its own. See [RSS and knowledge](../docs/rss-knowledge.md) for the rest of the format.
+
 ---
 
-## Persistence and backups
+## Backups
 
-### Data persistence
+Everything lives in `/var/lib/omnimem`, and the database is one SQLite file. Don't copy it while OmniMem is running; take a proper backup instead.
 
-All memory data is stored in the `valkey_data` Docker volume, which persists across container restarts and rebuilds.
-
-### Automated backups
-
-Create a cron job to back up the Valkey data:
+### Nightly backups
 
 ```bash
-crontab -e
+sudo crontab -u omnimem -e
 ```
 
-Add:
-
 ```
-0 2 * * * cd /home/ubuntu/omnimem && docker run --rm -v omnimem_valkey_data:/data -v /home/ubuntu/omnimem/backups:/backup alpine tar czf /backup/valkey-$(date +\%Y\%m\%d).tar.gz -C /data .
+0 2 * * * /usr/bin/omnimem --db /var/lib/omnimem/omnimem.db export /var/lib/omnimem/backups/omnimem-$(date +\%Y\%m\%d).json
 ```
 
-This creates a nightly backup at 2 AM.
+### Off to S3
 
-### Backup to S3
-
-To send backups to S3:
+A backup on the same disk isn't much of a backup. Ship them off the instance:
 
 ```bash
-# Install AWS CLI
-sudo apt install awscli
-
-# After the tar backup:
-aws s3 cp backups/valkey-$(date +%Y%m%d).tar.gz s3://your-backup-bucket/omnimem/
+aws s3 cp /var/lib/omnimem/backups/omnimem-$(date +%Y%m%d).json s3://your-backup-bucket/omnimem/
 ```
+
+Give the instance an IAM role with write access to that bucket rather than putting keys on the box, and add the copy to the cron job.
 
 ---
 
 ## Updating
 
-If you're using Docker Hub images:
+Download the new package and install it over the old one:
 
 ```bash
-cd omnimem
-docker compose pull
-docker compose up -d
+sudo apt install ./omnimem_<new-version>_arm64.deb
+sudo systemctl restart omnimem
 ```
 
-If you built from source:
+The database migrates itself on start. Take a backup first anyway.
+
+---
+
+## Docker instead
+
+If your instances run everything in containers, use the `richarvey/omnimem` image. The security group and Caddy parts of this guide still apply. See [Running OmniMem in Docker](docker.md).
+
+---
+
+## Coming from 6.x
+
+1. On the 6.x server, call `dump_to_file` and copy the JSON file across
+2. Import it on the new instance:
 
 ```bash
-cd omnimem
-git pull
-docker compose build
-docker compose up -d
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db import backup.json
+sudo systemctl restart omnimem
 ```
+
+The import re-embeds every memory at roughly 8 ms each. Then change your clients from `/sse` to `/mcp`, and remove the old port 8080 rule from the security group.
 
 ---
 
 ## Troubleshooting
 
-**Instance runs out of memory during build** — If you're on a `t3.small` (2 GB), the build can exhaust RAM. Add swap:
+**The service won't start**: `journalctl -u omnimem -e`. If `MCP_HOST` is `0.0.0.0` without a token or OAuth, OmniMem refuses on purpose and says so. If OAuth is on with a setting missing, the log names it.
 
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
+**421 Misdirected Request through Caddy**: OmniMem doesn't trust the hostname. Set `MCP_PUBLIC_URL` (or `OAUTH_BASE_URL`) to the address clients use, and restart.
 
-**Security group blocking connections** — Double-check that ports 8765 and 8080 are open to your IP in the EC2 security group.
+**Clients get 401**: the token after `Bearer` has to match `MCP_AUTH_TOKEN` exactly.
 
-**Valkey container crash-looping** — Check `docker compose logs valkey`. Usually means `VALKEY_PASSWORD` is not set in `.env`.
+**Caddy can't get a certificate**: ports 80 and 443 must be open and the DNS record must point at the instance. `journalctl -u caddy` says what went wrong.
 
-**High latency from a distant region** — OmniMem's recall involves embedding the query locally on the server. If your EC2 instance is in `us-east-1` and you're working from Europe, consider deploying in a closer region.
+**High latency from far away**: recall embeds your query on the server, so a server in `us-east-1` feels slower from Europe. Launch it in a region near you.

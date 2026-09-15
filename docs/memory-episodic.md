@@ -1,153 +1,149 @@
 # Episodic Memory Specification
 
 **Key format**: `mem:episodic:{ULID}`
-**Created by**: `remember()` (default namespace), `remember_document()`
-**Index**: `idx:episodic`
+**Created by**: `remember()` (the default namespace), `remember_document()`
 
-Episodic memories are the working record of what happened: decisions, bug fixes, patterns discovered, work done. They are also the substrate for two derived systems — experience scoring (effort, outcomes, the abandoned-approach graveyard) and, in v6, compiled skills, which distil lessons from the episodic pool.
+Episodic memories are the working record of what happened: decisions, bug fixes, patterns you found, work done. They're also what two other systems feed on. Experience scoring (effort, outcomes and the graveyard of abandoned approaches) lives on these records, and compiled skills are distilled from them.
+
+Field formats follow the [storage model](memory-types.md#storage-model): every value is a string, lists are JSON.
 
 ## Fields
 
 ### Core (written by `remember()`)
 
-| Field | Format | Required | Description |
-|-------|--------|----------|-------------|
-| `content` | string, max 50,000 chars | yes | The memory text. Embedded verbatim to produce `vector`. |
-| `state` | `active` \| `deprioritised` \| `archived` | yes | Lifecycle state, `active` on creation. |
-| `surface_score` | float string | yes | `"1.0"` on creation; follows state thereafter. |
-| `experience_weight` | float string | yes | `"1.0"` on creation; recomputed by `record_experience()` (see below). |
-| `created_at` | unix seconds string | yes | Write time. |
-| `updated_at` | unix seconds string | yes | Bumped on any mutation. |
-| `tags` | JSON array of strings | yes | `"[]"` if none given. Max 20 tags, 100 chars each. Lowercased tags double as skill domains for the compiler. |
-| `project` | string | no | Project scope. Only present when supplied. |
-| `vector` | 384-dim float32 blob | yes | Embedding of `content`. |
+| Field | Format | Always present | Description |
+|-------|--------|----------------|-------------|
+| `content` | string, max 50,000 characters | yes | The memory text. Embedded as it is. |
+| `state` | lifecycle state | yes | `active` on creation. |
+| `surface_score` | float string | yes | `"1.0"` on creation; follows the state after that. |
+| `experience_weight` | float string | yes | `"1.0"` on creation; recomputed by `record_experience()`. |
+| `created_at` / `updated_at` | unix seconds strings | yes | Write time; `updated_at` moves on every change. |
+| `tags` | JSON array of strings | yes | `"[]"` when none are given. At most 20, 100 characters each. Lowercased tags double as skill domains for the compiler. |
+| `project` | string | no | Project scope, only when one is given. |
+| `licence` / `licence_note` | licence class / string | yes / no | `own` by default, since an episodic memory is a write-up of work done here. Pass `licence=` when it's someone else's content (a pasted document, a vendor page). |
+| `provenance` | provenance class | yes | `concluded` by default: it's the agent's write-up. Pass `provenance="asserted"` when the human dictated it, or `"retrieved"` for a pasted external document. |
+
+The store adds `content_hash`, `origin_id`, `epoch` and `classification` to every new memory; see [v7 identity fields](memory-types.md#v7-identity-fields). The vector (the embedding of `content`) is stored in the `vectors` table, not in the fields.
 
 ### Document chunks (added by `remember_document()`)
 
-Long-form content is split into chunks, each stored as its own episodic memory with three extra fields:
+Long content is split into chunks, and each chunk is stored as its own episodic memory with three extra fields:
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `doc_id` | ULID string | Shared across all chunks of one document, for grouping and cleanup. |
-| `chunk_index` | int string | Position of this chunk in the original document, 0-based. |
-| `chunk_strategy` | `turn_pairs` \| `sentences` \| `paragraphs` \| `fixed_tokens` | How the document was split. |
+| `doc_id` | ULID string | Shared by every chunk of one document. |
+| `chunk_index` | int string | Position in the original document, from 0. |
+| `chunk_strategy` | `turn_pairs` \| `sentences` \| `paragraphs` \| `fixed_tokens` | How it was split. |
 
-### Experience (added by `record_experience()` / `log_abandoned()`)
+Each chunk is dedup-checked on its own, and a chunk that's already stored is skipped.
+
+### Experience (added by `record_experience()` and `log_abandoned()`)
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `effort_score` | int string, 1-5 | 1 = trivial, 3 = moderate, 5 = battle-hardened. |
+| `effort_score` | int string, 1-5 | 1 is trivial, 3 moderate, 5 battle-hardened. |
 | `outcome` | `succeeded` \| `pivoted` \| `abandoned` | How the work ended. |
 | `iterations` | int string | Number of attempts (default 1). |
-| `experience_weight` | float string | Recall multiplier computed from effort and outcome (formula below). |
-| `abandoned_approaches` | JSON array | The graveyard. Entries are `{"name", "type", "reason"}`; `log_abandoned()` adds `"attempted_at"` (ISO 8601 UTC). `type` is one of `library`, `approach`, `tool`, `pattern`, `service`. Appended to, never replaced. |
-| `breakthrough` | string | What finally worked, on this occasion. Becomes a "Do" rule candidate for skill compilation when the outcome is `succeeded` and the memory has no `lesson`. |
-| `lesson` | string | Optional (v7). The generalisable claim the work taught, written as a rule that holds beyond this incident. Preferred over `breakthrough` as the "Do" rule candidate, under the same outcome gate and with the same weight. |
-| `gotchas` | string | Caveats to watch for. Becomes a "Watch out" rule candidate. |
+| `experience_weight` | float string | The recall multiplier from effort and outcome (below). |
+| `abandoned_approaches` | JSON array | The graveyard. Entries are `{"name", "type", "reason"}`, and `log_abandoned()` adds `"attempted_at"` (ISO 8601 UTC, e.g. `2026-09-15T20:32:56Z`). `type` is one of `library`, `approach`, `tool`, `pattern`, `service`. Always appended to, never replaced. |
+| `breakthrough` | string | What finally worked this time. |
+| `lesson` | string | The general rule the work taught, one that holds beyond this incident. Preferred over `breakthrough` when the skill compiler picks a "Do" rule. |
+| `gotchas` | string | Caveats to watch for. |
 
-The experience weight formula (`compute_experience_weight` in `memory/recall.py`):
+The experience weight:
 
 ```
 base:   succeeded 1.0, pivoted 0.7, abandoned 0.1
 effort: 1 → x1.0, 2 → x1.1, 3 → x1.25, 4 → x1.5, 5 → x1.8
-weight = base * effort   (capped at 2.0; effort never amplifies abandoned outcomes)
+weight = base * effort, capped at 2.0
+an abandoned outcome is always 0.1: effort never amplifies it
 ```
 
-Recording an `abandoned` outcome with `effort_score >= 4` auto-suppresses each abandoned approach name as a topic.
+Recording an `abandoned` outcome with an effort score of 4 or 5 also suppresses each abandoned approach's name as a topic (lowercased, in `topics:suppressed`), and the result lists them under `auto_suppressed`.
 
 ### Lifecycle and cross-references
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `deprioritised_reason` | string | Why the memory was deprioritised. Cleared (set to `""`) on reinstate. |
-| `reinstate_hints` | JSON array of strings | Keywords that mark this deprioritised memory as a reinstate candidate when a recall query matches one. |
-| `contradictions` | JSON array | Cross-links written by contradiction detection. Entries are `{"key", "explanation", "detected_at"}`, appended symmetrically to both memories, deduplicated by key. |
-| `recall_count` | int string | Incremented per recall hit. |
-| `last_recalled` | unix seconds string | Set alongside `recall_count`. |
-| `event_date` | unix seconds string | Optional temporal anchor. When present and a recall query mentions a date, the temporal boost (1.0-1.5x) applies. |
-| `enriched_from` | key string | Present in the search return whitelist for consistency; extracted facts themselves live in the knowledge and preference namespaces, not here. |
-| `licence` / `licence_note` | licence class / string | Redistribution rights (v6.6.1). `own` by default — an episodic memory is a write-up of work done here — but pass `licence=` to `remember()` when the content is someone else's (a pasted document, a vendor page). See [memory types](memory-types.md#common-fields). |
-| `provenance` | provenance class | `concluded` by default — an episodic memory is the agent's write-up of the work. Pass `provenance="asserted"` to `remember()` when the human dictated it, or `"retrieved"` for a pasted external document. |
+| `deprioritised_reason` | string | Why it was deprioritised. Set to `""` on reinstate. |
+| `reinstate_hints` | JSON array of strings | Keywords that make this deprioritised memory a reinstate candidate when a recall query mentions one. |
+| `contradictions` | JSON array | Cross-links from contradiction detection: `{"key", "explanation", "detected_at"}`, written to both memories and de-duplicated by key. |
+| `recall_count` / `last_recalled` | int string / unix seconds string | Recall counters. |
+| `event_date` | unix seconds string | Optional date the memory is about. When a recall query mentions a date near it, the temporal boost (1.0-1.5x) applies. `remember()` doesn't set it; it arrives with imported 6.x records, and extracted facts carry one (see [knowledge](memory-knowledge.md)). |
 
-### Skill eligibility (v6, added by `bless()`)
+### Skill eligibility (added by `bless()`)
 
 | Field | Format | Description |
 |-------|--------|-------------|
-| `blessed` | `"1"` | Marks a single strong lesson as skill-eligible, bypassing the reinforcement threshold (default 2 distinct source memories) at the next `compile_skill()`. Only episodic keys can be blessed. |
+| `blessed` | `"1"` | Makes one strong lesson skill-eligible without waiting for it to recur (the reinforcement gate, default 2 distinct source memories). Only episodic keys can be blessed. |
 | `blessed_at` | unix seconds string | When it was blessed. |
 
-Blessing does not write to any skill; the propose-and-accept gate still applies at compile time.
+Blessing doesn't write a skill. The propose-and-accept gate still applies when you compile.
 
 ## Calling the tools
-
-Every option shown, with its default where one exists.
 
 ```python
 # Store a memory. Only content is required.
 remember(
-    content="Fixed the arm64 build by switching to tonistiigi/binfmt",  # required, max 50KB
-    project="omnimem",              # default None — unscoped
-    tags=["docker", "arm64"],       # default None → stored as []; max 20, 100 chars each
-    namespace="episodic",           # default; also accepts 'project', 'knowledge', 'preference'
-    force=False,                    # default; True skips dedup (cosine 0.92), the
-                                    # contradiction check, and enrichment (raw bypass write)
-    mode="full",                    # default follows INGEST_MODE env var; 'raw' stores verbatim,
-)                                   # 'full' also queues fact extraction via Claude
+    content="Fixed the arm64 build by switching to tonistiigi/binfmt",  # max 50,000 chars
+    project="omnimem",              # default None: unscoped
+    tags=["docker", "arm64"],       # default None, stored as []
+    namespace="episodic",           # default; also 'project', 'knowledge', 'preference'
+    force=False,                    # default; True skips the duplicate check (similarity
+                                    # 0.92), the contradiction check and enrichment
+    mode="full",                    # default INGEST_MODE; 'raw' stores it as written,
+                                    # 'full' also queues fact extraction with Claude
+    licence="own",                  # default depends on the namespace
+    provenance="concluded",         # default depends on the namespace
+)
 
 # Index a long document as chunks sharing one doc_id.
 remember_document(
-    content=long_transcript,        # required, max 50KB
-    chunk_strategy="paragraphs",    # default; also 'turn_pairs' (User:/Assistant: transcripts),
-                                    # 'sentences', 'fixed_tokens'
+    content=long_transcript,        # required, max 50,000 chars
+    chunk_strategy="paragraphs",    # default; also 'turn_pairs', 'sentences', 'fixed_tokens'
     project="omnimem",              # default None
     tags=["meeting"],               # default None; applied to every chunk
-    namespace="episodic",           # default; also 'project' or 'knowledge' (not 'preference')
-    chunk_size=200,                 # words per chunk, fixed_tokens only (default 200)
+    namespace="episodic",           # default; also 'project' or 'knowledge'
+    chunk_size=200,                 # words per chunk, fixed_tokens only
     mode="full",                    # as on remember()
 )
 
 # Attach effort and outcome to an existing memory.
 record_experience(
     key="mem:episodic:01KQ...",     # required
-    effort_score=4,                 # required, 1-5 (1=trivial, 5=battle-hardened)
-    outcome="succeeded",            # required: 'succeeded', 'pivoted', or 'abandoned'
+    effort_score=4,                 # required, 1-5
+    outcome="succeeded",            # required: 'succeeded', 'pivoted' or 'abandoned'
     iterations=3,                   # default 1
-    abandoned_approaches=[          # default None; appended to the graveyard, never replaces
-        {"name": "qemu-user-static", "type": "docker-image",
+    abandoned_approaches=[          # default None; appended, never replaces
+        {"name": "qemu-user-static", "type": "tool",
          "reason": "amd64-only, exec format error on arm64"},
-    ],                              # type: 'library', 'approach', 'tool', 'pattern', 'service'
+    ],
     breakthrough="tonistiigi/binfmt registers handlers on arm64 hosts",  # default None
     gotchas="needs --privileged on first run",                           # default None
-    lesson="check an image's architectures before building on it",     # default None; what transfers
+    lesson="check an image's architectures before building on it",       # default None
 )
 
-# Append one dead end without re-recording the whole experience. All four required.
+# Add one dead end without re-recording the whole experience. All four are required.
 log_abandoned(
     key="mem:episodic:01KQ...",
     name="Alpine base image",
-    type="approach",                # 'library', 'approach', 'tool', 'pattern', or 'service'
-    reason="PyTorch has no musllinux wheels",
+    type="approach",                # 'library', 'approach', 'tool', 'pattern' or 'service'
+    reason="no musl build of the runtime",
 )
 
-# Mark a single strong lesson skill-eligible (bypasses the reinforcement gate).
+# Make one strong lesson skill-eligible.
 bless(memory_key="mem:episodic:01KQ...")   # episodic keys only
 ```
 
-`record_experience(outcome="abandoned", effort_score=4)` (or 5) also auto-suppresses each abandoned approach name as a topic.
-
-## Indexed fields
-
-`idx:episodic` indexes: `vector` (HNSW cosine), `project` (tag), `state` (tag), `tags` (tag), `outcome` (tag), `licence` (tag), `provenance` (tag), `surface_score`, `created_at`, `updated_at`, `effort_score`, `iterations`, `experience_weight`, `recall_count` (numeric).
-
-State and project filters are pushed into FT.SEARCH as tag filters so archived or out-of-project documents don't consume KNN candidate slots. Tag values are interpolated raw after allowlist validation — see the valkey-search gotcha in CLAUDE.md.
+With `mode="full"` (and no `force`), the result says `"enrichment": "queued"` and the enrichment worker picks it up in the background. That needs `ANTHROPIC_API_KEY`; without it nothing is extracted and the memory stays as it was written.
 
 ## How the skill compiler reads this namespace
 
-`gather_domain_pool()` treats lowercased tags as domains. From each active memory in a domain pool it extracts lessons:
+The compiler treats lowercased tags as domains. From each active memory in a domain it takes:
 
-- `lesson` (or `breakthrough` when there is no lesson) + `outcome == succeeded` → **do** lesson
-- `gotchas` → **watch** lesson
-- each `abandoned_approaches` entry → **dont** lesson (grouped by approach name)
-- a blessed memory always contributes: its lesson or breakthrough regardless of outcome, or its bare `content` if it carries no structured lesson fields
+- `lesson` (or `breakthrough` when there's no lesson) on a `succeeded` outcome → a **do** lesson
+- `gotchas` → a **watch** lesson
+- each `abandoned_approaches` entry → a **don't** lesson, grouped by approach name
+- a blessed memory always contributes: its lesson or breakthrough whatever the outcome, or its bare `content` if it has no structured lesson fields
 
-Do/watch lessons cluster by embedding similarity (`SKILL_CLUSTER_THRESHOLD`, default 0.80); a rule needs `min_reinforcement` distinct source memories (default 2) or a blessing to clear the gate.
+Do and watch lessons cluster by embedding similarity (`SKILL_CLUSTER_THRESHOLD`, default 0.80). A rule needs `min_reinforcement` distinct source memories (default 2) or a blessing to make it into the skill. The whole story is in [the skill compiler](skill-compiler.md).

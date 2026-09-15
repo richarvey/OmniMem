@@ -2,209 +2,109 @@
 
 ## What is this?
 
-Self-hosted semantic memory MCP server for Claude Code. Provides persistent memory across sessions via four namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state), knowledge base (RSS articles auto-summarised by Claude Haiku), and preferences (prescriptive rules extracted from conversation, e.g. "always update README after a feature"). v6 adds a fifth, derived namespace: compiled skills (`mem:skill:`) — SKILL.md documents distilled from experience and graveyard memories per domain, gated behind a propose-and-accept write path.
+Self-hosted semantic memory for AI agents, served over MCP. Memories live in five namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state, work-type domains), knowledge (RSS articles and extracted facts), preferences (prescriptive rules pulled from conversation) and compiled skills (SKILL.md documents distilled from experience, written only through a propose-and-accept gate). Every memory carries a `licence` (own, open, restricted, unknown) and a `provenance` (retrieved, concluded, asserted).
 
-v6.6 adds work-type domains on projects: a project declares what kinds of work it contains (`python`, `docker`, `wcag-accessibility`) using the same vocabulary compiled skills use, so `recall(domain_filter="python")` searches every Python project at once.
+**Version**: 7.0.0-dev, on branch `v7.0.x`. OmniMem 7 is a Rust rewrite of the 6.x Python stack (Valkey, FastMCP server, Starlette web UI, RSS worker) as **one binary**: SQLite with exact in-memory vector search, the MCP server, the enrichment worker and RSS scheduler in one process, and a desktop app whose settings panel replaces the web UI. The 6.x Python lives on the `v6.x` branches only.
 
-v6.6.1 adds a `licence` field on every memory: its redistribution rights (`own`, `open`, `restricted`, `unknown`), decided at ingest and never derived from ranking. v6.6.2 adds `provenance` (`retrieved`, `concluded`, `asserted`): who is speaking, so a later session can tell evidence from inference.
+**Stack**: Rust (edition 2024, see `rust-version` in `Cargo.toml`), rusqlite (bundled SQLite), ONNX Runtime via `ort` plus `tokenizers` running all-MiniLM-L6-v2 (384-dim), rmcp over streamable HTTP on axum, minijinja for the panel, tao + wry + tray-icon for the desktop app, reqwest (rustls) for the Anthropic API and feeds, feed-rs, keyring.
 
-v6.7 swaps the embedding backend from sentence-transformers on PyTorch to ONNX Runtime: same vectors, a third of the latency, no PyTorch in the images.
+The working plan and the evidence for each phase is `docs/rust-port-plan.md`; the Mycelium adapter spec is `docs/v7-change-spec.md`. Update the plan's progress table as phases land.
 
-**Version**: 6.7.1
-**Stack**: Python 3.12, FastMCP (SSE transport), Valkey + valkey-search (HNSW vectors), ONNX Runtime + tokenizers running all-MiniLM-L6-v2 (384-dim; sentence-transformers/PyTorch is an optional rollback backend since 6.7), Anthropic API (Claude Haiku for RSS summarisation), Pydantic v2, Docker Compose, APScheduler, feedparser
-
-## Project Structure
+## Workspace
 
 ```
-mcp_server/           # MCP server — FastMCP SSE transport
-  server.py           # Entry point: init store/embedder/lifecycle/pipeline, register tools
-  memory/             # Core engine (shared with web_ui)
-    store.py          # ValkeyStore: connection pool, HNSW vector indexes, CRUD
-    embedder.py       # Singleton Embedder with EMBEDDING_BACKEND switch: onnx (default) or torch (optional rollback)
-    onnx_embedding.py # v6.7 ONNX Runtime + tokenizers engine (pooling from the model's config, dimension/seq-length checks, offline-first fetch, pinned default revision)
-    lifecycle.py      # MemoryState enum, state transitions, topic suppression
-    recall.py         # RecallPipeline: abandoned fast-path → vector search → scoring
-    dedup.py          # Cosine similarity duplicate detection (threshold 0.92)
-    maintenance.py    # Auto-maintenance: dedup + contradiction scan on briefing interval
-    contradiction.py  # Tier 1 heuristic + optional Tier 2 Claude Haiku API
-    skills.py         # v6 skill compiler engine: domain pools, lesson clustering, SKILL.md rendering, diffs
-    skill_compiler.py # Shared propose-and-accept compile flow (used by MCP compile_skill AND the web UI)
-    skill_transfer.py # v6.4 skill export/import: checksummed zip bundles (skill + source memories + influencing feeds), strictly additive import
-    feed_influence.py # v6.5 feed→skill influence: meta:feed:influence mirror of feeds.yml, validation, per-domain feed lookup
-    project_domains.py # v6.6 project work-type domains: vocabulary shared with skills, domain→project resolution (TTL cached), stack/tag-derived suggestions
-    licence.py        # v6.6.1 redistribution rights: four-class vocabulary, identifier alias table (mirrored in rss_worker/ingester.py), namespace defaults
-    provenance.py     # v6.6.2 provenance class: retrieved/concluded/asserted vocabulary, namespace defaults, classify_provenance
-    lineage.py        # Shared engine behind set_licence/set_provenance and the web forms: stamp fields on memories, their sibling chunks and their extracted facts, never bumping updated_at
-    classification.py # classification_fields(): the licence/provenance shape every read surface reports
-    skill_scan.py     # v6.4.1 auto skill scan: time-gated in briefing, proposes drafts (stash only) for cross-project patterns + changed skills
-  tools/              # 30+ MCP tool implementations
-    core.py           # remember, recall, recall_index, recall_detail, deprioritise, archive, forget
-    project.py        # set/get/update/compile project_context, compile_project_domains, list_projects, delete_project
-    experience.py     # record_experience, log_abandoned, warn_if_abandoned
-    briefing.py       # Session-start 5-in-1 aggregation
-    audit.py          # memory_audit, explain_memory, why_did_you_mention
-    backup.py         # dump_to_file, restore_from_file, list_backups
-    contradiction.py  # check_contradictions tool
-    topics.py         # suppress/unsuppress/list_suppressions
-    licence.py        # set_licence: classify memories by key or every article from one feed
-    provenance.py     # set_provenance: reclassify where memories came from
-    skills.py         # compile_skill (propose/write gate), find_skills, get_skill, bless + briefing surfaces
-  tests/              # pytest with in-memory fakes (no Docker needed)
-    conftest.py       # FakeValkeyClient, FakeEmbedder, FakeStore fixtures + web_client
-                      # (TestClient over the real web_ui app; neutralises load_dotenv so
-                      # a production .env further up the tree can't leak into tests)
-
-web_ui/               # Starlette + Jinja2 + htmx dashboard
-  app.py              # ASGI app setup, route mounting
-  deps.py             # Shared init (mirrors server.py pattern)
-  routes/             # 17 route modules (memories, search, projects, skills, feeds, telemetry, metrics, etc.)
-  templates/          # Jinja2 templates with htmx partials
-  static/             # htmx.min.js, style.css
-
-rss_worker/           # Background RSS ingestion
-  worker.py           # APScheduler entry + feeds.yml file watcher
-  ingester.py         # Fetch → strip HTML → summarise → embed → store
-  summariser.py       # Claude Haiku summaries or truncation fallback
-  feeds.yml           # Feed definitions (url, name, topics, optional project label)
-
-claude_config/        # CLAUDE.md template for end-users to copy into their projects
-scripts/              # health_check.sh, restore_backup.sh, embedding_bench.py (ingest/recall benchmark + equivalence check for backend swaps, see docs/embedding-benchmark.md)
+crates/
+  omnimem-core/      Namespaces, keys, record types, validation, licence and provenance vocabularies,
+                     content hash, env (settings read environment first, then the desktop overlay)
+  omnimem-embed/     ONNX embedder: model resolution (local dir, HF cache, pinned download), pooling
+  omnimem-store/     SQLite schema and migrations (PRAGMA user_version), vector matrix, filtered exact k-NN,
+                     kv (what were meta:* keys), enrichment queue, OAuth tables, 6.x backup import/export
+  omnimem-engine/    Recall pipeline, lifecycle, dedup, contradictions, experience, projects and domains,
+                     lineage, chunking, temporal, briefing, maintenance, skills compiler/scan/transfer, enrichment
+  omnimem-llm/       Blocking Anthropic Messages client behind the core LanguageModel trait
+  omnimem-mcp/       The 48 tools (descriptions copied verbatim from 6.x), instructions, streamable HTTP,
+                     bearer auth, the OAuth 2.1 authorisation server (src/oauth/), Host/Origin guards
+  omnimem-rss/       Feed fetch and parse, summary and digest modes, licence gate, scheduler, feed influence
+  omnimem-settings/  The settings panel: axum routes never bound to a socket, minijinja templates and static
+                     files embedded by build.rs, the Configuration page and the SecretStore trait
+  omnimem-app/       What server and desktop share: open the engine, run the services, data folder, instance lock
+  omnimem-desktop/   Tray or menu bar icon, settings window on the omnimem:// scheme with IPC, keychain, start at login
+  omnimem/           The binary: serve, import, export, stats, search, embed, rss, and desktop (default with the feature)
+ci/desktop/          Container with GTK/WebKitGTK/AppIndicator for building and smoke-testing the desktop crate
+claude_config/       CLAUDE.md template and MCP config for end users
+examples/feeds.yml   Sample reading list
+docs/, guides/       User documentation
 ```
 
-## Running Locally
+`omnimem-desktop` is outside the workspace's `default-members`, so plain `cargo build` and `cargo test` need no GUI libraries.
+
+## Running locally
 
 ```bash
-cp .env.example .env   # Edit: set VALKEY_PASSWORD, optionally ANTHROPIC_API_KEY
-docker compose up -d
+cargo run -p omnimem -- serve                   # MCP at http://127.0.0.1:8765/mcp, data in ./data/omnimem.db
+cargo run -p omnimem -- import backup.json      # a 6.x dump_to_file backup, re-embedded
+OMNIMEM_DB=/tmp/x.db cargo run -p omnimem -- stats
 ```
 
-- MCP server: `http://localhost:8765/mcp`
-- Web UI: `http://localhost:8080`
-- Valkey: `localhost:6379`
+Configuration is the 6.x environment variables (see `crates/omnimem-settings/src/configuration.rs` for the catalogue the panel shows). The desktop app reads `omnimem.env` from its data folder and secrets from the OS keychain into `omnimem_core::env`'s overlay at start; `serve` never does. The production 6.x stack on this host holds ports 8080 and 8765, so use another `MCP_PORT` for live checks.
 
-## Running Tests
+## Tests and checks
 
 ```bash
-cd mcp_server && pytest tests/
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+cargo test
+scripts/desktop-check.sh     # desktop crate: clippy, tests and a smoke test under Xvfb, in ci/desktop
 ```
 
-Tests use in-memory fakes (FakeValkeyClient, FakeEmbedder) — no running Valkey required.
+- The dev host runs out of memory on parallel builds: set `CARGO_BUILD_JOBS=2` and run the desktop check on its own, never alongside another cargo job
+- SQLite runs in memory in tests; there are no store fakes, so a fake can't diverge from the real thing
+- Golden fixtures pin byte-level contracts with 6.x: reference vectors (`omnimem-embed/tests/fixtures`), skill bodies (`omnimem-engine/tests/fixtures/skills_golden.json`), the OAuth HTTP surface (`omnimem-mcp/tests/fixtures/oauth_golden.json`). The capture scripts beside them need a `v6.7.x` checkout
+- Tests that need the real embedding model run only when the Hugging Face cache has it
 
-For Docker-based tests: `docker compose -f docker-compose.test.yml up --build`
+## Compatibility contract with 6.x
 
-## Key Architecture Decisions
+Kept exactly: the 48 tool names, parameters, defaults, descriptions and result JSON (including `_compact()` dropping empty values); vectors; recall scoring (floor, weak band, recency, experience weight, temporal boost, reinstate 0.6, fact collapse, ordering); rendered skill bodies byte for byte; backup JSON, skill bundle zips (format v2, reads v1) and `feeds.yml`; every 6.x environment variable except the Valkey, web UI and PyTorch ones.
 
-- **ULIDs** for memory keys (sortable, collision-free)
-- **SSE transport** (stateless, simpler than WebSocket for MCP)
-- **Valkey** over Redis (open source fork)
-- **ONNX Runtime embeddings, PyTorch optional** (v6.7) — `memory/onnx_embedding.py` runs the maintainer-exported `onnx/model.onnx` from the model's HF repo with `onnxruntime` and the Rust `tokenizers`, doing mean pooling + L2 normalisation in numpy. Verified cosine 1.0000 against sentence-transformers on the same texts and identical top-10 on the benchmark corpus (`scripts/embedding_bench.py`); single-text embed ~8 ms vs ~22 ms, load ~0.8 s vs 2.6–7.8 s (torch varied run to run with the disk cache), peak RSS ~300 MB vs ~920 MB. `EMBEDDING_BACKEND=torch` restores the old path (needs `requirements-torch.txt`, not in the images). **The RSS worker image now ships `memory/`** (built from the repo root with `-f rss_worker/Dockerfile`, like web_ui; compose, `build_and_push.sh` and `docker.yml` all changed) and calls `memory.embedder.build_model()` — the same backend switch, dimension check and error messages as the server, probed once at worker boot so a bad config fails at start. That also makes the worker's `_LICENCE_ALIASES` and `_sync_feed_influence` copies removable in a follow-up. The engine reads the model's `1_Pooling/config.json` (mean/cls/max; anything else is refused — a CLS-pooled model like bge mean-pooled would land in a different space from its stored vectors, silently), selects the token output by name and checks it is rank 3, bounds `EMBEDDING_MAX_SEQ_LENGTH` (below 3 falls back to the default, above the graph's `max_position_embeddings` is clamped), looks in the HF cache before touching the network, pins the default model to a known commit (`DEFAULT_MODEL_REVISION`; `EMBEDDING_MODEL_REVISION` overrides), accepts a local directory as `EMBEDDING_MODEL`, and turns a missing ONNX export into an `EmbeddingModelError` that names the torch fallback and the offline pre-fetch. `Embedder.load()` refuses a model whose dimension isn't `VECTOR_DIM`. Images set `HF_HOME=/app/hf-cache` and compose mounts one shared `hf_cache` volume across the three services (all run as uid 1000). Quantised graphs (`EMBEDDING_ONNX_FILE=onnx/model_qint8_arm64.onnx`) are faster but not vector-equivalent: bench and re-embed before switching. `EMBEDDING_MODEL` may be a local directory (air-gapped); the worker's compose entry sets `EMBEDDING_THREADS=1` (`OMP_NUM_THREADS` only ever throttled torch). `test_real_model_matches_reference_vectors` runs the real model only with `OMNIMEM_REAL_EMBED_TESTS=1`
-- **Shared `memory/` package** between MCP server and web UI (no code duplication)
-- **Debian-slim Docker base** — chosen when PyTorch (no musllinux wheels) ruled out Alpine; PyTorch is gone since 6.7 but the base stays, onnxruntime/tokenizers ship manylinux wheels too and nothing is gained by fighting musl
-- **In-memory fakes** for testing (no Docker-in-tests complexity)
-- **Auto-maintenance** on briefing interval — dedup + contradiction scan every N `briefing()` calls per project, tracked by `meta:maintenance:{project}` counter in Valkey (configurable via `AUTO_MAINTENANCE_INTERVAL`, default 10, set to 0 to disable)
-- **Auto skill scan** (v6.4.1) — time-gated in `briefing()` (`meta:skill_scan:last_run`, `SKILL_SCAN_INTERVAL_HOURS` default 24, 0 disables): proposes new skills for domains whose lessons clear the reinforcement gate (cross-project by default, `SKILL_SCAN_CROSS_PROJECT`) and drafts for changed skills (fed the `pending_skill_updates` domains so change detection runs once). Stash-only — the propose-and-accept gate is untouched. Noise gate: `meta:skill_scan:seen:{domain}-{user}` holds the last auto-proposed body sha (volatile-stripped), so an ignored/expired draft is never re-proposed until the compiled output changes; the scan withdraws its own stash when the sha matches. Domains with any live proposal stash (human or auto) are skipped entirely
-- **Project work-type domains** (v6.6) — a project context carries `domains` (`python,docker`), normalised through the *same* `resolve_domain`/`validate_domain` as compiled skills so the two can never become parallel taxonomies. `recall(domain_filter=...)`/`recall_index` resolve domains to a project set and filter on all of them; `project_filter` and `domain_filter` intersect. Two rules the design turns on: (1) **domains route, they never label memories** — a memory doesn't inherit its project's domains, because OmniMem is Python *and* CSS at once and inheritance would surface a CSS gotcha in a Python search; the domain narrows candidate projects and the vector search still decides relevance; (2) **an unmatched domain is always reported** — it degrades to an unscoped search with a leading `domain_filter_notice`, and an empty domain∩project intersection returns nothing rather than falling through to a global search (the pipeline reads an empty project list as "search everything", so the tool layer short-circuits). `migrate_project_domains` seeds from `stack` so an upgrade isn't empty on day one; the field being absent differs from it being an empty string ("considered, nothing derivable"). The skill scan boosts, but never introduces, candidates by project-declared domains
-- **Licence is decided at ingest, reported on recall, and never scored on** (v6.6.1) — every writable namespace carries `licence` ∈ {`own`, `open`, `restricted`, `unknown`} plus an optional `licence_note`, indexed as a TAG on all four writable indexes and in every `_NAMESPACE_RETURN_FIELDS` entry from day one (issue #20's whitelist trap). Writers stamp it: `remember`/`remember_document` (param, default `own` for conversation namespaces and `unknown` for knowledge), project context (`own`), the RSS ingester (what the feed's `licence:` declares, `unknown` if nothing), enrichment (a fact inherits its source's licence — a derivative has exactly its source's rights). `migrate_licence` backfills with honest unknowns: conversation namespaces `own`, RSS articles and untraceable knowledge `unknown`, extracted facts inherit. Recall appends a `licence_notice` listing unknown results so the human classifies them when the content is in front of them; `set_licence` and the web detail form both go through `memory/licence.py classify_memories`, which cascades to extracted facts (by `enriched_from` and `source_doc_id`), blanks a stale note, and deliberately does **not** bump `updated_at` — the skill compiler reads that as "source changed". Imported memories (`imported_at`) backfill as `unknown`, skill import never keeps a bundled `own` (open/restricted travel, the rest is unknown), and `migrate_licence` reruns after a backup restore. The identifier alias table (`cc-by-4.0` → `open` + note) lives in `memory/licence.py` and is copied verbatim into `rss_worker/ingester.py` because the worker image doesn't ship the memory package — `tests/test_licence.py` asserts the two are equal. Unrecognised identifiers are rejected on human-input paths and logged-then-`unknown` in the worker. `RSS_REQUIRE_LICENCE=true` turns an undeclared feed into a refusal before any fetch. Two things this field is not: (1) not a disclosure scope — who may *see* a memory is a different axis with different values, and a public article can be visible to all and still non-redistributable; (2) not a ranking input — landing the field and changing what recall does with it are separate releases so a benchmark move can be attributed. Skills carry no licence: a roll-up across sources is containment logic and belongs with the v7 redaction path, not a bespoke mechanism here
-- **Provenance says who is speaking, and is never scored on** (v6.6.2) — `provenance` ∈ {`retrieved`, `concluded`, `asserted`} on every writable namespace, TAG-indexed and in every return whitelist. Writers: `remember`/`remember_document` (param; defaults `concluded` episodic and project, `asserted` preference, `retrieved` knowledge), `set_project_context` (`asserted`; a first auto-saved compiled draft is `concluded`, a recompile carries the existing value forward), the ingester (`retrieved`, a constant mirrored in the worker), enrichment (a fact inherits its source's class — extraction is restatement, not reasoning). There is no "unknown" provenance: the vocabulary is three values, kept in one constant (`PROVENANCE_CLASSES`) because the v7 Mycelium `ClusterSummary.provenance_class` must use the same values. `migrate_provenance` backfills articles `retrieved`, preferences and context entries `asserted`, and everything else — every episodic memory included — `concluded`. That last default is the deliberate uncomfortable choice from the 6.6.x roadmap decision: an episodic memory is the agent's write-up of real work, so `concluded` is honest about who wrote it and unfair to the most valuable material in the store; `set_provenance(..., "asserted")` is how a human vouches for one. Both `set_provenance` and `set_licence` (and the web forms) go through `memory/lineage.py stamp_lineage`, which treats a chunked document as one unit (siblings by `doc_id`, facts by `enriched_from`/`source_doc_id`) and skips the fact scan for knowledge-only calls; every read surface reports the fields via `memory/classification.py classification_fields`; `licence_for_write`/`provenance_for_write` are the one place the namespace defaults are applied (MCP tools and the web create form both call them), and `effective_licence`/`effective_provenance` resolve a missing value at read time so reads never depend on backfill timing
-- **`domains` is stored comma-separated, not JSON** — a TAG field tokenises on commas, so the JSON-array form used by `tags`/`topics` indexes as garbage tokens (`["python`, `"docker"]`) and `@tags:{python}` matches nothing. Nothing filters on those fields, which is why it has never bitten; `domains` is meant to be filtered, so it uses the format the index actually reads. Validation guarantees a domain can't contain a comma
-- **Never call valkey-py's `client.ft(name).dropindex()`** — use `execute_command("FT.DROPINDEX", name)`. `dropindex()` passes its delete-documents flag positionally even when False, so the wire command is `FT.DROPINDEX <index> ""` (three args). RediSearch tolerates the trailing empty string, valkey-search rejects it with "wrong number of arguments". This silently broke `_migrate_indexes()` from its introduction until 6.6.0: the error was caught by the same `except valkey.ResponseError` that handles a missing index, so every upgraded instance kept a stale index and the logs said nothing. `reindex_namespace()` always used the raw command and was unaffected. The test fake now *raises* on `dropindex()` so nothing can reach for it again
-- **Index migration** on startup — `_migrate_indexes()` compares field count against definitions, drops stale indexes (data-safe) so they get recreated with new fields
-- **Per-memory recall counters** — `recall_count` and `last_recalled` updated via pipeline on each recall; `/telemetry` dashboard and `/metrics` Prometheus endpoint expose these
-- **RSS articles carry a project label** (v6.1.1) — default `RSS`, per-feed override via `project:` in feeds.yml, backfilled by a startup migration (`memory/migrations.py`), so ingested articles stay separable from conversation-sourced knowledge. Articles are identified by `feed_name`; the label must satisfy the project-name charset or the ingester falls back to `RSS`. It does not create a pseudo-project: projects pages/tools only count `mem:project:*` keys
-- **Skills are whole document objects, never chunked** (v6) — canonical body lives in the `body` hash field at `mem:skill:gen:{domain}-{user}`; `idx:skill` embeds discovery metadata only (name + description + domain) and `body` is deliberately absent from `_NAMESPACE_RETURN_FIELDS["skill"]`. `get_skill` returns it intact by ID
-- **Skill writes are gated** (v6) — `compile_skill(mode="propose")` stashes the rendered draft in `meta:skill:proposal:{domain}-{user}` (TTL `SKILL_PROPOSAL_TTL_SECONDS`); `mode="write"` commits that stashed body verbatim (no recompile at write time), refuses if the stored skill's sha changed since the proposal, and refuses anything not flagged `generated: true`. Experience/graveyard writes stay ungated — that asymmetry is the design
-- **Promoted knowledge feeds skills, ordinary knowledge doesn't** (v6.2) — `promote_knowledge(key, domain=...)` sets `skill_domains` + `promoted_at` on the article (and clears expiry); `gather_promoted_knowledge()` pools those into `compile_skill`, rendered as `ref` rules in a separate Reference section — one summary rule per article, or one stance-prefixed rule per item when the article was promoted with extracted `rules=[{kind, text}, ...]` (stored in `skill_rules` on the article; extraction happens at promotion under human review, never at compile, so rendering stays deterministic). Promotion substitutes for reinforcement (same logic as `bless`), so refs bypass the gate but never count toward it. The briefing's `knowledge_watch()` (tools/skills.py) is the awareness layer: recent unpromoted articles vs skill discovery vectors (both read via `get_vectors_multi`, no re-embedding), with the tier-1 negation heuristic upgrading matches to `possible_contradiction`. Tunables: `SKILL_KNOWLEDGE_WATCH_DAYS` (14, 0 disables), `SKILL_KNOWLEDGE_WATCH_THRESHOLD` (0.35)
-- **Skill compilation is deterministic** — same source memories render a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps into `render_skill_md()` or every recompile will propose noise diffs
-- **RSS feeds can influence skills** (v6.5) — a feed's `skills: {domain: score}` mapping (1-10, web UI feed editor or feeds.yml) makes recompiles of that skill pull the feed's latest articles into a Feed watch section: score = number of most-recent articles contributed, total capped by `SKILL_FEED_MAX_ARTICLES` (25, 0 disables). Config is mirrored into the `meta:feed:influence` Valkey hash by the web UI on every feed save AND by the worker each ingest cycle (`rss_worker/ingester.py _sync_feed_influence` is a deliberate copy of `memory/feed_influence.py` — the worker image doesn't ship the memory package; keep the formats in step). Feed rules are kind `feed`, bypass the reinforcement gate like refs, never bootstrap a skill (no pool + no refs is still `no_candidates`), and their churn is always low-risk in `summarise_rule_changes`. Skill bundles are format v2: `feeds.json` carries influencing feeds; import merges them additively by URL (existing feeds at most gain a missing influence entry)
+Deliberately gone: Valkey, the web UI and `/metrics` over HTTP, SSE transport, `EMBEDDING_BACKEND=torch`. Over HTTP the binary serves `/mcp`, the OAuth routes and `/healthz`, nothing else.
 
-## Validation Constraints
+## Design rules that still bind
 
-- Project names: alphanumeric, hyphens, underscores, dots, spaces only
-- Content: max 50KB per memory
-- Tags: max 20 per memory, each ≤100 chars
-- Project domains: max 20 per project, same charset as skill domains, aliases resolve via `DOMAIN_ALIASES`
-- Licence: one of `own`, `open`, `restricted`, `unknown`, or an identifier in `LICENCE_ALIASES`; `licence_note` ≤200 chars; `set_licence` takes ≤200 keys per call
-- Provenance: one of `retrieved`, `concluded`, `asserted`, or an alias in `PROVENANCE_ALIASES`; `set_provenance` takes ≤200 keys per call
-- Namespaces: `episodic`, `project`, `knowledge`, or `preference` for `remember()`; `skill` exists as a search namespace but is only writable through the `compile_skill` gate
-- Key prefixes: `mem:episodic:`, `mem:project:`, `mem:knowledge:`, `mem:preference:`, `mem:skill:`
-- Skill domains: normalised to lowercase kebab-case, 1-64 chars of `[a-z0-9._-]`; aliases (`py`→`python` etc) resolve in `memory/skills.py DOMAIN_ALIASES`
-
-## Docker Services
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| `valkey` | 6379 (internal) | Vector DB + search |
-| `mcp_server` | 8765 | MCP SSE transport |
-| `rss_worker` | — | Background feed ingestion |
-| `web_ui` | 8080 | Web dashboard + `/metrics` Prometheus endpoint |
-
-Volumes: `valkey_data` (persistent DB), `./backups` (shared), `./rss_worker/feeds.yml` (shared config)
-
-## Recall Pipeline (how scoring works)
-
-1. Abandoned fast-path: keyword scan on `abandoned_approaches` (no embedding needed; parsed entries cached for `ABANDONED_CACHE_TTL_SECONDS`, default 60, invalidated on experience/forget/restore writes)
-2. Vector search: embed query, search `max(20, top_k)` candidates per namespace (min 50 under a project filter, widening by 10 per extra project up to 100). State and project filters are pushed into FT.SEARCH as tag filters (episodic, preference, knowledge) so archived/out-of-project docs don't consume candidate slots; Python-side filters remain as the safety net. `project_filter` takes a list since v6.6 and composes with clause-level OR — never in-brace alternation — and one unsafe value drops push-down for the whole clause rather than filtering on part of the set
-3. Apply multipliers in order:
-   - Surface score (lifecycle state: active 1.0x, deprioritised 0.2x, archived 0.0x)
-   - Recency decay (age penalty after `RECENCY_DECAY_DAYS`, default 90)
-   - Experience weight (effort × outcome: succeeded 1.0x–1.8x, pivoted 0.7x, abandoned 0.1x)
-   - Temporal boost (1.0–1.5x when the query mentions a date and the memory has a close `event_date`; applied in both the main loop and query-expansion variants)
-4. Merge results from all namespaces, dedupe by (key, result type), re-rank by adjusted_score
-5. Select top_k, suppressing an extracted fact when its `enriched_from` source memory already made the cut (verbatim carries more context — issue #20)
-6. Log recall event and increment per-memory `recall_count` + `last_recalled` counters
-
-**Enriched facts** (issue #20): background extraction routes facts to the `knowledge` namespace (preferences to `preference`) with `surface_score` 0.5 so verbatim chunks outrank their own facts, `enriched_from` linking back to the source, and an `event_date` fallback chain (fact's own date → source `event_date` → source `created_at`) so temporal queries can find them.
+- **Skill compilation is deterministic**: the same sources render a byte-identical body except the `compiled_at` line. No randomness, map-order dependence or extra timestamps in rendering, or every recompile proposes a noise diff. The skill banner still says "(Valkey)" until cut-over for the same reason
+- **Skill writes are gated**: `compile_skill(mode="propose")` stashes the draft; `mode="write"` commits that stash verbatim and refuses if the stored skill changed. Experience and graveyard writes stay ungated; that asymmetry is the design
+- **Domains route, they never label memories**: a project's domains narrow which projects a recall searches; memories don't inherit them. An unmatched domain is always reported, and an empty domain and project intersection returns nothing rather than searching everything
+- **Licence and provenance are decided at write time and never scored on**. A fact inherits its source's licence and provenance. Reclassifying goes through the lineage stamp, cascades to chunks and extracted facts, and never bumps `updated_at` (the skill compiler reads that as "source changed")
+- **Promotion and feed influence feed skills; ordinary knowledge doesn't.** Refs and feed rules bypass the reinforcement gate but never count towards it or bootstrap a skill
+- **Settings are read through `omnimem_core::env`**, never `std::env::var` directly, and nothing writes to the process environment (not sound once the keychain has started threads)
+- **The fail-closed rule**: a non-loopback `MCP_HOST` needs `MCP_AUTH_TOKEN` or OAuth; OAuth switched on but incomplete refuses to start
+- **OAuth**: refresh tokens rotate with a grace window (`OAUTH_REFRESH_GRACE_SECONDS`) in which the old token replays the same successor pair, which stops claude.ai's concurrent refreshes being signed out. Codes and tokens are stored as SHA-256 hashes; a code is consumed and a token rotated inside one `Store::with_oauth` transaction
 
 ## Gotchas
 
-- **valkey-search FT.SEARCH tag filters diverge from the RediSearch docs** (verified live): raw tag values match — including spaces, dots and hyphens (`@project:{omni mem}` works as-is) — while backslash-escaped or quoted values match NOTHING. In-brace alternation `{a|b}` is also broken; use clause-level OR: `(@state:{a} | @state:{b})`. Interpolate values raw and only after allowlist validation (`_TAG_VALUE_SAFE_RE` in recall.py). `store.search()` retries unfiltered when a filtered query errors, so a bad filter degrades rather than returning [].
-- **Stored vectors are readable via `store.get_vectors_multi(keys)`** — a second binary-safe client (decode_responses=False) reads the `vector` field the main client can't. Dedup/maintenance/check_contradictions reuse stored embeddings instead of re-embedding namespaces; fall back to `embed_batch` only for entries whose vector is missing.
-- **Batch reads use `store.get_fields_multi(keys, fields)`** for list/scan/aggregate views — one pipelined HMGET per key, only the named fields, no vector payload. `get_multi` (two round trips, all text fields) is for when you genuinely need the whole record. When adding a field to a list/telemetry/audit view, remember to add it to that view's projection tuple or it will silently read as `None`.
-- **The object returned by `load_refresh_token` must expose `expires_at`** (absolute unix seconds), not just `expires_in`. The MCP SDK bundled with FastMCP 3.x reads `refresh_token.expires_at` in its token handler; without it every refresh raises `AttributeError` → 500 → the client (desktop app, claude.ai) can't get a token and every subsequent `/mcp` request 401s. `_StoredToken` stores `created_at` + `expires_in` and exposes `expires_at` as a computed property (`created_at + expires_in`). Storage already drops expired refresh tokens in `load_refresh`, so any token reaching the handler is live. Fixed in v5.5.2.
-- **OAuth refresh uses a rotation grace window**, not strict single-use. `exchange_refresh_token` retires the old token by re-saving it with a `rotated_to` marker and a short TTL (`OAUTH_REFRESH_GRACE_SECONDS`); replays inside the window return the same successor pair. This is what stops claude.ai's concurrent refreshes from racing to `invalid_grant`. Any change to token storage must round-trip `rotated_to` (see `_serialise_stored_token`).
-- **Valkey runs with AOF** (`--appendonly yes`) so OAuth tokens survive restarts; Compose refuses to start with an empty `VALKEY_PASSWORD`.
-- **FastMCP 3.x guards the Host *and* Origin headers** (`HostOriginGuardMiddleware`, added in the 3.x upgrade). Two distinct failures behind a reverse proxy / tunnel (Traefik, Caddy, Tailscale funnel), both easy to misread as OAuth breakage:
-  - **`421 Misdirected Request`** — the `Host` isn't in the allowlist, which defaults to just localhost (`127.0.0.1`, `localhost`, `::1`) plus the bind host. The public hostname isn't on it, so **every** request 421s, including the `/.well-known/*` OAuth discovery endpoints. Local `curl` keeps working because `localhost` is allowed, so it's easy to misdiagnose. Symptom: `curl https://host/mcp` returns `421` where it used to return `401`.
-  - **`403 Forbidden Origin`** — hits the browser login POST to `/oauth/login` after Host is fixed. The proxy usually terminates TLS and forwards over http, so the ASGI scope scheme is `http` and FastMCP's derived origin is `http://host`, while the browser sends `Origin: https://host`. Scheme mismatch → 403. Fixing Host alone is not enough; the https origin must be trusted too.
+- **WebKitGTK needs wry's `linux-body` feature** (WebKitGTK 2.40+) or the custom scheme gets empty POST bodies, and it doesn't follow redirects from a custom scheme, so the panel answers a form with a page that replaces itself (`see_other`) rather than a 303
+- **Webview downloads are unreliable** (WebKitGTK saves silently, macOS won't report), so the panel writes exports and backups into the Downloads folder itself and says where
+- **The panel is never bound to a socket**: `Panel::handle` runs axum routes in-process for the window's `omnimem://` handler. Don't add HTTP routes for it
+- **GNOME shows no tray icon without the AppIndicator extension**; the app opens its window instead
+- **Numbers rendered where 6.x output is compared** are formatted to match Python (`str(float)` and friends), not Rust's defaults
 
-  `server.py` fixes both automatically: it derives the hostname and the full `scheme://host[:port]` origin from `OAUTH_BASE_URL` / `MCP_PUBLIC_URL` (plus optional comma-separated `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`) and writes `fastmcp.settings.http_allowed_hosts` and `http_allowed_origins` before `mcp.run()`. The underlying FastMCP knobs are `FASTMCP_HTTP_ALLOWED_HOSTS` / `FASTMCP_HTTP_ALLOWED_ORIGINS` — both pydantic `list[str]`, so values must be **JSON arrays** (`["mcp.example.com"]`, `["https://mcp.example.com"]`); a bare string fails to parse.
-- **PyTorch was the Alpine blocker and most of the image** — it only publishes manylinux (glibc) wheels, and the old ~2.2GB image was mostly PyTorch. Gone since 6.7 (ONNX Runtime backend); still true for anyone setting `EMBEDDING_BACKEND=torch`. Alpine with a gcompat shim also failed (pip rejects at download/hash verification).
-- **inotify doesn't work for Docker bind mounts** — mtime polling (10s interval, configurable via `FEEDS_WATCH_INTERVAL`) is more portable. The RSS worker uses this for feeds.yml change detection.
-- **Projects without `set_project_context()`** only exist as ULID memories — the web UI detail view won't work for them until a proper context entry is created. Template conditionally disables links for these.
-- **RSS summariser fallback** — Haiku API calls retry up to 2 times with backoff. Fallback truncation is 800 chars (was 300, bumped in v0.2.2).
+## Validation constraints
 
-## Key Breakthroughs (from experience)
-
-- `remember(namespace="project")` creates ULID keys with "project" field but not "project_name" — fixed with startup migration + dedup logic in list functions
-- mtime polling over inotify/watchdog for Docker bind mount compatibility; shared feeds.yml via host path mount to both containers
-- htmx endpoints must return **partials**, not full page templates — extract into `partials/` and use `{% include %}` in the main template
-- Uploading feeds.yml just writes the file and the worker picks up the change automatically via mtime watcher, no inter-process signalling needed
-- `table-layout:fixed` with percentage column widths + `white-space:nowrap` on name cell + split date into two spans for responsive tables
+- Project names: alphanumeric, hyphens, underscores, dots, spaces
+- Content: max 50 KB per memory; tags: max 20, each 100 characters or fewer
+- Project domains: max 20, same charset as skill domains, aliases resolve
+- Skill domains: lowercase kebab-case, 1 to 64 characters of `[a-z0-9._-]`
+- `set_licence` and `set_provenance` take at most 200 keys per call
+- Key prefixes: `mem:episodic:`, `mem:project:`, `mem:knowledge:`, `mem:preference:`, `mem:skill:`
 
 ## Committing
 
-Commit after each meaningful section of work for easy rollback. The repo is hosted on a self-hosted Forgejo instance at `code.squarecows.com` (owner `ric`) — push over git (SSH on port 222). The connected Forgejo MCP is pointed at `code.squarecows.com`, so its repo/action tools (PRs, releases, `list_action_runners_jobs`, etc.) operate directly on this repo — use them for PRs and repo operations.
+Commit after each meaningful piece of work. The repo lives on Forgejo at `code.squarecows.com` (owner `ric`), pushed over SSH on port 222; the Forgejo MCP points at it for PRs, releases and CI jobs.
 
-**Branch policy**: version lines (v6, v7, ...) are developed AND released from their own branch — cut tags and releases on the version branch. Never merge a version branch into main unless explicitly asked; main only moves when Ric says so.
+**Branch policy**: version lines are developed and released from their own branch (`v7.0.x` here). Cut tags and releases on the version branch. Never merge a version branch into `main` unless Ric asks.
 
-## Web UI Notes
+## Writing style
 
-- htmx endpoints must return **partials**, not full page templates
-- **Every data table uses `table-layout: fixed` with percentage widths summing to exactly 100%** — the only method that cannot overflow the viewport. Long content is handled inside the cell (ellipsis via `content-cell`, or `overflow-wrap`). Never switch a table to `table-layout: auto` in media queries, never put `display:flex` on a `<td>` (it detaches the cell from table layout so its column width stops applying), and when adding a column, rebalance the percentages — the old ones still sum to 100% and the new column gets no room. `.content` keeps `min-width: 0` so long unbroken strings can't widen the page
-- **Fonts are self-hosted**: Ubuntu + Ubuntu Mono woff2 files live in `web_ui/static/fonts/` with `@font-face` rules at the top of `style.css` — never link out to Google Fonts, the UI must work offline. Monospace elements use `var(--font-mono)`
-- **Accent colour is split for WCAG AA**: the palette is brand orange (`--accent-strong` #ff8e01 for solid fills, always paired with `--on-accent` navy text). `--accent` is for borders and boundaries, `--accent-text` for accent-coloured text (#ff8e01 on dark at 8.35:1, #9a5a00 on paper at 5.1:1), and `--accent-soft` is the translucent wash — use the token rather than hardcoding an rgba, or a theme change leaves your fill behind
-- **The projects table is six columns** since v6.6 added Domains — Name, Domains, Description, Current State, Updated, Actions, widths summing to exactly 100%. Domain pills wrap inside their cell and kebab-case names break at hyphens
-- **Dashboard stat cards are `<a class="stat-card">`** — whole-card links, styled via `a.stat-card` so the plain `div.stat-card` on telemetry/experience/token pages is unaffected
-- Footers are full-width (not inside sidebar/container)
-- Auth is a single `AuthMiddleware` (web_ui/auth.py): session login turns on automatically when `OAUTH_ADMIN_USER` + `OAUTH_ADMIN_PASSWORD` are set (`WEB_UI_LOGIN_ENABLED=false` opts out), reusing the OAuth credentials with the same constant-time compare and per-IP rate limit knobs. Sessions are opaque tokens in Valkey (`meta:webui:session:{token}`, TTL `WEB_UI_SESSION_HOURS`, default 168) behind an HttpOnly `omnimem_session` cookie; `/logout` deletes the token server-side. `WEB_UI_AUTH_TOKEN` bearer auth is accepted alongside for scripts. `/metrics`, `/static/` and `/login` are exempt; unauthenticated htmx requests get 401 + `HX-Redirect` so partials never swap in the login page
-- Sidebar is grouped: Memory (memories, projects, preferences, experience, graveyard), Skills, Management (duplicates, contradictions, suppressions), Knowledge Management (articles, learned knowledge, RSS feeds), System Management (telemetry, backups). Preferences, Articles, and Learned Knowledge are filtered `/memories` views — `memories_list` maps namespace + `source` (`rss` = has `feed_name`, `learned` = doesn't) to `current_page` so the right sidebar entry highlights
-- Memory list rows carry Deprioritise/Delete buttons posting to `/lifecycle/*` with a `next` field for the return redirect — same-site paths only (see `_redirect_target`)
-- `/skills` pages allow **create, delete, export, and import — never edit**. Export (`/skills/export/{key}`) bundles the skill plus its source memories into a checksummed zip (`memory/skill_transfer.py`); import validates the upload, stashes it under a one-shot token (`meta:skill:import:{token}`, TTL 30 min), previews the plan in the modal, and only writes on confirm. Import is strictly additive: existing keys are never overwritten, vectors are re-embedded locally, and `recall_count`/`last_recalled` never travel. The New Skill modal runs the same propose-and-accept gate as MCP (`memory/skill_compiler.py compile_skill_flow` — shared so the two paths can't drift): compile a draft, review it in the modal, accept commits it. It refuses domains whose skill already exists (recompiles stay on the MCP flow, which carries the diff review). Delete asks for confirmation; the source memories survive, so recompiling the domain can recreate the skill. The UI links each rule and the source manifest back to `/memory/{key}` because the raw memories are what you change
-- The dashboard stats cache payload must carry the `skills` key and recent entries must carry `updated_date` — `_load_cached_stats` treats older shapes as stale and recomputes. If you add fields the dashboard template requires, extend that shape check or upgrades will KeyError until the TTL expires
-- Skills count into telemetry/metrics via the shared `recall_count`/`last_recalled` counters (`get_skill` bumps them); telemetry substitutes name + description for their missing `content` field and links them to `/skills/...`
-
-## Writing Style
-
-- British English spelling (colour, summarised, centre)
-- Conversational, humanised tone — no em dashes, no marketing fluff
+- British English (colour, summarised, centre)
+- Conversational and human, no em dashes, no marketing fluff
+- Docs and guides in Ric's own voice (his published articles are the reference), lighter on reference pages
 - Technical but accessible, with concrete numbers where possible

@@ -1,63 +1,63 @@
 # Setting Up OmniMem on Linux with Tailscale Funnel
 
-This guide covers deploying OmniMem on any Linux server and using Tailscale Funnel to expose the MCP server over HTTPS — no domain name, no port forwarding, no firewall rules. This is the easiest way to connect OmniMem to cloud services like claude.ai that need a publicly reachable HTTPS endpoint with OAuth 2.1 authentication.
+This is the easy route to connecting OmniMem to claude.ai and other OAuth clients that need a public HTTPS address. Tailscale Funnel gives you one with no domain, no port forwarding, no firewall rules and no certificates to renew. It works from a cloud VM, a home server behind NAT, or a Raspberry Pi under your desk.
+
+The plan: install the OmniMem `.deb`, switch on OAuth, and point a Funnel at it.
 
 ---
 
 ## Why Tailscale Funnel?
 
-Tailscale Funnel gives you a stable `https://your-machine.tailnet-name.ts.net` URL that routes traffic to a local port. It handles TLS termination automatically and works from behind NAT, on home networks, cloud VMs, or a Raspberry Pi under your desk. No DNS configuration, no Let's Encrypt renewal, no reverse proxy to manage.
+Funnel gives you a stable `https://your-machine.tailnet-name.ts.net` address that routes to a local port. Tailscale terminates TLS for you, so traffic arrives at OmniMem over plain http on localhost.
 
-OmniMem v5.5.1+ has explicit support for Tailscale Funnel, with fixes for the FastMCP host and origin guards that previously broke tunnel setups.
-
----
-
-## Prerequisites
-
-- A Linux machine (Ubuntu 22.04/24.04, Debian 12, Fedora, Arch — anything that runs Docker)
-- At least 4 GB RAM (2 GB works with swap — see troubleshooting)
-- A Tailscale account (free tier is fine) — [tailscale.com](https://tailscale.com)
-- An Anthropic API key (optional, for AI-powered features)
+OmniMem is happy with that. It trusts the host and origin of `OAUTH_BASE_URL`, and it accepts a browser origin matching its own host whatever the scheme, so the login page isn't refused just because TLS stopped at Tailscale.
 
 ---
 
-## Step 1 — Install Docker
+## What you need
+
+- A Linux machine running Debian, Ubuntu, Raspberry Pi OS (64-bit), Fedora or similar
+- A couple of GB of RAM. OmniMem uses a few hundred MB, mostly the embedding model
+- A Tailscale account; the free tier is fine ([tailscale.com](https://tailscale.com))
+- An Anthropic API key if you want the Claude-powered extras (optional)
+
+---
+
+## Step 1: Install OmniMem
+
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
+
+Download the package for your machine from the [releases page](https://code.squarecows.com/ric/omnimem/releases). On Debian, Ubuntu or Raspberry Pi OS:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+sudo apt install ./omnimem_<version>_amd64.deb     # or _arm64.deb
 ```
 
-Log out and back in, then verify:
+On Fedora and friends:
 
 ```bash
-docker --version
-docker compose version
+sudo dnf install ./omnimem-<version>.x86_64.rpm    # or .aarch64.rpm
 ```
+
+You get a systemd service (`omnimem.service`, running `omnimem serve` as the `omnimem` user), configuration in `/etc/omnimem/omnimem.env`, and data in `/var/lib/omnimem`.
+
+Don't start it yet, it needs the Tailscale address first.
 
 ---
 
-## Step 2 — Install Tailscale
+## Step 2: Install Tailscale
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-```
-
-Start Tailscale and authenticate:
-
-```bash
 sudo tailscale up
 ```
 
-This opens a URL in your terminal — visit it to log in and add the machine to your tailnet.
-
-Verify it's connected:
+`tailscale up` prints a URL; open it to log in and add the machine to your tailnet. Check it worked:
 
 ```bash
 tailscale status
 ```
-
-You should see your machine listed with a `100.x.x.x` IP address and a hostname like `your-machine.tailnet-name.ts.net`.
 
 ### Note your Tailscale hostname
 
@@ -65,13 +65,13 @@ You should see your machine listed with a `100.x.x.x` IP address and a hostname 
 tailscale status --self --json | jq -r '.Self.DNSName' | sed 's/\.$//'
 ```
 
-This gives you something like `my-server.tail12345.ts.net`. You'll need this for the OAuth configuration.
+Something like `my-server.tail12345.ts.net`. You'll need it in step 4.
 
 ---
 
-## Step 3 — Enable Tailscale Funnel
+## Step 3: Enable Funnel
 
-Funnel needs to be enabled in your tailnet's ACL policy. Go to the Tailscale admin console at [login.tailscale.com/admin/acls](https://login.tailscale.com/admin/acls) and make sure your ACL includes a `nodeAttrs` entry allowing Funnel:
+Funnel has to be allowed in your tailnet policy. In the admin console at [login.tailscale.com/admin/acls](https://login.tailscale.com/admin/acls), make sure there's a `nodeAttrs` entry like this:
 
 ```json
 {
@@ -84,82 +84,26 @@ Funnel needs to be enabled in your tailnet's ACL policy. Go to the Tailscale adm
 }
 ```
 
-This allows all members of your tailnet to use Funnel. You can restrict it to specific nodes if you prefer.
+That lets every member of your tailnet use Funnel. Narrow the target if you prefer.
 
-Then expose port 8765 (the MCP server) via Funnel:
-
-```bash
-sudo tailscale funnel 8765
-```
-
-Verify Funnel is serving:
-
-```bash
-tailscale funnel status
-```
-
-You should see output showing that `https://your-machine.tailnet-name.ts.net` is forwarding to `127.0.0.1:8765`.
-
-> **Important:** Tailscale Funnel routes HTTPS traffic on port 443 to your local port. The public URL is `https://your-machine.tailnet-name.ts.net` (no port number). TLS is terminated by Tailscale before the traffic reaches OmniMem.
-
-To make Funnel persist across reboots, use the background mode:
+Then point Funnel at OmniMem's port, in the background so it survives reboots:
 
 ```bash
 sudo tailscale funnel --bg 8765
+tailscale funnel status
 ```
 
-### Optional — Also expose the web UI
-
-If you want the web dashboard accessible via Tailscale (without Funnel, so only devices on your tailnet can reach it):
-
-```bash
-sudo tailscale serve --bg 8080
-```
-
-This makes the web UI available at `https://your-machine.tailnet-name.ts.net:8080` to your tailnet devices only — not to the public internet.
+You should see `https://your-machine.tailnet-name.ts.net` forwarding to `127.0.0.1:8765`. The public address has no port number; Funnel serves it on 443.
 
 ---
 
-## Step 4 — Clone OmniMem
+## Step 4: Configure OmniMem
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git
-cd omnimem
+sudo nano /etc/omnimem/omnimem.env
 ```
 
----
-
-## Step 5 — Configure the environment
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-### Core settings
-
-```bash
-VALKEY_PASSWORD=generate-a-strong-password-here
-ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
-```
-
-Generate a strong Valkey password:
-
-```bash
-openssl rand -hex 32
-```
-
-### Transport
-
-Set the MCP server to use Streamable HTTP (required for claude.ai):
-
-```bash
-MCP_TRANSPORT=http
-```
-
-### OAuth 2.1 — required for claude.ai
-
-claude.ai connects to remote MCP servers using OAuth 2.1. OmniMem has a built-in OAuth authorisation server. Enable it:
+### OAuth, for claude.ai
 
 ```bash
 OAUTH_ENABLED=true
@@ -168,174 +112,103 @@ OAUTH_ADMIN_USER=admin
 OAUTH_ADMIN_PASSWORD=pick-a-strong-password-here
 ```
 
-Replace `your-machine.tailnet-name.ts.net` with your actual Tailscale hostname from step 2.
+Use your real Tailscale hostname from step 2, with no trailing slash and no port.
 
-The `OAUTH_BASE_URL` tells OmniMem what its externally-reachable URL is. The server uses this to configure the FastMCP host and origin guards correctly — this is the fix from v5.5.1 that makes tunnels work.
+### An access token, for everything else
 
-Optional OAuth tuning:
-
-```bash
-# OAUTH_REFRESH_MAX_DAYS=30          # How long a refresh token chain lasts before re-login
-# OAUTH_REFRESH_GRACE_SECONDS=120    # Grace period for concurrent refresh token rotation
-# OAUTH_LOGIN_MAX_ATTEMPTS=10        # Brute-force protection: failed logins per IP
-# OAUTH_LOGIN_WINDOW_SECONDS=900     # before the login form is blocked for the window
-```
-
-### Bearer token auth for the web UI
-
-Since the MCP endpoint uses OAuth, you only need a bearer token for the web dashboard:
+Claude Code, Cursor and the other local agents are simpler with a token:
 
 ```bash
-WEB_UI_AUTH_TOKEN=generate-another-random-token
+MCP_AUTH_TOKEN=paste-a-long-random-token-here
 ```
 
-### Port binding
+Generate one with `openssl rand -hex 32`. `/mcp` accepts the token or an OAuth sign-in, whichever the client sends.
 
-The default `127.0.0.1` binding is correct for Tailscale Funnel — Funnel connects to localhost. No need to change port bindings to `0.0.0.0`.
+### The rest
 
-If you also want direct access to the web UI from your local network (not via Tailscale), change the web_ui binding in `docker-compose.yml`:
-
-```yaml
-# web_ui ports:
-ports:
-  - "0.0.0.0:${WEB_PORT:-8080}:8080"
+```bash
+ANTHROPIC_API_KEY=sk-ant-your-key-here    # optional
 ```
+
+Leave `MCP_HOST` at `127.0.0.1`. Funnel connects over localhost, so OmniMem never needs to listen anywhere else.
+
+Optional OAuth tuning, with the defaults:
+
+```bash
+# OAUTH_REFRESH_MAX_DAYS=30          # how long before you sign in again (at most 90)
+# OAUTH_REFRESH_GRACE_SECONDS=120    # how long a replaced refresh token keeps working
+# OAUTH_LOGIN_MAX_ATTEMPTS=10        # failed logins from one address before it's refused
+# OAUTH_LOGIN_WINDOW_SECONDS=900     # for this long
+```
+
+One thing about that login limit: through Funnel every request reaches OmniMem from localhost, so the limit applies to everyone at once rather than per visitor. Fine for a personal server; just don't fat-finger your password ten times in a row.
 
 ---
 
-## Step 6 — Build and start
-
-### Option A — Use pre-built images from Docker Hub (recommended)
-
-Pre-built multi-arch images (amd64 + arm64) are published to Docker Hub, so you can skip the build entirely. Edit `docker-compose.yml` and replace the `build:` directives with `image:` for the three application services:
-
-```yaml
-mcp_server:
-  image: richarvey/omnimem-mcp:latest
-  # build: ./mcp_server        ← comment out or remove
-
-rss_worker:
-  image: richarvey/omnimem-rss:latest
-  # build:
-    #   context: .
-    #   dockerfile: rss_worker/Dockerfile
-
-web_ui:
-  image: richarvey/omnimem-web:latest
-  # build:                      ← comment out or remove
-  #   context: .
-  #   dockerfile: web_ui/Dockerfile
-```
-
-The `valkey` service already uses an upstream image, so it needs no change.
-
-Then start:
+## Step 5: Start it
 
 ```bash
-docker compose up -d
+sudo systemctl enable --now omnimem
+journalctl -u omnimem -f
 ```
 
-This pulls the images in under a minute rather than building from source.
-
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
-
-### Option B — Build from source
-
-```bash
-docker compose up -d
-```
-
-First build takes 5–15 minutes depending on your machine. Monitor progress:
-
-```bash
-docker compose logs -f
-```
-
-All four services should come up:
-
-- `valkey` — `Ready to accept connections`
-- `mcp_server` — listening on port 8765
-- `rss_worker` — scheduler started
-- `web_ui` — serving on port 8080
+The first start downloads the embedding model. If OAuth is on but a setting is missing, OmniMem refuses to start and the log names the culprit, which beats finding out later from a vague claude.ai error.
 
 ---
 
-## Step 7 — Verify the Funnel endpoint
+## Step 6: Check the Funnel end to end
 
-From any machine (not just your server), test the public HTTPS endpoint:
-
-```bash
-curl https://your-machine.tailnet-name.ts.net/health
-```
-
-You should get a JSON response with Valkey connection status, index counts, and embedding model info.
-
-Check the web UI locally:
+From any machine, not just the server:
 
 ```bash
-curl http://localhost:8080
+curl https://your-machine.tailnet-name.ts.net/healthz
+curl https://your-machine.tailnet-name.ts.net/.well-known/oauth-authorization-server
 ```
 
-Or if you set up Tailscale serve for port 8080, open `https://your-machine.tailnet-name.ts.net:8080` from a device on your tailnet.
+The first should answer `{"status": "ok"}`, the second a JSON document listing the OAuth endpoints on your `ts.net` address.
 
 ---
 
-## Step 8 — Connect claude.ai
+## Step 7: Connect claude.ai
 
-This is the main reason for the Tailscale Funnel + OAuth setup. claude.ai can connect to your self-hosted OmniMem as a remote MCP connector.
+The whole reason we're here.
 
 1. Go to [claude.ai](https://claude.ai)
-2. Open **Settings → Connectors** (or the MCP connectors menu)
-3. Add a new connector with the URL:
+2. Open **Settings → Connectors**
+3. Add a custom connector with the URL:
 
 ```
 https://your-machine.tailnet-name.ts.net/mcp
 ```
 
-4. claude.ai will redirect you to OmniMem's OAuth login page. Sign in with the `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` you set in `.env`.
+4. claude.ai sends you to OmniMem's login page. Sign in with the admin username and password from step 4
+5. You land back in claude.ai with OmniMem connected
 
-5. Authorise the connection. claude.ai will receive OAuth tokens and can now call OmniMem tools directly from the browser.
-
-The OAuth tokens refresh automatically. The `OAUTH_REFRESH_MAX_DAYS` setting (default 30) controls how long before you need to re-authenticate.
+Tokens refresh on their own; after 30 days (`OAUTH_REFRESH_MAX_DAYS`) you sign in again. The full story is in [the claude.ai guide](claude-ai.md).
 
 ---
 
-## Step 9 — Connect Claude Code (optional)
+## Step 8: Connect Claude Code (optional)
 
-If you also run Claude Code on your local machine or another device, you can connect directly via Tailscale (using the private tailnet address, not Funnel):
+OmniMem only listens on localhost in this setup, so the server's `100.x.x.x` tailnet address won't reach it directly. You've got two options:
 
-Add to `~/.claude.json`:
+- **Use the Funnel address**, which works from anywhere:
 
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "http://100.x.x.x:8765/mcp"
-    }
-  }
-}
-```
+  ```bash
+  claude mcp add --transport http omnimem https://your-machine.tailnet-name.ts.net/mcp \
+    --header "Authorization: Bearer your-token-here" \
+    --scope user
+  ```
 
-Replace `100.x.x.x` with your server's Tailscale IP (from `tailscale ip -4`).
+- **Or keep it tailnet-only** with `tailscale serve` on a second port, which only your own devices can reach. Funnel and Serve can't share the same port, so pick another:
 
-Or use the Funnel URL with bearer token auth:
+  ```bash
+  sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765
+  ```
 
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "https://your-machine.tailnet-name.ts.net/mcp",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
+  and connect to `https://your-machine.tailnet-name.ts.net:8443/mcp`.
 
-Auto-allow OmniMem tools in `~/.claude/settings.json`:
+Either way, allow the tools in `~/.claude/settings.json`:
 
 ```json
 {
@@ -349,10 +222,10 @@ Auto-allow OmniMem tools in `~/.claude/settings.json`:
 
 ---
 
-## Step 10 — Configure RSS feeds (optional)
+## Step 9: RSS feeds (optional)
 
 ```bash
-nano rss_worker/feeds.yml
+sudo -u omnimem nano /var/lib/omnimem/feeds.yml
 ```
 
 ```yaml
@@ -365,92 +238,68 @@ feeds:
     topics: ["networking", "tailscale"]
 ```
 
----
-
-## Persistence and backups
-
-### Data persistence
-
-Memory data lives in the `valkey_data` Docker volume. It survives container restarts, rebuilds, and reboots.
-
-### Automated backups
-
-```bash
-crontab -e
-```
-
-Add a nightly backup:
-
-```
-0 2 * * * cd /home/$USER/omnimem && docker run --rm -v omnimem_valkey_data:/data -v /home/$USER/omnimem/backups:/backup alpine tar czf /backup/valkey-$(date +\%Y\%m\%d).tar.gz -C /data .
-```
+OmniMem notices the change. See [RSS and knowledge](../docs/rss-knowledge.md).
 
 ---
 
-## Updating
+## Backups and updates
 
-If you're using Docker Hub images:
+Back up nightly with the CLI:
 
 ```bash
-cd omnimem
-docker compose pull
-docker compose up -d
+sudo crontab -u omnimem -e
 ```
 
-If you built from source:
+```
+0 2 * * * /usr/bin/omnimem --db /var/lib/omnimem/omnimem.db export /var/lib/omnimem/backups/omnimem-$(date +\%Y\%m\%d).json
+```
+
+Copy them somewhere off the machine. To update, install the new package over the old one and restart; the database migrates itself:
 
 ```bash
-cd omnimem
-git pull
-docker compose build
-docker compose up -d
+sudo apt install ./omnimem_<new-version>_amd64.deb
+sudo systemctl restart omnimem
 ```
 
 ---
 
-## Tailscale Funnel vs. Tailscale Serve
+## Funnel vs Serve
 
-These are two different features and it's worth understanding the distinction:
+They're easy to mix up:
 
-**Tailscale Serve** exposes a local port to devices on your tailnet only. Your laptop, phone, and other machines logged into your Tailscale account can reach it. The public internet cannot. Good for the web dashboard.
+- **Tailscale Serve** exposes a local port to devices on your tailnet only. Your laptop and phone can reach it; the internet can't.
+- **Tailscale Funnel** exposes a local port to the whole internet on a `ts.net` HTTPS address. claude.ai's servers need this, because they aren't on your tailnet.
 
-**Tailscale Funnel** exposes a local port to the entire internet via a `*.ts.net` HTTPS URL. Any device can reach it, including claude.ai's servers. Required for the OAuth flow since claude.ai needs to reach your MCP server from Anthropic's infrastructure.
+With OmniMem 7 there's only one port to think about. The settings panel lives in the desktop app, not on a port, so there's no dashboard to hide behind Serve any more.
 
-You can run both:
+---
+
+## Coming from 6.x
+
+1. On 6.x, call `dump_to_file` and copy the JSON file across
+2. Import it:
 
 ```bash
-sudo tailscale funnel --bg 8765    # MCP server — public (for claude.ai)
-sudo tailscale serve --bg 8080     # Web UI — tailnet only
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db import backup.json
+sudo systemctl restart omnimem
 ```
+
+The import re-embeds every memory at roughly 8 ms each. OAuth clients registered with 6.x aren't carried across, so remove the claude.ai connector and add it again. Drop `MCP_TRANSPORT` and `WEB_UI_AUTH_TOKEN` from your old settings; neither exists any more.
 
 ---
 
 ## Troubleshooting
 
-**Funnel not working — "Funnel not available"** — Make sure Funnel is enabled in your tailnet ACL policy (step 3). You need the `funnel` nodeAttr. Check the Tailscale admin console.
+**"Funnel not available"**: Funnel isn't allowed in your tailnet policy. Add the `funnel` nodeAttr (step 3).
 
-**OAuth login page shows 421 Misdirected Request** — The `OAUTH_BASE_URL` in your `.env` doesn't match the URL you're accessing. Make sure it's set to exactly `https://your-machine.tailnet-name.ts.net` (no trailing slash, no port number). This was fixed in v5.5.1.
+**OmniMem won't start after switching on OAuth**: `journalctl -u omnimem -e`. A missing `OAUTH_BASE_URL`, username or password is named in the log, as is a base URL that isn't https.
 
-**OAuth login page shows 403 Forbidden Origin** — Same cause as above. The server derives allowed origins from `OAUTH_BASE_URL`. If you need additional origins, set `MCP_ALLOWED_ORIGINS` in `.env`.
+**The login page shows 421 Misdirected Request**: `OAUTH_BASE_URL` doesn't match the address you're using. It must be exactly `https://your-machine.tailnet-name.ts.net`, no trailing slash, no port.
 
-**claude.ai says "connection failed" after authorising** — Check that the MCP server is running (`docker compose ps`) and that Funnel is active (`tailscale funnel status`). Also verify `MCP_TRANSPORT=http` is set in `.env` — claude.ai requires Streamable HTTP, not SSE.
+**The login page shows 403 Forbidden Origin**: you're reaching OmniMem under a hostname it doesn't know, a custom domain for instance. Add it to `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS`.
 
-**Tokens expire and claude.ai disconnects** — The default `OAUTH_REFRESH_MAX_DAYS=30` means you need to re-authenticate monthly. Increase it up to 90 if you want less frequent re-auth. The `OAUTH_REFRESH_GRACE_SECONDS=120` setting prevents logout when multiple connections refresh simultaneously (fixed in v5.5.2).
+**claude.ai says the connection failed after signing in**: check OmniMem is running (`systemctl status omnimem`) and the Funnel is up (`tailscale funnel status`), and that the connector URL ends in `/mcp`.
 
-**Build runs out of memory** — On machines with 2 GB RAM, add swap:
+**Signed out after a month**: that's `OAUTH_REFRESH_MAX_DAYS` doing its job. Raise it, up to 90, if you'd rather sign in less often.
 
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-Or skip the build entirely by using Docker Hub images (Option A in step 6).
-
-**Valkey container crash-looping** — Check `docker compose logs valkey`. Usually means `VALKEY_PASSWORD` is not set in `.env`.
-
-**Slow first recall** — The embedding model loads lazily on first use. The first `recall()` takes a few seconds as the model loads into memory. Subsequent calls are fast.
-
-**Want to use a custom domain instead of ts.net** — You can point a CNAME at your Tailscale hostname and set `OAUTH_BASE_URL` to your custom domain. Tailscale Funnel handles TLS for `*.ts.net` hostnames automatically; for custom domains you'd need to add Caddy or similar in front.
+**Want a custom domain instead of ts.net?** Funnel only does TLS for `ts.net` names, so you'd need your own proxy, Caddy for instance, in front. At that point the [AWS guide](omnimem-setup-aws-linux.md)'s Caddy section is the better fit.

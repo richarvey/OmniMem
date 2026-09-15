@@ -1,194 +1,77 @@
 # Setting Up OmniMem on macOS
 
-This guide covers installing OmniMem on macOS using Docker Desktop. OmniMem ships multi-arch images that run natively on both Apple Silicon (M1/M2/M3/M4) and Intel Macs — no Rosetta needed.
+On a Mac, OmniMem is a menu bar app. You drag it into Applications, open it, and it sits up there next to the clock running your memory server. No Docker Desktop, no terminal, no `.env` file to get wrong.
+
+The DMG is a universal build, so it runs natively on Apple Silicon and Intel.
 
 ---
 
-## Prerequisites
+## What you need
 
-- **macOS 13 (Ventura) or later** — older versions work but Docker Desktop support is best on recent releases
-- **Docker Desktop for Mac** — download from [docker.com](https://www.docker.com/products/docker-desktop/) or install via Homebrew
-- **Git** — pre-installed on macOS or available via `xcode-select --install`
-
----
-
-## Step 1 — Install Docker Desktop
-
-If you don't have Docker Desktop:
-
-**Option A — Homebrew (recommended):**
-
-```bash
-brew install --cask docker
-```
-
-**Option B — Direct download:**
-
-Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) and drag to Applications.
-
-Launch Docker Desktop from Applications and wait for the whale icon in the menu bar to show "Docker Desktop is running".
-
-Verify:
-
-```bash
-docker --version
-docker compose version
-```
-
-### Resource allocation
-
-Docker Desktop defaults are fine for OmniMem. If you've reduced Docker's memory allocation below 4 GB, bump it back up — the embedding model needs room. Check Docker Desktop → Settings → Resources.
+- **macOS 13 (Ventura) or later**
+- Somewhere around a few hundred MB of free RAM for the embedding model. Any Mac from the last several years is fine
+- An Anthropic API key if you want the Claude-powered extras (optional)
 
 ---
 
-## Step 2 — Clone OmniMem
+## Step 1: Install the app
 
-```bash
-git clone https://code.squarecows.com/ric/omnimem.git
-cd omnimem
-```
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
 
----
+1. Download `OmniMem-<version>.dmg` from the [releases page](https://code.squarecows.com/ric/omnimem/releases)
+2. Open it and drag **OmniMem** into **Applications**
+3. Open OmniMem from Applications
 
-## Step 3 — Configure the environment
+The app is signed and notarised, so macOS opens it without the "unidentified developer" nonsense.
 
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set:
-
-```bash
-VALKEY_PASSWORD=pick-a-strong-password-here
-```
-
-For AI-powered RSS summaries and fact extraction:
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-
-OmniMem works without the API key — RSS summaries fall back to truncation and ingest mode falls back to raw.
-
-### Defaults that work on macOS
-
-The default `.env` binds the MCP server and web UI to `127.0.0.1`, which is what you want for local development. If you're only connecting from the same Mac (Claude Code running locally), no changes to `docker-compose.yml` are needed.
+There's no Dock icon. OmniMem lives in the menu bar, and that's deliberate: it's a background service you glance at, not a window you manage.
 
 ---
 
-## Step 4 — Build and start
+## Step 2: First start
 
-### Option A — Use pre-built images from Docker Hub (recommended)
+The first time it runs, OmniMem downloads the embedding model (all-MiniLM-L6-v2) and loads it. The menu bar menu says it's starting while that happens. After that it reads the model from the cache and starts in a second or so.
 
-Pre-built multi-arch images (amd64 + arm64) are published to Docker Hub, so you can skip the build entirely. Edit `docker-compose.yml` and replace the `build:` directives with `image:` for the three application services:
+Click the menu bar icon and you'll see:
 
-```yaml
-mcp_server:
-  image: richarvey/omnimem-mcp:latest
-  # build: ./mcp_server        ← comment out or remove
+- **A status line**: whether it's running, how many memories it holds, and the MCP address
+- **Settings…**: opens the settings window
+- **Copy MCP URL**: puts `http://127.0.0.1:8765/mcp` on your clipboard for your client config
+- **Start at login**: tick it and OmniMem comes up whenever you log in
+- **Quit OmniMem**
 
-rss_worker:
-  image: richarvey/omnimem-rss:latest
-  # build:
-    #   context: .
-    #   dockerfile: rss_worker/Dockerfile
+Tick **Start at login**. You want your memory there before you start work, not after you've remembered to open it.
 
-web_ui:
-  image: richarvey/omnimem-web:latest
-  # build:                      ← comment out or remove
-  #   context: .
-  #   dockerfile: web_ui/Dockerfile
-```
-
-The `valkey` service already uses an upstream image, so it needs no change.
-
-Then start:
-
-```bash
-docker compose up -d
-```
-
-This pulls the images in under a minute rather than building from source.
-
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
-
-### Option B — Build from source
-
-```bash
-docker compose up -d
-```
-
-First build takes 3–5 minutes on Apple Silicon, a bit longer on Intel. Docker pulls base images, installs Python dependencies, and downloads the embedding model.
-
-Watch the startup:
-
-```bash
-docker compose logs -f
-```
-
-All four services should report healthy:
-
-- `valkey` — `Ready to accept connections`
-- `mcp_server` — listening on port 8765
-- `rss_worker` — scheduler started
-- `web_ui` — serving on port 8080
-
-Press `Ctrl+C` to stop tailing (containers keep running).
+Only one copy runs at a time. Open OmniMem again while it's running and it just brings the settings window forward.
 
 ---
 
-## Step 5 — Verify
+## Step 3: Settings
 
-Open the web dashboard in your browser:
+**Settings…** opens a window with everything the old 6.x web dashboard had: memories, projects, experience and the graveyard, skills, feeds, telemetry and backups. It isn't a website though. The pages come from the app itself, so there's no port to expose, no login page and nothing else on your network can reach them. See [the settings panel](../docs/settings-panel.md).
 
-```
-http://localhost:8080
-```
+The **Configuration** page is where the settings live. The ones you'll most likely touch:
 
-You should see the OmniMem management interface — browse memories, run searches, manage projects.
+- **Anthropic API key**: switches on fact extraction, query expansion, contradiction checks and RSS summaries. Without it OmniMem still works, it just summarises RSS by truncation and skips the Claude extras
+- **Access token**: only needed if something other than this Mac will connect
+- **Port**: 8765 unless something else wants it
 
-Check the MCP server:
+Secrets (the API key, the access token, the OAuth password) go into your macOS Keychain and aren't shown again once saved. Everything else is written to `omnimem.env` in the data folder. Changes apply when you restart OmniMem, and the page tells you so.
 
-```bash
-curl http://localhost:8765/health
-```
+Your data lives in `~/Library/Application Support/com.squarecows.OmniMem`: the database, `feeds.yml` and the `backups` folder.
 
 ---
 
-## Step 6 — Connect Claude Code
+## Step 4: Connect Claude Code
 
-Since OmniMem is running locally, the connection config is straightforward.
+Use **Copy MCP URL**, then:
 
-Add to `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
-    }
-  }
-}
+```bash
+claude mcp add --transport http omnimem http://127.0.0.1:8765/mcp --scope user
 ```
 
-If you set `MCP_AUTH_TOKEN`:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
-      "headers": {
-        "Authorization": "Bearer your-token-here"
-      }
-    }
-  }
-}
-```
-
-Auto-allow OmniMem tools in `~/.claude/settings.json`:
+Allow the OmniMem tools without a prompt each time, in `~/.claude/settings.json`:
 
 ```json
 {
@@ -200,108 +83,63 @@ Auto-allow OmniMem tools in `~/.claude/settings.json`:
 }
 ```
 
-### Using Streamable HTTP (recommended)
-
-Set `MCP_TRANSPORT=http` in `.env`, restart, and use:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "http://localhost:8765/mcp"
-    }
-  }
-}
-```
+The [connection guides](README.md) cover Claude Desktop, Cursor, Copilot and the rest.
 
 ---
 
-## Step 7 — Configure RSS feeds (optional)
+## Step 5: RSS feeds (optional)
 
-Edit `rss_worker/feeds.yml`:
+Open **Settings…** and go to **RSS feeds**. Add a feed with its URL, name, topics and licence class, and OmniMem picks it up straight away. It also checks every six hours by default (**Check feeds every (hours)** on the Configuration page).
 
-```yaml
-feeds:
-  - name: "Rust Blog"
-    url: "https://blog.rust-lang.org/feed.xml"
-    topics: ["rust", "programming"]
-  - name: "Go Blog"
-    url: "https://go.dev/blog/feed.atom"
-    topics: ["go", "programming"]
-```
-
-Changes are picked up automatically.
+Prefer a file? The reading list is `feeds.yml` in the data folder, and the feeds page can upload and download it.
 
 ---
 
-## Running OmniMem as a background service
+## Backups
 
-Docker Desktop starts automatically on login by default, and the `restart: unless-stopped` policy means OmniMem comes back up with it. If you've disabled Docker Desktop auto-start, OmniMem won't start until you open Docker Desktop.
-
-To check status anytime:
-
-```bash
-docker compose ps
-```
-
-### Updating
-
-If you're using Docker Hub images:
-
-```bash
-cd omnimem
-docker compose pull
-docker compose up -d
-```
-
-If you built from source:
-
-```bash
-cd omnimem
-git pull
-docker compose build
-docker compose up -d
-```
-
-### Backups
-
-```bash
-# Via MCP: call dump_to_file() from a Claude Code session
-# Via Docker volume:
-docker run --rm -v omnimem_valkey_data:/data -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/valkey-backup-$(date +%Y%m%d).tar.gz -C /data .
-```
+**Settings… → Backups** creates a backup, restores one (re-embedding everything as it goes), and downloads it into your Downloads folder. Your agent can do the same with the `dump_to_file` tool. Backups are JSON files in the `backups` folder beside the database.
 
 ---
 
-## Accessing from other machines on your network
+## Using the Mac from other machines
 
-If you want to use OmniMem from a different computer (e.g. a work laptop connecting to your home Mac), edit `docker-compose.yml` to change the port bindings from `127.0.0.1` to `0.0.0.0`:
+If a laptop or another computer should use the OmniMem on this Mac, it has to listen beyond localhost. On the Configuration page:
 
-```yaml
-ports:
-  - "0.0.0.0:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
-```
+1. Set **Listen address** to `0.0.0.0`
+2. Set an **Access token** (generate one with `openssl rand -hex 32`)
+3. Restart OmniMem
 
-Do this for both `mcp_server` and `web_ui`. Then set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in `.env` to secure the endpoints.
-
-Find your Mac's IP:
+OmniMem refuses to listen beyond localhost without a token or OAuth, so step 2 isn't optional. Then find the Mac's address:
 
 ```bash
 ipconfig getifaddr en0
 ```
 
-Point your remote Claude Code config at `http://<mac-ip>:8765/sse`.
+and point the other machine's client at `http://<mac-ip>:8765/mcp` with the token as a bearer header. For anything outside your own network, put it behind HTTPS: see [remote access](../docs/remote-access.md), or the [Tailscale Funnel guide](omnimem-setup-linux-tailscale.md) for the idea.
+
+---
+
+## A Mac mini as a headless server
+
+If the Mac is a server in a cupboard and nobody's logged in, the menu bar app is the wrong shape, because it runs in your login session. Run the Docker image instead: see [Running OmniMem in Docker](docker.md). The headless `.deb`, `.rpm` and tarball are Linux only.
+
+---
+
+## Coming from 6.x
+
+1. On 6.x, call `dump_to_file` (or use the old web UI's Backups page)
+2. In the new app, open **Settings… → Backups**, upload the file and restore it
+
+Backups don't carry vectors, so every memory gets re-embedded, at roughly 8 ms each. Then change your client configs from `/sse` to `/mcp`, and you can retire Docker Desktop if OmniMem was the only thing using it.
 
 ---
 
 ## Troubleshooting
 
-**Docker Desktop not starting** — Make sure virtualisation is enabled. On Intel Macs this is in BIOS; on Apple Silicon it's always available. Try quitting and relaunching Docker Desktop.
+**No menu bar icon**: on a Mac with a crowded menu bar, macOS hides icons that don't fit, and a notch doesn't help. Quit a few other menu bar apps, or open OmniMem again from Applications to bring up the settings window.
 
-**Port conflicts** — If port 8765 or 8080 is already in use, change `MCP_PORT` or `WEB_PORT` in `.env`.
+**The status line says OmniMem failed**: it gives the reason. The usual suspects are the port being in use (change **Port**) or a non-local **Listen address** with no access token.
 
-**Slow first recall** — The embedding model loads lazily. First `recall()` takes a few seconds as the model loads into memory. Subsequent calls are fast.
+**Port 8765 is taken**: change **Port** on the Configuration page, restart, then use **Copy MCP URL** again so your clients get the new address.
 
-**Build fails on Intel Mac** — Older Intel Macs with limited RAM may struggle during the build. Increase Docker Desktop's memory allocation to at least 4 GB in Settings → Resources.
+**The first start sits at "starting"**: it's downloading the embedding model. Give it a minute on a slow connection.

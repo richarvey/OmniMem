@@ -1,220 +1,114 @@
 # Setting Up OmniMem on a Raspberry Pi
 
-This guide walks you through installing OmniMem on a Raspberry Pi. OmniMem ships multi-arch Docker images (amd64 and arm64), so it runs natively on any Pi with a 64-bit OS — no emulation, no cross-compilation.
+A Raspberry Pi under the desk is a lovely home for OmniMem. It's on all the time, it sips power, and OmniMem 7 is a single arm64 binary that doesn't care that it's not a proper server.
+
+In 6.x this meant four containers and a vector database squeezed onto a Pi. Now it's a `.deb` and a systemd service.
 
 ---
 
-## Prerequisites
+## What you need
 
-- **Raspberry Pi 4 (4 GB+) or Raspberry Pi 5** — a Pi 3 will work but expect slower embedding generation on first boot
-- **Raspberry Pi OS (64-bit)** — Bookworm or later; the 32-bit OS will not work because the sentence-transformers model requires arm64
-- **At least 16 GB SD card** (32 GB+ recommended) — the embedding model, container images, and Valkey data need room to breathe
-- **Docker and Docker Compose** installed
-- **Git** installed
-
-> **Heads up on memory:** The sentence-transformers model (`all-MiniLM-L6-v2`) loads into RAM on first start. On a 4 GB Pi, this works fine but leaves limited headroom for other services. If you're running other containers on the same Pi, consider the 8 GB model.
+- **Raspberry Pi 4 or Pi 5** with 2 GB of RAM or more. OmniMem itself uses a few hundred MB, most of which is the embedding model
+- **Raspberry Pi OS (64-bit)**, Bookworm or later. The 32-bit OS won't do, the build is arm64
+- **An SD card or SSD with a few GB free.** The binary, the model and a database of thousands of memories are all small; an SSD just makes everything nicer
+- An Anthropic API key if you want the Claude-powered extras (optional)
 
 ---
 
-## Step 1 — Install Docker
+## Step 1: Install the package
 
-If you don't already have Docker installed:
+> [!NOTE]
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
 
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-```
-
-Log out and back in (or run `newgrp docker`) so your user picks up the `docker` group.
-
-Verify it's working:
+Download the arm64 `.deb` from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it:
 
 ```bash
-docker --version
-docker compose version
+sudo apt install ./omnimem_<version>_arm64.deb
 ```
 
-You need Docker Compose V2 (the `docker compose` plugin, not the old `docker-compose` binary). The install script above includes it.
+That gives you:
+
+- `omnimem` on your path
+- a systemd service, `omnimem.service`, running `omnimem serve` as its own `omnimem` system user
+- configuration in `/etc/omnimem/omnimem.env`
+- data in `/var/lib/omnimem`: the database, `feeds.yml`, backups and the model cache
+
+It's the headless build: no desktop libraries, no tray icon, no settings window. You configure it with the environment file and talk to it through your agent and the CLI.
 
 ---
 
-## Step 2 — Clone OmniMem
+## Step 2: Configure it
+
+Open the environment file:
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git
-cd omnimem
+sudo nano /etc/omnimem/omnimem.env
 ```
 
----
-
-## Step 3 — Configure the environment
+By default OmniMem only listens on `127.0.0.1`, which is no good if your laptop is the thing connecting. To use it from other machines on your network, listen on everything and set an access token:
 
 ```bash
-cp .env.example .env
+MCP_HOST=0.0.0.0
+MCP_AUTH_TOKEN=paste-a-long-random-token-here
 ```
 
-Open `.env` in your editor and set at minimum:
+Generate a token with:
 
 ```bash
-VALKEY_PASSWORD=pick-a-strong-password-here
+openssl rand -hex 32
 ```
 
-If you want AI-powered RSS summaries and richer fact extraction, also set:
+The token isn't optional here. OmniMem refuses to start listening beyond localhost without a token or OAuth, which is the kind of nagging I'm happy to have.
+
+If you want AI-powered RSS summaries, fact extraction and contradiction checks, add:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-If you leave `ANTHROPIC_API_KEY` unset or blank, OmniMem still works — RSS summaries fall back to simple truncation and the ingest mode falls back to `raw` (verbatim storage).
+Without it OmniMem still works: RSS summaries fall back to truncation and the Claude extras stay off.
 
-### Optional but recommended for Pi
-
-The Pi's limited RAM means you may want to constrain parallelism. The defaults are already conservative, but if you're on a 4 GB Pi you can add:
-
-```bash
-VALKEY_MAX_CONNECTIONS=10
-```
-
-### Binding to your local network
-
-By default, the MCP server and web UI only listen on `127.0.0.1` (localhost). If you want to access OmniMem from other machines on your network (e.g. your laptop pointing at the Pi), you need to update the port mappings.
-
-Edit `docker-compose.yml` and change the `ports` entries from:
-
-```yaml
-ports:
-  - "127.0.0.1:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
-```
-
-to:
-
-```yaml
-ports:
-  - "0.0.0.0:${MCP_PORT:-8765}:${MCP_PORT:-8765}"
-```
-
-Do the same for the `web_ui` service:
-
-```yaml
-ports:
-  - "0.0.0.0:${WEB_PORT:-8080}:8080"
-```
-
-**Important:** if you expose OmniMem beyond localhost, set `MCP_AUTH_TOKEN` and `WEB_UI_AUTH_TOKEN` in your `.env` to protect both endpoints with bearer token authentication.
+Every other setting is in the [configuration reference](../docs/configuration.md).
 
 ---
 
-## Step 4 — Build and start
-
-### Option A — Use pre-built images from Docker Hub (recommended)
-
-Pre-built multi-arch images (amd64 + arm64) are published to Docker Hub, so you can skip the build entirely. Edit `docker-compose.yml` and replace the `build:` directives with `image:` for the three application services:
-
-```yaml
-mcp_server:
-  image: richarvey/omnimem-mcp:latest
-  # build: ./mcp_server        ← comment out or remove
-
-rss_worker:
-  image: richarvey/omnimem-rss:latest
-  # build:
-    #   context: .
-    #   dockerfile: rss_worker/Dockerfile
-
-web_ui:
-  image: richarvey/omnimem-web:latest
-  # build:                      ← comment out or remove
-  #   context: .
-  #   dockerfile: web_ui/Dockerfile
-```
-
-The `valkey` service already uses an upstream image, so it needs no change.
-
-Then start:
+## Step 3: Start it
 
 ```bash
-docker compose up -d
+sudo systemctl enable --now omnimem
 ```
 
-This pulls the images in under a minute rather than building from source.
-
-To pin a specific release instead of `latest`, use the version tag (e.g. `richarvey/omnimem-mcp:v5.5.3`). See [releases on Squarecows](https://code.squarecows.com/ric/omnimem/releases) for available tags.
-
-### Option B — Build from source
+The first start downloads the embedding model into `/var/lib/omnimem`, which takes a minute on a Pi. Watch it:
 
 ```bash
-docker compose up -d
+journalctl -u omnimem -f
 ```
 
-The first build takes a while on a Pi — expect 10–20 minutes as it downloads base images, installs Python dependencies, and downloads the embedding model. Subsequent starts are fast because everything is cached.
-
-Watch the logs to make sure all four containers come up healthy:
-
-```bash
-docker compose logs -f
-```
-
-You're looking for:
-
-- `valkey` — `Ready to accept connections`
-- `mcp_server` — listening on the configured port
-- `rss_worker` — scheduler started
-- `web_ui` — serving on port 8080
-
-Press `Ctrl+C` to stop following logs (the containers keep running).
+You're looking for the line saying the MCP server is listening on `/mcp`. Press `Ctrl+C` to stop following the log; OmniMem keeps running, and comes back after a reboot.
 
 ---
 
-## Step 5 — Verify it's running
-
-Check the web dashboard:
+## Step 4: Check it's running
 
 ```bash
-curl http://localhost:8080
+curl http://localhost:8765/healthz
 ```
 
-Or open `http://<your-pi-ip>:8080` in a browser on another machine (if you changed the bind address in step 3).
-
-Check the MCP server health:
-
-```bash
-curl http://localhost:8765/health
-```
+That should answer `{"status": "ok"}`. From another machine, swap `localhost` for the Pi's address (`hostname -I` on the Pi tells you).
 
 ---
 
-## Step 6 — Connect your AI tool
+## Step 5: Connect your agent
 
-Add OmniMem to your Claude Code config (`~/.claude.json` on the machine where you run Claude Code):
+On the machine where you run Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://<your-pi-ip>:8765/sse"
-    }
-  }
-}
+```bash
+claude mcp add --transport http omnimem http://<your-pi-ip>:8765/mcp \
+  --header "Authorization: Bearer your-token-here" \
+  --scope user
 ```
 
-If you set `MCP_AUTH_TOKEN` in your `.env`, add the token:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "sse",
-      "url": "http://<your-pi-ip>:8765/sse",
-      "headers": {
-        "Authorization": "Bearer your-token-here"
-      }
-    }
-  }
-}
-```
-
-To skip permission prompts for OmniMem tools, add to `~/.claude/settings.json`:
+Allow the OmniMem tools without a prompt each time, in `~/.claude/settings.json`:
 
 ```json
 {
@@ -226,99 +120,90 @@ To skip permission prompts for OmniMem tools, add to `~/.claude/settings.json`:
 }
 ```
 
-### Using Streamable HTTP (recommended)
-
-If you prefer the newer Streamable HTTP transport instead of SSE, set `MCP_TRANSPORT=http` in your `.env`, restart the containers, and use this config:
-
-```json
-{
-  "mcpServers": {
-    "omnimem": {
-      "type": "http",
-      "url": "http://<your-pi-ip>:8765/mcp"
-    }
-  }
-}
-```
+The [connection guides](README.md) cover the other agents.
 
 ---
 
-## Step 7 — Configure RSS feeds (optional)
+## Step 6: RSS feeds (optional)
 
-Edit `rss_worker/feeds.yml` to add your feeds:
+The reading list is `/var/lib/omnimem/feeds.yml`:
+
+```bash
+sudo -u omnimem nano /var/lib/omnimem/feeds.yml
+```
 
 ```yaml
 feeds:
   - name: "Rust Blog"
     url: "https://blog.rust-lang.org/feed.xml"
     topics: ["rust", "programming"]
-  - name: "Hacker News Best"
-    url: "https://hnrss.org/best"
-    topics: ["tech", "startups"]
+  - name: "Raspberry Pi News"
+    url: "https://www.raspberrypi.com/news/feed/"
+    topics: ["raspberry-pi", "hardware"]
 ```
 
-The RSS worker picks up changes automatically (it polls the file every 10 seconds by default).
+OmniMem notices the change and checks the feeds. It also checks when it starts and every six hours (`RSS_SCHEDULE_HOURS`). To see what a feed would bring in without storing anything:
+
+```bash
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db rss --dry-run
+```
+
+See [RSS and knowledge](../docs/rss-knowledge.md) for licences, digests and skill influence.
 
 ---
 
 ## Keeping it running
 
-The `docker-compose.yml` sets `restart: unless-stopped` on all containers, so OmniMem survives reboots as long as the Docker daemon starts at boot (it does by default after the install script).
-
 ### Updating
 
-If you're using Docker Hub images:
+Download the new `.deb` and install it over the top:
 
 ```bash
-cd omnimem
-docker compose pull
-docker compose up -d
+sudo apt install ./omnimem_<new-version>_arm64.deb
+sudo systemctl restart omnimem
 ```
 
-If you built from source:
-
-```bash
-cd omnimem
-git pull
-docker compose build
-docker compose up -d
-```
+The database migrates itself when OmniMem starts.
 
 ### Backups
 
-Your memory data lives in the `valkey_data` Docker volume. You can also use OmniMem's built-in backup:
+Ask your agent to call `dump_to_file`, which writes a JSON backup into `/var/lib/omnimem/backups`. Or from the CLI:
 
 ```bash
-# From any connected Claude Code session:
-# Call dump_to_file() — exports everything to a timestamped JSON in ./backups/
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db export /var/lib/omnimem/backups/omnimem-$(date +%Y%m%d).json
 ```
 
-Or back up the Docker volume directly:
+Copy those somewhere that isn't the Pi's SD card. SD cards die, usually on the day you needed them.
+
+---
+
+## Docker instead
+
+If you already run everything on the Pi in containers, the `richarvey/omnimem` image is multi-arch and runs just as happily. See [Running OmniMem in Docker](docker.md).
+
+---
+
+## Coming from 6.x
+
+1. On 6.x, call `dump_to_file` (or use the web UI's Backups page) and copy the JSON file to the Pi
+2. Stop the old stack: `docker compose down` in the 6.x folder
+3. Import the backup:
 
 ```bash
-docker run --rm -v omnimem_valkey_data:/data -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/valkey-backup-$(date +%Y%m%d).tar.gz -C /data .
+sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db import backup.json
+sudo systemctl restart omnimem
 ```
+
+The import re-embeds every memory. At roughly 8 ms each on a desktop CPU a few thousand memories take under a minute; a Pi is slower, so give it a bit longer. Then change your clients from `/sse` to `/mcp`.
 
 ---
 
 ## Troubleshooting
 
-**Build fails with out-of-memory errors** — The Pi 4 (4 GB) can run tight during the Docker build (much less so since 6.7, which dropped PyTorch from the images). Add a swap file:
+**The service won't start**: `journalctl -u omnimem -e`. The most common reason is `MCP_HOST=0.0.0.0` without `MCP_AUTH_TOKEN`, which OmniMem refuses on purpose; the log says so.
 
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-# Make permanent:
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
+**The first start takes ages**: it's downloading the embedding model. On a slow connection, go and make a cup of tea.
 
-Then retry `docker compose build`.
+**Can't connect from another machine**: check `MCP_HOST=0.0.0.0` is set, the service was restarted, and your client is sending the token. `curl http://<pi-ip>:8765/healthz` from the other machine tells you whether the network part works.
 
-**Containers restart in a loop** — Check `docker compose logs valkey` first. The most common cause is `VALKEY_PASSWORD` not being set in `.env`.
-
-**Slow first recall** — The embedding model loads lazily on first use. The first `recall()` or `remember()` call takes 10–30 seconds on a Pi as the model loads into RAM. Subsequent calls are fast.
-
-**Cannot connect from another machine** — Make sure you changed the port bindings from `127.0.0.1` to `0.0.0.0` in `docker-compose.yml` and set auth tokens.
+**Clients get 401**: the token after `Bearer` has to match `MCP_AUTH_TOKEN` exactly.

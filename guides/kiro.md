@@ -1,9 +1,6 @@
 # Connecting OmniMem to Kiro
 
-Kiro is AWS's AI-powered IDE built on VS Code. It supports MCP servers via SSE and Streamable HTTP transports.
-
-> [!WARNING]
-> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use `"type": "http"` with URL `.../mcp` in the config below.
+Kiro is AWS's AI IDE, built on VS Code, and it plans before it codes. It supports Streamable HTTP MCP servers, and its spec-driven workflow pairs rather nicely with OmniMem's project context.
 
 ## Quick setup
 
@@ -13,21 +10,23 @@ Create or edit `~/.kiro/settings/mcp.json` for global access:
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse"
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp"
     }
   }
 }
 ```
 
-If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add the token as a header:
+On the desktop app, **Copy MCP URL** in the tray or menu bar menu gives you the address.
+
+If OmniMem has an access token set (`MCP_AUTH_TOKEN`, or **Access token** on the Configuration page), add it as a header:
 
 ```json
 {
   "mcpServers": {
     "omnimem": {
-      "type": "sse",
-      "url": "http://localhost:8765/sse",
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp",
       "headers": {
         "Authorization": "Bearer ${OMNIMEM_TOKEN}"
       }
@@ -36,7 +35,9 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 }
 ```
 
-Set `OMNIMEM_TOKEN` in your shell environment (e.g. `.zshrc` or `.bashrc`) so Kiro can expand it. Environment variables use `${VAR_NAME}` syntax in the IDE config.
+Set `OMNIMEM_TOKEN` in your shell environment (`.zshrc`, `.bashrc`) so Kiro can expand it. The IDE uses `${VAR_NAME}` syntax.
+
+Coming from 6.x, change `"type": "sse"` to `"type": "http"` and `/sse` to `/mcp`.
 
 ## Global vs project config
 
@@ -45,25 +46,25 @@ Set `OMNIMEM_TOKEN` in your shell environment (e.g. `.zshrc` or `.bashrc`) so Ki
 | `~/.kiro/settings/mcp.json` | All projects | OmniMem should be available everywhere (recommended) |
 | `.kiro/settings/mcp.json` (project root) | Single project | Only this project needs OmniMem |
 
-## MCP settings panel
+## Kiro's MCP panel
 
-You can also configure MCP servers through Kiro's UI:
+You can also add the server through Kiro's UI:
 
 1. Open the **MCP Servers** panel from the sidebar or command palette
 2. Click **Add Server**
-3. Select **SSE** as the transport type
-4. Enter the URL: `http://localhost:8765/sse`
-5. Add the authorisation header if auth is enabled
+3. Choose **HTTP** as the transport
+4. Enter the URL: `http://127.0.0.1:8765/mcp`
+5. Add the authorisation header if you've set a token
 
 ## Using OmniMem with Kiro
 
-Once connected, OmniMem's tools are available to Kiro's AI agent. You can use them through the chat interface:
+Once connected, the tools are available to Kiro's agent:
 
 - "Call the OmniMem briefing tool for this project"
 - "Remember this architectural decision in OmniMem"
-- "Check if we've tried this approach before"
+- "Check whether we've tried this approach before"
 
-Kiro's spec-driven development workflow pairs well with OmniMem's project context -- the agent can load project state at the start of each session and store decisions as specs evolve.
+The agent can load project state at the start of each session and store the decisions as your specs evolve, so the reasoning behind a design doesn't evaporate when you close the window.
 
 ## Verifying the connection
 
@@ -71,16 +72,15 @@ In Kiro's chat panel, ask:
 
 > Can you call the OmniMem health tool?
 
-You should see Valkey connection status, index counts, and embedding model status.
+You should get back the record and vector counts per namespace, whether the embedding model is loaded, and the uptime.
 
 ## Known quirks
 
-- **Silent failures**: If OmniMem is unreachable, Kiro can fail to load all MCP servers without any visible error. If tools suddenly disappear, check that OmniMem's Docker containers are running.
-- **CLI vs IDE env var syntax**: The IDE uses `${VAR_NAME}` but the Kiro CLI expects `${env:VAR_NAME}`. You cannot share a single `mcp.json` between both without editing it.
-- **OAuth redirects don't work**: If you ever add OAuth-based auth to OmniMem via a reverse proxy, Kiro cannot complete localhost OAuth redirects. Plain bearer tokens via `headers` work fine.
-- **Streamable HTTP**: To migrate to Streamable HTTP early, set `MCP_TRANSPORT=http` in your `.env` and use `"type": "http"` with URL `http://localhost:8765/mcp`. SSE is the current default but will be removed in a future release.
+- **Silent failures**: if OmniMem can't be reached, Kiro can fail to load every MCP server without saying anything. If your tools suddenly disappear, check OmniMem is running first.
+- **CLI vs IDE variable syntax**: the IDE uses `${VAR_NAME}` but the Kiro CLI expects `${env:VAR_NAME}`, so one `mcp.json` can't serve both without editing.
+- **OAuth redirects**: Kiro hasn't been able to complete localhost OAuth redirects in the versions I've tried. Stick with an access token in `headers`, which works fine. OAuth is for clients like claude.ai that connect from elsewhere.
 
 ## Notes
 
-- If OmniMem is not responding, check that Docker containers are running: `docker compose ps`
-- Check the [Kiro documentation](https://kiro.dev/docs/mcp/configuration/) for the latest MCP configuration options
+- If OmniMem isn't answering, `curl http://127.0.0.1:8765/healthz` should return `{"status": "ok"}`, and the desktop app's tray status line says whether it's running
+- Check the [Kiro documentation](https://kiro.dev/docs/mcp/configuration/) for the latest MCP options

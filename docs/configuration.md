@@ -1,83 +1,160 @@
-# Configuration Reference
+# Configuration
 
-All configuration is via environment variables, usually set in your `.env` file. The installer writes sensible defaults for you; this page covers everything you can tune.
+OmniMem runs happily with no configuration at all: it listens on `127.0.0.1:8765`, keeps everything local, and turns the Claude Haiku features off until you give it an API key. This page covers everything you can change.
+
+## Where settings live
+
+**The desktop app** has a **Configuration** page in its settings window (**Settings… → Configuration**). Ordinary settings are saved to `omnimem.env` in the [data folder](quick-start.md#install-the-desktop-app). Secrets go to your operating system's keychain (Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux) and are never shown again once saved. Those are:
+
+- `MCP_AUTH_TOKEN`
+- `OAUTH_ADMIN_PASSWORD`
+- `ANTHROPIC_API_KEY`
+- `HF_TOKEN`
+
+Changes apply the next time OmniMem starts, and the page tells you so. Anything the page doesn't list can still go in `omnimem.env` by hand; the page keeps lines it doesn't recognise.
+
+**Headless installs** (`omnimem serve`, the packages, the Docker image) read environment variables only. The packages load them from `/etc/omnimem/omnimem.env`, and [`.env.example`](../.env.example) in the repo is a commented starting point.
+
+**Either way, a real environment variable wins.** If `MCP_PORT` is set in the environment, the desktop app uses it over whatever the Configuration page saved, and the page points that out.
+
+Flags accept `true`, `1` or `yes` (any case); anything else, or leaving it unset, means off. A number that doesn't parse is logged and the default is used.
+
+## The database
 
 | Variable | Default | Description |
 |---|---|---|
-| `VALKEY_PASSWORD` | `changeme` | Please change this |
-| `VALKEY_HOST` | `valkey` | Hostname of the Valkey server (the Compose service name; only change it if you point at an external Valkey) |
-| `VALKEY_PORT` | `6379` | Port of the Valkey server |
-| `ANTHROPIC_API_KEY` | required | For RSS summarisation via Claude Haiku |
-| `MCP_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the MCP endpoint (constant-time compared). When unset, no auth is required — but the server refuses to start unauthenticated on a non-loopback `MCP_HOST` |
-| `WEB_UI_AUTH_TOKEN` | *(unset)* | Set to enable bearer token auth on the web dashboard (constant-time compared). `/metrics` and static assets are exempt |
-| `WEB_UI_LOGIN_ENABLED` | *(auto)* | The web dashboard shows a login page whenever `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` are set — the same credentials as the OAuth flow. Set to `false` to opt out |
-| `WEB_UI_SESSION_HOURS` | `168` | Dashboard session lifetime. Sessions are opaque tokens stored in Valkey, revoked server-side on sign out |
-| `OAUTH_ENABLED` | *(unset)* | Set to `true` to enable OAuth 2.1 authorisation server for claude.ai and other OAuth MCP clients |
-| `OAUTH_BASE_URL` | *(unset)* | Externally-reachable URL of your OmniMem instance (e.g. `https://mcp.example.com`). Required when OAuth is enabled |
-| `OAUTH_ADMIN_USER` | *(unset)* | Username for the OAuth admin account. Required when OAuth is enabled |
-| `OAUTH_ADMIN_PASSWORD` | *(unset)* | Password for the OAuth admin account. Required when OAuth is enabled |
-| `OAUTH_REFRESH_MAX_DAYS` | `30` | Absolute lifetime of an OAuth refresh-token chain. Each rotation silently re-issues tokens without re-prompting the user, until this cap is reached. Hard-capped at `90` |
-| `OAUTH_REFRESH_GRACE_SECONDS` | `120` | Grace window after a refresh token rotates. The old token keeps working for this long and replays return the same new pair, so claude.ai isn't logged out when several connections refresh at once. Capped at `3600`; set `0` for strict single-use rotation |
-| `MCP_ALLOWED_HOSTS` | *(unset)* | Comma-separated extra hostnames allowed in the `Host` header, on top of localhost and the `OAUTH_BASE_URL` host. Needed when serving behind a reverse proxy or tunnel under a hostname not already covered by `OAUTH_BASE_URL`, otherwise FastMCP 3.x returns `421 Misdirected Request`. See [Troubleshooting: 421 / 403 behind a proxy](remote-access.md#getting-421-misdirected-request-or-403-forbidden-origin-behind-a-proxy) |
-| `MCP_ALLOWED_ORIGINS` | *(unset)* | Comma-separated extra browser origins (full `scheme://host`) trusted for the login page, on top of the `OAUTH_BASE_URL` origin. Needed when the proxy terminates TLS and forwards over http, otherwise the browser login POST gets `403 Forbidden Origin`. See [Troubleshooting](remote-access.md#getting-421-misdirected-request-or-403-forbidden-origin-behind-a-proxy) |
-| `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed admin logins per client IP before the login form is temporarily blocked. Set `0` to disable |
-| `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | Sliding window for the failed-login limit |
-| `RSS_MAX_PAGE_BYTES` | `10485760` | Max bytes the RSS worker reads when fetching a full article page (10 MB), guarding against hostile or endless responses |
-| `ABANDONED_CACHE_TTL_SECONDS` | `60` | How long the recall pipeline caches the parsed abandoned-approach list between episodic rescans. Invalidated automatically on experience writes in the same process; set `0` to rescan on every recall |
-| `PROJECT_DOMAIN_CACHE_TTL_SECONDS` | `60` | How long the domain-to-project map used by `recall(domain_filter=...)` is cached between project scans. Invalidated automatically on project writes in the same process; set `0` to rescan on every domain-filtered recall |
-| `DASHBOARD_STATS_TTL` | `60` | How long the web UI caches dashboard stats (namespace counts + recent list) in Valkey, so the page doesn't rescan the keyspace on every load. The page shows when stats were computed and offers a refresh link; set `0` to recompute on every load |
-| `MCP_PORT` | `8765` | Port the MCP server listens on |
-| `MCP_HOST` | `127.0.0.1` | Bind address for the MCP server (set to `0.0.0.0` inside Docker) |
-| `MCP_TRANSPORT` | `sse` | MCP transport: `http` (Streamable HTTP, recommended) or `sse` (deprecated default, will be removed in a future release) |
-| `VALKEY_MAX_CONNECTIONS` | `20` | Valkey connection pool size for the MCP server and web UI (the RSS worker defaults to `50` when unset) |
-| `VALKEY_RAW_MAX_CONNECTIONS` | `4` | Pool size for the second binary-safe Valkey client that reads stored vectors (dedup, maintenance, contradiction checks) |
-| `OAUTH_VALKEY_MAX_CONNECTIONS` | `5` | Pool size for the OAuth token store's dedicated Valkey client |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | The embedding model. A bare name is looked up under `sentence-transformers/` on the Hugging Face hub; give `owner/name` for anything else, or a path to a directory holding the repo's files (`onnx/model.onnx`, `tokenizer.json`, optionally `sentence_bert_config.json`) to load with no network at all. Hub downloads happen once on first start and land in the same Hugging Face cache sentence-transformers used (`HF_HOME`, default `~/.cache/huggingface`), so an existing cache gains one ~86 MB file rather than re-fetching. Files are looked for in the cache before any network call, so a warm start makes no round trips; `HF_HUB_OFFLINE=1` makes a pre-filled cache authoritative for air-gapped hosts — note a cache filled by the pre-6.7 torch backend holds the weights but **not** `onnx/model.onnx`, so fetch once online (or supply a directory) before going offline. The model's pooling mode is read from its `1_Pooling/config.json` (mean, CLS and max are supported; anything else is refused at start rather than embedded into the wrong space), and a model whose vectors are not 384-dimensional is refused because the indexes are built for 384. Compose mounts a shared `hf_cache` volume on `/app/hf-cache` (`HF_HOME` in the images) so a recreated container starts from cache |
-| `EMBEDDING_BACKEND` | `onnx` | `onnx` (ONNX Runtime + the Rust tokenizers library, no PyTorch — the default since 6.7) or `torch` (the pre-6.7 sentence-transformers path; needs `mcp_server/requirements-torch.txt` (see its header for the CPU-wheel install order), not in the images). Same vectors either way |
-| `EMBEDDING_MODEL_REVISION` | pinned for the default model | Git revision of the model repo to fetch. The default all-MiniLM-L6-v2 is pinned to the commit the 6.7 numbers were measured against, so an upstream re-export can never change vectors under a live store; any other model follows `main` unless you pin it here |
-| `EMBEDDING_ONNX_FILE` | `onnx/model.onnx` | Which graph in the model repo to run. The all-MiniLM-L6-v2 repo also ships optimised (`onnx/model_O4.onnx`) and quantised (`onnx/model_qint8_arm64.onnx`, `onnx/model_qint8_avx512.onnx`) variants: faster and smaller, but a quantised graph is **not** vector-equivalent to the float one — benchmark it and re-embed the store before switching |
-| `EMBEDDING_MAX_SEQ_LENGTH` | from the model | Token cap per text; read from the repo's `sentence_bert_config.json` (256 for MiniLM) when unset, and clamped to the graph's `max_position_embeddings` (512 for MiniLM) so an over-large override cannot crash the first long memory |
-| `EMBEDDING_THREADS` | ORT default | ONNX Runtime intra-op thread count. Leave unset unless you are pinning containers to cores |
-| `RSS_SCHEDULE_HOURS` | `6` | How often feeds are ingested |
-| `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per cycle |
-| `RSS_MAX_DIGEST_ENTRIES` | `2` | Entries ingested per cycle for feeds set to `mode: digest` in feeds.yml |
-| `RSS_REQUIRE_LICENCE` | `false` | Refuse feeds that declare no usable `licence:` in feeds.yml instead of ingesting their articles as `licence=unknown`. The refusal happens before any fetch and is counted under `refused` in the ingest stats |
-| `FEEDS_CONFIG_PATH` | `/app/feeds.yml` | Path to feeds.yml inside the RSS worker and web UI containers |
-| `FEEDS_WATCH_INTERVAL` | `10` | Seconds between mtime polls of feeds.yml for change detection (inotify doesn't work on Docker bind mounts) |
-| `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results |
-| `DEPRIORITISED_WEIGHT` | `0.2` | Surface score for deprioritised memories |
-| `RECENCY_DECAY_DAYS` | `90` | Days before the age penalty kicks in |
-| `RECALL_MIN_SCORE` | `0.15` | Relevance floor for `recall()` and `recall_index()`. Results scoring below it are dropped instead of padding out `top_k`, so a short or empty result set is a normal answer. Gated on the raw similarity rather than the adjusted score, so memories that are deliberately scored down (extracted facts at surface 0.5, abandoned experiences at 0.1) are still returned when they genuinely match. Abandoned-approach warnings and reinstate candidates are exempt — neither is surfaced on similarity. Deliberately conservative: measured on the shipped embedder, true and false positive similarities overlap, so a floor high enough to remove all the noise also discards correct answers. `0` disables it |
-| `RECALL_WEAK_SCORE` | `0.35` | Results above the floor but below this are returned with `weak_match: true`. That band is where relevant and irrelevant genuinely overlap and no threshold separates them, so the caller is told rather than the result being hidden or presented as solid. The agent instructions tell it to read a weak match but not build on it. `0` turns the flag off |
-| `INGEST_MODE` | `full` | `full` stores content verbatim then extracts atomic facts via Claude Haiku in the background — facts land in the knowledge namespace (preferences in the preference namespace) as supplements to the verbatim original, inheriting its timestamp so temporal recall works; `raw` stores verbatim only. Falls back to raw automatically when no API key is set |
-| `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for background fact extraction in `full` ingest mode |
-| `RECALL_EXPAND_QUERIES` | `false` | Globally enable query expansion on `recall()`. Generates alternative phrasings via Claude Haiku and unions the results |
-| `RECALL_EXPAND_COUNT` | `3` | Number of variant queries to generate when expansion is enabled |
-| `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Claude model used to generate query expansion variants |
-| `ENRICHMENT_BATCH_MODE` | `false` | When `true`, `remember_document()` sends all chunks as a single enrichment job so the background worker makes one Haiku API call instead of N. Faster for large documents and benchmark runs |
-| `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity threshold for duplicate detection on `remember()` |
-| `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity threshold for contradiction candidate search |
-| `STALE_MEMORY_DAYS` | `30` | Days without update before a memory is flagged as stale in `briefing()` |
-| `INDEX_DRIFT_CHECK` | `true` | Compare each index's `num_docs` against the actual record count at startup and log any drift. Costs one `SCAN` of `mem:*` per boot. Drift is also reported by `health()` and in every `briefing()`; clearing it is a `reindex()` call, which is never automatic |
-| `AUTO_MAINTENANCE_INTERVAL` | `10` | Number of `briefing()` calls per project before auto-maintenance runs (0 to disable) |
-| `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before RSS-ingested knowledge articles expire and are auto-archived during maintenance |
-| `METRICS_CACHE_TTL` | `60` | Seconds to cache `/metrics` endpoint results between Prometheus scrapes |
-| `TELEMETRY_COLD_DAYS` | `60` | Days without recall before a memory is flagged as "gone cold" on the telemetry dashboard |
-| `OMNIMEM_INSTRUCTIONS_CHARS` | `14162` | Calibration for the token-overhead dashboard page: character count of the MCP instructions text |
-| `OMNIMEM_TOOL_SCHEMAS_CHARS` | `7620` | Calibration for the token-overhead dashboard page: total character count of the tool schemas |
-| `WEB_PORT` | `8080` | Port the web UI listens on |
-| `BACKUP_DIR` | `/app/backups` | Where backup files are written (shared between MCP server and web UI) |
-| `OMNIMEM_USER` | `local` | Identity segment in generated skill keys (`mem:skill:gen:{domain}-{user}`) and the "How {user} works in..." description draft. Single-node label only — auth and org scoping are v7 |
-| `SKILL_CLUSTER_THRESHOLD` | `0.80` | Cosine similarity above which two lessons count as the same lesson for reinforcement. Looser than dedup's 0.92 because the same lesson is phrased differently across episodes |
-| `SKILL_DOMAIN_SUGGEST_THRESHOLD` | `0.60` | Similarity floor for the domain "did you mean" guard when a compile finds no candidates |
-| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill diff stays committable via `compile_skill(mode='write')` before it expires and must be re-proposed |
-| `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Below it nothing is returned, so an empty list means no stored skill covers the work rather than that discovery failed. Separate from `RECALL_MIN_SCORE` because the two measure different things: a skill's discovery vector is its short name-plus-description, matched against a query about the work at hand, and that distribution separates cleanly (lowest true positive 0.3042, highest false positive 0.2341 on a live store) where a memory's raw content similarity does not. Exact domain matches are identity matches and are never gated |
-| `SKILL_SUGGEST_MIN_SIMILARITY` | `0.30` | Similarity floor for skill suggestions in `briefing()` on projects that already have context |
-| `SKILL_EXPORT_DIR` | `/app/backups/skills` | Root directory for optional `export_path` mirrors of compiled skills. Valkey stays the canonical store |
-| `SKILL_KNOWLEDGE_WATCH_DAYS` | `14` | Lookback window for the briefing's knowledge watch — how long a recent article can keep flagging itself as relevant to a compiled skill. Set to 0 to disable |
-| `SKILL_KNOWLEDGE_WATCH_THRESHOLD` | `0.35` | Similarity floor between an article and a skill's discovery embedding before the knowledge watch surfaces it |
-| `SKILL_SCAN_INTERVAL_HOURS` | `24` | How often a `briefing()` may run the auto skill scan that proposes new skills from cross-project lesson patterns and drafts for changed skills. Set to 0 to disable |
-| `SKILL_SCAN_MIN_POOL` | `3` | Minimum lesson-bearing memories a domain needs before the scan even checks it for a new skill |
-| `SKILL_SCAN_CROSS_PROJECT` | `true` | Require at least one qualifying rule to span two or more projects before auto-proposing a new skill. Set to `false` to propose from single-project patterns too |
-| `SKILL_FEED_MAX_ARTICLES` | `25` | Overall cap on the Feed watch section a compiled skill can carry from influencing RSS feeds, trimmed weakest-influence-first. Set to 0 to disable feed influence entirely |
-| `SKILL_SCAN_MAX_PROPOSALS` | `3` | Cap on proposals a single scan run may create, so one briefing never floods the review queue |
+| `OMNIMEM_DB` | Desktop app: `omnimem.db` in the data folder. Headless: `data/omnimem.db` under the working directory | The SQLite database. `feeds.yml` and `backups/` default to the folder it's in. Also available as `--db` on every command |
+| `OMNIMEM_LOG` | `info` for `serve` and the desktop app, `warn` for the other commands | Log level or filter, such as `debug` or `omnimem_mcp=debug,info` |
+
+## MCP server
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | Address to listen on. Anything other than loopback needs `MCP_AUTH_TOKEN` or OAuth, or OmniMem refuses to start. Use `0.0.0.0` inside Docker |
+| `MCP_PORT` | `8765` | Port. Clients connect to `http://address:port/mcp` |
+| `MCP_AUTH_TOKEN` | *(unset)* | A shared bearer token clients send as `Authorization: Bearer <token>`. Compared in constant time. Works alongside OAuth |
+| `MCP_PUBLIC_URL` | *(unset)* | Where clients reach OmniMem through a proxy or tunnel. Its host and origin are trusted automatically |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host that isn't allowed gets `421 Misdirected Request` |
+| `MCP_ALLOWED_ORIGINS` | *(unset)* | Extra browser origins (`scheme://host[:port]`) to accept, comma separated |
+
+See [remote access](remote-access.md) for putting OmniMem behind a reverse proxy, and what 421 and 403 errors mean.
+
+## OAuth
+
+For claude.ai and other clients that sign in rather than send a token. The login page is the only HTML OmniMem serves over the network.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OAUTH_ENABLED` | off | Turn on the OAuth 2.1 authorisation server. If it's on but the three settings below aren't all set, OmniMem refuses to start and says which is missing |
+| `OAUTH_BASE_URL` | *(unset)* | The address clients reach OmniMem at, such as `https://mcp.example.com`. Must be https, except for localhost. Its host and origin are trusted |
+| `OAUTH_ADMIN_USER` | *(unset)* | The username the login page asks for |
+| `OAUTH_ADMIN_PASSWORD` | *(unset)* | The password it asks for |
+| `OAUTH_REFRESH_MAX_DAYS` | `30` | How long a client stays signed in, however often it refreshes. 1 to 90 |
+| `OAUTH_REFRESH_GRACE_SECONDS` | `120` | How long a replaced refresh token keeps working, returning the same new tokens, so clients refreshing at once (claude.ai does) aren't signed out. Up to 3600; `0` makes refresh tokens strictly single use |
+| `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed logins from one address before the login page refuses it for a while. `0` turns the limit off |
+| `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | How long a failed login counts towards that limit |
+
+Clients, codes and tokens are kept in the database (tokens only as hashes), so a restart signs nobody out.
+
+## Claude
+
+Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memories as written, recalls with the original query, confirms nothing as a contradiction, and truncates RSS articles instead of summarising them.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | *(unset)* | Turns on fact extraction, query expansion, contradiction checks and RSS summaries |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | A different Messages API endpoint, such as a proxy |
+| `INGEST_MODE` | `full` | `full` stores a memory as written, then extracts atomic facts in the background (facts go to the knowledge namespace, preferences to the preference namespace). `raw` just stores it. Falls back to raw with no key |
+| `ENRICHMENT_BATCH_MODE` | off | Send a whole `remember_document()` to one extraction call instead of one per chunk. Faster for big documents, with a bigger prompt |
+| `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model for fact extraction |
+| `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise |
+| `RECALL_EXPAND_COUNT` | `3` | Variants per expanded query, 1 to 10 |
+| `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Model for query expansion |
+
+## Recall and maintenance
+
+| Variable | Default | Description |
+|---|---|---|
+| `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results. A ceiling, not a target |
+| `RECALL_MIN_SCORE` | `0.15` | Relevance floor on raw similarity. Anything below it is left out, so a short or empty result is a real answer. Abandoned-approach warnings and reinstate candidates are exempt. `0` keeps everything |
+| `RECALL_WEAK_SCORE` | `0.35` | Results above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
+| `RECENCY_DECAY_DAYS` | `90` | Age after which the recency penalty starts |
+| `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
+| `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
+| `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity at which two memories are checked for contradicting each other |
+| `STALE_MEMORY_DAYS` | `30` | The briefing lists active memories untouched this long |
+| `AUTO_MAINTENANCE_INTERVAL` | `10` | Briefings per project between maintenance runs (dedup, contradiction scan, article expiry). `0` turns it off |
+| `ABANDONED_CACHE_TTL_SECONDS` | `60` | How long recall caches the list of abandoned approaches. Experience writes clear it straight away. `0` rescans every time |
+| `PROJECT_DOMAIN_CACHE_TTL_SECONDS` | `60` | How long `recall(domain_filter=...)` caches which projects hold which domains. Project writes clear it. `0` rescans every time |
+| `BACKUP_DIR` | `backups/` beside the database | Where `dump_to_file()` and the Backups page write, and where restores are read from |
+
+## RSS
+
+| Variable | Default | Description |
+|---|---|---|
+| `FEEDS_CONFIG_PATH` | `feeds.yml` beside the database | The reading list. The settings panel's Feeds page edits the same file |
+| `RSS_SCHEDULE_HOURS` | `6` | How often feeds are checked. Feeds are also checked at start and whenever `feeds.yml` changes. `0` means only those two |
+| `FEEDS_WATCH_INTERVAL` | `10` | Seconds between checks for a changed `feeds.yml` |
+| `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per check |
+| `RSS_MAX_DIGEST_ENTRIES` | `2` | Entries per check for feeds set to `mode: digest` |
+| `RSS_MAX_PAGE_BYTES` | `10485760` | Most bytes read when fetching a full article page (10 MB) |
+| `RSS_REQUIRE_LICENCE` | off | Skip feeds whose `feeds.yml` entry doesn't declare a licence, before fetching anything, instead of ingesting their articles as `unknown` |
+| `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before an ingested article expires and is archived |
+
+## Skills
+
+| Variable | Default | Description |
+|---|---|---|
+| `OMNIMEM_USER` | `local` | The user part of generated skill names (`{domain}-{user}`) |
+| `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Exact domain matches are never held back |
+| `SKILL_CLUSTER_THRESHOLD` | `0.80` | Similarity at which two lessons count as the same lesson for reinforcement |
+| `SKILL_DOMAIN_SUGGEST_THRESHOLD` | `0.60` | Floor for the "did you mean" domain suggestion when a compile finds nothing |
+| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill can still be written with `compile_skill(mode='write')` |
+| `SKILL_EXPORT_DIR` | `skills/` inside the backup folder | Where `compile_skill(export_path=...)` writes a copy |
+| `SKILL_FEED_MAX_ARTICLES` | `25` | Cap on a skill's Feed watch section from influencing feeds. `0` leaves it out |
+| `SKILL_KNOWLEDGE_WATCH_DAYS` | `14` | How far back the briefing's knowledge watch looks for articles relevant to a skill. `0` turns it off |
+| `SKILL_KNOWLEDGE_WATCH_THRESHOLD` | `0.35` | Similarity an article needs to a skill before the watch mentions it |
+| `SKILL_SUGGEST_MIN_SIMILARITY` | `0.30` | Floor for skill suggestions in the briefing |
+| `SKILL_SCAN_INTERVAL_HOURS` | `24` | How often a briefing may run the automatic skill scan. `0` turns it off |
+| `SKILL_SCAN_MIN_POOL` | `3` | Lesson-bearing memories a domain needs before the scan looks at it |
+| `SKILL_SCAN_CROSS_PROJECT` | on | Only propose a new skill when a rule spans two or more projects. Set `false`, `0` or `no` to allow single-project patterns |
+| `SKILL_SCAN_MAX_PROPOSALS` | `3` | Most proposals one scan may create |
+
+## Embeddings
+
+The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revision 6.7 used, so the vectors match a 6.x store exactly.
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | A bare name is looked up under `sentence-transformers/`; give `owner/name` for anything else, or a path to a folder holding `onnx/model.onnx` and `tokenizer.json` to load with no network at all. The model must produce 384-dimensional vectors |
+| `EMBEDDING_MODEL_REVISION` | pinned for the default model, `main` otherwise | Which commit of the model repo to fetch |
+| `EMBEDDING_ONNX_FILE` | `onnx/model.onnx` | Which graph in the repo to run. Quantised graphs are faster but don't produce the same vectors, so re-embed (export and import) before switching |
+| `EMBEDDING_MAX_SEQ_LENGTH` | from the model (256 for MiniLM) | Token cap per text. Clamped to what the model supports |
+| `EMBEDDING_THREADS` | ONNX Runtime's choice | Threads per embedding call |
+| `HF_HOME`, `HF_HUB_CACHE` | `~/.cache/huggingface` | Where downloaded models are cached, as the Hugging Face tools use it. `XDG_CACHE_HOME` is honoured too |
+| `HF_ENDPOINT` | `https://huggingface.co` | A mirror to download from |
+| `HF_HUB_OFFLINE` | off | Never contact Hugging Face. The model must already be in the cache (or `EMBEDDING_MODEL` must be a folder) |
+| `HF_TOKEN` | *(unset)* | Only needed for a private or gated model |
+
+## Settings panel
+
+Desktop app only.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DASHBOARD_STATS_TTL` | `60` | Seconds the dashboard caches its counts. `0` recounts on every visit |
+| `TELEMETRY_COLD_DAYS` | `60` | Days without a recall before the Telemetry page calls a memory gone cold |
+
+## Gone since 6.x
+
+These did something in 6.x and are ignored now, mostly because the thing they configured no longer exists:
+
+| Settings | Why |
+|---|---|
+| `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_PASSWORD`, `VALKEY_MAX_CONNECTIONS`, `VALKEY_RAW_MAX_CONNECTIONS`, `OAUTH_VALKEY_MAX_CONNECTIONS` | Valkey is gone; everything is in the SQLite file |
+| `WEB_PORT`, `WEB_UI_AUTH_TOKEN`, `WEB_UI_LOGIN_ENABLED`, `WEB_UI_SESSION_HOURS` | There's no web UI over HTTP; its pages are in the desktop app's settings panel |
+| `METRICS_CACHE_TTL` | `/metrics` is gone with the web UI; the Telemetry page shows the same numbers |
+| `MCP_TRANSPORT`, `FASTMCP_HTTP_ALLOWED_HOSTS`, `FASTMCP_HTTP_ALLOWED_ORIGINS` | Streamable HTTP is the only transport, and FastMCP isn't involved. Use `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` |
+| `EMBEDDING_BACKEND` | ONNX Runtime is the only backend; the PyTorch rollback is gone |
+| `INDEX_DRIFT_CHECK` | There's no separate search index to drift from the data |
+| `OMNIMEM_INSTRUCTIONS_CHARS`, `OMNIMEM_TOOL_SCHEMAS_CHARS` | The Token overhead page measures what the server actually sends |

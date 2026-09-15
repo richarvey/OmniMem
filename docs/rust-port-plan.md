@@ -6,7 +6,7 @@ OmniMem 7 is one Rust binary. It replaces four containers (Valkey with the searc
 
 It ships three ways: as desktop installers (an MSI for Windows, a DMG for macOS, a Flatpak for Linux) that run OmniMem with a tray or menu bar icon and a native settings window; as headless Linux packages (`.deb`, `.rpm` and a tarball) that install a systemd service with no desktop dependencies; and as a headless Docker image.
 
-The Python tree stays in the repository as the reference implementation until the Rust binary reaches parity, then goes in one commit.
+The Python tree was the reference implementation through phase 8 and has now been removed from this branch (6.x carries on in the `v6.x` branches). The golden fixtures captured from it stay, with the scripts that took them, which run against a `v6.7.x` checkout.
 
 ## Progress
 
@@ -90,10 +90,11 @@ SQLite in WAL mode, one file (default `./data/omnimem.db`).
 
 - **`memories`**: one row per memory. Typed columns for everything that is filtered, sorted or counted (`key` primary, `namespace`, `state`, `project`, `project_name`, `surface_score`, `created_at`, `updated_at`, `recall_count`, `last_recalled`, `effort_score`, `outcome`, `experience_weight`, `licence`, `provenance`, `feed_name`, `expires_at`, `domain`, `generated`, plus the v7 fields `origin_id`, `content_hash` (indexed), `epoch`, `classification`). Everything else in a `fields` JSON column, so a 6.x field with no column survives an import untouched
 - **`vectors`**: `key` → 384 little-endian float32 bytes, the same encoding Valkey stored
-- **`memory_tags`**, **`memory_domains`**: join tables, so tag and domain filters are real queries (in 6.x `tags` were JSON strings and unsearchable)
-- **`kv`**: `key`, `value`, `expires_at`. Replaces every `meta:*`, `qexp:*` and `topics:suppressed` key, with expiry enforced on read and swept periodically
-- **`recall_log`**, **`tool_metrics`**, **`enrich_queue`** (durable, so a crash no longer loses a job), **`oauth_clients`**, **`oauth_codes`**, **`oauth_tokens`**
-- **`memories_fts`**: FTS5 over content, for later hybrid search
+- **`kv`**: `key`, `kind` (hash, set or string), `value` as JSON, `expires_at`. Replaces every `meta:*`, `log:recall:*`, `qexp:*` and `topics:suppressed` key, including recall logs and tool metrics, with expiry enforced on read
+- **`enrich_queue`** (durable, so a crash no longer loses a job), **`oauth_clients`**, **`oauth_codes`**, **`oauth_tokens`** (codes and tokens keyed by SHA-256)
+- **`store_meta`**: the store's `origin_id`
+
+As built, the typed columns are generated from `fields` (`state`, `project`, `project_name`, `feed_name`, `created_at`, `updated_at`, `content_hash`) rather than stored separately. Tag and domain join tables and an FTS5 table for hybrid keyword search were planned and not built; they can be added in a later schema version.
 
 Vector search: on start, load every vector into one contiguous matrix per namespace, kept in step with writes. A query computes dot products (vectors are unit length) against rows that pass the filter, then takes the top k. Filters are SQL, so the valkey-search tag-query quirks (`{a|b}` alternation, escaped values, `FT.DROPINDEX` arity) and index drift disappear with Valkey.
 

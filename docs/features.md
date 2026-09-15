@@ -1,10 +1,10 @@
 # Features in Depth
 
-The bits no other memory system has: a proper lifecycle, a graveyard of dead ends, experience scoring, deduplication, contradiction detection, a one-call briefing, and background maintenance. The [skill compiler](skill-compiler.md) has a page of its own.
+The bits that make OmniMem more than a key-value store with an MCP wrapper: a proper lifecycle, a graveyard of dead ends, experience scoring, deduplication, contradiction detection, a one-call briefing, cross-project recall and background maintenance. The [skill compiler](skill-compiler.md) gets a page of its own.
 
 ## Memory is not binary
 
-Most systems remember or forget. OmniMem has a lifecycle:
+Most systems either remember something or delete it. OmniMem has a lifecycle:
 
 ```mermaid
 stateDiagram-v2
@@ -22,29 +22,27 @@ stateDiagram-v2
 | State | Recall weight |
 |---|---|
 | `ACTIVE` | 1.0x |
-| `DEPRIORITISED` | 0.2x |
-| `ARCHIVED` | 0.0x |
+| `DEPRIORITISED` | 0.2x (`DEPRIORITISED_WEIGHT`) |
+| `ARCHIVED` | 0x |
 | `DELETED` | gone |
 
-When you say "forget about X" you do not usually mean destroy it. You mean stop surfacing it. OmniMem deprioritises rather than deletes, applying a surface score multiplier at recall time. If something becomes relevant again later it can earn its way back.
+When you say "forget about X" you rarely mean destroy it. You mean stop bringing it up. So OmniMem deprioritises rather than deletes, and if something becomes relevant again later it can earn its way back.
 
-Use `deprioritise` when something should stop surfacing but might be needed again someday. Add `reinstate_hints` to describe what should bring it back. If a future query strongly matches a hint, the memory resurfaces with a note explaining why it was deprioritised in the first place.
+- **`deprioritise`** when something should stop surfacing but might matter again one day. Add `reinstate_hints` to say what should bring it back: when a later query contains one, the memory resurfaces as a reinstate candidate with a note explaining why it was pushed down.
+- **`archive`** for things that are definitely out of date but worth keeping for history.
+- **`forget`** only when you want it gone for good. It needs `confirm=True`, so nothing vanishes by accident.
 
-Use `archive` for content that is definitely outdated but has historical value worth keeping.
+Deprioritise a memory with an effort score of 4 or more and OmniMem will point that out first. It isn't blocking you, just checking you meant to bury something that was properly hard to figure out.
 
-Use `forget` only when you want something permanently gone. It requires `confirm=True` so nothing disappears by accident.
+You can also suppress whole topics. `suppress_topic("pisource.org")` keeps anything mentioning it out of every recall, in every session, until you lift it. And `deprioritise_project` turns an entire project down in one go (reversibly, with `reinstate_project`).
 
-One thing worth knowing: if you deprioritise a memory with `effort_score >= 4` the system will flag it before letting you proceed. It is not blocking you, just making sure you meant to soft-suppress something that was genuinely hard to figure out.
+The full storage model is in the [memory type specifications](memory-types.md).
 
-You can also suppress entire topics. Calling `suppress_topic("pisource.org")` means nothing touching that topic surfaces in any recall, across any session, until you lift it.
+## The graveyard
 
-For the full storage model behind all of this, see the [memory type specifications](memory-types.md).
+OmniMem tracks what didn't work as well as what did, and why.
 
-## The Graveyard
-
-OmniMem tracks not just what worked but what did not and why.
-
-Every abandoned approach gets logged with its name, type, and reason for failure. Before Claude suggests a library or architectural pattern the graveyard is checked first. If you tried something before and gave up on it, that warning surfaces at the top of results before anything else does.
+Every abandoned approach is logged with its name, type and the reason it failed. Before your agent suggests a library or a pattern, the graveyard gets checked, and if you've tried it before and given up, the warning comes first, ahead of anything else in recall.
 
 ```
 WARNING: previously abandoned approaches match this query
@@ -54,15 +52,17 @@ WARNING: previously abandoned approaches match this query
   openai embeddings service     API cost and latency were prohibitive   effort: 2/5
 ```
 
-Dead ends do not get a second chance to waste your afternoon.
+The fast path is a keyword scan of the graveyard, so it doesn't even wait for an embedding. Record dead ends with `record_experience` at the end of some work, or one at a time with `log_abandoned` as you go. Abandon something that took real effort (4 or more) and the approach names are suppressed automatically.
+
+Dead ends don't get a second chance to waste your afternoon.
 
 ## Experience scoring
 
-Not all successful memories are equal. Something that worked first time is useful. Something that took four attempts, two abandoned libraries, and a weird Alpine-specific workaround to crack is gold, and it should surface more readily.
+Not every success is equal. Something that worked first time is useful. Something that took four attempts, two abandoned libraries and a weird platform-specific workaround is gold, and it should surface more readily.
 
-OmniMem assigns an experience weight to every memory based on effort and outcome:
+OmniMem gives every memory an experience weight from its effort and outcome:
 
-| Effort | Meaning | Recall weight |
+| Effort | Meaning | Weight when it succeeded |
 |---|---|---|
 | 1 | Worked first time | 1.0x |
 | 2 | Minor friction | 1.1x |
@@ -70,97 +70,107 @@ OmniMem assigns an experience weight to every memory based on effort and outcome
 | 4 | Significant struggle | 1.5x |
 | 5 | Battle-hardened | 1.8x |
 
-The recall score formula:
+A pivot starts from 0.7 and gets the same multiplier, so a hard-won pivot still counts. An abandoned outcome is a flat 0.1 however much effort went in: effort multiplies success, it never amplifies a failure.
+
+That weight goes straight into the ranking:
 
 ```
-score = similarity x surface_score x recency x experience_weight
+score = similarity x surface_score x recency x experience_weight x date_boost
 ```
 
-A score-5 success is worth nearly twice as much in recall ranking as something trivial. Knowledge earns its rank.
+A battle-hardened success is worth nearly twice as much as something trivial. Knowledge earns its rank. [Architecture](architecture.md#the-recall-pipeline) walks through the rest of the formula.
 
 ## Semantic deduplication
 
-Over time memory systems accumulate near-identical entries. OmniMem catches this at two points.
+Memory systems pile up near-identical entries over time. OmniMem catches them in two places.
 
-At write time, `remember()` embeds the new content and checks for existing memories above a cosine similarity threshold (default 0.92, configurable via `DEDUP_SIMILARITY_THRESHOLD`). If a near-identical memory already exists it returns the duplicate instead of storing a redundant copy. Pass `force=True` when you genuinely want both versions.
+When you `remember()` something, it's compared with what's already stored, and above `DEDUP_SIMILARITY_THRESHOLD` (0.92) you get the existing memory back instead of a redundant copy. Pass `force=True` when you really do want both.
 
-For bulk cleanup, `find_duplicates()` scans an entire namespace, batch-embeds everything, computes pairwise similarity, and returns clusters of duplicates grouped by union-find. Point it at your episodic namespace once a month and archive the extras.
+For a bulk tidy-up, `find_duplicates()` scans a namespace using the vectors already stored (no re-embedding) and returns clusters of near-duplicates. Point it at your episodic memories now and again and archive the extras, or use the Duplicates page in the [settings panel](settings-panel.md).
 
 ## Contradiction detection
 
 The graveyard warns you about things that failed. Contradiction detection warns you about things that disagree with each other.
 
-When `remember()` stores a new memory it runs a fast heuristic check — finding semantically similar memories and scanning for negation pattern mismatches (e.g. one says "use X" while the other says "avoid X"). If a potential contradiction is detected it stores the memory but returns a warning so you can investigate.
+When `remember()` stores a memory it runs a quick heuristic: find similar memories and look for opposing language (one says "use X", the other says "avoid X"). If it finds a likely contradiction, it stores the memory anyway and hands back a warning so you can look into it.
 
-For deeper analysis, `check_contradictions()` can optionally call Claude Haiku (Tier 2) to evaluate candidate pairs. Confirmed contradictions are cross-linked on both memories and flagged whenever either one surfaces in a `recall()`.
+For a closer look, `check_contradictions(use_api=True)` asks Claude to judge the candidate pairs. Confirmed contradictions are linked on both memories and flagged whenever either one comes up in recall. Without an API key you get the heuristic and nothing breaks.
 
 ```
 contradiction_warning:
   existing_key: mem:episodic:01ARZ3NDEK...
-  existing_content: "Always use connection pooling for Valkey..."
+  existing_content: "Always use connection pooling for the database..."
   explanation: "These memories discuss the same topic but contain opposing language"
 ```
 
 ## Session briefing
 
-Instead of making three separate calls at session start, a single `briefing(project="myproject")` returns everything Claude needs to get up to speed:
+Rather than three separate calls at the start of a session, one `briefing(project="myproject")` gives your agent everything it needs:
 
-- **Project context** — current state, stack, last update
-- **Experience summary** — effort stats, graveyard, breakthroughs
-- **Stale memories** — active memories not updated in 30+ days (configurable via `STALE_MEMORY_DAYS`)
-- **New knowledge** — RSS articles ingested in the last 7 days
-- **Contradiction warnings** — memories with unresolved contradictions
-- **Reinstate candidates** — deprioritised memories whose reinstate hints match current work
-- **Suppressed topics** — what is currently filtered out
-- **Skill suggestions** — compiled skills relevant to the current work, as a recommendation rather than an auto-load. On an ongoing project they sit below project context; on a greenfield project with no context yet they move to the top, because there the skill is the only thing carrying your conventions
-- **Skill updates** — one-line gists where a skill's source memories changed since it was last compiled, with prominence scaled to risk
-- **Auto-proposed skills** — at most once per `SKILL_SCAN_INTERVAL_HOURS` (default 24), a scan across all projects proposes drafts for domains whose lessons recur strongly enough to earn a skill (cross-project patterns by default) and for changed skills. Proposals only — a human still reviews and accepts every draft, and an ignored draft is not raised again until the lessons change
+- **Project context:** current state, stack, goals and domains
+- **Experience summary:** effort stats, the graveyard, breakthroughs
+- **Stale memories:** active memories untouched for `STALE_MEMORY_DAYS` (30)
+- **New knowledge:** RSS articles from the last 7 days
+- **Contradiction warnings:** memories with unresolved contradictions
+- **Reinstate candidates:** deprioritised memories whose hints match current work
+- **Suppressed topics:** what's being filtered out
+- **Skill suggestions:** compiled skills relevant to the work, as a recommendation rather than an auto-load. On a greenfield project with no context yet they move to the top, because there the skill is the only thing carrying your conventions
+- **Skill updates:** a line per skill whose source memories changed since it was compiled, louder when the change is riskier
+- **Knowledge watch:** recent articles that look relevant to a skill, and any that seem to contradict one
+- **Auto-proposed skills:** at most once every `SKILL_SCAN_INTERVAL_HOURS` (24), drafts for domains whose lessons recur strongly enough to earn a skill. Proposals only: a human still accepts every one
 
-One tool call, one response, full context.
+One call, one response, full context.
 
 ## Cross-project recall by work type
 
-Memory scoped to one project answers "what did we decide here". It does not answer "what have I learned the hard way about Python", which is the question you actually have when you hit a familiar-feeling problem in a project you started last week.
+Memory scoped to one project answers "what did we decide here?". It doesn't answer "what have I learned the hard way about Python?", which is the question you actually have when a familiar-feeling problem turns up in a project you started last week.
 
-Projects declare **work-type domains** — the kinds of work inside them:
+Projects declare **work-type domains**, the kinds of work inside them:
 
 ```python
 set_project_context(
     project_name="omnimem",
-    description="Self-hosted semantic memory MCP server",
-    stack="Python 3.12, FastMCP, Valkey",
-    goals="Ship v6.6",
-    current_state="v6.6.x branch",
-    domains=["python", "docker", "htmx"],
+    description="Self-hosted semantic memory for AI agents",
+    stack="Rust, SQLite, ONNX Runtime",
+    goals="Ship 7.0",
+    current_state="v7.0.x branch",
+    domains=["rust", "sqlite", "desktop-apps"],
 )
 
-recall("valkey tag filter behaviour", domain_filter="python")
+recall("sqlite locking under concurrent writes", domain_filter="rust")
 ```
 
-That searches every project declaring `python`, not just the one you are sitting in. `project_filter` and `domain_filter` intersect when both are given, and `list_projects(domain="python")` shows which projects a domain covers.
+That searches every project declaring `rust`, not just the one you're sitting in. `project_filter` and `domain_filter` intersect when you give both, and `list_projects(domain="rust")` shows which projects a domain covers.
 
-Three things make it work rather than turn into a tagging chore:
+Three things stop it becoming a tagging chore:
 
-- **It shares the compiled-skill vocabulary.** A project domain and a skill domain normalise through the same code, so `py` becomes `python` in both and the same name reaches `find_skills()`. Skills carry the lessons that cleared the reinforcement gate; the domain filter reaches the raw memories underneath — including the gotcha you hit twice that never became a rule.
-- **Domains suggest themselves.** `compile_project_domains(name)` reads the project's existing stack field and the tags that recur across its memories, and proposes a list with the evidence for each entry. It proposes by default, writes only on `auto_save=True`, and never removes a domain you set by hand. A startup migration seeds domains from `stack` on upgrade, so the filter is not empty on day one.
-- **An unmatched domain says so.** Filter on a domain no project declares and the search runs unscoped with a leading notice telling you the filter was not applied. A global search dressed up as a targeted one is worse than no filter at all.
+- **It shares the skill vocabulary.** Project domains and skill domains normalise through the same code, so `py` becomes `python` in both and the same name reaches `find_skills()`. Skills carry the lessons that cleared the reinforcement gate; the domain filter reaches the raw memories underneath, including the gotcha you hit twice that never became a rule.
+- **Domains suggest themselves.** `compile_project_domains(name)` reads the project's stack and the tags that keep recurring in its memories, and proposes a list with the evidence for each. It proposes by default, writes only with `auto_save=True`, and never removes a domain you set by hand. Projects with no domains get them seeded from their stack at start-up, so the filter isn't empty on day one.
+- **An unmatched domain says so.** Filter on a domain no project declares and the search runs unscoped, with a notice up front saying the filter wasn't applied. A global search dressed up as a targeted one would be worse than no filter.
 
-Domains route; they do not label individual memories. A project is Python *and* CSS *and* Docker at once, so stamping those onto every memory would surface a CSS gotcha in a Python search. The domain narrows which projects are candidates, and the vector search still decides what is actually relevant inside them.
+Domains route, they don't label individual memories. A project is Rust *and* CSS *and* Docker at once, so stamping all of those onto every memory would surface a CSS gotcha in a Rust search. The domain narrows which projects are candidates, and the vector search still decides what's relevant inside them.
 
 ## Automatic maintenance
 
-Memory systems accumulate duplicates and contradictions over time. OmniMem handles this automatically.
+Left alone, any memory store gathers duplicates and contradictions. OmniMem tidies up after itself.
 
-Every N `briefing()` calls per project (default 10, configurable via `AUTO_MAINTENANCE_INTERVAL`), the server runs a maintenance pass:
+Every `AUTO_MAINTENANCE_INTERVAL` briefings per project (10), a maintenance pass runs:
 
-1. **Dedup scan** — finds clusters of near-identical episodic memories and archives the oldest in each cluster, keeping the newest
-2. **Contradiction scan** — checks semantically similar active project memories for negation pattern mismatches (requires cosine similarity >= 0.5 before checking, capped at 10 results)
-3. **Knowledge expiry** — archives RSS-ingested knowledge articles that have passed their `expires_at` timestamp (default 30 days after ingestion, configurable via `MAX_KNOWLEDGE_AGE_DAYS`). Manually stored knowledge items are never affected
+1. **Dedup scan:** clusters of near-identical episodic memories, keeping the newest and archiving the rest
+2. **Contradiction scan:** similar active memories checked for opposing language (similarity 0.5 or more, at most 10 results)
+3. **Knowledge expiry:** RSS articles past their expiry (`MAX_KNOWLEDGE_AGE_DAYS` after ingest, 30) are archived. Knowledge you stored yourself, or promoted, is never touched
 
-The results appear in the briefing response under `auto_maintenance` so you know what was cleaned up. Set `AUTO_MAINTENANCE_INTERVAL=0` to disable. Manual `find_duplicates()` and `check_contradictions()` calls still work as before.
+What it did shows up in the briefing under `auto_maintenance`. Set `AUTO_MAINTENANCE_INTERVAL=0` to switch it off; `find_duplicates()` and `check_contradictions()` still work by hand.
+
+## Licence and provenance
+
+Every memory records two things about where it came from, and neither ever changes its ranking:
+
+- **Licence:** may it be redistributed? `own`, `open`, `restricted` or `unknown`, decided at ingest. Recall points out anything still `unknown` so you can classify it. See [RSS and knowledge](rss-knowledge.md#licence-and-redistribution-rights).
+- **Provenance:** who's speaking? `asserted` (you said it), `concluded` (the system's own write-up) or `retrieved` (an article or document). So a later session can tell evidence from its own reasoning, instead of citing itself as corroboration.
 
 ## See also
 
-- [The skill compiler](skill-compiler.md) — distil experience into loadable SKILL.md documents
-- [MCP tool reference](mcp-tools.md) — every tool these features expose
-- [Architecture](architecture.md) — how the recall pipeline applies all of this
+- [The skill compiler](skill-compiler.md): distil experience into loadable `SKILL.md` documents
+- [MCP tool reference](mcp-tools.md): every tool these features expose
+- [Architecture](architecture.md): how the recall pipeline applies all of this
