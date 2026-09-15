@@ -40,7 +40,7 @@ mod tools;
 pub mod transfer;
 
 pub use llm::ExtractedFact;
-pub use projects::migrate_project_domains;
+pub use projects::{Suggestion, migrate_project_domains};
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -50,6 +50,7 @@ use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
 pub use config::EngineConfig;
+pub use dedup::DuplicateMatch;
 pub use error::EngineError;
 pub use lifecycle::MemoryState;
 pub use recall::{RecallResult, compute_experience_weight};

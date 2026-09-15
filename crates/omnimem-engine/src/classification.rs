@@ -140,7 +140,29 @@ pub fn default_licence(namespace: &str) -> &'static str {
     }
 }
 
-pub(crate) fn validate_licence_note(note: Option<&str>) -> Result<Option<String>> {
+/// Drop a pre-filled note that belonged to the class being replaced.
+///
+/// The forms pre-fill the current note, so switching Open to Restricted and
+/// saving would otherwise carry "CC BY 4.0" onto the restricted record. A
+/// note the human actually changed is kept, and so is the note when the
+/// class is unchanged.
+pub fn note_for_reclassification(
+    old_class: &str,
+    old_note: Option<&str>,
+    new_class: &str,
+    submitted: Option<String>,
+) -> Option<String> {
+    match submitted {
+        Some(note)
+            if !note.is_empty() && new_class != old_class && note == old_note.unwrap_or("") =>
+        {
+            None
+        }
+        other => other,
+    }
+}
+
+pub fn validate_licence_note(note: Option<&str>) -> Result<Option<String>> {
     let Some(note) = note else { return Ok(None) };
     let note = note.split_whitespace().collect::<Vec<_>>().join(" ");
     if note.is_empty() {

@@ -12,7 +12,7 @@ use crate::{Engine, Result};
 
 const MAX_DEDUP_KEYS: usize = 2000;
 
-pub(crate) struct DuplicateMatch {
+pub struct DuplicateMatch {
     pub key: String,
     pub content: String,
     pub similarity: f64,
@@ -28,7 +28,7 @@ fn doc_project(fields: &omnimem_store::Fields) -> Option<&str> {
 
 impl Engine {
     /// The first near-identical live memory in the namespace, if any.
-    pub(crate) fn check_duplicate(
+    pub fn check_duplicate(
         &self,
         namespace: Namespace,
         vector: &[f32],

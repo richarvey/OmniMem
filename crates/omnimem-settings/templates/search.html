@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Search — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Semantic Search</h2>
+</header>
+
+<form class="filter-bar" hx-get="/search/results" hx-target="#search-results" hx-indicator="#search-spinner">
+  <div class="form-group" style="flex:1;min-width:250px">
+    <label>Query</label>
+    <input type="text" name="query" class="form-input" placeholder="Describe what you're looking for..."
+           value="{{ query }}" autofocus>
+  </div>
+  <div class="form-group">
+    <label>Namespace</label>
+    <select class="form-select" name="namespace">
+      <option value="">All</option>
+      <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
+      <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
+      <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Project</label>
+    <input type="text" name="project" class="form-input" placeholder="Filter by project"
+           value="{{ project }}" style="width:150px">
+  </div>
+  <div class="form-group">
+    <label>Max results</label>
+    <input type="number" name="top_k" class="form-input" value="{{ top_k }}" min="1" max="50" style="width:80px">
+  </div>
+  <div class="form-group" style="align-self:end">
+    <button type="submit" class="btn btn-primary">
+      Search
+      <span class="htmx-indicator spinner" id="search-spinner"></span>
+    </button>
+  </div>
+</form>
+
+<div id="search-results">
+  {% if results is not none %}
+    {% include "search_results.html" %}
+  {% endif %}
+</div>
+{% endblock %}

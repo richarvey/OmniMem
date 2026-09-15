@@ -1,0 +1,150 @@
+<p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls{% if metrics_since %} since the last reset{% endif %}. Tokens estimated at ~4 chars/token.</p>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-ns">Static Overhead</div>
+    <div class="stat-total">{{ (static_total_tokens)|thousands }}</div>
+    <div class="stat-label">tokens/session</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Total Tool Calls</div>
+    <div class="stat-total">{{ (total_tool_calls)|thousands }}</div>
+    <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
+  </div>
+  <div class="stat-card stat-card-highlight">
+    <div class="stat-ns">Total Tool Tokens</div>
+    <div class="stat-total">~{{ (total_tool_tokens)|thousands }}</div>
+    <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ns">Stored Memories</div>
+    <div class="stat-total">{{ (total_memories)|thousands }}</div>
+    <div class="stat-label">active</div>
+  </div>
+</div>
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Static Overhead Breakdown</h3>
+  <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
+  <table class="data-table overhead-table">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Characters</th>
+        <th>Tokens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>MCP instructions</td>
+        <td class="mono">{{ (instructions_chars)|thousands }}</td>
+        <td class="mono">~{{ (instructions_tokens)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Tool schemas ({{ tool_count }} tools)</td>
+        <td class="mono">{{ (tool_schemas_chars)|thousands }}</td>
+        <td class="mono">~{{ (tool_schemas_tokens)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Deferred tool names</td>
+        <td class="mono">{{ (deferred_names_chars)|thousands }}</td>
+        <td class="mono">~{{ (deferred_names_tokens)|thousands }}</td>
+      </tr>
+      <tr class="total-row">
+        <td><strong>Total static</strong></td>
+        <td class="mono"><strong>{{ (static_total_chars)|thousands }}</strong></td>
+        <td class="mono"><strong>~{{ (static_total_tokens)|thousands }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% if tool_metrics %}
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Tool Usage</h3>
+  <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
+  <table class="data-table tool-metrics-table">
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Calls</th>
+        <th>Avg Duration</th>
+        <th>Avg Tokens</th>
+        <th>Total Tokens</th>
+        <th>Errors</th>
+        <th>Last Called</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tool_metrics %}
+      <tr>
+        <td class="mono">{{ t.name }}</td>
+        <td class="mono">{{ (t.call_count)|thousands }}</td>
+        <td class="mono">{{ t.avg_duration_ms }}ms</td>
+        <td class="mono">~{{ (t.avg_response_tokens)|thousands }}</td>
+        <td class="mono">~{{ (t.total_response_tokens)|thousands }}</td>
+        <td class="mono">{% if t.error_count > 0 %}<span style="color:var(--red)">{{ t.error_count }}</span>{% else %}0{% endif %}</td>
+        <td class="mono">{{ t.last_called_at }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td><strong>Total</strong></td>
+        <td class="mono"><strong>{{ (total_tool_calls)|thousands }}</strong></td>
+        <td></td>
+        <td></td>
+        <td class="mono"><strong>~{{ (total_tool_tokens)|thousands }}</strong></td>
+        <td class="mono">{% if total_tool_errors > 0 %}<span style="color:var(--red)"><strong>{{ (total_tool_errors)|thousands }}</strong></span>{% else %}<strong>0</strong>{% endif %}</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Tool Usage</h3>
+  <p class="empty-state">No tool calls recorded{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} yet{% endif %}. Metrics will appear here once the MCP server processes requests.</p>
+</div>
+{% endif %}
+
+<div class="recent-section" style="margin-top:2rem">
+  <h3>Memory Store</h3>
+  <p class="section-note">Data stored in Valkey.</p>
+  <table class="data-table overhead-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Total active memories</td>
+        <td class="mono">{{ (total_memories)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Episodic</td>
+        <td class="mono">{{ (namespace_counts.episodic)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Project</td>
+        <td class="mono">{{ (namespace_counts.project)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Knowledge</td>
+        <td class="mono">{{ (namespace_counts.knowledge)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Total recall operations (all time)</td>
+        <td class="mono">{{ (total_recalls)|thousands }}</td>
+      </tr>
+      <tr>
+        <td>Total stored content</td>
+        <td class="mono">{{ (total_content_chars)|thousands }} chars (~{{ (total_content_tokens)|thousands }} tokens)</td>
+      </tr>
+      <tr>
+        <td>Average content per memory</td>
+        <td class="mono">{{ (avg_content_chars)|thousands }} chars (~{{ (avg_content_tokens)|thousands }} tokens)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

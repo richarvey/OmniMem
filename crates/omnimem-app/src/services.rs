@@ -90,15 +90,17 @@ pub fn local_mcp_url(bound: SocketAddr) -> String {
 }
 
 /// Run every service until `shutdown` is cancelled (or, with
-/// `watch_signals`, until Ctrl-C or SIGTERM), reporting each state change.
+/// `watch_signals`, until Ctrl-C or SIGTERM), reporting each state change and
+/// handing the engine to `ready` as soon as it is open.
 pub fn run_services(
     db: &Path,
     shutdown: CancellationToken,
     watch_signals: bool,
     report: &dyn Fn(ServiceState),
+    ready: &dyn Fn(&Arc<Engine>),
 ) -> Result<()> {
     report(ServiceState::Starting);
-    let result = serve_until_shutdown(db, shutdown, watch_signals, report);
+    let result = serve_until_shutdown(db, shutdown, watch_signals, report, ready);
     match &result {
         Ok(()) => report(ServiceState::Stopped),
         Err(e) => {
@@ -114,10 +116,12 @@ fn serve_until_shutdown(
     shutdown: CancellationToken,
     watch_signals: bool,
     report: &dyn Fn(ServiceState),
+    ready: &dyn Fn(&Arc<Engine>),
 ) -> Result<()> {
     let config = ServerConfig::from_env();
     config.validate()?;
     let engine = Arc::new(open_engine(db)?);
+    ready(&engine);
 
     let stop = Arc::new(AtomicBool::new(false));
     let worker = {
@@ -241,6 +245,7 @@ mod tests {
             CancellationToken::new(),
             false,
             &|s| states.lock().unwrap().push(s),
+            &|_| {},
         );
         unsafe { std::env::remove_var("MCP_HOST") };
         assert!(

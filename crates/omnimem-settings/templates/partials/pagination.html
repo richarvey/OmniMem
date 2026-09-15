@@ -1,0 +1,30 @@
+{% if total_pages > 1 %}
+<nav class="pagination">
+  {% if page > 1 %}
+  <a href="{{ base_url }}?page={{ page - 1 }}{{ extra_params }}"
+     hx-get="{{ base_url }}?page={{ page - 1 }}{{ extra_params }}"
+     hx-target="#results" hx-push-url="true"
+     class="page-link">Prev</a>
+  {% endif %}
+
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+    <span class="page-link current">{{ p }}</span>
+    {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+    <a href="{{ base_url }}?page={{ p }}{{ extra_params }}"
+       hx-get="{{ base_url }}?page={{ p }}{{ extra_params }}"
+       hx-target="#results" hx-push-url="true"
+       class="page-link">{{ p }}</a>
+    {% elif p == 4 or p == total_pages - 2 %}
+    <span class="page-link ellipsis">&hellip;</span>
+    {% endif %}
+  {% endfor %}
+
+  {% if page < total_pages %}
+  <a href="{{ base_url }}?page={{ page + 1 }}{{ extra_params }}"
+     hx-get="{{ base_url }}?page={{ page + 1 }}{{ extra_params }}"
+     hx-target="#results" hx-push-url="true"
+     class="page-link">Next</a>
+  {% endif %}
+</nav>
+{% endif %}

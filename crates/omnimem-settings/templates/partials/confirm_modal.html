@@ -1,0 +1,14 @@
+<div id="{{ modal_id }}" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <h3>{{ title }}</h3>
+    <p>{{ message }}</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm"
+              onclick="document.getElementById('{{ modal_id }}').style.display='none'">Cancel</button>
+      <form method="POST" action="{{ action_url }}" style="display:inline">
+        <input type="hidden" name="key" value="{{ key }}">
+        <button type="submit" class="btn btn-danger btn-sm">{{ confirm_text }}</button>
+      </form>
+    </div>
+  </div>
+</div>

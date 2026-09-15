@@ -1,0 +1,29 @@
+{# htmx partial: a proposed domain list plus the evidence behind it.
+   Proposes only — the value is written into the input and the human still
+   presses Save, the same propose-and-accept shape the skill compiler uses. #}
+<div class="domain-suggestion">
+  {% if suggestion.suggested_domains %}
+  <p class="domain-suggestion-title">Suggested from this project's own record</p>
+  <ul class="domain-evidence-list">
+    {% for d in suggestion.suggested_domains %}
+    <li>
+      <span class="domain-pill">{{ d }}</span>
+      <span class="text-dim">{{ suggestion.evidence[d] | join(", ") }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {# The value rides in a data attribute rather than an inline JS string, so
+     nothing from the store is ever parsed as code. #}
+  <button type="button" class="btn btn-primary btn-sm" data-domains="{{ value }}"
+          onclick="document.getElementById('project-domains').value = this.dataset.domains; this.closest('.domain-suggestion').remove();">
+    Use these
+  </button>
+  <span class="text-dim" style="margin-left:0.5rem">Nothing is saved until you press Save.</span>
+  {% else %}
+  <p class="text-dim">
+    Nothing new to suggest. Domains are read from the Stack field above and from
+    tags that recur across this project's memories, so add a couple of tags or
+    fill in the stack &mdash; or just type the domains in yourself.
+  </p>
+  {% endif %}
+</div>

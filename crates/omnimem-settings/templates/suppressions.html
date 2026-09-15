@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Suppressions — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Topic Suppressions</h2>
+</header>
+
+<div style="margin-bottom:1.5rem">
+  <form hx-post="/suppressions/add" hx-target="body" style="display:flex;gap:0.5rem;align-items:end">
+    <div class="form-group" style="flex:1;max-width:400px;margin:0">
+      <label>Suppress a topic</label>
+      <input type="text" name="topic" class="form-input" placeholder="Topic to suppress..." required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Suppress</button>
+  </form>
+</div>
+
+{% if topics %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Topic</th>
+      <th style="width:100px">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for topic in topics %}
+    <tr>
+      <td style="font-weight:600">{{ topic }}</td>
+      <td>
+        <form hx-post="/suppressions/remove" hx-target="body" style="display:inline">
+          <input type="hidden" name="topic" value="{{ topic }}">
+          <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No topics are currently suppressed.</p>
+{% endif %}
+{% endblock %}

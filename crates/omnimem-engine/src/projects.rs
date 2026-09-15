@@ -92,7 +92,7 @@ fn parse_tag_field(raw: Option<&str>) -> Vec<String> {
     }
 }
 
-pub(crate) struct Suggestion {
+pub struct Suggestion {
     pub existing: Vec<String>,
     pub suggested: Vec<String>,
     pub merged: Vec<String>,
@@ -137,11 +137,9 @@ pub fn migrate_project_domains(store: &Store) -> omnimem_store::Result<(usize, u
 }
 
 impl Engine {
-    pub(crate) fn suggest_domains_for_project(
-        &self,
-        name: &str,
-        limit: usize,
-    ) -> Result<Suggestion> {
+    /// Propose domains from the project's stack and recurring tags, with the
+    /// evidence for each. Nothing is stored.
+    pub fn suggest_domains_for_project(&self, name: &str, limit: usize) -> Result<Suggestion> {
         let row = self.store.get(&format!("mem:project:{name}"))?;
         let existing = read_domains(row.as_ref());
         let stack = row

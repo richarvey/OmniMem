@@ -1,24 +1,23 @@
-//! The desktop app: OmniMem's services behind a tray or menu bar icon, with a
-//! settings window.
+//! The desktop app: OmniMem's services behind a tray or menu bar icon, with
+//! the settings panel in a window.
 //!
 //! The platform event loop owns the main thread, as macOS requires and GTK
 //! expects, and the services run on a background thread reporting their
-//! state back into it. The settings window is a webview whose page comes from
-//! the process through the `omnimem://` scheme and talks back over IPC, so
-//! nothing about it is reachable over a network.
+//! state back into it. The window is a webview whose pages come from
+//! `omnimem-settings` through the `omnimem://` scheme, answered on a small
+//! tokio runtime, so nothing about the panel is reachable over a network.
 
 mod icon;
 mod model;
-mod page;
 
-use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use omnimem_app::{Instance, ServiceState, acquire, request_show, run_services, take_show_request};
+use omnimem_settings::Panel;
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
 use tao::window::{Window, WindowBuilder};
@@ -26,18 +25,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
-use wry::http::Response;
-use wry::{WebView, WebViewBuilder};
-
-use model::PageCommand;
+use wry::{NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder};
 
 pub struct DesktopOptions {
     /// The database the services open.
     pub db: PathBuf,
     /// Where the single-instance lock and show-window requests live.
     pub data_dir: PathBuf,
-    /// Build the tray and window, load the page, round-trip a status over
-    /// IPC and exit 0, without starting the services.
+    /// Build the tray and window, load the panel, check a POST and the
+    /// stylesheet through the scheme, and exit, without starting the services.
     pub smoke_test: bool,
 }
 
@@ -46,6 +42,7 @@ enum AppEvent {
     State(ServiceState),
     Menu(MenuEvent),
     Page(String),
+    PageLoaded(String),
     ServicesExited,
 }
 
@@ -92,6 +89,8 @@ impl TrayMenu {
 struct App {
     options: DesktopOptions,
     proxy: EventLoopProxy<AppEvent>,
+    panel: Panel,
+    runtime: Arc<tokio::runtime::Runtime>,
     menu: TrayMenu,
     tray: Option<TrayIcon>,
     window: Option<(Window, WebView)>,
@@ -101,6 +100,7 @@ struct App {
     quit_requested: Option<Instant>,
     clipboard: Option<arboard::Clipboard>,
     login: Option<AutoLaunch>,
+    smoke_sent: bool,
     started: Instant,
 }
 
@@ -113,6 +113,15 @@ fn start_at_login() -> Option<AutoLaunch> {
         .build()
         .map_err(|e| warn!(error = %e, "start at login is unavailable"))
         .ok()
+}
+
+/// Open a link from the panel in the system browser.
+fn open_externally(url: String) {
+    std::thread::spawn(move || {
+        if let Err(e) = open::that(&url) {
+            warn!(url, error = %e, "could not open the link");
+        }
+    });
 }
 
 impl App {
@@ -130,18 +139,23 @@ impl App {
     }
 
     fn start_services(&mut self) {
-        let (db, token, proxy) = (
+        let (db, token, proxy, panel) = (
             self.options.db.clone(),
             self.shutdown.clone(),
             self.proxy.clone(),
+            self.panel.clone(),
         );
         let spawned = std::thread::Builder::new()
             .name("omnimem-services".into())
             .spawn(move || {
-                let report = |state| {
+                let report = |state: ServiceState| {
+                    if let ServiceState::Failed(message) = &state {
+                        panel.set_failure(message.clone());
+                    }
                     let _ = proxy.send_event(AppEvent::State(state));
                 };
-                if let Err(e) = run_services(&db, token, false, &report) {
+                let ready = |engine: &Arc<omnimem_engine::Engine>| panel.set_engine(engine.clone());
+                if let Err(e) = run_services(&db, token, false, &report, &ready) {
                     error!(error = %format!("{e:#}"), "services stopped");
                 }
                 let _ = proxy.send_event(AppEvent::ServicesExited);
@@ -164,27 +178,51 @@ impl App {
             .map_err(|e| anyhow!("window icon: {e}"))?;
         let window = WindowBuilder::new()
             .with_title("OmniMem")
-            .with_inner_size(tao::dpi::LogicalSize::new(640.0, 520.0))
+            .with_inner_size(tao::dpi::LogicalSize::new(1180.0, 800.0))
             .with_window_icon(Some(icon))
             .build(target)
             .context("creating the settings window")?;
 
-        let proxy = self.proxy.clone();
+        let (panel, runtime) = (self.panel.clone(), self.runtime.clone());
+        let (ipc_proxy, load_proxy) = (self.proxy.clone(), self.proxy.clone());
+        let smoke = self.options.smoke_test;
         let builder = WebViewBuilder::new()
-            .with_custom_protocol(model::SCHEME.to_owned(), |_id, request| {
-                let (status, content_type, body) = model::respond(request.uri().path());
-                Response::builder()
-                    .status(status)
-                    .header("Content-Type", content_type)
-                    .header(
-                        "Content-Security-Policy",
-                        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
-                    )
-                    .body(Cow::Borrowed(body))
-                    .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..])))
-            })
+            .with_asynchronous_custom_protocol(
+                model::SCHEME.to_owned(),
+                move |_id, request, responder| {
+                    let panel = panel.clone();
+                    runtime.spawn(async move {
+                        let (method, uri) = (request.method().clone(), request.uri().clone());
+                        let body_bytes = request.body().len();
+                        let response = panel.handle(request).await;
+                        if smoke {
+                            info!(%method, %uri, body_bytes, status = response.status().as_u16(), "panel request");
+                        }
+                        responder.respond(response);
+                    });
+                },
+            )
             .with_ipc_handler(move |request| {
-                let _ = proxy.send_event(AppEvent::Page(request.body().clone()));
+                let _ = ipc_proxy.send_event(AppEvent::Page(request.body().clone()));
+            })
+            .with_on_page_load_handler(move |event, url| {
+                if matches!(event, PageLoadEvent::Finished) {
+                    let _ = load_proxy.send_event(AppEvent::PageLoaded(url));
+                }
+            })
+            .with_navigation_handler(|url| {
+                if model::is_panel_url(&url) {
+                    true
+                } else {
+                    open_externally(url);
+                    false
+                }
+            })
+            .with_new_window_req_handler(|url, _features| {
+                if !model::is_panel_url(&url) {
+                    open_externally(url);
+                }
+                NewWindowResponse::Deny
             })
             .with_url(model::start_url());
 
@@ -224,15 +262,6 @@ impl App {
             .copy_url
             .set_enabled(model::mcp_url(&state).is_some());
         self.state = state;
-        self.push_status();
-    }
-
-    fn push_status(&self) {
-        if let Some((_, webview)) = &self.window
-            && let Err(e) = webview.evaluate_script(&model::deliver_status_script(&self.state))
-        {
-            warn!(error = %e, "could not update the settings page");
-        }
     }
 
     fn copy_mcp_url(&mut self) {
@@ -317,7 +346,7 @@ impl App {
                     error!(error = %format!("{e:#}"), "could not open the settings window");
                 }
                 if self.options.smoke_test && self.started.elapsed() > SMOKE_DEADLINE {
-                    error!("smoke test: the settings page never answered over IPC");
+                    error!("smoke test: the panel never reported back");
                     *control_flow = ControlFlow::ExitWithCode(1);
                 }
                 if self
@@ -349,18 +378,39 @@ impl App {
                     self.quit(control_flow);
                 }
             }
-            Event::UserEvent(AppEvent::Page(body)) => match model::parse_command(&body) {
-                Some(PageCommand::Ready) => self.push_status(),
-                Some(PageCommand::Ack) if self.options.smoke_test => {
-                    println!(
-                        "smoke test passed: tray icon, settings window, omnimem:// page and IPC round trip"
-                    );
-                    *control_flow = ControlFlow::ExitWithCode(0);
+            Event::UserEvent(AppEvent::PageLoaded(url)) => {
+                if self.options.smoke_test {
+                    info!(url, "smoke test: page loaded");
                 }
-                Some(PageCommand::Ack) => {}
-                Some(PageCommand::CopyMcpUrl) => self.copy_mcp_url(),
-                None => warn!(body, "ignoring an unknown message from the settings page"),
-            },
+                if self.options.smoke_test
+                    && !self.smoke_sent
+                    && let Some((_, webview)) = &self.window
+                {
+                    self.smoke_sent = true;
+                    if let Err(e) = webview.evaluate_script(model::SMOKE_SCRIPT) {
+                        error!(error = %e, "smoke test: could not run the check");
+                        *control_flow = ControlFlow::ExitWithCode(1);
+                    }
+                }
+            }
+            Event::UserEvent(AppEvent::Page(body)) => {
+                if self.options.smoke_test {
+                    match model::smoke_verdict(&body) {
+                        Ok(found) => {
+                            println!(
+                                "smoke test passed: tray icon, settings window and panel over omnimem:// ({found})"
+                            );
+                            *control_flow = ControlFlow::ExitWithCode(0);
+                        }
+                        Err(problem) => {
+                            error!(problem, "smoke test failed");
+                            *control_flow = ControlFlow::ExitWithCode(1);
+                        }
+                    }
+                } else {
+                    warn!(body, "ignoring a message from the panel");
+                }
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
@@ -391,6 +441,13 @@ pub fn run(options: DesktopOptions) -> Result<()> {
     };
     take_show_request(&options.data_dir);
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .thread_name("omnimem-panel")
+        .enable_all()
+        .build()
+        .context("starting the panel runtime")?;
+
     #[allow(unused_mut)]
     let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
     #[cfg(target_os = "macos")]
@@ -412,6 +469,8 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         menu: TrayMenu::new(login.as_ref())?,
         options,
         proxy,
+        panel: Panel::new(),
+        runtime: Arc::new(runtime),
         tray: None,
         window: None,
         state: ServiceState::Starting,
@@ -420,6 +479,7 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         quit_requested: None,
         clipboard: None,
         login,
+        smoke_sent: false,
         started: Instant::now(),
     };
     event_loop.run(move |event, target, control_flow| {

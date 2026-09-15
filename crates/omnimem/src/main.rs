@@ -165,7 +165,7 @@ fn desktop(db: Option<PathBuf>, smoke_test: bool) -> Result<()> {
 }
 
 fn serve(db: &Path) -> Result<()> {
-    run_services(db, CancellationToken::new(), true, &|_| {})
+    run_services(db, CancellationToken::new(), true, &|_| {}, &|_| {})
 }
 
 /// One RSS cycle by hand, or a dry run of what one would ingest.

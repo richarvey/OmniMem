@@ -12,6 +12,7 @@ default-members = [
     "crates/omnimem-llm",
     "crates/omnimem-mcp",
     "crates/omnimem-rss",
+    "crates/omnimem-settings",
     "crates/omnimem-store",
 ]
 
@@ -33,6 +34,7 @@ omnimem-app = { path = "crates/omnimem-app" }
 omnimem-desktop = { path = "crates/omnimem-desktop" }
 omnimem-llm = { path = "crates/omnimem-llm" }
 omnimem-rss = { path = "crates/omnimem-rss" }
+omnimem-settings = { path = "crates/omnimem-settings" }
 
 # Storage: SQLite compiled in, so the binary needs no system library.
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -89,10 +91,19 @@ serde_yaml_ng = "0.10"
 # loop, settings webview, tray and menu, clipboard and start at login.
 directories = "6.0"
 tao = "0.37"
-wry = "0.57"
+# linux-body: WebKitGTK 2.40+ hands POST bodies to the custom scheme, which
+# the panel's forms need; without it every POST arrives empty.
+wry = { version = "0.57", features = ["linux-body"] }
 tray-icon = "0.25"
 arboard = "3.6"
 auto-launch = "0.6"
+open = "5.4"
+
+# The settings panel: templates rendered in-process, and axum routes called
+# without a socket.
+minijinja = { version = "2.24", features = ["preserve_order"] }
+minijinja-contrib = { version = "2.24", features = ["pycompat"] }
+tower = { version = "0.5", features = ["util"] }
 zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
