@@ -17,6 +17,7 @@ mod error;
 mod kv;
 mod migrations;
 mod queue;
+mod reindex;
 mod schema;
 mod store;
 mod time;

@@ -183,3 +183,232 @@ Args:
     dry_run: Preview only (default True). Set False to restore."#;
 
 pub const LIST_BACKUPS: &str = "List available backup files, newest first.";
+
+// Phase 3: experience, projects, audit, classification, contradictions,
+// briefing and knowledge.
+
+pub const RECORD_EXPERIENCE: &str = r#"Record effort, outcome, dead ends, and breakthroughs for a memory. High-effort successes surface more; high-effort failures (>=4, abandoned) auto-suppress the approach names.
+
+    Args:
+        key: Memory key to attach experience to.
+        effort_score: 1-5 (1=trivial, 3=moderate, 5=battle-hardened).
+        outcome: 'succeeded', 'pivoted', or 'abandoned'.
+        iterations: Number of attempts.
+        abandoned_approaches: List of dicts with 'name', 'type', 'reason'.
+        breakthrough: What finally worked, on this occasion.
+        gotchas: Caveats to watch for.
+        lesson: The generalisable claim this work taught, if there is one:
+            a rule that holds beyond this incident, e.g. "a test fake must
+            reproduce the real server's divergent behaviour, not its docs".
+            Leave it out when nothing transfers. Skill compilation prefers
+            it over the breakthrough."#;
+
+pub const LOG_ABANDONED: &str = r#"Append a dead-end approach to a memory's abandoned list.
+
+    Args:
+        key: Memory key.
+        name: Abandoned approach name.
+        type: 'library', 'approach', 'tool', 'pattern', or 'service'.
+        reason: Why it was abandoned."#;
+
+pub const GET_EXPERIENCE: &str = r#"Return experience data for a memory key.
+
+    Args:
+        key: Memory key to look up."#;
+
+pub const EXPERIENCE_SUMMARY: &str = r#"Aggregate experience stats: effort, outcomes, graveyard of abandoned approaches, breakthroughs.
+
+    Args:
+        project: Filter to a project."#;
+
+pub const WARN_IF_ABANDONED: &str = r#"Check if an approach was previously abandoned. Call before suggesting libraries or tools.
+
+    Args:
+        query: Library, tool, or approach name to check."#;
+
+pub const SET_PROJECT_CONTEXT: &str = r#"Create or update a project's context (description, stack, goals, state).
+
+    Args:
+        project_name: Unique project identifier.
+        description: What the project does.
+        stack: Technology stack.
+        goals: Current objectives.
+        current_state: Current project state.
+        notes: Freeform notes for next session.
+        domains: Kinds of work in this project ('python', 'docker', 'design'),
+            sharing the compiled-skill vocabulary so recall(domain_filter=...)
+            and find_skills() speak the same names. Omit to leave any existing
+            domains untouched; pass [] to clear them. Use
+            compile_project_domains() to have them suggested from the stack
+            and the project's own memories."#;
+
+pub const GET_PROJECT_CONTEXT: &str = r#"Retrieve full context for a project by name.
+
+    Args:
+        project_name: Project to look up."#;
+
+pub const LIST_PROJECTS: &str = r#"List all stored project contexts, deduplicated by project name.
+
+    Args:
+        domain: Only list projects declaring this work-type domain
+            (e.g. 'python'). Aliases resolve the same way skill domains do."#;
+
+pub const COMPILE_PROJECT_DOMAINS: &str = r#"Suggest work-type domains for a project from its stack and its own memories, with the evidence behind each one. Returns a draft by default; pass auto_save=True to store it.
+
+    Domains are what makes cross-project recall work: once projects declare
+    them, recall(domain_filter='python') searches every Python project at
+    once. They share the compiled-skill vocabulary, so the same names reach
+    find_skills() and get_skill().
+
+    Suggestions are merged with any domains the project already declares —
+    this never removes one.
+
+    Args:
+        project_name: Project to suggest domains for.
+        auto_save: If True, write the merged domain list to the project context."#;
+
+pub const UPDATE_PROJECT_STATE: &str = r#"Update a project's current state and notes without re-embedding.
+
+    Args:
+        project_name: Project to update.
+        current_state: New state description.
+        notes: Notes for next session."#;
+
+pub const DELETE_PROJECT: &str = r#"Bulk delete every memory belonging to a project. Requires confirm=True; returns a preview otherwise.
+
+    Finds memories by scanning keys directly (no semantic search), so it
+    catches everything — including memories that recall can't surface.
+    Deletes in pipelined batches rather than one call per key.
+
+    Args:
+        project_name: Project whose memories should be deleted.
+        confirm: Must be True to delete. False returns a preview with counts.
+        include_context: Also delete the project's context entry
+            (mem:project:<name>). Default False keeps it."#;
+
+pub const DEPRIORITISE_PROJECT: &str = r#"Bulk deprioritise every active memory in a project (0.2x recall visibility, reversible). Requires confirm=True; returns a preview otherwise.
+
+    Like delete_project but non-destructive: memories stay stored and searchable,
+    just heavily down-weighted in recall. Undo the whole project with
+    reinstate_project(). Only memories currently in the active state are changed;
+    already-deprioritised or archived ones are reported under `already_inactive`.
+
+    Args:
+        project_name: Project whose memories should be deprioritised.
+        confirm: Must be True to apply. False returns a preview with counts.
+        reason: Optional note stored on each memory explaining why.
+        include_context: Also deprioritise the project's context entry
+            (mem:project:<name>). Default False keeps it active."#;
+
+pub const REINSTATE_PROJECT: &str = r#"Bulk reinstate every deprioritised or archived memory in a project back to active. Requires confirm=True; returns a preview otherwise. The inverse of deprioritise_project().
+
+    Args:
+        project_name: Project whose memories should be reactivated.
+        confirm: Must be True to apply. False returns a preview with counts.
+        include_context: Also reinstate the project's context entry
+            (mem:project:<name>). Default False leaves it as-is."#;
+
+pub const COMPILE_PROJECT_CONTEXT: &str = r#"Gather all stored memories for a project and compile them into a structured context draft. Use this before set_project_context() to auto-produce or refresh a project's context from its episodic memories, experience data, and abandoned approaches.
+
+    Args:
+        project_name: Project to compile context for.
+        auto_save: If True, automatically save the compiled context (creates or updates)."#;
+
+pub const MEMORY_AUDIT: &str = r#"Summary of all memories grouped by state. Useful for cleanup.
+
+    The state counts always cover the whole store; the per-memory ``entries``
+    list is paginated so a large store doesn't return thousands of rows at once.
+
+    Args:
+        project: Filter to a project.
+        namespace: Filter to 'episodic', 'project', 'knowledge', or
+            'preference'. If omitted, covers all four.
+        include_archived: Include archived memories (default False).
+        limit: Max entries to return (default 100, max 500).
+        offset: Entries to skip for pagination (default 0)."#;
+
+pub const WHY_DID_YOU_MENTION: &str = r#"Explain why a topic surfaced by searching recall logs.
+
+    Args:
+        query: Topic or phrase to investigate."#;
+
+pub const EXPLAIN_MEMORY: &str = r#"Return full metadata for a memory key.
+
+    Args:
+        key: Full memory key (e.g. 'mem:episodic:01ARZ3...')."#;
+
+pub const REINDEX: &str = r#"Rebuild the in-memory vector index from the database.
+
+    Kept for compatibility with 6.x clients. There is no separate search index
+    any more, so nothing can drift from the records and no phantom entries
+    are ever removed; this reloads the vectors and reports the counts.
+
+    Args:
+        namespace: 'episodic', 'project', 'knowledge', 'preference', or
+                   'skill'. If omitted, reloads all five."#;
+
+pub const SET_LICENCE: &str = r#"Record the redistribution rights of one or more memories.
+
+    Give either specific keys, or a feed_name to classify every article
+    ingested from that RSS feed at once. Use it when recall reports results
+    with an unknown licence and the human can say where the content stands,
+    or to correct a wrong classification. Facts extracted from a classified
+    memory take the same licence automatically.
+
+    Args:
+        licence: 'own' (written here), 'open' (third-party, redistributable —
+            OGL, CC BY, public domain), 'restricted' (third-party, not
+            redistributable — paywalled, all rights reserved, CC BY-NC/ND),
+            or 'unknown'. A recognised identifier such as 'cc-by-4.0',
+            'ogl-3.0' or 'all-rights-reserved' is accepted and kept as the
+            note.
+        keys: Memory keys to classify (max 200 per call).
+        feed_name: Classify every knowledge article from this RSS feed
+            instead. Only affects articles already stored — set `licence:` on
+            the feed itself (feeds.yml or the web UI feed editor) so future
+            articles arrive classified.
+        note: Optional free-text detail — the specific licence or where it
+            was checked (max 200 chars). Overrides the identifier-derived
+            note."#;
+
+pub const SET_PROVENANCE: &str = r#"Record where one or more memories came from.
+
+    Use it when the human vouches for a memory ('asserted'), when a memory
+    turns out to be a copy of an external source ('retrieved'), or when
+    something recorded as stated was actually your own inference
+    ('concluded'). Facts extracted from a reclassified memory follow it.
+    Provenance is reported on recall and never changes ranking.
+
+    Args:
+        provenance: 'retrieved' (external source), 'concluded' (the
+            system's own reasoning or write-up), or 'asserted' (stated by
+            the human).
+        keys: Memory keys to reclassify (max 200 per call)."#;
+
+pub const CHECK_CONTRADICTIONS: &str = r#"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification.
+
+    Args:
+        query: Focus the search. If None, scans recent memories.
+        namespace: 'episodic' (default), 'project', or 'knowledge'.
+        project_filter: Restrict to a project.
+        use_api: Use Claude API for deeper analysis."#;
+
+pub const BRIEFING: &str = r#"Session-start briefing: project context, experience summary, stale memories, knowledge, contradictions, reinstate candidates.
+
+    Args:
+        project: Project name to focus on.
+        include_knowledge: Include recent knowledge articles (default True)."#;
+
+pub const RECENT_KNOWLEDGE: &str = r#"Recent knowledge articles ingested by the RSS worker.
+
+    Returns knowledge items created within the given lookback window,
+    sorted newest first. Optionally filter by feed name, topics, or licence
+    class — licence='unknown' lists what still needs classifying.
+
+    Args:
+        days: Lookback window in days (default 7, max 365).
+        feed_name: Filter to a specific RSS feed name.
+        topics: Filter to items tagged with at least one of these topics.
+        limit: Maximum results to return (default 20, max 50).
+        licence: Filter to one redistribution class: 'own', 'open',
+            'restricted', or 'unknown'."#;

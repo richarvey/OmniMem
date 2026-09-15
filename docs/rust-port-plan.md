@@ -4,7 +4,7 @@
 
 OmniMem 7 is one Rust binary. It replaces four containers (Valkey with the search module, the Python MCP server, the Python web UI and the Python RSS worker) with a single process that holds its own vector store, serves MCP, runs RSS ingestion on a schedule and serves the web UI, which is where settings live.
 
-It ships two ways: as desktop installers (an MSI for Windows, a DMG for macOS, a Flatpak for Linux) that run OmniMem with a tray or menu bar icon and a native settings window, and as a headless Docker image for servers.
+It ships three ways: as desktop installers (an MSI for Windows, a DMG for macOS, a Flatpak for Linux) that run OmniMem with a tray or menu bar icon and a native settings window; as headless Linux packages (`.deb`, `.rpm` and a tarball) that install a systemd service with no desktop dependencies; and as a headless Docker image.
 
 The Python tree stays in the repository as the reference implementation until the Rust binary reaches parity, then goes in one commit.
 
@@ -13,9 +13,9 @@ The Python tree stays in the repository as the reference implementation until th
 | Phase | State | Evidence |
 |---|---|---|
 | 0. Foundation | **Done** | Rust vectors match the Python engine's full reference vectors (`crates/omnimem-embed/tests/fixtures`) within 1e-4, cosine > 0.99999. Model download into the shared Hugging Face cache, tested against a local HTTP server |
-| 1. Store | **Done, two items carried** | Real 6.6.2 production backup (3,500 memories, 4,356 keys): imported and embedded in 147 s (debug build, sharing the CPU), 12.8 MB database. All 32 query/namespace searches return an **identical ordered top-10** to the Python engine's exact search over the same data. Export round-trips every field of every memory, adding only the v7 identity fields. Carried: `migrate_project_domains` (needs the engine's domain normalisation, phase 3) and proving the Flatpak's offline ONNX Runtime source (phase 9 prep) |
+| 1. Store | **Done, one item carried** | Real 6.6.2 production backup (3,500 memories, 4,356 keys): imported and embedded in 147 s (debug build, sharing the CPU), 12.8 MB database. All 32 query/namespace searches return an **identical ordered top-10** to the Python engine's exact search over the same data. Export round-trips every field of every memory, adding only the v7 identity fields. `migrate_project_domains` landed with phase 3 and runs at startup and after an import or restore. Carried: proving the Flatpak's offline ONNX Runtime source (phase 9 prep) |
 | 2. Core MCP | **Done, one check left** | `omnimem-engine` ports the recall pipeline (abandoned fast-path, scoring with surface, recency, experience and temporal multipliers, reinstate candidates, fact collapse, relevance floor and weak band, recall logging and counters), lifecycle and suppression, dedup, the tier-1 contradiction check, chunking, domain routing and the core tool behaviours. `omnimem-mcp` serves 20 tools over streamable HTTP with 6.x's verbatim descriptions, bearer auth, Host/Origin allowlists and fail-closed public binds; `omnimem serve` runs it. Checked with a real MCP session against the imported production store and the real model: recall 65 to 90 ms on a debug build. Left: connecting Claude Code itself. Deferred to phase 5: query expansion (`expand_queries` is accepted and ignored). Enrichment jobs are queued durably but nothing consumes them yet |
-| 3. Experience, projects, briefing | Next | |
+| 3. Experience, projects, briefing | **Done, two items move to phase 4** | 23 more tools, 43 in all: experience (`record_experience`, `log_abandoned`, `get_experience`, `experience_summary`, `warn_if_abandoned`), projects (context, domains, state, bulk delete, deprioritise and reinstate, `compile_project_context`), audit (`memory_audit`, `why_did_you_mention`, `explain_memory`, `reindex`), `set_licence` and `set_provenance` through one lineage stamp, tier-1 `check_contradictions`, `recent_knowledge`, and `briefing` with auto-maintenance (dedup archive, contradiction scan, article expiry). `migrate_project_domains` runs at startup and after import or restore. 17 new engine tests; 133 across the workspace, clippy clean. Checked over a real MCP session on the imported production store with the real model: every new tool answers, 2 to 146 ms on a debug build (`briefing` 139 ms, `memory_audit` over 3,497 memories 134 ms), and `reindex` reports vectors equal to records in all five namespaces. Not yet compared field by field with the Python tools, which needs a Valkey loaded with the same backup. Moved to phase 4 with the skill compiler: the briefing's skill sections and `promote_knowledge`. `reindex` now reloads vectors and can never find phantoms |
 
 ## Decisions
 
@@ -31,6 +31,7 @@ Settled on 2026-09-15:
 | Settings UI | **Native app window** | The tray icon opens a window embedding the settings pages (tao + wry), not a browser tab |
 | Build hosts | **Mac and Windows runners added to Forgejo** | Each installer is built and tested on its own OS. `sqcows` builds the Flatpak and the Docker image |
 | Signing | **Apple Developer ID; no Windows certificate yet** | The .app and DMG are signed and notarised. The MSI ships unsigned, and its signing step runs as soon as a certificate secret exists |
+| Headless Linux | **`.deb`, `.rpm` and `.tar.gz`, each with a systemd unit** | For servers and desktops without GNOME: the binary built without the `desktop` feature, so no GTK, WebKitGTK or tray dependency. Settings are the web UI in a browser, or environment variables |
 | Architectures | **x86_64 and arm64 everywhere** | MSI x64 and ARM64, a universal macOS binary, Flatpak x86_64 and aarch64. ONNX Runtime publishes prebuilt libraries for all six targets |
 
 ## Architecture
@@ -120,6 +121,8 @@ Headless mode (`omnimem serve`, or a build without the `desktop` feature) has no
 | macOS | `OmniMem-<version>.dmg` (universal) | Mac runner | Build `aarch64-apple-darwin` and `x86_64-apple-darwin`, merge with `lipo`, bundle `OmniMem.app` with `LSUIElement` so it lives in the menu bar with no Dock icon, sign with the Developer ID and hardened runtime, notarise with `notarytool`, staple, wrap in a DMG with an Applications link |
 | Linux | `com.squarecows.OmniMem.flatpak`, x86_64 and aarch64 | `sqcows` | Flatpak manifest on the GNOME runtime (WebKitGTK included), `libayatana-appindicator` built as a module for the tray, network and `org.kde.StatusNotifierWatcher` permissions. Flatpak builds are offline, so cargo sources are vendored with `flatpak-cargo-generator` and ONNX Runtime comes in as an archive source pointed to by `ORT_LIB_LOCATION` rather than the build-time download |
 
+| Linux, headless | `omnimem_<version>_amd64.deb` / `_arm64.deb`, `omnimem-<version>.x86_64.rpm` / `.aarch64.rpm`, `omnimem-<version>-linux-<arch>.tar.gz` | `sqcows` | The same binary built without the `desktop` feature: no GUI libraries at all, so it installs on a minimal server or a desktop without GNOME. `cargo deb` and `cargo generate-rpm` package it with a systemd unit (`omnimem.service`, running `omnimem serve` as a dedicated `omnimem` system user), `/etc/omnimem/omnimem.env` for configuration, and `/var/lib/omnimem` for the database, backups and model cache. The tarball carries the binary, the unit file and an `install.sh` for other distributions. ONNX Runtime is linked in, so the only runtime dependency is glibc |
+
 The Docker image (`omnimem` headless, multi-arch) is built on `sqcows` alongside, replacing the three 6.x images.
 
 ### CI
@@ -127,7 +130,7 @@ The Docker image (`omnimem` headless, multi-arch) is built on `sqcows` alongside
 A `release.yml` workflow on version tags, in the existing Forgejo Actions setup:
 
 - a `test` job on each runner (Linux, Mac, Windows) before any packaging, so a platform-specific failure stops its own installer
-- `msi` (Windows runner, x64 and ARM64), `dmg` (Mac runner), `flatpak` (sqcows, both arches) and `docker` (sqcows)
+- `msi` (Windows runner, x64 and ARM64), `dmg` (Mac runner), `flatpak` (sqcows, both arches), `linux-headless` (sqcows: deb, rpm and tarball for both arches, plus a smoke test that installs the `.deb` in a clean Debian container and checks `systemctl` starts the service) and `docker` (sqcows)
 - artefacts attached to the Forgejo release with SHA-256 checksums
 - secrets: Apple signing certificate and password, notarisation API key, Windows signing certificate (empty for now, which skips the step)
 
@@ -171,7 +174,7 @@ Each phase ends with a commit that builds, passes its tests, and is usable for w
 | **6. RSS** | Feeds, summary and digest modes, licence gate, scheduler, feed influence | A feeds.yml from 6.x ingests the same articles |
 | **7. Web UI and settings** | All routes and templates on minijinja, sessions, `/metrics`, settings pages for what is environment-only today | Every page renders against an imported store |
 | **8. OAuth and hardening** | OAuth 2.1 server (register, authorize, token with PKCE, refresh rotation with grace window, revoke), Host/Origin guard, fail-closed public bind | claude.ai connects through a reverse proxy |
-| **9. Desktop and installers** | `omnimem-desktop` (tray, settings window, single instance, start at login, first-run model fetch), MSI, DMG and Flatpak packaging, Mac and Windows runners, `release.yml` with signing and notarisation | A tagged build produces all three installers, each installs cleanly on its OS and architectures, shows the icon, and opens settings |
+| **9. Desktop and installers** | `omnimem-desktop` (tray, settings window, single instance, start at login, first-run model fetch), MSI, DMG and Flatpak packaging, headless `.deb`, `.rpm` and tarball with a systemd unit, Mac and Windows runners, `release.yml` with signing and notarisation | A tagged build produces every installer; each installs cleanly on its OS and architectures; the desktop ones show the icon and open settings, and the headless ones start the service on a system with no desktop libraries installed |
 | **10. Cut-over** | Headless Docker image, docs, delete the Python tree | 7.0.0 |
 | **11. Mycelium** | `cluster_profile`, freshness, by_hash, classification filter, epoch bumps | `docs/v7-change-spec.md` |
 

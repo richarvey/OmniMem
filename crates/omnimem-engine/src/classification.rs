@@ -140,7 +140,7 @@ pub fn default_licence(namespace: &str) -> &'static str {
     }
 }
 
-fn validate_licence_note(note: Option<&str>) -> Result<Option<String>> {
+pub(crate) fn validate_licence_note(note: Option<&str>) -> Result<Option<String>> {
     let Some(note) = note else { return Ok(None) };
     let note = note.split_whitespace().collect::<Vec<_>>().join(" ");
     if note.is_empty() {

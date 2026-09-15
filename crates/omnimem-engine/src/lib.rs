@@ -11,6 +11,8 @@
 //! its dicts. Bad input is an [`EngineError::Invalid`] whose message is what
 //! the Python raised as a `ValueError`.
 
+mod audit;
+mod briefing;
 mod chunking;
 pub mod classification;
 mod config;
@@ -18,12 +20,19 @@ mod contradiction;
 mod dedup;
 pub mod domains;
 mod error;
+mod experience;
+mod knowledge;
 mod lifecycle;
+mod lineage;
+mod maintenance;
+mod projects;
 pub mod pyfmt;
 mod recall;
 mod tags;
 mod temporal;
 mod tools;
+
+pub use projects::migrate_project_domains;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};

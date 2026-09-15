@@ -39,6 +39,10 @@ impl MemoryState {
         })
     }
 
+    pub(crate) fn can_become(self, next: MemoryState) -> bool {
+        self.allowed().contains(&next)
+    }
+
     fn allowed(self) -> &'static [MemoryState] {
         use MemoryState::*;
         match self {

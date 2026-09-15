@@ -114,6 +114,7 @@ fn load_embedder() -> Result<Embedder> {
 fn serve(db: &Path) -> Result<()> {
     let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
     store.run_migrations().context("running migrations")?;
+    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
     let embedder = Arc::new(load_embedder()?);
     let backup_dir = db
         .parent()
@@ -184,6 +185,7 @@ fn import(db: &Path, file: &Path, no_embed: bool) -> Result<()> {
     if report.embedded > 0 {
         eprintln!();
     }
+    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
     println!("{}", serde_json::to_string_pretty(&report)?);
     eprintln!(
         "imported {} into {} in {:.1}s",

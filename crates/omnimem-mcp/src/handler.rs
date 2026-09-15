@@ -78,6 +78,81 @@ fn tools() -> Vec<Tool> {
             schema::<RestoreFromFile>(),
         ),
         Tool::new("list_backups", d::LIST_BACKUPS, schema::<NoArgs>()),
+        Tool::new(
+            "record_experience",
+            d::RECORD_EXPERIENCE,
+            schema::<RecordExperience>(),
+        ),
+        Tool::new("log_abandoned", d::LOG_ABANDONED, schema::<LogAbandoned>()),
+        Tool::new("get_experience", d::GET_EXPERIENCE, schema::<Key>()),
+        Tool::new(
+            "experience_summary",
+            d::EXPERIENCE_SUMMARY,
+            schema::<OptionalProject>(),
+        ),
+        Tool::new("warn_if_abandoned", d::WARN_IF_ABANDONED, schema::<Query>()),
+        Tool::new(
+            "set_project_context",
+            d::SET_PROJECT_CONTEXT,
+            schema::<SetProjectContext>(),
+        ),
+        Tool::new(
+            "get_project_context",
+            d::GET_PROJECT_CONTEXT,
+            schema::<ProjectName>(),
+        ),
+        Tool::new("list_projects", d::LIST_PROJECTS, schema::<ListProjects>()),
+        Tool::new(
+            "compile_project_domains",
+            d::COMPILE_PROJECT_DOMAINS,
+            schema::<CompileProject>(),
+        ),
+        Tool::new(
+            "update_project_state",
+            d::UPDATE_PROJECT_STATE,
+            schema::<UpdateProjectState>(),
+        ),
+        Tool::new("delete_project", d::DELETE_PROJECT, schema::<BulkProject>()),
+        Tool::new(
+            "deprioritise_project",
+            d::DEPRIORITISE_PROJECT,
+            schema::<DeprioritiseProject>(),
+        ),
+        Tool::new(
+            "reinstate_project",
+            d::REINSTATE_PROJECT,
+            schema::<BulkProject>(),
+        ),
+        Tool::new(
+            "compile_project_context",
+            d::COMPILE_PROJECT_CONTEXT,
+            schema::<CompileProject>(),
+        ),
+        Tool::new("memory_audit", d::MEMORY_AUDIT, schema::<MemoryAudit>()),
+        Tool::new(
+            "why_did_you_mention",
+            d::WHY_DID_YOU_MENTION,
+            schema::<Query>(),
+        ),
+        Tool::new("explain_memory", d::EXPLAIN_MEMORY, schema::<Key>()),
+        Tool::new("reindex", d::REINDEX, schema::<Reindex>()),
+        Tool::new("set_licence", d::SET_LICENCE, schema::<SetLicence>()),
+        Tool::new(
+            "set_provenance",
+            d::SET_PROVENANCE,
+            schema::<SetProvenance>(),
+        ),
+        Tool::new(
+            "check_contradictions",
+            d::CHECK_CONTRADICTIONS,
+            schema::<CheckContradictions>(),
+        ),
+        Tool::new("briefing", d::BRIEFING, schema::<Briefing>()),
+        Tool::new(
+            "recent_knowledge",
+            d::RECENT_KNOWLEDGE,
+            schema::<RecentKnowledge>(),
+        ),
     ]
 }
 
@@ -198,6 +273,123 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
             e.restore_from_file(&a.filename, a.dry_run)?
         }
         "list_backups" => e.list_backups()?,
+        "record_experience" => {
+            let a: RecordExperience = parse(args)?;
+            e.record_experience(
+                &a.key,
+                a.effort_score,
+                &a.outcome,
+                a.iterations,
+                a.abandoned_approaches,
+                a.breakthrough.as_deref(),
+                a.gotchas.as_deref(),
+                a.lesson.as_deref(),
+            )?
+        }
+        "log_abandoned" => {
+            let a: LogAbandoned = parse(args)?;
+            e.log_abandoned(&a.key, &a.name, &a.kind, &a.reason)?
+        }
+        "get_experience" => e.get_experience(&parse::<Key>(args)?.key)?,
+        "experience_summary" => {
+            e.experience_summary(parse::<OptionalProject>(args)?.project.as_deref())?
+        }
+        "warn_if_abandoned" => e.warn_if_abandoned(&parse::<Query>(args)?.query)?,
+        "set_project_context" => {
+            let a: SetProjectContext = parse(args)?;
+            let domains = domain(a.domains);
+            e.set_project_context(
+                &a.project_name,
+                &a.description,
+                &a.stack,
+                &a.goals,
+                &a.current_state,
+                a.notes.as_deref(),
+                domains.as_ref(),
+            )?
+        }
+        "get_project_context" => {
+            e.get_project_context(&parse::<ProjectName>(args)?.project_name)?
+        }
+        "list_projects" => e.list_projects(parse::<ListProjects>(args)?.domain.as_deref())?,
+        "compile_project_domains" => {
+            let a: CompileProject = parse(args)?;
+            e.compile_project_domains(&a.project_name, a.auto_save)?
+        }
+        "update_project_state" => {
+            let a: UpdateProjectState = parse(args)?;
+            e.update_project_state(&a.project_name, &a.current_state, a.notes.as_deref())?
+        }
+        "delete_project" => {
+            let a: BulkProject = parse(args)?;
+            e.delete_project(&a.project_name, a.confirm, a.include_context)?
+        }
+        "deprioritise_project" => {
+            let a: DeprioritiseProject = parse(args)?;
+            e.deprioritise_project(
+                &a.project_name,
+                a.confirm,
+                a.reason.as_deref(),
+                a.include_context,
+            )?
+        }
+        "reinstate_project" => {
+            let a: BulkProject = parse(args)?;
+            e.reinstate_project(&a.project_name, a.confirm, a.include_context)?
+        }
+        "compile_project_context" => {
+            let a: CompileProject = parse(args)?;
+            e.compile_project_context(&a.project_name, a.auto_save)?
+        }
+        "memory_audit" => {
+            let a: MemoryAudit = parse(args)?;
+            e.memory_audit(
+                a.project.as_deref(),
+                a.namespace.as_deref(),
+                a.include_archived,
+                a.limit,
+                a.offset,
+            )?
+        }
+        "why_did_you_mention" => e.why_did_you_mention(&parse::<Query>(args)?.query)?,
+        "explain_memory" => e.explain_memory(&parse::<Key>(args)?.key)?,
+        "reindex" => e.reindex(parse::<Reindex>(args)?.namespace.as_deref())?,
+        "set_licence" => {
+            let a: SetLicence = parse(args)?;
+            e.set_licence(
+                &a.licence,
+                a.keys.as_deref(),
+                a.feed_name.as_deref(),
+                a.note.as_deref(),
+            )?
+        }
+        "set_provenance" => {
+            let a: SetProvenance = parse(args)?;
+            e.set_provenance(&a.provenance, &a.keys)?
+        }
+        "check_contradictions" => {
+            let a: CheckContradictions = parse(args)?;
+            e.check_contradictions(
+                a.query.as_deref(),
+                &a.namespace,
+                a.project_filter.as_deref(),
+                a.use_api,
+            )?
+        }
+        "briefing" => {
+            let a: Briefing = parse(args)?;
+            e.briefing(a.project.as_deref(), a.include_knowledge)?
+        }
+        "recent_knowledge" => {
+            let a: RecentKnowledge = parse(args)?;
+            e.recent_knowledge(
+                a.days,
+                a.feed_name.as_deref(),
+                a.topics.as_deref(),
+                a.limit,
+                a.licence.as_deref(),
+            )?
+        }
         other => return Err(CallError::UnknownTool(other.to_owned())),
     })
 }
@@ -314,7 +506,7 @@ mod tests {
     #[test]
     fn every_listed_tool_dispatches() {
         let names: Vec<String> = tools().iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(names.len(), 20);
+        assert_eq!(names.len(), 43);
         for name in names {
             let schema = tools()
                 .into_iter()

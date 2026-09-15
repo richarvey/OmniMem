@@ -996,6 +996,9 @@ impl Engine {
                     return error("Restore operation failed");
                 }
             };
+        if let Err(e) = crate::projects::migrate_project_domains(&self.store) {
+            tracing::warn!(error = %e, "could not seed project domains after restore");
+        }
         self.invalidate_abandoned_cache();
         self.invalidate_domain_cache();
         Ok(json!({

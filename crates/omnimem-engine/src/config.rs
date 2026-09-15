@@ -34,6 +34,10 @@ pub struct EngineConfig {
     pub backup_dir: PathBuf,
     /// `RECALL_EXPAND_QUERIES`: the default for `expand_queries`.
     pub expand_queries: bool,
+    /// `STALE_MEMORY_DAYS`: briefing lists active memories untouched this long.
+    pub stale_memory_days: i64,
+    /// `AUTO_MAINTENANCE_INTERVAL`: briefings per project between maintenance runs; 0 disables.
+    pub auto_maintenance_interval: i64,
 }
 
 impl Default for EngineConfig {
@@ -52,6 +56,8 @@ impl Default for EngineConfig {
             domain_cache_ttl: Duration::from_secs(60),
             backup_dir: PathBuf::from("backups"),
             expand_queries: false,
+            stale_memory_days: 30,
+            auto_maintenance_interval: 10,
         }
     }
 }
@@ -103,6 +109,12 @@ impl EngineConfig {
                 .map(PathBuf::from)
                 .unwrap_or(default_backup_dir),
             expand_queries: flag("RECALL_EXPAND_QUERIES"),
+            stale_memory_days: number("STALE_MEMORY_DAYS", d.stale_memory_days),
+            auto_maintenance_interval: number(
+                "AUTO_MAINTENANCE_INTERVAL",
+                d.auto_maintenance_interval,
+            )
+            .max(0),
         }
     }
 }
