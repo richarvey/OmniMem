@@ -175,6 +175,91 @@ pub fn feeds_for_domain(
     matched
 }
 
+/// One `feeds.yml` entry in the mirrored shape (`normalise_feed_entry`), or
+/// `None` when it has no usable name and URL. Only a licence that resolves
+/// is mirrored: an unrecognised one would travel in skill bundles and fail
+/// validation on the receiving side.
+pub fn normalise_feed_entry(feed: &Value) -> Option<(String, Value)> {
+    let feed = feed.as_object()?;
+    let text = |name: &str| {
+        feed.get(name)
+            .filter(|v| py_truthy(v))
+            .map(py_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    let (name, url) = (text("name"), text("url"));
+    if name.is_empty() || url.is_empty() || name.chars().count() > 200 {
+        return None;
+    }
+    let mut entry: BTreeMap<String, Value> = BTreeMap::new();
+    entry.insert("url".into(), url.into());
+    let topics: Vec<String> = match feed.get("topics") {
+        Some(Value::Array(items)) => items.iter().filter(|t| py_truthy(t)).map(py_str).collect(),
+        _ => Vec::new(),
+    };
+    entry.insert("topics".into(), topics.into());
+    let skills: serde_json::Map<String, Value> = parse_skills_lenient(feed.get("skills"))
+        .into_iter()
+        .map(|(d, s)| (d, s.into()))
+        .collect();
+    entry.insert("skills".into(), Value::Object(skills));
+    for optional in ["mode", "project"] {
+        if let Some(value) = feed.get(optional).filter(|v| py_truthy(v)) {
+            entry.insert(optional.into(), py_str(value).into());
+        }
+    }
+    if let Some(raw) = feed
+        .get("licence")
+        .filter(|v| !v.is_null() && v.as_str() != Some(""))
+    {
+        let declared = py_str(raw);
+        if crate::classification::resolve_licence(&declared).is_ok() {
+            entry.insert("licence".into(), declared.into());
+            let note = feed
+                .get("licence_note")
+                .filter(|v| py_truthy(v))
+                .map(py_str)
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !note.is_empty() {
+                let capped: String = note
+                    .chars()
+                    .take(crate::classification::MAX_LICENCE_NOTE)
+                    .collect();
+                entry.insert("licence_note".into(), capped.into());
+            }
+        } else {
+            warn!(feed = %name, licence = %declared, "unrecognised licence not mirrored");
+        }
+    }
+    Some((name, Value::Object(entry.into_iter().collect())))
+}
+
+impl Engine {
+    /// Mirror a reading list into `meta:feed:influence`, replacing what was
+    /// there, so removed and renamed feeds leave nothing behind.
+    pub fn sync_feed_influences(&self, feeds: &[Value]) -> crate::Result<usize> {
+        let mirrored: omnimem_store::Fields = feeds
+            .iter()
+            .filter_map(normalise_feed_entry)
+            .map(|(name, entry)| (name, entry.to_string()))
+            .collect();
+        self.store.kv_delete(FEED_INFLUENCE_KEY)?;
+        if !mirrored.is_empty() {
+            self.store.hash_set(FEED_INFLUENCE_KEY, &mirrored)?;
+        }
+        tracing::info!(
+            count = mirrored.len(),
+            "mirrored feeds into {FEED_INFLUENCE_KEY}"
+        );
+        Ok(mirrored.len())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

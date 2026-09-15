@@ -99,6 +99,16 @@ impl Engine {
         self
     }
 
+    /// The language model, when one is configured.
+    pub fn llm(&self) -> Option<&Arc<dyn LanguageModel>> {
+        self.llm.as_ref()
+    }
+
+    /// Unit vectors for `texts`, in order, from the engine's embedder.
+    pub fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        self.embed_many(texts)
+    }
+
     pub(crate) fn embed(&self, text: &str) -> Result<Vec<f32>> {
         self.embed_many(&[text])?
             .pop()

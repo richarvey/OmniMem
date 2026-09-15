@@ -2,7 +2,7 @@
 //!
 //! `serve` runs the MCP server; the other commands bring a 6.x backup across
 //! and inspect the store. `serve` also runs the enrichment
-//! worker; the RSS scheduler joins it in phase 6.
+//! worker and the RSS scheduler; `rss` runs one ingestion cycle by hand.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,6 +17,7 @@ use omnimem_embed::{EmbedConfig, Embedder};
 use omnimem_engine::{Engine, EngineConfig};
 use omnimem_llm::{AnthropicClient, AnthropicConfig};
 use omnimem_mcp::ServerConfig;
+use omnimem_rss::{Ingester, RssConfig};
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -77,11 +78,18 @@ enum Command {
     },
     /// Embed text and print the vector's first components.
     Embed { text: String },
+    /// Run one RSS ingestion cycle now and print the result. With
+    /// --dry-run, fetch and parse the feeds and print what would be
+    /// ingested, without summarising or storing anything.
+    Rss {
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> Result<()> {
     let Cli { db, command } = Cli::parse();
-    let default_level = if matches!(command, Command::Serve) {
+    let default_level = if matches!(command, Command::Serve | Command::Rss { .. }) {
         "info"
     } else {
         "warn"
@@ -107,6 +115,7 @@ fn main() -> Result<()> {
             json,
         } => search(&db, &query, &namespace, top_k, project, all_states, json),
         Command::Embed { text } => embed(&text),
+        Command::Rss { dry_run } => rss(&db, dry_run),
     }
 }
 
@@ -115,28 +124,7 @@ fn load_embedder() -> Result<Embedder> {
 }
 
 fn serve(db: &Path) -> Result<()> {
-    let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
-    store.run_migrations().context("running migrations")?;
-    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
-    let embedder = Arc::new(load_embedder()?);
-    let backup_dir = db
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("backups"), |p| p.join("backups"));
-    let mut engine = Engine::new(store, embedder, EngineConfig::from_env(backup_dir));
-    match AnthropicConfig::from_env() {
-        Some(llm) => {
-            let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
-            engine = engine.with_llm(Arc::new(client));
-            info!(
-                "ANTHROPIC_API_KEY set: fact extraction, query expansion and contradiction tier 2 are on"
-            );
-        }
-        None => info!(
-            "ANTHROPIC_API_KEY not set: fact extraction, query expansion and contradiction tier 2 are off"
-        ),
-    }
-    let engine = Arc::new(engine);
+    let engine = Arc::new(open_engine(db)?);
     let stop = Arc::new(AtomicBool::new(false));
     let worker = {
         let (engine, stop) = (engine.clone(), stop.clone());
@@ -145,6 +133,20 @@ fn serve(db: &Path) -> Result<()> {
             .spawn(move || engine.run_enrichment_worker(&stop))
             .context("starting the enrichment worker")?
     };
+    // The RSS scheduler isn't joined on shutdown: a cycle can be waiting on a
+    // feed or the API, and every write it makes is its own transaction.
+    let rss = Ingester::new(
+        engine.clone(),
+        RssConfig::from_env(data_dir(db).join("feeds.yml")),
+    )
+    .map_err(|e| anyhow!("starting the RSS ingester: {e}"))?;
+    std::thread::Builder::new()
+        .name("rss-scheduler".into())
+        .spawn({
+            let stop = stop.clone();
+            move || rss.run(&stop)
+        })
+        .context("starting the RSS scheduler")?;
     let config = ServerConfig::from_env();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -165,6 +167,48 @@ fn serve(db: &Path) -> Result<()> {
         eprintln!("the enrichment worker panicked");
     }
     served?;
+    Ok(())
+}
+
+/// The folder holding the database: backups and `feeds.yml` live beside it.
+fn data_dir(db: &Path) -> PathBuf {
+    db.parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+}
+
+/// The store, migrated, with the embedder and (when a key is set) Claude.
+fn open_engine(db: &Path) -> Result<Engine> {
+    let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
+    store.run_migrations().context("running migrations")?;
+    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
+    let embedder = Arc::new(load_embedder()?);
+    let config = EngineConfig::from_env(data_dir(db).join("backups"));
+    let mut engine = Engine::new(store, embedder, config);
+    match AnthropicConfig::from_env() {
+        Some(llm) => {
+            let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
+            engine = engine.with_llm(Arc::new(client));
+            info!("ANTHROPIC_API_KEY set: Claude Haiku features and RSS summaries are on");
+        }
+        None => info!(
+            "ANTHROPIC_API_KEY not set: Claude Haiku features are off and RSS summaries fall back to truncation"
+        ),
+    }
+    Ok(engine)
+}
+
+/// One RSS cycle by hand, or a dry run of what one would ingest.
+fn rss(db: &Path, dry_run: bool) -> Result<()> {
+    let engine = Arc::new(open_engine(db)?);
+    let ingester = Ingester::new(engine, RssConfig::from_env(data_dir(db).join("feeds.yml")))
+        .map_err(|e| anyhow!("starting the RSS ingester: {e}"))?;
+    let result = if dry_run {
+        ingester.preview()
+    } else {
+        ingester.ingest_all()
+    };
+    println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
 

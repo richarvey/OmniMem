@@ -17,6 +17,7 @@ omnimem-embed = { path = "crates/omnimem-embed" }
 omnimem-store = { path = "crates/omnimem-store" }
 omnimem-engine = { path = "crates/omnimem-engine" }
 omnimem-llm = { path = "crates/omnimem-llm" }
+omnimem-rss = { path = "crates/omnimem-rss" }
 
 # Storage: SQLite compiled in, so the binary needs no system library.
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -64,6 +65,10 @@ ulid = "3.0"
 similar = "3.2"
 # Query expansion cache keys, derived as 6.x derived them.
 sha1 = "0.11"
+
+# RSS: feed parsing (RSS 0.9x/1.0/2.0, Atom, JSON Feed) and feeds.yml.
+feed-rs = "2.4"
+serde_yaml_ng = "0.10"
 zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]

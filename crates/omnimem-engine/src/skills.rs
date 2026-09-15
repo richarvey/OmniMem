@@ -103,7 +103,7 @@ pub fn generated_skill_key(domain: &str, user: &str) -> String {
 // -- Python value helpers ------------------------------------------------------
 
 /// Python truthiness of a JSON value.
-pub(crate) fn py_truthy(v: &Value) -> bool {
+pub fn py_truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -115,7 +115,7 @@ pub(crate) fn py_truthy(v: &Value) -> bool {
 }
 
 /// Python's `str()` of a JSON value, for the shapes stored data holds.
-pub(crate) fn py_str(v: &Value) -> String {
+pub fn py_str(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Null => "None".to_owned(),

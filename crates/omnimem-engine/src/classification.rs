@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use crate::Result;
 use crate::error::invalid;
 
-pub(crate) const MAX_LICENCE_NOTE: usize = 200;
+pub const MAX_LICENCE_NOTE: usize = 200;
 
 const CLASSIFIABLE_PREFIXES: [&str; 4] = [
     "mem:episodic:",
