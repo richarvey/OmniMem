@@ -412,3 +412,84 @@ pub const RECENT_KNOWLEDGE: &str = r#"Recent knowledge articles ingested by the 
         limit: Maximum results to return (default 20, max 50).
         licence: Filter to one redistribution class: 'own', 'open',
             'restricted', or 'unknown'."#;
+
+// Phase 4: skills.
+
+pub const COMPILE_SKILL: &str = r#"Compile domain procedure from experience and graveyard memories into a loadable SKILL.md. 'propose' (default) returns a reviewable diff; 'write' commits only a previously proposed and accepted diff — there is no silent-commit path.
+
+    The compiled skill is build output: derived from raw memories, never
+    hand-edited. To change domain guidance, update the underlying memories
+    (record_experience, log_abandoned, bless) and recompile.
+
+    Args:
+        domain: Free-form domain tag, e.g. 'python', 'rust', 'technical-blogging'.
+        mode: 'propose' returns a diff (or full draft if the skill is new) and
+            stashes it; 'write' commits the stashed proposal after human review.
+        min_reinforcement: Lessons must recur across this many memories to
+            become rules (default 2). bless() promotes a single strong lesson
+            past the gate.
+        include_graveyard: Compile abandoned approaches into Don't rules
+            (default True).
+        export_path: On write, also mirror the SKILL.md to this relative path
+            under SKILL_EXPORT_DIR. The OmniMem store remains canonical.
+        description: Explicitly set the skill description (the load trigger).
+            The description is human-owned: the compiler drafts one at
+            creation, and recompiles keep the stored one unless this is passed."#;
+
+pub const FIND_SKILLS: &str = r#"Discover compiled skills: ranked skill IDs and descriptions for a query or domain. Load the winner intact with get_skill().
+
+    Returns only skills that clear the relevance floor (SKILL_MIN_SCORE,
+    default 0.25), so an empty list is a real answer — it means nothing
+    stored covers this work, not that discovery failed. Each entry carries a
+    `confidence` of 'high' or 'low'; don't load a 'low' one without reading
+    its description first.
+
+    Args:
+        query_or_domain: A domain tag ('python') or a free-text description
+            of the work at hand."#;
+
+pub const GET_SKILL: &str = r#"Load a skill whole: the complete SKILL.md body with frontmatter and structure intact, by ID, name, or domain.
+
+    Args:
+        skill_id: Full key ('mem:skill:gen:python-ric'), name
+            ('python-ric'), or bare domain ('python')."#;
+
+pub const BLESS: &str = r#"Promote a single strong lesson to skill-eligible now, bypassing the reinforcement threshold at the next compile_skill().
+
+    The human-accept gate at compile time is still the safety net — bless
+    only pre-qualifies the lesson, it does not write to any skill.
+
+    Args:
+        memory_key: Episodic memory key carrying the lesson
+            (lesson, breakthrough, gotchas, or graveyard entry)."#;
+
+pub const PROMOTE_KNOWLEDGE: &str = r#"Mark a knowledge item as permanently useful, and optionally skill-eligible for a domain.
+
+    Without a domain: clears the expires_at field so the item is never
+    auto-archived by maintenance. Use this when an RSS-ingested article turns
+    out to be genuinely valuable.
+
+    With a domain: additionally marks the article skill-eligible — the next
+    compile_skill() for that domain compiles it into the skill's Reference
+    section, citing the article. Promotion is the vetting step (an article
+    carries no experience signal, so a human marking it eligible substitutes
+    for reinforcement); the compile itself still runs the propose-and-accept
+    gate. Expiry is cleared too — an article feeding a skill must not
+    auto-archive underneath it.
+
+    When the article contains discrete guidance (a "5 things to avoid" list,
+    a best-practice post), read it first and pass the items as rules — each
+    becomes its own stance-prefixed bullet in the Reference section instead
+    of one summary line. Extraction happens here, under human review, never
+    at compile time, so compilation stays deterministic. Re-promote with an
+    edited list to revise; rules=[] reverts to the single summary rule.
+
+    Args:
+        key: The memory key (e.g. mem:knowledge:01ABC...).
+        domain: Skill domain to make this article eligible for (e.g.
+            'python'). Aliases resolve the same way as compile_skill.
+        demote: With domain, remove that domain from the article's
+            skill-eligibility instead of adding it.
+        rules: With domain, extracted rules from the article, each
+            {"kind": "do"|"watch"|"dont"|"note", "text": "..."} (max 20,
+            400 chars each). Review them with the human before promoting."#;

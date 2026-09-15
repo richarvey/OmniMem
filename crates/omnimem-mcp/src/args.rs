@@ -421,3 +421,57 @@ pub struct RecentKnowledge {
     #[serde(default)]
     pub licence: Option<String>,
 }
+
+fn propose() -> String {
+    "propose".to_owned()
+}
+
+fn two() -> i64 {
+    2
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CompileSkill {
+    pub domain: String,
+    #[serde(default = "propose")]
+    pub mode: String,
+    #[serde(default = "two")]
+    pub min_reinforcement: i64,
+    #[serde(default = "yes")]
+    pub include_graveyard: bool,
+    #[serde(default)]
+    pub export_path: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct FindSkills {
+    pub query_or_domain: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct GetSkill {
+    pub skill_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct Bless {
+    pub memory_key: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct PromoteKnowledge {
+    pub key: String,
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
+    pub demote: bool,
+    #[serde(default)]
+    pub rules: Option<Vec<serde_json::Map<String, serde_json::Value>>>,
+}

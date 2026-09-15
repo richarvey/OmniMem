@@ -153,6 +153,15 @@ fn tools() -> Vec<Tool> {
             d::RECENT_KNOWLEDGE,
             schema::<RecentKnowledge>(),
         ),
+        Tool::new("compile_skill", d::COMPILE_SKILL, schema::<CompileSkill>()),
+        Tool::new("find_skills", d::FIND_SKILLS, schema::<FindSkills>()),
+        Tool::new("get_skill", d::GET_SKILL, schema::<GetSkill>()),
+        Tool::new("bless", d::BLESS, schema::<Bless>()),
+        Tool::new(
+            "promote_knowledge",
+            d::PROMOTE_KNOWLEDGE,
+            schema::<PromoteKnowledge>(),
+        ),
     ]
 }
 
@@ -390,6 +399,27 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
                 a.licence.as_deref(),
             )?
         }
+        "compile_skill" => {
+            let a: CompileSkill = parse(args)?;
+            e.compile_skill(
+                &a.domain,
+                &a.mode,
+                a.min_reinforcement,
+                a.include_graveyard,
+                a.export_path.as_deref(),
+                a.description.as_deref(),
+            )?
+        }
+        "find_skills" => e.find_skills(&parse::<FindSkills>(args)?.query_or_domain)?,
+        "get_skill" => e.get_skill(&parse::<GetSkill>(args)?.skill_id)?,
+        "bless" => e.bless(&parse::<Bless>(args)?.memory_key)?,
+        "promote_knowledge" => {
+            let a: PromoteKnowledge = parse(args)?;
+            let rules = a
+                .rules
+                .map(|r| Value::Array(r.into_iter().map(Value::Object).collect()));
+            e.promote_knowledge(&a.key, a.domain.as_deref(), a.demote, rules.as_ref())?
+        }
         other => return Err(CallError::UnknownTool(other.to_owned())),
     })
 }
@@ -506,7 +536,7 @@ mod tests {
     #[test]
     fn every_listed_tool_dispatches() {
         let names: Vec<String> = tools().iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(names.len(), 43);
+        assert_eq!(names.len(), 48);
         for name in names {
             let schema = tools()
                 .into_iter()

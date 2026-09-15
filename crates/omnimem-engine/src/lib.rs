@@ -15,12 +15,14 @@ mod audit;
 mod briefing;
 mod chunking;
 pub mod classification;
+mod compiler;
 mod config;
 mod contradiction;
 mod dedup;
 pub mod domains;
 mod error;
 mod experience;
+pub mod feeds;
 mod knowledge;
 mod lifecycle;
 mod lineage;
@@ -28,9 +30,13 @@ mod maintenance;
 mod projects;
 pub mod pyfmt;
 mod recall;
+mod skill_scan;
+mod skill_tools;
+pub mod skills;
 mod tags;
 mod temporal;
 mod tools;
+pub mod transfer;
 
 pub use projects::migrate_project_domains;
 

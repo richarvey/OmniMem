@@ -327,6 +327,14 @@ impl Store {
         Ok(true)
     }
 
+    /// DEL on a non-memory key: true when something was removed.
+    pub fn kv_delete(&self, key: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .execute("DELETE FROM kv WHERE key = ?1", params![key])?
+            > 0)
+    }
+
     /// Delete every expired entry. Reads already ignore them; this reclaims space.
     pub fn purge_expired(&self) -> Result<usize> {
         Ok(self.conn().execute(

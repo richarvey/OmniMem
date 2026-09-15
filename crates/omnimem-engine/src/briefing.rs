@@ -282,6 +282,11 @@ impl Engine {
                 Err(e) => error!(project = p, error = %e, "auto-maintenance failed"),
             }
         }
+        if let Some(p) = project
+            && let Err(e) = self.briefing_skill_sections(p, &mut result)
+        {
+            error!(project = p, error = %e, "skill briefing sections failed");
+        }
         Ok(Value::Object(result))
     }
 }
