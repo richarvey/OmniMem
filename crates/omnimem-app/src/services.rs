@@ -41,6 +41,12 @@ pub fn data_dir(db: &Path) -> PathBuf {
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
+/// The reading list: `FEEDS_CONFIG_PATH`, or `feeds.yml` beside the database.
+/// The RSS scheduler reads it and the settings panel edits it.
+pub fn feeds_path(db: &Path) -> PathBuf {
+    RssConfig::from_env(data_dir(db).join("feeds.yml")).feeds_path
+}
+
 /// The desktop app's data folder: `%APPDATA%\squarecows\OmniMem\data` on
 /// Windows, `~/Library/Application Support/com.squarecows.OmniMem` on macOS,
 /// `$XDG_DATA_HOME/omnimem` on Linux (inside a Flatpak, the app's own).

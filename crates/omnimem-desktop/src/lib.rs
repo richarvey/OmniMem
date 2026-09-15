@@ -16,7 +16,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
-use omnimem_app::{Instance, ServiceState, acquire, request_show, run_services, take_show_request};
+use omnimem_app::{
+    Instance, ServiceState, acquire, feeds_path, request_show, run_services, take_show_request,
+};
 use omnimem_settings::Panel;
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
@@ -465,11 +467,13 @@ pub fn run(options: DesktopOptions) -> Result<()> {
     }));
 
     let login = start_at_login();
+    let panel = Panel::new();
+    panel.set_feeds_path(feeds_path(&options.db));
     let mut app = App {
         menu: TrayMenu::new(login.as_ref())?,
         options,
         proxy,
-        panel: Panel::new(),
+        panel,
         runtime: Arc::new(runtime),
         tray: None,
         window: None,

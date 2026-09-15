@@ -12,6 +12,6 @@ mod services;
 
 pub use instance::{Instance, InstanceLock, acquire, request_show, take_show_request};
 pub use services::{
-    ServiceState, data_dir, default_data_dir, load_embedder, local_mcp_url, open_engine,
-    run_services,
+    ServiceState, data_dir, default_data_dir, feeds_path, load_embedder, local_mcp_url,
+    open_engine, run_services,
 };

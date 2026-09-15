@@ -17,6 +17,7 @@ mod create;
 mod dashboard;
 mod detail;
 mod experience;
+mod feeds_file;
 mod format;
 mod lifecycle;
 mod memories;
@@ -24,17 +25,20 @@ mod pages;
 mod projects;
 mod render;
 mod search;
+mod skills;
 mod version;
 
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/embedded.rs"));
 }
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use axum::Router;
 use axum::body::Body;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{Request, Response};
 use axum::routing::{get, post};
 use minijinja::Environment;
@@ -54,6 +58,8 @@ struct Caches {
 pub(crate) struct Shared {
     engine: RwLock<Option<Arc<Engine>>>,
     failure: RwLock<Option<String>>,
+    feeds_path: RwLock<Option<PathBuf>>,
+    downloads_dir: RwLock<Option<PathBuf>>,
     templates: Environment<'static>,
     caches: Mutex<Caches>,
 }
@@ -69,6 +75,23 @@ impl PanelState {
 
     pub(crate) fn failure(&self) -> Option<String> {
         self.0.failure.read().ok().and_then(|f| f.clone())
+    }
+
+    /// The reading list, once the app has said where it is.
+    pub(crate) fn feeds_path(&self) -> Option<PathBuf> {
+        self.0.feeds_path.read().ok().and_then(|p| p.clone())
+    }
+
+    /// Where exports are saved: the one set, or the user's Downloads folder.
+    pub(crate) fn downloads_dir(&self) -> Option<PathBuf> {
+        self.0
+            .downloads_dir
+            .read()
+            .ok()
+            .and_then(|d| d.clone())
+            .or_else(|| {
+                directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(PathBuf::from))
+            })
     }
 
     pub(crate) fn templates(&self) -> &Environment<'static> {
@@ -98,6 +121,8 @@ impl Panel {
         let state = PanelState(Arc::new(Shared {
             engine: RwLock::new(None),
             failure: RwLock::new(None),
+            feeds_path: RwLock::new(None),
+            downloads_dir: RwLock::new(None),
             templates: render::environment(),
             caches: Mutex::new(Caches::default()),
         }));
@@ -138,6 +163,18 @@ impl Panel {
             )
             .route("/experience", get(experience::summary))
             .route("/experience/graveyard", get(experience::graveyard))
+            .route("/skills", get(skills::list))
+            .route("/skills/compile", post(skills::compile))
+            .route("/skills/commit", post(skills::commit))
+            .route("/skills/delete", post(skills::delete))
+            .route(
+                "/skills/import",
+                // Bundles are capped at 20 MB; multipart framing adds a little.
+                post(skills::import).layer(DefaultBodyLimit::max(24 * 1024 * 1024)),
+            )
+            .route("/skills/import/confirm", post(skills::import_confirm))
+            .route("/skills/export/{key}", get(skills::export))
+            .route("/skills/{key}", get(skills::detail))
             .route("/static/{*path}", get(assets::serve))
             .route("/_panel/echo", post(pages::echo))
             .route("/_panel/redirect", post(pages::redirect))
@@ -151,6 +188,20 @@ impl Panel {
     pub fn set_engine(&self, engine: Arc<Engine>) {
         if let Ok(mut slot) = self.state.0.engine.write() {
             *slot = Some(engine);
+        }
+    }
+
+    /// Where the reading list lives, for pages that read or change it.
+    pub fn set_feeds_path(&self, path: PathBuf) {
+        if let Ok(mut slot) = self.state.0.feeds_path.write() {
+            *slot = Some(path);
+        }
+    }
+
+    /// Save exports here instead of the user's Downloads folder.
+    pub fn set_downloads_dir(&self, dir: PathBuf) {
+        if let Ok(mut slot) = self.state.0.downloads_dir.write() {
+            *slot = Some(dir);
         }
     }
 

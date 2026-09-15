@@ -10,8 +10,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum.workspace = true
+# multipart: the skills page's bundle upload.
+axum = { workspace = true, features = ["multipart"] }
 chrono.workspace = true
+directories.workspace = true
 minijinja.workspace = true
 minijinja-contrib.workspace = true
 omnimem-core.workspace = true
@@ -19,6 +21,8 @@ omnimem-engine.workspace = true
 omnimem-store.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+serde_yaml_ng.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tracing.workspace = true
+ulid.workspace = true
