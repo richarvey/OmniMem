@@ -104,6 +104,7 @@ async def memory_detail(request: Request) -> HTMLResponse:
         "outcome": data.get("outcome"),
         "iterations": data.get("iterations"),
         "breakthrough": data.get("breakthrough"),
+        "lesson": data.get("lesson"),
         "gotchas": data.get("gotchas"),
         "abandoned_approaches": abandoned,
         "contradictions": contradictions,

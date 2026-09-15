@@ -41,7 +41,8 @@ Long-form content is split into chunks, each stored as its own episodic memory w
 | `iterations` | int string | Number of attempts (default 1). |
 | `experience_weight` | float string | Recall multiplier computed from effort and outcome (formula below). |
 | `abandoned_approaches` | JSON array | The graveyard. Entries are `{"name", "type", "reason"}`; `log_abandoned()` adds `"attempted_at"` (ISO 8601 UTC). `type` is one of `library`, `approach`, `tool`, `pattern`, `service`. Appended to, never replaced. |
-| `breakthrough` | string | What finally worked. Becomes a "Do" rule candidate for skill compilation when the outcome is `succeeded`. |
+| `breakthrough` | string | What finally worked, on this occasion. Becomes a "Do" rule candidate for skill compilation when the outcome is `succeeded` and the memory has no `lesson`. |
+| `lesson` | string | Optional (v7). The generalisable claim the work taught, written as a rule that holds beyond this incident. Preferred over `breakthrough` as the "Do" rule candidate, under the same outcome gate and with the same weight. |
 | `gotchas` | string | Caveats to watch for. Becomes a "Watch out" rule candidate. |
 
 The experience weight formula (`compute_experience_weight` in `memory/recall.py`):
@@ -117,6 +118,7 @@ record_experience(
     ],                              # type: 'library', 'approach', 'tool', 'pattern', 'service'
     breakthrough="tonistiigi/binfmt registers handlers on arm64 hosts",  # default None
     gotchas="needs --privileged on first run",                           # default None
+    lesson="check an image's architectures before building on it",     # default None; what transfers
 )
 
 # Append one dead end without re-recording the whole experience. All four required.
@@ -143,9 +145,9 @@ State and project filters are pushed into FT.SEARCH as tag filters so archived o
 
 `gather_domain_pool()` treats lowercased tags as domains. From each active memory in a domain pool it extracts lessons:
 
-- `breakthrough` + `outcome == succeeded` → **do** lesson
+- `lesson` (or `breakthrough` when there is no lesson) + `outcome == succeeded` → **do** lesson
 - `gotchas` → **watch** lesson
 - each `abandoned_approaches` entry → **dont** lesson (grouped by approach name)
-- a blessed memory always contributes: its breakthrough regardless of outcome, or its bare `content` if it carries no structured lesson fields
+- a blessed memory always contributes: its lesson or breakthrough regardless of outcome, or its bare `content` if it carries no structured lesson fields
 
 Do/watch lessons cluster by embedding similarity (`SKILL_CLUSTER_THRESHOLD`, default 0.80); a rule needs `min_reinforcement` distinct source memories (default 2) or a blessing to clear the gate.

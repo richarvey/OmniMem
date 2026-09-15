@@ -38,7 +38,7 @@ Every tool the OmniMem MCP server exposes, grouped by area. The server delivers 
 
 | Tool | What it does |
 |---|---|
-| `record_experience(key, effort_score, outcome, abandoned_approaches?, breakthrough?, gotchas?)` | Log how hard it was and what failed |
+| `record_experience(key, effort_score, outcome, abandoned_approaches?, breakthrough?, gotchas?, lesson?)` | Log how hard it was, what failed, and any lesson that transfers |
 | `log_abandoned(key, name, type, reason)` | Add dead ends incrementally mid-session |
 | `warn_if_abandoned(query)` | Check the graveyard before proceeding |
 | `experience_summary(project?)` | Graveyard, breakthroughs, and effort stats |

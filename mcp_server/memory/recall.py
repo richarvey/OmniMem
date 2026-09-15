@@ -243,6 +243,7 @@ class RecallResult:
     # told: this came back, and it may still be nothing.
     weak_match: bool = False
     breakthrough: str | None = None
+    lesson: str | None = None
     contradictions: list[dict] = field(default_factory=list)
     event_date: float | None = None
     enriched_from: str | None = None
@@ -488,6 +489,7 @@ class RecallPipeline:
                     experience_weight=exp_weight,
                     result_type=result_type,
                     breakthrough=doc.get("breakthrough"),
+                    lesson=doc.get("lesson"),
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),
@@ -719,6 +721,7 @@ class RecallPipeline:
                     experience_weight=exp_weight,
                     result_type=result_type,
                     breakthrough=doc.get("breakthrough"),
+                    lesson=doc.get("lesson"),
                     contradictions=contradictions,
                     event_date=event_date_val,
                     enriched_from=doc.get("enriched_from"),

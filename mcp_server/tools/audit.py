@@ -249,6 +249,7 @@ def explain_memory(key: str) -> dict[str, Any]:
         "experience_weight": data.get("experience_weight"),
         "abandoned_approaches": _safe_json_loads(data.get("abandoned_approaches", "[]")),
         "breakthrough": data.get("breakthrough"),
+        "lesson": data.get("lesson"),
         "gotchas": data.get("gotchas"),
         "deprioritised_reason": data.get("deprioritised_reason") or None,
         "reinstate_hints": _safe_json_loads(data.get("reinstate_hints", "[]")),

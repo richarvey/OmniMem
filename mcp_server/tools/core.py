@@ -548,6 +548,8 @@ def recall(
             entry["outcome"] = r.outcome
         if r.breakthrough:
             entry["breakthrough"] = r.breakthrough
+        if r.lesson:
+            entry["lesson"] = r.lesson
         if r.contradictions:
             entry["contradictions"] = len(r.contradictions)
         if r.source_url:
@@ -725,6 +727,8 @@ def recall_detail(
         entry.update(classification_fields(data, entry["namespace"], key))
         if data.get("breakthrough"):
             entry["breakthrough"] = data["breakthrough"]
+        if data.get("lesson"):
+            entry["lesson"] = data["lesson"]
         if data.get("effort_score"):
             try:
                 entry["effort_score"] = int(float(data["effort_score"]))

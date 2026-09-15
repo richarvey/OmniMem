@@ -323,7 +323,7 @@ def bless(memory_key: str) -> dict[str, Any]:
 
     Args:
         memory_key: Episodic memory key carrying the lesson
-            (breakthrough, gotchas, or graveyard entry).
+            (lesson, breakthrough, gotchas, or graveyard entry).
     """
     store, _ = _get_deps()
 

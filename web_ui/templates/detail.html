@@ -179,6 +179,13 @@
 </div>
 {% endif %}
 
+{% if memory.lesson %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Lesson</h3>
+  <div class="detail-content" style="border-color:var(--accent);margin-bottom:0">{{ memory.lesson }}</div>
+</div>
+{% endif %}
+
 {% if memory.breakthrough %}
 <div style="margin-bottom:1.5rem">
   <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Breakthrough</h3>

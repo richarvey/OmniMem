@@ -44,7 +44,7 @@ _NAMESPACE_RETURN_FIELDS: dict[str, tuple[str, ...]] = {
         "reinstate_hints", "effort_score", "outcome", "iterations",
         "abandoned_approaches", "breakthrough", "gotchas", "experience_weight",
         "contradictions", "recall_count", "last_recalled", "event_date",
-        "enriched_from", "licence", "licence_note", "provenance",
+        "enriched_from", "licence", "licence_note", "provenance", "lesson",
     ),
     "project": (
         "similarity_score", "content", "project_name", "stack", "state",

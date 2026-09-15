@@ -84,7 +84,7 @@ DOMAIN_ALIASES = {
 
 _POOL_FIELDS = (
     "content", "state", "project", "tags", "effort_score", "outcome",
-    "breakthrough", "gotchas", "abandoned_approaches", "blessed",
+    "breakthrough", "lesson", "gotchas", "abandoned_approaches", "blessed",
     "created_at", "updated_at",
 )
 
@@ -243,6 +243,7 @@ def gather_domain_pools(
             "effort_score": effort,
             "outcome": row.get("outcome"),
             "breakthrough": row.get("breakthrough"),
+            "lesson": row.get("lesson"),
             "gotchas": row.get("gotchas"),
             "abandoned": [a for a in abandoned if isinstance(a, dict)],
             "blessed": row.get("blessed") == "1",
@@ -429,10 +430,10 @@ def lesson_bearing(mem: dict[str, Any]) -> bool:
     """
     if mem.get("blessed"):
         return bool(
-            mem.get("breakthrough") or mem.get("gotchas")
+            mem.get("lesson") or mem.get("breakthrough") or mem.get("gotchas")
             or mem.get("abandoned") or mem.get("content")
         )
-    if mem.get("breakthrough") and mem.get("outcome") == "succeeded":
+    if (mem.get("lesson") or mem.get("breakthrough")) and mem.get("outcome") == "succeeded":
         return True
     return bool(mem.get("gotchas") or mem.get("abandoned"))
 
@@ -497,21 +498,27 @@ def extract_lessons(
 ) -> list[Lesson]:
     """Pull lessons out of pool memories.
 
-    Breakthroughs of succeeded work become do-lessons, gotchas become
-    watch-lessons, graveyard entries become dont-lessons. A blessed memory
-    always contributes: its breakthrough regardless of outcome, or its
-    content if it has no structured lesson fields.
+    Succeeded work becomes a do-lesson from its lesson, or its breakthrough
+    when it has none; gotchas become watch-lessons, graveyard entries become
+    dont-lessons. A blessed memory always contributes: its lesson or
+    breakthrough regardless of outcome, or its content if it has no
+    structured lesson fields.
     """
     lessons: list[Lesson] = []
     for mem in pool:
         contributed = False
         blessed = mem["blessed"]
 
-        breakthrough = mem.get("breakthrough")
-        if breakthrough and (mem.get("outcome") == "succeeded" or blessed):
+        # A lesson is the generalisable claim, the breakthrough is what
+        # happened this time (issue #35). Prefer the claim and fall back to
+        # the narrative, so memories written before the field existed
+        # contribute exactly as before. Same gate and weight either way:
+        # changing how a lesson scores is a separate release.
+        do_text = mem.get("lesson") or mem.get("breakthrough")
+        if do_text and (mem.get("outcome") == "succeeded" or blessed):
             lessons.append(Lesson(
                 kind="do",
-                text=_one_line(breakthrough),
+                text=_one_line(do_text),
                 source_key=mem["key"],
                 source_updated_at=mem["updated_at"],
                 blessed=blessed,

@@ -34,6 +34,7 @@ def record_experience(
     abandoned_approaches: list[dict[str, str]] | None = None,
     breakthrough: str | None = None,
     gotchas: str | None = None,
+    lesson: str | None = None,
 ) -> dict[str, Any]:
     """Record effort, outcome, dead ends, and breakthroughs for a memory. High-effort successes surface more; high-effort failures (>=4, abandoned) auto-suppress the approach names.
 
@@ -43,8 +44,13 @@ def record_experience(
         outcome: 'succeeded', 'pivoted', or 'abandoned'.
         iterations: Number of attempts.
         abandoned_approaches: List of dicts with 'name', 'type', 'reason'.
-        breakthrough: What finally worked.
+        breakthrough: What finally worked, on this occasion.
         gotchas: Caveats to watch for.
+        lesson: The generalisable claim this work taught, if there is one:
+            a rule that holds beyond this incident, e.g. "a test fake must
+            reproduce the real server's divergent behaviour, not its docs".
+            Leave it out when nothing transfers. Skill compilation prefers
+            it over the breakthrough.
     """
     store, lifecycle, pipeline = _get_deps()
 
@@ -88,6 +94,9 @@ def record_experience(
 
     if gotchas:
         updates["gotchas"] = gotchas
+
+    if lesson:
+        updates["lesson"] = lesson
 
     store.set_fields(key, updates)
 
@@ -221,6 +230,7 @@ def get_experience(key: str) -> dict[str, Any]:
         "iterations": iterations,
         "abandoned_approaches": abandoned,
         "breakthrough": data.get("breakthrough"),
+        "lesson": data.get("lesson"),
         "gotchas": data.get("gotchas"),
         "experience_weight": data.get("experience_weight", "1.0"),
     })

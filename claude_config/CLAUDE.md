@@ -126,9 +126,12 @@ record_experience(
     {"name": "onnxruntime", "type": "library", "reason": "SIGILL on Alpine musl libc"}
   ],
   breakthrough="sentence-transformers with --prefer-binary pip flag",
-  gotchas=["Needs openblas-dev and g++ installed in Alpine first"]
+  gotchas=["Needs openblas-dev and g++ installed in Alpine first"],
+  lesson="Check a library publishes musllinux wheels before choosing an Alpine base"
 )
 ```
+
+`breakthrough` is what happened this time. `lesson` is optional and is the claim that holds beyond this incident: write one when the work taught something that transfers, and leave it out when it didn't. Skill compilation turns lessons into rules, so a sentence about this particular fix makes a poor lesson.
 
 **Bug fixes must always be recorded.** After fixing any bug, call `remember()` with a structured description:
 

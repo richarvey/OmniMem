@@ -323,7 +323,7 @@ def _propose(
             "domain": domain,
             "pool_size": len(pool),
             "note": "Memories exist for this domain but none carry lessons yet. "
-                    "record_experience() breakthroughs/gotchas, log_abandoned() "
+                    "record_experience() lessons/gotchas, log_abandoned() "
                     "dead ends, or bless() a memory to make it skill-eligible.",
         }
 
