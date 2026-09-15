@@ -16,6 +16,7 @@ mod backup;
 mod error;
 mod kv;
 mod migrations;
+mod queue;
 mod schema;
 mod store;
 mod time;

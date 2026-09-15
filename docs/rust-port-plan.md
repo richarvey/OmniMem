@@ -14,7 +14,8 @@ The Python tree stays in the repository as the reference implementation until th
 |---|---|---|
 | 0. Foundation | **Done** | Rust vectors match the Python engine's full reference vectors (`crates/omnimem-embed/tests/fixtures`) within 1e-4, cosine > 0.99999. Model download into the shared Hugging Face cache, tested against a local HTTP server |
 | 1. Store | **Done, two items carried** | Real 6.6.2 production backup (3,500 memories, 4,356 keys): imported and embedded in 147 s (debug build, sharing the CPU), 12.8 MB database. All 32 query/namespace searches return an **identical ordered top-10** to the Python engine's exact search over the same data. Export round-trips every field of every memory, adding only the v7 identity fields. Carried: `migrate_project_domains` (needs the engine's domain normalisation, phase 3) and proving the Flatpak's offline ONNX Runtime source (phase 9 prep) |
-| 2. Core MCP | Next | |
+| 2. Core MCP | **Done, one check left** | `omnimem-engine` ports the recall pipeline (abandoned fast-path, scoring with surface, recency, experience and temporal multipliers, reinstate candidates, fact collapse, relevance floor and weak band, recall logging and counters), lifecycle and suppression, dedup, the tier-1 contradiction check, chunking, domain routing and the core tool behaviours. `omnimem-mcp` serves 20 tools over streamable HTTP with 6.x's verbatim descriptions, bearer auth, Host/Origin allowlists and fail-closed public binds; `omnimem serve` runs it. Checked with a real MCP session against the imported production store and the real model: recall 65 to 90 ms on a debug build. Left: connecting Claude Code itself. Deferred to phase 5: query expansion (`expand_queries` is accepted and ignored). Enrichment jobs are queued durably but nothing consumes them yet |
+| 3. Experience, projects, briefing | Next | |
 
 ## Decisions
 

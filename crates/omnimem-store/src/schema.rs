@@ -5,7 +5,16 @@ use ulid::Ulid;
 
 use crate::{Result, StoreError};
 
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+pub(crate) const SCHEMA_VERSION: i64 = 2;
+
+/// Version 2: the enrichment queue, durable where the Valkey list was not.
+const V2: &str = r#"
+CREATE TABLE enrich_queue (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    payload    TEXT NOT NULL CHECK (json_valid(payload)),
+    created_at REAL NOT NULL
+) STRICT;
+"#;
 
 /// Version 1.
 ///
@@ -67,6 +76,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     }
     if version < 1 {
         conn.execute_batch(&format!("BEGIN; {V1} PRAGMA user_version = 1; COMMIT;"))?;
+    }
+    if version < 2 {
+        conn.execute_batch(&format!("BEGIN; {V2} PRAGMA user_version = 2; COMMIT;"))?;
     }
     Ok(())
 }

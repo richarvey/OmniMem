@@ -1,17 +1,22 @@
 //! The OmniMem binary.
 //!
-//! For now: the store and embedding commands used to bring a 6.x backup
-//! across and check it. `serve` (MCP, web UI, RSS) arrives with phase 2.
+//! `serve` runs the MCP server; the other commands bring a 6.x backup across
+//! and inspect the store. The web UI and RSS scheduler join `serve` in later
+//! phases.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_embed::{EmbedConfig, Embedder};
+use omnimem_engine::{Engine, EngineConfig};
+use omnimem_mcp::ServerConfig;
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Parser)]
 #[command(
@@ -35,6 +40,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run the MCP server (streamable HTTP at /mcp). Configured by the 6.x
+    /// environment variables: MCP_HOST, MCP_PORT, MCP_AUTH_TOKEN and friends.
+    Serve,
     /// Import a 6.x backup (dump_to_file JSON), then re-embed every memory.
     Import {
         file: PathBuf,
@@ -69,15 +77,21 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    let Cli { db, command } = Cli::parse();
+    let default_level = if matches!(command, Command::Serve) {
+        "info"
+    } else {
+        "warn"
+    };
     let filter = tracing_subscriber::EnvFilter::try_from_env("OMNIMEM_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .init();
 
-    let Cli { db, command } = Cli::parse();
     match command {
+        Command::Serve => serve(&db),
         Command::Import { file, no_embed } => import(&db, &file, no_embed),
         Command::Export { file } => export(&db, &file),
         Command::Stats => stats(&db),
@@ -95,6 +109,54 @@ fn main() -> Result<()> {
 
 fn load_embedder() -> Result<Embedder> {
     Embedder::load(&EmbedConfig::from_env()).context("loading the embedding model")
+}
+
+fn serve(db: &Path) -> Result<()> {
+    let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
+    store.run_migrations().context("running migrations")?;
+    let embedder = Arc::new(load_embedder()?);
+    let backup_dir = db
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("backups"), |p| p.join("backups"));
+    let engine = Arc::new(Engine::new(
+        store,
+        embedder,
+        EngineConfig::from_env(backup_dir),
+    ));
+    let config = ServerConfig::from_env();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("starting the async runtime")?;
+    runtime.block_on(async move {
+        let shutdown = CancellationToken::new();
+        let signal = shutdown.clone();
+        tokio::spawn(async move {
+            wait_for_shutdown_signal().await;
+            signal.cancel();
+        });
+        omnimem_mcp::serve(engine, config, None, shutdown).await
+    })?;
+    Ok(())
+}
+
+/// Ctrl-C, or SIGTERM from a container runtime.
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("installing the SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }
 
 fn import(db: &Path, file: &Path, no_embed: bool) -> Result<()> {

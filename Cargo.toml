@@ -15,6 +15,7 @@ publish = false
 omnimem-core = { path = "crates/omnimem-core" }
 omnimem-embed = { path = "crates/omnimem-embed" }
 omnimem-store = { path = "crates/omnimem-store" }
+omnimem-engine = { path = "crates/omnimem-engine" }
 
 # Storage: SQLite compiled in, so the binary needs no system library.
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -26,6 +27,12 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 # CLI
 clap = { version = "4.6", features = ["derive", "env"] }
 
+# MCP server
+omnimem-mcp = { path = "crates/omnimem-mcp" }
+rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
+axum = "0.8"
+tokio-util = "0.7"
+
 # Errors and logging
 thiserror = "2.0"
 anyhow = "1.0"
@@ -34,7 +41,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Serialisation
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# preserve_order: tool results keep their fields in the order 6.x emitted them.
+serde_json = { version = "1.0", features = ["preserve_order"] }
+regex = "1.11"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # Runtime
 tokio = { version = "1.53", features = ["full"] }
