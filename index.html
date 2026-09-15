@@ -962,7 +962,7 @@ function setActive(id){
     l.style.background = on ? '#16191e' : 'transparent';
   });
 }
-var secs = ['problem','in-action','features','lifecycle','comparison','architecture','quickstart']
+var secs = ['problem','in-action','features','lifecycle','skills','comparison','architecture','quickstart']
   .map(function(id){ return document.getElementById(id); }).filter(Boolean);
 if ('IntersectionObserver' in window && secs.length) {
   var obs = new IntersectionObserver(function(entries){
