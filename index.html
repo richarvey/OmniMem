@@ -105,7 +105,7 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   .omm-header[data-open="true"]{background:rgba(11,12,14,.96);border-color:rgb(38,42,49)}
   .omm-header-bar{display:flex;align-items:center;justify-content:space-between;gap:24px;height:62px;padding:0 28px;transition:height .25s ease-out,padding .25s ease-out}
   .omm-wordmark,.omm-wordmark:hover{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:16px;color:#e7e9ec;letter-spacing:-.02em;display:flex;align-items:center;flex:0 0 auto}
-  .omm-wordmark-bracket{color:#868c96}
+  .omm-wordmark-bracket{color:#63bd85}
   .omm-header-links{flex:1 1 0%;min-width:0;display:flex;gap:2px;align-items:center;justify-content:center}
   .omm-nav-link{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#969ca5;padding:7px 10px;border-radius:6px;white-space:nowrap;transition:color .15s,background-color .15s}
   .omm-nav-link:hover{color:#e7e9ec;background:#16191e}
@@ -140,6 +140,42 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   @media (prefers-reduced-motion:reduce){
     .omm-header,.omm-header-bar,.omm-menu-icon,.omm-menu-line,.omm-nav-link,.omm-nav-cta,.omm-menu-toggle{transition:none}
     .omm-mobile-menu-inner{animation:none}
+  }
+  /* Site footer (a port of the footer-section component): rounded top with a
+     soft glow, and columns that fade up once as the footer scrolls into view */
+  .omm-footer{position:relative;width:100%;max-width:1152px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;border-top:1px solid rgb(38,42,49);border-radius:32px 32px 0 0;background:radial-gradient(35% 128px at 50% 0%,rgba(255,255,255,.08),transparent)}
+  .omm-footer-glow{position:absolute;top:0;left:50%;width:33.333%;height:1px;transform:translate(-50%,-50%);border-radius:999px;background:rgba(231,233,236,.2);filter:blur(4px)}
+  .omm-footer-grid{display:grid;width:100%;gap:32px}
+  .omm-footer-brand{display:flex;flex-direction:column;gap:14px}
+  .omm-footer-wordmark{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:20px;letter-spacing:-.02em;color:#e7e9ec}
+  .omm-footer-blurb{font-size:13.5px;line-height:1.6;color:#868c96;margin:0;max-width:360px}
+  .omm-footer-heart{display:inline-block;width:.95em;height:.95em;vertical-align:-.12em;color:#ef4444}
+  .omm-footer-logo{display:inline-flex;align-self:flex-start;margin-top:2px;border-radius:4px}
+  .omm-footer-logo img{display:block}
+  .omm-footer-logo:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
+  .omm-footer-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:40px}
+  .omm-footer-section-end{justify-self:end}
+  .omm-footer-heading{font-family:"Ubuntu Mono",monospace;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#e7e9ec;margin:0}
+  .omm-footer-links{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:8px}
+  .omm-footer-links a,.omm-footer-links a:hover{display:inline-flex;align-items:flex-start;gap:6px;font-family:"Ubuntu Mono",monospace;font-size:13px;padding:4px 0;transition:color .3s}
+  .omm-footer-links a{color:#969ca5}
+  .omm-footer-links a:hover{color:#e7e9ec}
+  .omm-footer-links a:focus-visible{outline:2px solid #63bd85;outline-offset:2px;border-radius:4px}
+  .omm-footer-links svg{width:16px;height:16px;flex:0 0 auto}
+  .omm-footer[data-animate] .omm-reveal{opacity:0;transform:translateY(-8px);filter:blur(4px)}
+  .omm-footer[data-animate] .omm-reveal.is-visible{opacity:1;transform:none;filter:none;transition:opacity .8s ease,transform .8s ease,filter .8s ease;transition-delay:var(--delay,.1s)}
+  @media (min-width:768px){
+    .omm-footer{border-radius:48px 48px 0 0}
+    .omm-footer-sections{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (min-width:1024px){.omm-footer{padding:64px 24px}}
+  @media (min-width:1280px){
+    .omm-footer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .omm-footer-sections{grid-column:span 2/span 2;margin-top:0}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .omm-footer[data-animate] .omm-reveal{opacity:1;transform:none;filter:none;transition:none}
+    .omm-footer-links a{transition:none}
   }
 @media (max-width:960px){
 header[data-screen-label="Hero"]{grid-template-columns:1fr!important;gap:40px!important}
@@ -368,15 +404,16 @@ section[data-screen-label="Works with"] [style*="width: 1px"]{display:none!impor
       </div>
       <div style="width: 1px; align-self: stretch; background: rgb(27, 30, 36);"></div>
       <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; flex: 1 1 0%;">
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-desktop.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Claude Desktop</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-web.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Claude Web</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Claude Code</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/codex.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Codex</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/opencode.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>OpenCode</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/kiro.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Kiro</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/github-copilot.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>GitHub Copilot</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/gitlab-duo.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>GitLab Duo</a>
-        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/cursor.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><span style="color: rgb(99, 189, 133);">✓</span>Cursor</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-desktop.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/claude.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Claude Desktop</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-web.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/claude.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Claude Web</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/claude-code.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Claude Code</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/codex.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/codex.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Codex</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/opencode.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/opencode.svg" alt="" width="16" height="16" loading="lazy" decoding="async">OpenCode</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/kiro.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/kiro.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Kiro</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/github-copilot.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/github-copilot.svg" alt="" width="16" height="16" loading="lazy" decoding="async">GitHub Copilot</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/gitlab-duo.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/gitlab.svg" alt="" width="16" height="16" loading="lazy" decoding="async">GitLab Duo</a>
+        <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/cursor.md" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/cursor.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Cursor</a>
+        <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener" class="scp0" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 9px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; color: rgb(201, 205, 211); text-decoration: none;"><img src="icons/mcp.svg" alt="" width="16" height="16" loading="lazy" decoding="async">Anything via MCP</a>
       </div>
     </div>
   </div></section><section id="problem" data-screen-label="Problem" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
@@ -873,24 +910,34 @@ cp .env.example .env
       </div>
       <a href="https://code.squarecows.com/ric/omnimem" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13.5px; font-weight: 500; color: rgb(11, 12, 14); background: rgb(99, 189, 133); padding: 12px 20px; border-radius: 8px; white-space: nowrap;">View on Squarecows →</a>
     </div>
-  </div></section></main><footer data-screen-label="Footer" style="border-top: 1px solid rgb(27, 30, 36); padding: 44px 0px 60px;">
-  <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px;">
-    <div>
-      <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-weight: 700; font-size: 15px; color: rgb(231, 233, 236); margin-bottom: 10px;"><span style="color: rgb(134, 140, 150);">&lt;</span>OmniMem<span style="color: rgb(134, 140, 150);">&gt;</span></div>
-      <p style="font-size: 13.5px; line-height: 1.6; color: rgb(134, 140, 150); margin: 0px; max-width: 360px;">MIT Licensed. Built by <a href="https://squarecows.com">Ric Harvey @ SquareCows</a> — an AI and automation consultancy for people who'd rather own their tools.</p>
-    </div>
-    <div style="display: flex; gap: 40px; flex-wrap: wrap;">
-      <div style="display: flex; flex-direction: column; gap: 9px;">
-        <a href="https://code.squarecows.com/ric/omnimem" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(150, 156, 165); display: inline-block; padding: 8px 6px; margin: -6px 0px;">Source</a>
-        <a href="https://code.squarecows.com/ric/omnimem/issues" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(150, 156, 165); display: inline-block; padding: 8px 6px; margin: -6px 0px;">Issues</a>
-        <a href="https://code.squarecows.com/ric/omnimem/releases" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(150, 156, 165); display: inline-block; padding: 8px 6px; margin: -6px 0px;">Releases</a>
+  </div></section></main><footer class="omm-footer" data-screen-label="Footer">
+  <div class="omm-footer-glow" aria-hidden="true"></div>
+  <div class="omm-footer-grid">
+    <div class="omm-footer-brand omm-reveal" style="--delay: 0.1s;">
+      <div class="omm-footer-wordmark"><span class="omm-wordmark-bracket">&lt;</span>OmniMem<span class="omm-wordmark-bracket">&gt;</span></div>
+      <p class="omm-footer-blurb">MIT Licensed. Built with <svg class="omm-footer-heart" viewBox="0 0 512 512" role="img" aria-label="love"><title>love</title><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path fill="currentColor" d="M241 87.1l15 20.7 15-20.7C296 52.5 336.2 32 378.9 32 452.4 32 512 91.6 512 165.1l0 2.6c0 112.2-139.9 242.5-212.9 298.2-12.4 9.4-27.6 14.1-43.1 14.1s-30.8-4.6-43.1-14.1C139.9 410.2 0 279.9 0 167.7l0-2.6C0 91.6 59.6 32 133.1 32 175.8 32 216 52.5 241 87.1z"></path></svg> by <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a>.</p>
+      <a href="https://squarecows.com" class="omm-footer-logo"><img src="icons/squarecows-logo.png" alt="SquareCows Ltd" width="89" height="28" loading="lazy" decoding="async"></a>    </div>
+    <div class="omm-footer-sections">
+      <div class="omm-reveal" style="--delay: 0.2s;">
+        <h3 class="omm-footer-heading">Project</h3>
+        <ul class="omm-footer-links">
+          <li><a href="https://code.squarecows.com/ric/omnimem"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M439.6 236.1L244 40.5C238.6 35 231.2 32 223.6 32s-15 3-20.4 8.4l-40.7 40.6 51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.900-56-37.3l-46.3-46.3 0 121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56l0-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4L204.1 471.6c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4L439.6 276.9c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4z"></path></svg>Source</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/issues"><svg viewBox="0 0 576 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M192 96c0-53 43-96 96-96s96 43 96 96l0 3.6c0 15.7-12.7 28.4-28.4 28.4l-135.1 0c-15.7 0-28.4-12.7-28.4-28.4l0-3.6zm345.6 12.8c10.6 14.1 7.7 34.2-6.4 44.8l-97.8 73.3c5.3 8.9 9.3 18.7 11.8 29.1l98.8 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-96 0 0 32c0 2.6-.1 5.3-.2 7.9l83.4 62.5c14.1 10.6 17 30.7 6.4 44.8s-30.7 17-44.8 6.4l-63.1-47.3c-23.2 44.2-66.5 76.2-117.7 83.9L312 280c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 230.2c-51.2-7.7-94.5-39.7-117.7-83.9L83.2 473.6c-14.1 10.6-34.2 7.7-44.8-6.4s-7.7-34.2 6.4-44.8l83.4-62.5c-.1-2.6-.2-5.2-.2-7.9l0-32-96 0c-17.7 0-32-14.3-32-32s14.3-32 32-32l98.8 0c2.5-10.4 6.5-20.2 11.8-29.1L44.8 153.6c-14.1-10.6-17-30.7-6.4-44.8s30.7-17 44.8-6.4L192 184c12.3-5.1 25.8-8 40-8l112 0c14.2 0 27.7 2.8 40 8l108.8-81.6c14.1-10.6 34.2-7.7 44.8 6.4z"></path></svg>Issues</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/releases"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M256 32c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 210.7-41.4-41.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l96 96c12.5 12.5 32.8 12.5 45.3 0l96-96c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 242.7 256 32zM64 320c-35.3 0-64 28.7-64 64l0 32c0 35.3 28.7 64 64 64l320 0c35.3 0 64-28.7 64-64l0-32c0-35.3-28.7-64-64-64l-46.9 0-56.6 56.6c-31.2 31.2-81.9 31.2-113.100 0L110.9 320 64 320zm304 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z"></path></svg>Releases</a></li>
+          <li><a href="https://github.com/richarvey/OmniMem"><svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5l0 52C323 491.5 335.5 500 350.5 494 441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5l0-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21z"></path></svg>GitHub mirror</a></li>
+        </ul>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 9px;">
-        <a href="https://squarecows.com" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(150, 156, 165); display: inline-block; padding: 8px 6px; margin: -6px 0px;">SquareCows Ltd</a>
-        <a href="https://mastodon.squarecows.com/@Ric" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(150, 156, 165); display: inline-block; padding: 8px 6px; margin: -6px 0px;">@Ric on Mastodon</a>
+      <div class="omm-reveal omm-footer-section-end" style="--delay: 0.3s;">
+        <h3 class="omm-footer-heading">Links</h3>
+        <ul class="omm-footer-links">
+          <li><a href="https://mastodon.squarecows.com/@Ric" aria-label="@Ric on Mastodon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.268 5.313c-.35-2.578-2.617-4.61-5.304-5.004C17.51.242 15.792 0 11.813 0h-.03c-3.98 0-4.835.242-5.288.309C3.882.692 1.496 2.518.917 5.127.64 6.412.61 7.837.661 9.143c.074 1.874.088 3.745.26 5.611.118 1.24.325 2.47.62 3.68.55 2.237 2.777 4.098 4.96 4.857 2.336.792 4.849.923 7.256.38.265-.061.527-.132.786-.213.585-.184 1.27-.39 1.774-.753a.057.057 0 0 0 .023-.043v-1.809a.052.052 0 0 0-.02-.041.053.053 0 0 0-.046-.01 20.282 20.282 0 0 1-4.709.545c-2.73 0-3.463-1.284-3.674-1.818a5.593 5.593 0 0 1-.319-1.433.053.053 0 0 1 .066-.054c1.517.363 3.072.546 4.632.546.376 0 .75 0 1.125-.01 1.57-.044 3.224-.124 4.768-.422.038-.008.077-.015.11-.024 2.435-.464 4.753-1.920 4.989-5.604.008-.145.03-1.52.03-1.67.002-.512.167-3.63-.024-5.545zm-3.748 9.195h-2.561V8.29c0-1.309-.55-1.976-1.67-1.976-1.230 0-1.846.79-1.846 2.35v3.403h-2.546V8.663c0-1.56-.617-2.35-1.848-2.35-1.112 0-1.668.668-1.670 1.977v6.218H4.822V8.102c0-1.31.337-2.35 1.011-3.12.696-.77 1.608-1.164 2.740-1.164 1.311 0 2.302.5 2.962 1.498l.638 1.06.638-1.06c.66-.999 1.65-1.498 2.96-1.498 1.13 0 2.043.395 2.74 1.164.675.77 1.012 1.81 1.012 3.12z"></path></svg>@Ric</a></li>
+          <li><a href="https://www.linkedin.com/in/richarvey" aria-label="Ric Harvey on LinkedIn"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M416 32L31.9 32C14.3 32 0 46.5 0 64.3L0 447.7C0 465.5 14.3 480 31.9 480L416 480c17.6 0 32-14.5 32-32.3l0-383.4C448 46.5 433.6 32 416 32zM135.4 416l-66.4 0 0-213.8 66.5 0 0 213.8-.1 0zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77zM384.3 416l-66.4 0 0-104c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9l0 105.8-66.4 0 0-213.8 63.7 0 0 29.2 .9 0c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9l0 117.2z"></path></svg>Ric Harvey</a></li>
+          <li><a href="https://www.instagram.com/omnimemai" aria-label="@omnimemai on Instagram"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M224.3 141a115 115 0 1 0 -.6 230 115 115 0 1 0 .6-230zm-.6 40.4a74.6 74.6 0 1 1 .6 149.2 74.6 74.6 0 1 1 -.6-149.2zm93.4-45.1a26.8 26.8 0 1 1 53.6 0 26.8 26.8 0 1 1 -53.6 0zm129.7 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM399 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z"></path></svg>@omnimemai</a></li>
+        </ul>
       </div>
     </div>
-  </div></footer></div></div></div>
+  </div>
+</footer></div></div></div>
 
 
 
@@ -1089,6 +1136,28 @@ if ('IntersectionObserver' in window && secs.length) {
 
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
+})();
+</script>
+<script>
+/* Site footer: a port of the footer-section component. Each column blurs
+   and fades up once as it scrolls into view, staggered by its --delay.
+   Without IntersectionObserver, or for anyone who prefers reduced motion,
+   everything is simply shown. */
+(function(){
+  var footer = document.querySelector('.omm-footer');
+  if (!footer) return;
+  var still = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (still || !('IntersectionObserver' in window)) return;
+  var items = Array.prototype.slice.call(footer.querySelectorAll('.omm-reveal'));
+  footer.setAttribute('data-animate', '');
+  var observer = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-visible');
+      observer.unobserve(entry.target);
+    });
+  });
+  items.forEach(function(el){ observer.observe(el); });
 })();
 </script>
 </body>
