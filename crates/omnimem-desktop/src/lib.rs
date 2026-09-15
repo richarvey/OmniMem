@@ -19,7 +19,7 @@ use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use omnimem_app::{
     Instance, ServiceState, acquire, feeds_path, request_show, run_services, take_show_request,
 };
-use omnimem_settings::Panel;
+use omnimem_settings::{Panel, StaticOverhead};
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
 use tao::window::{Window, WindowBuilder};
@@ -469,6 +469,13 @@ pub fn run(options: DesktopOptions) -> Result<()> {
     let login = start_at_login();
     let panel = Panel::new();
     panel.set_feeds_path(feeds_path(&options.db));
+    let overhead = omnimem_app::context_overhead();
+    panel.set_static_overhead(StaticOverhead {
+        instructions_chars: overhead.instructions_chars,
+        tool_count: overhead.tool_count,
+        tool_schemas_chars: overhead.tool_schemas_chars,
+        deferred_names_chars: overhead.deferred_names_chars,
+    });
     let mut app = App {
         menu: TrayMenu::new(login.as_ref())?,
         options,

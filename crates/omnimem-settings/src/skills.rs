@@ -10,14 +10,13 @@
 //! token, and writes only on confirm, never overwriting anything.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path as FsPath, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use axum::Form;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use chrono::{Local, TimeZone};
 use minijinja::context;
 use omnimem_engine::EngineError;
 use omnimem_engine::domains::{is_valid_domain, resolve_domain};
@@ -29,7 +28,8 @@ use tracing::{info, warn};
 
 use crate::PanelState;
 use crate::feeds_file;
-use crate::format::timestamp;
+use crate::files::{read_upload, save_download};
+use crate::format::{minutes, timestamp};
 use crate::pages::{blocking, quote, see_other, starting};
 use crate::render::page;
 
@@ -56,16 +56,6 @@ const LIST_FIELDS: &[&str] = &[
 ];
 
 type FormData = HashMap<String, String>;
-
-fn minutes(raw: Option<&String>) -> String {
-    raw.and_then(|r| r.trim().parse::<f64>().ok())
-        .filter(|ts| ts.is_finite())
-        .and_then(|ts| Local.timestamp_opt(ts as i64, 0).single())
-        .map_or_else(
-            || "—".to_owned(),
-            |t| t.format("%Y-%m-%d %H:%M").to_string(),
-        )
-}
 
 fn json_list(raw: Option<&String>) -> Vec<Value> {
     raw.filter(|r| !r.is_empty())
@@ -341,20 +331,10 @@ pub(crate) async fn delete(
     }
 }
 
-/// A path in `dir` for `filename` that doesn't overwrite anything:
-/// `name.zip`, then `name (1).zip` and so on.
-fn free_path(dir: &FsPath, filename: &str) -> PathBuf {
-    let candidate = dir.join(filename);
-    if !candidate.exists() {
-        return candidate;
-    }
-    let (stem, ext) = filename
-        .rsplit_once('.')
-        .map_or((filename, String::new()), |(s, e)| (s, format!(".{e}")));
-    (1..)
-        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
-        .find(|p| !p.exists())
-        .unwrap_or(candidate)
+enum Exported {
+    Saved(PathBuf, usize, usize),
+    NotExportable(String),
+    NotSaved(String),
 }
 
 /// GET `/skills/export/{key}`: save the bundle and say where it went.
@@ -362,27 +342,26 @@ pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<Stri
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let Some(dir) = state.downloads_dir() else {
-        return see_other(&format!(
-            "/skills?error={}",
-            quote("There is no Downloads folder to save the bundle in.")
-        ));
-    };
+    let downloads = state.downloads_dir();
     let saved = blocking(move || {
         let bundle = match engine.build_skill_export(&key)? {
             Ok(bundle) => bundle,
-            Err(reason) => return Ok(Err(reason)),
+            Err(reason) => return Ok(Exported::NotExportable(reason)),
         };
-        std::fs::create_dir_all(&dir).map_err(|e| EngineError::Io(format!("creating {}: {e}", dir.display())))?;
-        let path = free_path(&dir, &bundle.filename);
-        std::fs::write(&path, &bundle.data)
-            .map_err(|e| EngineError::Io(format!("writing {}: {e}", path.display())))?;
-        info!(skill = key, path = %path.display(), memories = bundle.memory_count, "exported a skill bundle");
-        Ok(Ok((path, bundle.memory_count, bundle.missing_sources.len())))
+        Ok(
+            match save_download(downloads, &bundle.filename, &bundle.data) {
+                Ok(path) => {
+                    info!(skill = key, path = %path.display(), memories = bundle.memory_count, "exported a skill bundle");
+                    Exported::Saved(path, bundle.memory_count, bundle.missing_sources.len())
+                }
+                Err(problem) => Exported::NotSaved(problem),
+            },
+        )
     })
     .await;
     match saved {
-        Ok(Ok((path, memories, missing))) => {
+        Ok(Exported::NotSaved(problem)) => see_other(&format!("/skills?error={}", quote(&problem))),
+        Ok(Exported::Saved(path, memories, missing)) => {
             let mut message = format!(
                 "Exported to {} with {memories} source memor{}.",
                 path.display(),
@@ -396,7 +375,7 @@ pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<Stri
             }
             see_other(&format!("/skills?message={}", quote(&message)))
         }
-        Ok(Err(reason)) => (
+        Ok(Exported::NotExportable(reason)) => (
             StatusCode::NOT_FOUND,
             Html(format!(
                 r#"<p class="empty-state">{}.</p>"#,
@@ -455,28 +434,10 @@ pub(crate) async fn import(State(state): State<PanelState>, mut multipart: Multi
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let mut upload: Option<(String, Vec<u8>)> = None;
-    loop {
-        match multipart.next_field().await {
-            Ok(Some(field)) if field.name() == Some("file") => {
-                let filename = field.file_name().unwrap_or("").to_owned();
-                match field.bytes().await {
-                    Ok(bytes) => upload = Some((filename, bytes.to_vec())),
-                    Err(e) => {
-                        return import_error(
-                            &state,
-                            &format!("The upload didn't arrive whole: {e}"),
-                        );
-                    }
-                }
-            }
-            Ok(Some(_)) => {}
-            Ok(None) => break,
-            Err(e) => return import_error(&state, &format!("The upload didn't arrive whole: {e}")),
-        }
-    }
-    let Some((filename, data)) = upload.filter(|(name, _)| !name.is_empty()) else {
-        return import_error(&state, "Choose a .zip bundle to upload.");
+    let (filename, data) = match read_upload(&mut multipart, "file").await {
+        Ok(Some(upload)) if !upload.0.is_empty() => upload,
+        Ok(_) => return import_error(&state, "Choose a .zip bundle to upload."),
+        Err(problem) => return import_error(&state, &problem),
     };
     if !filename.to_lowercase().ends_with(".zip") {
         return import_error(
@@ -617,17 +578,6 @@ pub(crate) async fn import_confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn exports_never_overwrite() {
-        let dir = std::env::temp_dir().join(format!("omnimem-export-{}", ulid::Ulid::generate()));
-        std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(free_path(&dir, "rust.zip"), dir.join("rust.zip"));
-        std::fs::write(dir.join("rust.zip"), b"x").unwrap();
-        std::fs::write(dir.join("rust (1).zip"), b"x").unwrap();
-        assert_eq!(free_path(&dir, "rust.zip"), dir.join("rust (2).zip"));
-        std::fs::remove_dir_all(dir).unwrap();
-    }
 
     #[test]
     fn a_stashed_bundle_reads_back() {

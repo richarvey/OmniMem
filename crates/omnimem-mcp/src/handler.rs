@@ -36,7 +36,7 @@ fn schema<T: JsonSchema>() -> Arc<JsonObject> {
     }
 }
 
-fn tools() -> Vec<Tool> {
+pub(crate) fn tools() -> Vec<Tool> {
     vec![
         Tool::new("version", d::VERSION, schema::<NoArgs>()),
         Tool::new("remember", d::REMEMBER, schema::<Remember>()),

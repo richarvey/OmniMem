@@ -11,6 +11,7 @@ mod instance;
 mod services;
 
 pub use instance::{Instance, InstanceLock, acquire, request_show, take_show_request};
+pub use omnimem_mcp::{ContextOverhead, context_overhead};
 pub use services::{
     ServiceState, data_dir, default_data_dir, feeds_path, load_embedder, local_mcp_url,
     open_engine, run_services,

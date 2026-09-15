@@ -21,6 +21,17 @@ pub(crate) fn timestamp(raw: Option<&String>) -> String {
         )
 }
 
+/// `%Y-%m-%d %H:%M` in local time, or a dash: the shorter stamp lists use.
+pub(crate) fn minutes(raw: Option<&String>) -> String {
+    raw.and_then(|r| r.trim().parse::<f64>().ok())
+        .filter(|ts| ts.is_finite())
+        .and_then(|ts| Local.timestamp_opt(ts as i64, 0).single())
+        .map_or_else(
+            || "—".to_owned(),
+            |t| t.format("%Y-%m-%d %H:%M").to_string(),
+        )
+}
+
 /// A table's split date cell: `7 Sep 2026` and `14:05`, or a dash.
 pub(crate) fn date_and_time(ts: f64) -> (String, String) {
     match Local.timestamp_opt(ts as i64, 0).single() {

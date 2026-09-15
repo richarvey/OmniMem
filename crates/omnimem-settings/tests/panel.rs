@@ -121,9 +121,9 @@ async fn static_files_are_embedded_and_nothing_else_is_served() {
 #[tokio::test]
 async fn unported_pages_say_so_and_post_bodies_arrive() {
     let panel = Panel::new();
-    let pending = get(&panel, "/duplicates?namespace=episodic").await;
+    let pending = get(&panel, "/metrics?format=prometheus").await;
     assert_eq!(pending.status(), 200);
-    assert!(text(&pending).contains("<code>/duplicates</code> isn't in the panel yet"));
+    assert!(text(&pending).contains("<code>/metrics</code> isn't in the panel yet"));
 
     let echo = panel
         .handle(

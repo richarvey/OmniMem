@@ -12,20 +12,25 @@
 //! renders a page saying so.
 
 mod assets;
+mod backups;
 mod choices;
 mod create;
 mod dashboard;
 mod detail;
 mod experience;
+mod feeds;
 mod feeds_file;
+mod files;
 mod format;
 mod lifecycle;
+mod management;
 mod memories;
 mod pages;
 mod projects;
 mod render;
 mod search;
 mod skills;
+mod telemetry;
 mod version;
 
 mod embedded {
@@ -49,6 +54,18 @@ use tower::ServiceExt;
 /// The largest response body the panel hands back (a backup download).
 const MAX_RESPONSE_BYTES: usize = 512 * 1024 * 1024;
 
+/// What OmniMem's MCP surface puts in an agent's context before any tool is
+/// called, in characters. The app measures it from the server
+/// (`omnimem_mcp::context_overhead`) and hands it over, so this crate needs
+/// no MCP dependency.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StaticOverhead {
+    pub instructions_chars: usize,
+    pub tool_count: usize,
+    pub tool_schemas_chars: usize,
+    pub deferred_names_chars: usize,
+}
+
 #[derive(Default)]
 struct Caches {
     dashboard: Option<(Instant, Value)>,
@@ -60,6 +77,7 @@ pub(crate) struct Shared {
     failure: RwLock<Option<String>>,
     feeds_path: RwLock<Option<PathBuf>>,
     downloads_dir: RwLock<Option<PathBuf>>,
+    static_overhead: RwLock<StaticOverhead>,
     templates: Environment<'static>,
     caches: Mutex<Caches>,
 }
@@ -94,6 +112,14 @@ impl PanelState {
             })
     }
 
+    pub(crate) fn static_overhead(&self) -> StaticOverhead {
+        self.0
+            .static_overhead
+            .read()
+            .map(|o| *o)
+            .unwrap_or_default()
+    }
+
     pub(crate) fn templates(&self) -> &Environment<'static> {
         &self.0.templates
     }
@@ -123,6 +149,7 @@ impl Panel {
             failure: RwLock::new(None),
             feeds_path: RwLock::new(None),
             downloads_dir: RwLock::new(None),
+            static_overhead: RwLock::new(StaticOverhead::default()),
             templates: render::environment(),
             caches: Mutex::new(Caches::default()),
         }));
@@ -175,6 +202,43 @@ impl Panel {
             .route("/skills/import/confirm", post(skills::import_confirm))
             .route("/skills/export/{key}", get(skills::export))
             .route("/skills/{key}", get(skills::detail))
+            .route("/duplicates", get(management::duplicates))
+            .route("/duplicates/scan", get(management::duplicates_scan))
+            .route("/contradictions", get(management::contradictions))
+            .route("/suppressions", get(management::suppressions))
+            .route("/suppressions/add", post(management::suppress))
+            .route("/suppressions/remove", post(management::unsuppress))
+            .route("/telemetry", get(telemetry::telemetry))
+            .route("/telemetry/refresh", get(telemetry::telemetry_refresh))
+            .route("/token-overhead", get(telemetry::token_overhead))
+            .route(
+                "/token-overhead/refresh",
+                get(telemetry::token_overhead_refresh),
+            )
+            .route(
+                "/token-overhead/reset",
+                post(telemetry::token_overhead_reset),
+            )
+            .route("/feeds", get(feeds::list))
+            .route("/feeds/new", get(feeds::new_form).post(feeds::create))
+            .route("/feeds/download", get(feeds::download))
+            .route("/feeds/upload", post(feeds::upload))
+            .route(
+                "/feeds/{index}/edit",
+                get(feeds::edit_form).post(feeds::save),
+            )
+            .route("/feeds/{index}/delete", post(feeds::delete))
+            .route("/backups", get(backups::list))
+            .route("/backups/create", post(backups::create))
+            .route(
+                "/backups/upload",
+                // Backups are capped at 100 MB, as the MCP restore tool caps them.
+                post(backups::upload).layer(DefaultBodyLimit::max(101 * 1024 * 1024)),
+            )
+            .route("/backups/{filename}/preview", get(backups::preview))
+            .route("/backups/{filename}/download", get(backups::download))
+            .route("/backups/{filename}/restore", post(backups::restore))
+            .route("/backups/{filename}/delete", post(backups::delete))
             .route("/static/{*path}", get(assets::serve))
             .route("/_panel/echo", post(pages::echo))
             .route("/_panel/redirect", post(pages::redirect))
@@ -202,6 +266,14 @@ impl Panel {
     pub fn set_downloads_dir(&self, dir: PathBuf) {
         if let Ok(mut slot) = self.state.0.downloads_dir.write() {
             *slot = Some(dir);
+        }
+    }
+
+    /// The measured size of the MCP instructions and tool schemas, for the
+    /// token overhead page.
+    pub fn set_static_overhead(&self, overhead: StaticOverhead) {
+        if let Ok(mut slot) = self.state.0.static_overhead.write() {
+            *slot = overhead;
         }
     }
 
