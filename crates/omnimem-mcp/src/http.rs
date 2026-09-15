@@ -1,5 +1,6 @@
-//! The HTTP side: streamable HTTP at `/mcp`, bearer auth, Host and Origin
-//! allowlists, and the fail-closed rule for public binds.
+//! The HTTP side: streamable HTTP at `/mcp`, bearer and OAuth authentication,
+//! the OAuth routes, Host and Origin allowlists, and the fail-closed rule for
+//! public binds.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -19,16 +20,26 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::OmniMemServer;
+use crate::oauth::{self, OAuth, OAuthSetup};
 
 const LOOPBACK: [&str; 4] = ["127.0.0.1", "localhost", "::1", ""];
+
+/// What FastMCP told a client whose bearer token it rejected, kept because
+/// clients show it and it says what to do.
+const INVALID_TOKEN: &str = "Authentication failed. The provided bearer token is invalid, \
+    expired, or no longer recognized by the server. To resolve: clear authentication tokens in \
+    your MCP client and reconnect. Your client should automatically re-register and obtain new \
+    tokens.";
 
 #[derive(Debug, Error)]
 pub enum ServerError {
     #[error(
         "refusing to start: MCP_HOST={0} is not loopback but no authentication is configured. \
-         Set MCP_AUTH_TOKEN, or bind MCP_HOST to 127.0.0.1"
+         Set MCP_AUTH_TOKEN or turn on OAuth (OAUTH_ENABLED), or bind MCP_HOST to 127.0.0.1"
     )]
     Unauthenticated(String),
+    #[error("refusing to start: {0}")]
+    OAuth(String),
     #[error("could not bind {addr}: {source}")]
     Bind {
         addr: String,
@@ -46,6 +57,8 @@ pub struct ServerConfig {
     pub port: u16,
     /// `MCP_AUTH_TOKEN`: a shared bearer secret.
     pub auth_token: Option<String>,
+    /// `OAUTH_ENABLED` and the settings that go with it.
+    pub oauth: OAuthSetup,
     /// `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`: their hosts and origins are trusted.
     pub public_urls: Vec<String>,
     /// `MCP_ALLOWED_HOSTS`
@@ -60,6 +73,7 @@ impl Default for ServerConfig {
             host: "127.0.0.1".into(),
             port: 8765,
             auth_token: None,
+            oauth: OAuthSetup::Off,
             public_urls: Vec::new(),
             extra_hosts: Vec::new(),
             extra_origins: Vec::new(),
@@ -67,7 +81,7 @@ impl Default for ServerConfig {
     }
 }
 
-fn var(name: &str) -> Option<String> {
+pub(crate) fn var(name: &str) -> Option<String> {
     omnimem_core::env::var(name)
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty())
@@ -109,6 +123,7 @@ impl ServerConfig {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(defaults.port),
             auth_token: var("MCP_AUTH_TOKEN"),
+            oauth: OAuthSetup::from_env(),
             public_urls: ["OAUTH_BASE_URL", "MCP_PUBLIC_URL"]
                 .iter()
                 .filter_map(|n| var(n))
@@ -118,12 +133,30 @@ impl ServerConfig {
         }
     }
 
-    /// The fail-closed rule: a non-loopback bind needs authentication.
+    /// The fail-closed rule: a non-loopback bind needs authentication, and
+    /// OAuth that is switched on has to be usable.
     pub fn validate(&self) -> Result<(), ServerError> {
-        if self.auth_token.is_none() && !LOOPBACK.contains(&self.host.as_str()) {
+        if let OAuthSetup::Invalid(problem) = &self.oauth {
+            return Err(ServerError::OAuth(problem.clone()));
+        }
+        let authenticated = self.auth_token.is_some() || matches!(self.oauth, OAuthSetup::On(_));
+        if !authenticated && !LOOPBACK.contains(&self.host.as_str()) {
             return Err(ServerError::Unauthenticated(self.host.clone()));
         }
         Ok(())
+    }
+
+    /// The public URLs, including the OAuth base URL however it was set.
+    fn trusted_urls(&self) -> impl Iterator<Item = (String, String)> + '_ {
+        let oauth_base = match &self.oauth {
+            OAuthSetup::On(config) => Some(config.base_url.as_str()),
+            _ => None,
+        };
+        self.public_urls
+            .iter()
+            .map(String::as_str)
+            .chain(oauth_base)
+            .filter_map(split_url)
     }
 
     fn allowed_hosts(&self) -> Vec<String> {
@@ -134,12 +167,7 @@ impl ServerConfig {
         if !matches!(self.host.as_str(), "0.0.0.0" | "::" | "") {
             hosts.push(self.host.clone());
         }
-        hosts.extend(
-            self.public_urls
-                .iter()
-                .filter_map(|u| split_url(u))
-                .map(|(_, h)| h),
-        );
+        hosts.extend(self.trusted_urls().map(|(_, h)| h));
         hosts.extend(self.extra_hosts.iter().cloned());
         dedupe(hosts)
     }
@@ -149,12 +177,7 @@ impl ServerConfig {
             .iter()
             .map(|h| format!("http://{h}:{}", self.port))
             .collect();
-        origins.extend(
-            self.public_urls
-                .iter()
-                .filter_map(|u| split_url(u))
-                .map(|(o, _)| o),
-        );
+        origins.extend(self.trusted_urls().map(|(o, _)| o));
         origins.extend(self.extra_origins.iter().cloned());
         dedupe(origins)
     }
@@ -170,9 +193,9 @@ fn dedupe(items: Vec<String>) -> Vec<String> {
     out
 }
 
-/// Length-independent comparison, so a timing side channel can't recover the
-/// token byte by byte.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+/// Length-independent comparison, so a timing side channel can't recover a
+/// secret byte by byte.
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     let mut diff = a.len() ^ b.len();
     for i in 0..a.len().max(b.len()) {
         diff |= usize::from(a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0));
@@ -180,47 +203,103 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-async fn require_bearer(
-    State(token): State<Arc<String>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let presented = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| {
-            v.strip_prefix("Bearer ")
-                .or_else(|| v.strip_prefix("bearer "))
+/// What `/mcp` accepts: the shared token, OAuth access tokens, or either.
+#[derive(Clone)]
+struct McpAuth {
+    token: Option<Arc<str>>,
+    oauth: Option<Arc<OAuth>>,
+}
+
+impl McpAuth {
+    fn shared_token_matches(&self, presented: &str) -> bool {
+        self.token.as_deref().is_some_and(|token| {
+            !presented.is_empty() && constant_time_eq(presented.as_bytes(), token.as_bytes())
         })
-        .map(str::trim);
-    match presented {
-        Some(p) if !p.is_empty() && constant_time_eq(p.as_bytes(), token.as_bytes()) => {
-            next.run(request).await
-        }
-        _ => {
-            let mut response = (
-                StatusCode::UNAUTHORIZED,
-                [(header::CONTENT_TYPE, "application/json")],
-                r#"{"error": "invalid_token", "error_description": "Authentication required"}"#,
-            )
-                .into_response();
-            response
-                .headers_mut()
-                .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-            response
-        }
     }
 }
 
-/// The application: `/mcp` (authenticated when a token is set) and an
-/// unauthenticated `/healthz` for container health checks.
+fn unauthorised(body: String, challenge: &str) -> Response {
+    let mut response = (
+        StatusCode::UNAUTHORIZED,
+        [(header::CONTENT_TYPE, "application/json")],
+        body,
+    )
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(challenge) {
+        response
+            .headers_mut()
+            .insert(header::WWW_AUTHENTICATE, value);
+    }
+    response
+}
+
+async fn require_auth(State(auth): State<McpAuth>, request: Request, next: Next) -> Response {
+    let presented_header = request.headers().get(header::AUTHORIZATION).cloned();
+
+    let Some(oauth) = &auth.oauth else {
+        let presented = presented_header
+            .as_ref()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| {
+                v.strip_prefix("Bearer ")
+                    .or_else(|| v.strip_prefix("bearer "))
+            })
+            .map(str::trim);
+        if presented.is_some_and(|p| auth.shared_token_matches(p)) {
+            return next.run(request).await;
+        }
+        return unauthorised(
+            r#"{"error": "invalid_token", "error_description": "Authentication required"}"#.into(),
+            "Bearer",
+        );
+    };
+
+    let Some(value) = presented_header else {
+        // RFC 6750 §3.1: a request with no credentials gets no error
+        // attribute, only where to find out how to get some.
+        let mut response = StatusCode::UNAUTHORIZED.into_response();
+        if let Ok(challenge) = HeaderValue::from_str(&format!(
+            r#"Bearer resource_metadata="{}""#,
+            oauth.resource_metadata_url()
+        )) {
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, challenge);
+        }
+        return response;
+    };
+    let presented = value.to_str().ok().and_then(|v| {
+        v.get(..7)
+            .filter(|scheme| scheme.eq_ignore_ascii_case("bearer "))
+            .map(|_| &v[7..])
+    });
+    if presented.is_some_and(|p| auth.shared_token_matches(p.trim()) || oauth.verify_access(p)) {
+        return next.run(request).await;
+    }
+    unauthorised(
+        format!(r#"{{"error": "invalid_token", "error_description": "{INVALID_TOKEN}"}}"#),
+        &format!(
+            r#"Bearer error="invalid_token", error_description="{INVALID_TOKEN}", resource_metadata="{}""#,
+            oauth.resource_metadata_url()
+        ),
+    )
+}
+
+/// The application: `/mcp` (authenticated when a token or OAuth is set), the
+/// OAuth routes when OAuth is on, and an unauthenticated `/healthz` for
+/// container health checks.
 pub fn router(
     engine: Arc<Engine>,
     config: &ServerConfig,
     shutdown: CancellationToken,
 ) -> Result<Router, ServerError> {
     config.validate()?;
+    let oauth = match &config.oauth {
+        OAuthSetup::On(settings) => Some(Arc::new(
+            OAuth::new(settings.clone(), engine.store().clone()).map_err(ServerError::OAuth)?,
+        )),
+        OAuthSetup::Off | OAuthSetup::Invalid(_) => None,
+    };
     let server = OmniMemServer::new(engine);
     let mut http_config = StreamableHttpServerConfig::default();
     http_config.allowed_hosts = config.allowed_hosts();
@@ -232,14 +311,23 @@ pub fn router(
         http_config,
     );
 
-    let mut mcp = Router::new().nest_service("/mcp", service);
-    if let Some(token) = &config.auth_token {
-        mcp = mcp.layer(middleware::from_fn_with_state(
-            Arc::new(token.clone()),
-            require_bearer,
+    let mut app = Router::new().nest_service("/mcp", service);
+    if config.auth_token.is_some() || oauth.is_some() {
+        app = app.layer(middleware::from_fn_with_state(
+            McpAuth {
+                token: config.auth_token.as_deref().map(Arc::from),
+                oauth: oauth.clone(),
+            },
+            require_auth,
         ));
     }
-    Ok(mcp.route("/healthz", get(|| async { r#"{"status": "ok"}"# })))
+    app = app.route("/healthz", get(|| async { r#"{"status": "ok"}"# }));
+    if let Some(oauth) = oauth {
+        let allow = oauth::Allowlists::new(&config.allowed_hosts(), &config.allowed_origins());
+        app = app
+            .merge(oauth::routes(oauth).layer(middleware::from_fn_with_state(allow, oauth::guard)));
+    }
+    Ok(app)
 }
 
 /// Serve until `shutdown` is cancelled. Pass a listener to choose the socket
@@ -261,20 +349,30 @@ pub async fn serve(
         }
     };
     let local: SocketAddr = listener.local_addr()?;
-    info!(
-        address = %local,
-        auth = if config.auth_token.is_some() { "bearer" } else { "none (loopback)" },
-        "OmniMem MCP server listening on /mcp"
-    );
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move { shutdown.cancelled().await })
-        .await?;
+    let auth = match (
+        config.auth_token.is_some(),
+        matches!(config.oauth, OAuthSetup::On(_)),
+    ) {
+        (true, true) => "OAuth and bearer",
+        (false, true) => "OAuth",
+        (true, false) => "bearer",
+        (false, false) => "none (loopback)",
+    };
+    info!(address = %local, auth, "OmniMem MCP server listening on /mcp");
+    // The client address feeds the OAuth login rate limit.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move { shutdown.cancelled().await })
+    .await?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::OAuthConfig;
 
     #[test]
     fn urls_split_into_origin_and_host() {
@@ -295,6 +393,7 @@ mod tests {
             host: "0.0.0.0".into(),
             port: 8765,
             auth_token: Some("t".into()),
+            oauth: OAuthSetup::Off,
             public_urls: vec!["https://mcp.example.com".into()],
             extra_hosts: vec!["extra.local".into()],
             extra_origins: vec!["https://ui.example.com".into()],
@@ -306,6 +405,50 @@ mod tests {
         let origins = config.allowed_origins();
         assert!(origins.contains(&"https://mcp.example.com".to_owned()));
         assert!(origins.contains(&"https://ui.example.com".to_owned()));
+    }
+
+    #[test]
+    fn oauth_counts_as_authentication_and_its_base_url_is_trusted() {
+        let config = ServerConfig {
+            host: "0.0.0.0".into(),
+            oauth: OAuthSetup::On(OAuthConfig::new("https://oauth.example.com", "admin", "pw")),
+            ..ServerConfig::default()
+        };
+        assert!(config.validate().is_ok());
+        assert!(
+            config
+                .allowed_hosts()
+                .contains(&"oauth.example.com".to_owned())
+        );
+        assert!(
+            config
+                .allowed_origins()
+                .contains(&"https://oauth.example.com".to_owned())
+        );
+        let open = ServerConfig {
+            host: "0.0.0.0".into(),
+            ..ServerConfig::default()
+        };
+        assert!(matches!(
+            open.validate(),
+            Err(ServerError::Unauthenticated(_))
+        ));
+    }
+
+    #[test]
+    fn misconfigured_oauth_refuses_to_start_even_on_loopback() {
+        let config = ServerConfig {
+            oauth: OAuthSetup::Invalid("OAUTH_BASE_URL is missing".into()),
+            ..ServerConfig::default()
+        };
+        let error = config.validate().unwrap_err().to_string();
+        assert_eq!(error, "refusing to start: OAUTH_BASE_URL is missing");
+    }
+
+    #[test]
+    fn the_config_debug_never_shows_the_admin_password() {
+        let config = OAuthConfig::new("https://oauth.example.com", "admin", "hunter2");
+        assert!(!format!("{config:?}").contains("hunter2"));
     }
 
     #[test]

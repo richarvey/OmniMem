@@ -3,18 +3,18 @@
 //! The tools keep 6.x's names, parameters, defaults and descriptions (agents
 //! read the descriptions, so they are copied verbatim), and return the same
 //! JSON. Transport is streamable HTTP at `/mcp`; 6.x's deprecated SSE
-//! transport is not carried over.
-//!
-//! Phase 2 serves the core tools. The rest (experience, projects, briefing,
-//! skills, knowledge) arrive with the engine phases that port them.
+//! transport is not carried over. `/mcp` is protected by a shared bearer
+//! token, OAuth 2.1 (the authorisation server lives in `oauth`), or both.
 
 mod args;
 mod descriptions;
 mod handler;
 mod http;
+mod oauth;
 
 pub use handler::OmniMemServer;
 pub use http::{ServerConfig, ServerError, router, serve};
+pub use oauth::{OAuthConfig, OAuthSetup};
 
 /// Sent to every client on connect: the agent's operating instructions.
 pub const INSTRUCTIONS: &str = include_str!("instructions.md");

@@ -51,6 +51,10 @@ omnimem-mcp = { path = "crates/omnimem-mcp" }
 rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
 axum = "0.8"
 tokio-util = "0.7"
+# OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.
+getrandom = "0.3"
+base64 = "0.22"
+url = "2.5"
 
 # Errors and logging
 thiserror = "2.0"

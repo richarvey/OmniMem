@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in to OmniMem</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0;
+    }
+    .card {
+      background: #1e293b; border-radius: 12px; padding: 2rem;
+      width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; text-align: center; }
+    .sub { text-align: center; color: #94a3b8; font-size: .85rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: .85rem; margin-bottom: .25rem; color: #94a3b8; }
+    input {
+      width: 100%; padding: .6rem .75rem; border: 1px solid #334155;
+      border-radius: 6px; background: #0f172a; color: #e2e8f0;
+      font-size: .95rem; margin-bottom: 1rem;
+    }
+    input:focus { outline: none; border-color: #6366f1; }
+    button {
+      width: 100%; padding: .65rem; border: none; border-radius: 6px;
+      background: #6366f1; color: #fff; font-size: .95rem; font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #4f46e5; }
+    .error {
+      background: #7f1d1d; color: #fca5a5; padding: .5rem .75rem;
+      border-radius: 6px; font-size: .85rem; margin-bottom: 1rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>OmniMem</h1>
+    <p class="sub">Sign in to authorise access</p>
+    {error_block}
+    <form method="post" action="/oauth/login">
+      <input type="hidden" name="session" value="{session}">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>

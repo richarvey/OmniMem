@@ -16,6 +16,7 @@ mod backup;
 mod error;
 mod kv;
 mod migrations;
+mod oauth;
 mod queue;
 mod reindex;
 mod schema;
@@ -26,6 +27,7 @@ mod vectors;
 pub use backup::{BACKUP_KEY_PREFIXES, BackupFile, ImportReport, read_backup, write_backup};
 pub use error::StoreError;
 pub use migrations::MigrationReport;
+pub use oauth::{OAuthStore, TokenKind, secret_hash};
 pub use store::{Fields, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES, discovery_text};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

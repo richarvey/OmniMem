@@ -3377,17 +3377,23 @@ name = "omnimem-mcp"
 version = "7.0.0-dev"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
  "omnimem-core",
  "omnimem-engine",
  "omnimem-store",
+ "regex",
  "reqwest",
  "rmcp",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "tower",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -3436,6 +3442,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
  "tracing",
  "ulid",

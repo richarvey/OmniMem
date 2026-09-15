@@ -1,6 +1,6 @@
 [package]
 name = "omnimem-mcp"
-description = "OmniMem's MCP server: the tools, over streamable HTTP, with bearer auth"
+description = "OmniMem's MCP server: the tools, over streamable HTTP, with bearer auth and OAuth 2.1"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,16 +11,22 @@ publish.workspace = true
 
 [dependencies]
 axum.workspace = true
+base64.workspace = true
+getrandom.workspace = true
 omnimem-core.workspace = true
 omnimem-engine.workspace = true
+omnimem-store.workspace = true
 rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+url.workspace = true
 
 [dev-dependencies]
-omnimem-store.workspace = true
+regex.workspace = true
 reqwest = { workspace = true }
+tower.workspace = true

@@ -92,7 +92,7 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Listen address",
                 Kind::Text,
                 "127.0.0.1",
-                "Anything other than this machine needs an access token.",
+                "Anything other than this machine needs an access token or OAuth.",
             ),
             setting(
                 "MCP_PORT",
@@ -106,7 +106,7 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Access token",
                 Kind::Secret,
                 "",
-                "A shared bearer token clients send. Required when listening beyond this machine.",
+                "A shared bearer token clients send. Required when listening beyond this machine, unless OAuth is on.",
             ),
             setting(
                 "MCP_PUBLIC_URL",
@@ -114,13 +114,6 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Text,
                 "",
                 "Where clients reach the server through a proxy or tunnel. Its host and origin are trusted.",
-            ),
-            setting(
-                "OAUTH_BASE_URL",
-                "OAuth base URL",
-                Kind::Text,
-                "",
-                "The address the OAuth flow uses. Its host and origin are trusted too.",
             ),
             setting(
                 "MCP_ALLOWED_HOSTS",
@@ -135,6 +128,67 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Text,
                 "",
                 "More browser origins to accept, comma separated.",
+            ),
+        ],
+    ),
+    (
+        "OAuth",
+        &[
+            setting(
+                "OAUTH_ENABLED",
+                "Sign in with OAuth",
+                Kind::Flag,
+                "false",
+                "Lets claude.ai and other OAuth clients connect by signing in on a login page instead of sending a token.",
+            ),
+            setting(
+                "OAUTH_BASE_URL",
+                "OAuth base URL",
+                Kind::Text,
+                "",
+                "The https address clients reach OmniMem at, such as https://mcp.example.com. Required for OAuth; its host and origin are trusted.",
+            ),
+            setting(
+                "OAUTH_ADMIN_USER",
+                "Username",
+                Kind::Text,
+                "",
+                "The username the login page asks for.",
+            ),
+            setting(
+                "OAUTH_ADMIN_PASSWORD",
+                "Password",
+                Kind::Secret,
+                "",
+                "The password the login page asks for.",
+            ),
+            setting(
+                "OAUTH_REFRESH_MAX_DAYS",
+                "Stay signed in for (days)",
+                Kind::Integer,
+                "30",
+                "How long a client keeps refreshing before it has to sign in again. At most 90.",
+            ),
+            setting(
+                "OAUTH_REFRESH_GRACE_SECONDS",
+                "Refresh grace window (seconds)",
+                Kind::Integer,
+                "120",
+                "How long a replaced refresh token keeps working, so clients refreshing at once aren't signed out. 0 turns it off.",
+            ),
+            setting(
+                "OAUTH_LOGIN_MAX_ATTEMPTS",
+                "Failed logins allowed",
+                Kind::Integer,
+                "10",
+                "Failed logins from one address before the login page refuses it for a while. 0 turns the limit off.",
+            ),
+            setting(
+                "OAUTH_LOGIN_WINDOW_SECONDS",
+                "Failed login window (seconds)",
+                Kind::Integer,
+                "900",
+                "How long a failed login counts towards that limit.",
             ),
         ],
     ),
@@ -670,7 +724,12 @@ mod tests {
         assert!(names.iter().all(|n| omnimem_core::env::is_setting_name(n)));
         assert_eq!(
             secret_settings(),
-            ["MCP_AUTH_TOKEN", "ANTHROPIC_API_KEY", "HF_TOKEN"]
+            [
+                "MCP_AUTH_TOKEN",
+                "OAUTH_ADMIN_PASSWORD",
+                "ANTHROPIC_API_KEY",
+                "HF_TOKEN"
+            ]
         );
         for s in settings().filter(|s| !s.default.is_empty()) {
             if matches!(s.kind, Kind::Integer | Kind::Decimal | Kind::Choice(_)) {

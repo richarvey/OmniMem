@@ -5,7 +5,35 @@ use ulid::Ulid;
 
 use crate::{Result, StoreError};
 
-pub(crate) const SCHEMA_VERSION: i64 = 2;
+pub(crate) const SCHEMA_VERSION: i64 = 3;
+
+/// Version 3: OAuth clients, authorisation codes and tokens, which were
+/// `oauth:*` Valkey keys. Codes and tokens are keyed by the SHA-256 of their
+/// value, never the value itself.
+const V3: &str = r#"
+CREATE TABLE oauth_clients (
+    client_id  TEXT PRIMARY KEY NOT NULL,
+    info       TEXT NOT NULL CHECK (json_valid(info)),
+    created_at REAL NOT NULL
+) STRICT;
+
+CREATE TABLE oauth_codes (
+    code_hash  TEXT PRIMARY KEY NOT NULL,
+    grant_info TEXT NOT NULL CHECK (json_valid(grant_info)),
+    expires_at REAL NOT NULL
+) STRICT;
+
+CREATE TABLE oauth_tokens (
+    token_hash TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('access', 'refresh')),
+    record     TEXT NOT NULL CHECK (json_valid(record)),
+    expires_at REAL NOT NULL,
+    PRIMARY KEY (kind, token_hash)
+) STRICT;
+
+CREATE INDEX oauth_codes_expires  ON oauth_codes (expires_at);
+CREATE INDEX oauth_tokens_expires ON oauth_tokens (expires_at);
+"#;
 
 /// Version 2: the enrichment queue, durable where the Valkey list was not.
 const V2: &str = r#"
@@ -79,6 +107,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     }
     if version < 2 {
         conn.execute_batch(&format!("BEGIN; {V2} PRAGMA user_version = 2; COMMIT;"))?;
+    }
+    if version < 3 {
+        conn.execute_batch(&format!("BEGIN; {V3} PRAGMA user_version = 3; COMMIT;"))?;
     }
     Ok(())
 }
