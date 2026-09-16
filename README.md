@@ -1,6 +1,8 @@
-# \<OmniMem\><br><sub><sub>[omnimem.org](https://omnimem.org)</sub></sub>
+<p align="center">
+  <a href="https://omnimem.org"><img src="docs/images/omnimem-logo.png" alt="OmniMem" width="420"></a>
+</p>
 
-<sub>Development happens on [Squarecows](https://code.squarecows.com/ric/omnimem). Issues and PRs there please.</sub>
+<p align="center"><sub><a href="https://omnimem.org">omnimem.org</a> · Development happens on <a href="https://code.squarecows.com/ric/omnimem">Squarecows</a>. Issues and PRs there please.</sub></p>
 
 **Stop living the same session twice.**
 
