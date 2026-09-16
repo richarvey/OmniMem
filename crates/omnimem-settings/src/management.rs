@@ -56,8 +56,8 @@ fn last_maintenance(engine: &Engine) -> omnimem_engine::Result<Option<Value>> {
                 "project": key.strip_prefix(MAINTENANCE_PREFIX).unwrap_or(&key),
                 "timestamp": at,
                 "when": when,
-                "duplicates_archived": summary.get("duplicates_archived").cloned().unwrap_or(json!(0)),
-                "contradictions_found": summary.get("contradictions_found").cloned().unwrap_or(json!(0)),
+                "duplicates_archived": summary.get("duplicates_archived").cloned().unwrap_or_else(|| json!(0)),
+                "contradictions_found": summary.get("contradictions_found").cloned().unwrap_or_else(|| json!(0)),
             }),
         ));
     }
@@ -195,7 +195,7 @@ fn contradiction_pairs(engine: &Engine) -> omnimem_engine::Result<Vec<Value>> {
                 "content_a": clip(&content_a, 150),
                 "key_b": other,
                 "content_b": clip(&content_b, 150),
-                "explanation": entry.get("explanation").cloned().unwrap_or(json!("")),
+                "explanation": entry.get("explanation").cloned().unwrap_or_else(|| json!("")),
                 "similarity": entry.get("similarity").cloned().unwrap_or(Value::Null),
             })
         })

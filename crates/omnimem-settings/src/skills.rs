@@ -10,6 +10,7 @@
 //! token, and writes only on confirm, never overwriting anything.
 
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -35,7 +36,7 @@ use crate::render::page;
 
 const PROPOSAL_PREFIX: &str = "meta:skill:proposal:";
 const IMPORT_STASH_PREFIX: &str = "meta:skill:import:";
-const IMPORT_STASH_TTL: Duration = Duration::from_secs(1800);
+const IMPORT_STASH_TTL: Duration = Duration::from_mins(30);
 /// The compile defaults `compile_skill` and the 6.x page use.
 const MIN_REINFORCEMENT: i64 = 2;
 const INCLUDE_GRAVEYARD: bool = true;
@@ -205,7 +206,7 @@ pub(crate) async fn detail(State(state): State<PanelState>, Path(key): Path<Stri
     )
 }
 
-fn compile_result(state: &PanelState, result: Value) -> Response {
+fn compile_result(state: &PanelState, result: &Value) -> Response {
     page(
         state.templates(),
         "skills/_compile_result.html",
@@ -214,7 +215,7 @@ fn compile_result(state: &PanelState, result: Value) -> Response {
 }
 
 fn compile_error(state: &PanelState, reason: &str) -> Response {
-    compile_result(state, json!({"status": "error", "reason": reason}))
+    compile_result(state, &json!({"status": "error", "reason": reason}))
 }
 
 /// The submitted domain, canonical and valid, or the reason it isn't.
@@ -267,7 +268,7 @@ pub(crate) async fn compile(
     })
     .await;
     match result {
-        Ok(result) => compile_result(&state, result),
+        Ok(result) => compile_result(&state, &result),
         Err(failure) => failure,
     }
 }
@@ -300,7 +301,7 @@ pub(crate) async fn commit(
             "/skills/{}",
             result["skill_id"].as_str().unwrap_or("")
         )),
-        Ok(result) => compile_result(&state, result),
+        Ok(result) => compile_result(&state, &result),
         Err(failure) => failure,
     }
 }
@@ -368,10 +369,12 @@ pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<Stri
                 if memories == 1 { "y" } else { "ies" }
             );
             if missing > 0 {
-                message.push_str(&format!(
+                // Writing into a String cannot fail.
+                let _ = write!(
+                    message,
                     " {missing} source{} no longer stored here and left out.",
                     if missing == 1 { " is" } else { "s are" }
-                ));
+                );
             }
             see_other(&format!("/skills?message={}", quote(&message)))
         }
@@ -387,7 +390,7 @@ pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<Stri
     }
 }
 
-fn import_result(state: &PanelState, result: Value) -> Response {
+fn import_result(state: &PanelState, result: &Value) -> Response {
     page(
         state.templates(),
         "skills/_import_result.html",
@@ -396,14 +399,13 @@ fn import_result(state: &PanelState, result: Value) -> Response {
 }
 
 fn import_error(state: &PanelState, reason: &str) -> Response {
-    import_result(state, json!({"status": "error", "reason": reason}))
+    import_result(state, &json!({"status": "error", "reason": reason}))
 }
 
-fn current_feeds(state: &PanelState) -> Result<Vec<Map<String, Value>>, String> {
-    match state.feeds_path() {
-        Some(path) => feeds_file::load(&path),
-        None => Ok(Vec::new()),
-    }
+/// The reading list as it stands, or nothing when the app hasn't said where
+/// it is. Reads the file, so it belongs on a worker.
+fn current_feeds(feeds_path: Option<&std::path::Path>) -> Result<Vec<Map<String, Value>>, String> {
+    feeds_path.map_or_else(|| Ok(Vec::new()), feeds_file::load)
 }
 
 fn stash_bundle(bundle: &ValidatedBundle) -> Value {
@@ -445,11 +447,12 @@ pub(crate) async fn import(State(state): State<PanelState>, mut multipart: Multi
             "Only .zip bundles exported from the skills page are accepted.",
         );
     }
-    let feeds = match current_feeds(&state) {
-        Ok(feeds) => feeds,
-        Err(reason) => return import_error(&state, &reason),
-    };
+    let feeds_path = state.feeds_path();
     let previewed = blocking(move || {
+        let feeds = match current_feeds(feeds_path.as_deref()) {
+            Ok(feeds) => feeds,
+            Err(reason) => return Ok(Err(reason)),
+        };
         let bundle = match validate_skill_import(&data) {
             Ok(bundle) => bundle,
             Err(reason) => return Ok(Err(reason)),
@@ -477,7 +480,7 @@ pub(crate) async fn import(State(state): State<PanelState>, mut multipart: Multi
     })
     .await;
     match previewed {
-        Ok(Ok(result)) => import_result(&state, result),
+        Ok(Ok(result)) => import_result(&state, &result),
         Ok(Err(reason)) => import_error(&state, &reason),
         Err(failure) => failure,
     }
@@ -535,7 +538,7 @@ pub(crate) async fn import_confirm(
                     engine.sync_feed_influences(&mirrored)?;
                 }
             } else {
-                warn!("no reading list is configured, so the bundle's feeds were left out")
+                warn!("no reading list is configured, so the bundle's feeds were left out");
             }
         }
 

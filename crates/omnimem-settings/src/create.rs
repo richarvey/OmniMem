@@ -30,9 +30,9 @@ const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"]
 
 fn render_form(
     state: &PanelState,
-    values: Value,
-    error: Option<String>,
-    duplicate: Option<Value>,
+    values: &Value,
+    error: Option<&str>,
+    duplicate: Option<&Value>,
 ) -> Response {
     page(
         state.templates(),
@@ -51,7 +51,7 @@ fn render_form(
 pub(crate) async fn form(State(state): State<PanelState>) -> Response {
     render_form(
         &state,
-        json!({
+        &json!({
             "content": "", "project": "", "namespace": "episodic", "tags": "",
             "force": false, "licence": "", "licence_note": "", "provenance": "",
         }),
@@ -95,18 +95,13 @@ pub(crate) async fn submit(
         "provenance": provenance,
     });
     if content.is_empty() {
-        return render_form(
-            &state,
-            values,
-            Some("Content cannot be empty.".to_owned()),
-            None,
-        );
+        return render_form(&state, &values, Some("Content cannot be empty."), None);
     }
     // The same rule `remember` applies over MCP.
     if !project.is_empty()
         && let Err(problem) = check_project_name(&project)
     {
-        return render_form(&state, values, Some(problem), None);
+        return render_form(&state, &values, Some(&problem), None);
     }
     let namespace = NAMESPACES
         .iter()
@@ -176,8 +171,8 @@ pub(crate) async fn submit(
 
     match outcome {
         Ok(Created::Stored(key)) => see_other(&format!("/memory/{}", quote_segment(&key))),
-        Ok(Created::Refused(message)) => render_form(&state, values, Some(message), None),
-        Ok(Created::Duplicate(duplicate)) => render_form(&state, values, None, Some(duplicate)),
+        Ok(Created::Refused(message)) => render_form(&state, &values, Some(&message), None),
+        Ok(Created::Duplicate(duplicate)) => render_form(&state, &values, None, Some(&duplicate)),
         Err(failure) => failure,
     }
 }

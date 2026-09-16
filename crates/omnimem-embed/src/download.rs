@@ -7,6 +7,7 @@
 //! `.no_exist/`, as the Python library does.
 
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -27,7 +28,7 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// reqwest's timeout re-arms on every read, so a server that drips bytes
 /// would hold the download forever; this is the wall-clock limit on one
 /// file, checked between chunks.
-const BUDGET: Duration = Duration::from_secs(15 * 60);
+const BUDGET: Duration = Duration::from_mins(15);
 const CHUNK: usize = 64 * 1024;
 
 pub(crate) struct Downloader {
@@ -53,7 +54,7 @@ impl Downloader {
         let client = reqwest::blocking::Client::builder()
             .user_agent(concat!("omnimem/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(900))
+            .timeout(Duration::from_mins(15))
             .build()
             .map_err(|e| EmbedError::Download(e.to_string()))?;
         Ok(Self {
@@ -227,11 +228,7 @@ impl Downloader {
         out.flush().map_err(|e| io(partial, e))?;
         drop(out);
         if let Some(expected) = expected {
-            let actual: String = hasher
-                .finalize()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
+            let actual = hex(&hasher.finalize());
             if actual != expected {
                 return Err(EmbedError::Download(format!(
                     "{url}: sha256 {actual} does not match the hub's {expected}"
@@ -258,6 +255,16 @@ fn expected_sha256(headers: &reqwest::header::HeaderMap) -> Option<String> {
                 .to_ascii_lowercase()
         })
         .find(|v| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// Lowercase hex, as the hub writes a sha256 etag.
+fn hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        // Writing into a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 /// `{pid}-{n}`, distinct for every download this process makes.
@@ -356,10 +363,11 @@ mod tests {
                 }
                 counter.fetch_add(1, Ordering::SeqCst);
                 let path = request_line.split_whitespace().nth(1).unwrap_or("");
-                let (status, extra, body) = routes.iter().find(|(p, _, _, _)| p == path).map_or(
-                    (404, String::new(), b"not found".to_vec()),
-                    |(_, s, h, b)| (*s, h.clone(), b.clone()),
-                );
+                let (status, extra, body) =
+                    routes.iter().find(|(p, _, _, _)| p == path).map_or_else(
+                        || (404, String::new(), b"not found".to_vec()),
+                        |(_, s, h, b)| (*s, h.clone(), b.clone()),
+                    );
                 if path == "/drip" {
                     let _ = stream.write_all(b"HTTP/1.1 200 X\r\nConnection: close\r\n\r\n");
                     while stream.write_all(b"a").is_ok() {
@@ -396,10 +404,7 @@ mod tests {
     }
 
     fn sha256_hex(bytes: &[u8]) -> String {
-        Sha256::digest(bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        hex(&Sha256::digest(bytes))
     }
 
     #[test]

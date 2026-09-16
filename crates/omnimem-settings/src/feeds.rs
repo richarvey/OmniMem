@@ -26,7 +26,7 @@ use crate::PanelState;
 use crate::choices::LICENCE_CHOICES;
 use crate::feeds_file;
 use crate::files::{read_upload, save_download};
-use crate::pages::{blocking, is_web_url, quote, see_other};
+use crate::pages::{blocking, is_web_url, off_runtime, quote, see_other};
 use crate::render::page;
 
 type Feed = Map<String, Value>;
@@ -141,9 +141,10 @@ pub(crate) async fn list(
     let Some(path) = state.feeds_path() else {
         return no_reading_list();
     };
-    let (feeds, load_error) = match feeds_file::load(&path) {
-        Ok(feeds) => (feeds, None),
-        Err(problem) => (Vec::new(), Some(problem)),
+    let (feeds, load_error) = match off_runtime(move || feeds_file::load(&path)).await {
+        Ok(Ok(feeds)) => (feeds, None),
+        Ok(Err(problem)) => (Vec::new(), Some(problem)),
+        Err(failure) => return failure,
     };
     let items: Vec<Value> = feeds
         .iter()
@@ -176,8 +177,18 @@ pub(crate) async fn list(
     )
 }
 
-fn edit_page(state: &PanelState, feed: Value, is_new: bool, error: Option<&String>) -> Response {
+async fn edit_page(
+    state: &PanelState,
+    feed: &Value,
+    is_new: bool,
+    error: Option<&String>,
+) -> Response {
+    // The datalist of domains is a store scan.
     let engine = state.engine();
+    let domains = match off_runtime(move || skill_domains(engine.as_deref())).await {
+        Ok(domains) => domains,
+        Err(failure) => return failure,
+    };
     page(
         state.templates(),
         "feeds/edit.html",
@@ -185,7 +196,7 @@ fn edit_page(state: &PanelState, feed: Value, is_new: bool, error: Option<&Strin
             feed,
             current_page => "feeds",
             is_new,
-            skill_domains => skill_domains(engine.as_deref()),
+            skill_domains => domains,
             licence_classes => LICENCE_CHOICES,
             error,
         },
@@ -200,7 +211,7 @@ pub(crate) async fn new_form(
         "name": "", "url": "", "topics": "", "digest": false, "skills": [],
         "licence": "", "licence_note": "",
     });
-    edit_page(&state, feed, true, query.get("error"))
+    edit_page(&state, &feed, true, query.get("error")).await
 }
 
 pub(crate) async fn edit_form(
@@ -211,7 +222,10 @@ pub(crate) async fn edit_form(
     let Some(path) = state.feeds_path() else {
         return no_reading_list();
     };
-    let feeds = feeds_file::load(&path).unwrap_or_default();
+    let feeds = match off_runtime(move || feeds_file::load(&path).unwrap_or_default()).await {
+        Ok(feeds) => feeds,
+        Err(failure) => return failure,
+    };
     let Some(raw) = feeds.get(index) else {
         return (
             StatusCode::NOT_FOUND,
@@ -235,7 +249,7 @@ pub(crate) async fn edit_form(
         "licence": if declares_licence(raw) { class } else { String::new() },
         "licence_note": note,
     });
-    edit_page(&state, feed, false, query.get("error"))
+    edit_page(&state, &feed, false, query.get("error")).await
 }
 
 fn form_value<'a>(form: &'a FormPairs, name: &str) -> &'a str {
@@ -421,15 +435,21 @@ pub(crate) async fn download(State(state): State<PanelState>) -> Response {
     let Some(path) = state.feeds_path() else {
         return no_reading_list();
     };
-    let Ok(data) = std::fs::read(&path) else {
-        return with_error("/feeds", "No feeds.yml file found");
-    };
-    match save_download(state.downloads_dir(), "feeds.yml", &data) {
-        Ok(saved) => see_other(&format!(
+    let downloads = state.downloads_dir();
+    let saved = off_runtime(move || {
+        let Ok(data) = std::fs::read(&path) else {
+            return Err("No feeds.yml file found".to_owned());
+        };
+        save_download(downloads, "feeds.yml", &data)
+    })
+    .await;
+    match saved {
+        Ok(Ok(saved)) => see_other(&format!(
             "/feeds?message={}",
             quote(&format!("Saved a copy to {}.", saved.display()))
         )),
-        Err(problem) => with_error("/feeds", &problem),
+        Ok(Err(problem)) => with_error("/feeds", &problem),
+        Err(failure) => failure,
     }
 }
 
@@ -511,8 +531,10 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
         Ok(_) => return with_error("/feeds", "No file selected"),
         Err(problem) => return with_error("/feeds", &problem),
     };
-    let lower = filename.to_lowercase();
-    if !lower.ends_with(".yml") && !lower.ends_with(".yaml") {
+    let yaml = filename.rsplit_once('.').is_some_and(|(_, ext)| {
+        ext.eq_ignore_ascii_case("yml") || ext.eq_ignore_ascii_case("yaml")
+    });
+    if !yaml {
         return with_error("/feeds", "Only .yml or .yaml files are accepted");
     }
     let Ok(config) = serde_yaml_ng::from_slice::<Value>(&data) else {
@@ -544,12 +566,19 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
             Err(problem) => return with_error("/feeds", &format!("Feed {}: {problem}", index + 1)),
         }
     }
-    if let Err(problem) = feeds_file::save(&path, &checked) {
-        return with_error("/feeds", &problem);
-    }
-    let feeds = checked;
-    sync_influence(state.engine().as_deref(), &feeds);
-    info!(feeds = feeds.len(), filename, "uploaded a reading list");
+    let engine = state.engine();
+    let written = off_runtime(move || {
+        feeds_file::save(&path, &checked)?;
+        sync_influence(engine.as_deref(), &checked);
+        Ok::<_, String>(checked.len())
+    })
+    .await;
+    let feeds = match written {
+        Ok(Ok(feeds)) => feeds,
+        Ok(Err(problem)) => return with_error("/feeds", &problem),
+        Err(failure) => return failure,
+    };
+    info!(feeds, filename, "uploaded a reading list");
     see_other(&format!(
         "/feeds?message={}",
         quote("Feeds config uploaded. The RSS scheduler picks it up automatically.")
@@ -560,20 +589,20 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
 mod tests {
     use super::*;
 
-    fn feed(value: Value) -> Feed {
+    fn feed(value: &Value) -> Feed {
         value.as_object().cloned().unwrap()
     }
 
     #[test]
     fn a_declared_identifier_reads_as_its_class() {
-        let declared = feed(json!({"licence": "cc-by-4.0"}));
+        let declared = feed(&json!({"licence": "cc-by-4.0"}));
         assert_eq!(
             feed_licence(&declared),
             ("open".to_owned(), "CC BY 4.0".to_owned())
         );
-        let mistyped = feed(json!({"licence": false}));
+        let mistyped = feed(&json!({"licence": false}));
         assert_eq!(feed_licence(&mistyped).0, "unknown");
-        assert!(!declares_licence(&feed(json!({}))));
+        assert!(!declares_licence(&feed(&json!({}))));
     }
 
     #[test]
@@ -596,7 +625,7 @@ mod tests {
             ("skill_domain", ""),
             ("skill_influence", "5"),
         ]);
-        let current = feed(json!({"licence": "open", "licence_note": "OGL v3.0"}));
+        let current = feed(&json!({"licence": "open", "licence_note": "OGL v3.0"}));
         let built = feed_from_form(&form, Some(&current)).unwrap();
         assert_eq!(
             Value::Object(built),

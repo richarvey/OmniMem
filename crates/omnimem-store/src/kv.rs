@@ -1,12 +1,13 @@
 //! Non-memory records: what were `meta:*`, `log:recall:*`, `topics:*` and
 //! cache keys in Valkey. Hashes, sets and strings, with optional expiry.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Value;
 
-use crate::store::{Fields, validate_key};
+use crate::store::{Fields, IN_CHUNK, placeholders, validate_key};
 use crate::time::now;
 use crate::{Result, Store, StoreError};
 
@@ -43,18 +44,15 @@ struct Entry {
 
 /// A live entry. An expired one is deleted on sight and reads as absent.
 fn load(conn: &Connection, key: &str) -> Result<Option<Entry>> {
-    let row: Option<(String, String, Option<f64>)> = conn
-        .query_row(
-            "SELECT kind, value, expires_at FROM kv WHERE key = ?1",
-            params![key],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
+    let mut stmt = conn.prepare_cached("SELECT kind, value, expires_at FROM kv WHERE key = ?1")?;
+    let row: Option<(String, String, Option<f64>)> = stmt
+        .query_row(params![key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .optional()?;
     let Some((kind, raw, expires_at)) = row else {
         return Ok(None);
     };
     if expires_at.is_some_and(|t| t <= now()) {
-        conn.execute("DELETE FROM kv WHERE key = ?1", params![key])?;
+        delete_expired(conn, key)?;
         return Ok(None);
     }
     let value = serde_json::from_str(&raw).map_err(|source| StoreError::CorruptRecord {
@@ -68,6 +66,65 @@ fn load(conn: &Connection, key: &str) -> Result<Option<Entry>> {
     }))
 }
 
+fn delete_expired(conn: &Connection, key: &str) -> Result<()> {
+    let mut stmt = conn.prepare_cached("DELETE FROM kv WHERE key = ?1")?;
+    stmt.execute(params![key])?;
+    Ok(())
+}
+
+/// The live hashes among `keys`, added to `out` by key. One `IN (...)`
+/// query per chunk, so a recall-log sweep or a search over `meta:` keys
+/// is not a round trip per key. A key holding a set or a string is a
+/// [`StoreError::WrongType`], and an expired entry is deleted on sight
+/// and left out, exactly as reading each key alone would do; an empty
+/// hash is left out as [`Store::hash_get_all`] reports it absent.
+pub(crate) fn load_hashes(
+    conn: &Connection,
+    keys: &[&str],
+    out: &mut HashMap<String, Fields>,
+) -> Result<()> {
+    if keys.is_empty() {
+        return Ok(());
+    }
+    let now = now();
+    let mut expired = Vec::new();
+    for chunk in keys.chunks(IN_CHUNK) {
+        let sql = format!(
+            "SELECT key, kind, value, expires_at FROM kv WHERE key IN ({})",
+            placeholders(chunk.len())
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(chunk))?;
+        while let Some(row) = rows.next()? {
+            let key: String = row.get(0)?;
+            let kind: String = row.get(1)?;
+            let raw: String = row.get(2)?;
+            let expires_at: Option<f64> = row.get(3)?;
+            if expires_at.is_some_and(|t| t <= now) {
+                expired.push(key);
+                continue;
+            }
+            let entry = Entry {
+                kind: Kind::parse(&kind),
+                value: serde_json::from_str(&raw).map_err(|source| StoreError::CorruptRecord {
+                    key: key.clone(),
+                    source,
+                })?,
+                expires_at,
+            };
+            expect(&key, &entry, Kind::Hash)?;
+            let fields = hash_from(&entry.value);
+            if !fields.is_empty() {
+                out.insert(key, fields);
+            }
+        }
+    }
+    for key in &expired {
+        delete_expired(conn, key)?;
+    }
+    Ok(())
+}
+
 fn save(
     conn: &Connection,
     key: &str,
@@ -75,11 +132,11 @@ fn save(
     value: &Value,
     expires_at: Option<f64>,
 ) -> Result<()> {
-    conn.execute(
+    let mut stmt = conn.prepare_cached(
         "INSERT INTO kv (key, kind, value, expires_at) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (key) DO UPDATE SET kind = excluded.kind, value = excluded.value, expires_at = excluded.expires_at",
-        params![key, kind.as_str(), value.to_string(), expires_at],
     )?;
+    stmt.execute(params![key, kind.as_str(), value.to_string(), expires_at])?;
     Ok(())
 }
 
@@ -438,7 +495,7 @@ mod tests {
     fn strings_expire() {
         let store = Store::open_in_memory().unwrap();
         store
-            .string_set("meta:dashboard_stats", "{}", Some(Duration::from_secs(60)))
+            .string_set("meta:dashboard_stats", "{}", Some(Duration::from_mins(1)))
             .unwrap();
         assert_eq!(
             store.string_get("meta:dashboard_stats").unwrap().as_deref(),
@@ -455,6 +512,61 @@ mod tests {
                 .unwrap()
                 .contains(&"meta:gone".to_owned())
         );
+    }
+
+    #[test]
+    fn batched_hash_reads_match_single_reads() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .hash_set("log:recall:1", &fields(&[("query", "alpha")]))
+            .unwrap();
+        store
+            .hash_set("log:recall:2", &fields(&[("query", "beta"), ("n", "2")]))
+            .unwrap();
+        store
+            .string_set("meta:short", "x", Some(Duration::from_millis(1)))
+            .unwrap();
+        store.hash_set("meta:gone", &fields(&[("a", "1")])).unwrap();
+        store.expire("meta:gone", Duration::from_millis(1)).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        let keys = vec![
+            "log:recall:2".to_owned(),
+            "meta:missing".to_owned(),
+            "meta:gone".to_owned(),
+            "log:recall:1".to_owned(),
+        ];
+        let batched = store.get_multi(&keys).unwrap();
+        let single: Vec<Option<Fields>> = keys
+            .iter()
+            .map(|k| store.hash_get_all(k).unwrap())
+            .collect();
+        assert_eq!(batched, single);
+        assert_eq!(
+            batched,
+            vec![
+                Some(fields(&[("query", "beta"), ("n", "2")])),
+                None,
+                None,
+                Some(fields(&[("query", "alpha")])),
+            ]
+        );
+        assert_eq!(
+            store.get_fields_multi(&keys, &["n"]).unwrap(),
+            vec![Some(fields(&[("n", "2")])), None, None, None]
+        );
+        assert!(
+            !store
+                .scan_prefix("meta:gone")
+                .unwrap()
+                .iter()
+                .any(|k| k == "meta:gone"),
+            "an expired entry read in a batch is deleted on sight"
+        );
+        store.string_set("meta:s", "x", None).unwrap();
+        assert!(matches!(
+            store.get_multi(&["meta:s".to_owned()]),
+            Err(StoreError::WrongType { .. })
+        ));
     }
 
     #[test]

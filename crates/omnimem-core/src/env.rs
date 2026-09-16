@@ -13,6 +13,7 @@
 //! can start some).
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::sync::OnceLock;
 
 static OVERLAY: OnceLock<BTreeMap<String, String>> = OnceLock::new();
@@ -86,9 +87,11 @@ fn unquote(raw: &str) -> String {
 }
 
 /// Read `KEY=value` lines, as a systemd `EnvironmentFile` or a `.env` file
-/// holds them. Blank lines, `#` comments, an `export ` prefix and names that
-/// aren't setting names are skipped; values may be single- or double-quoted;
-/// a later line wins.
+/// holds them.
+///
+/// Blank lines, `#` comments, an `export ` prefix and names that aren't
+/// setting names are skipped; values may be single- or double-quoted; a
+/// later line wins.
 pub fn parse_settings(text: &str) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
     for line in text.lines() {
@@ -125,11 +128,12 @@ pub fn render_settings(values: &BTreeMap<String, String>) -> String {
             && value
                 .chars()
                 .all(|c| !c.is_whitespace() && !matches!(c, '"' | '\'' | '#' | '\\'));
+        // Writing into a String cannot fail, so the results are dropped.
         if plain {
-            out.push_str(&format!("{name}={value}\n"));
+            let _ = writeln!(out, "{name}={value}");
         } else {
             let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
-            out.push_str(&format!("{name}=\"{escaped}\"\n"));
+            let _ = writeln!(out, "{name}=\"{escaped}\"");
         }
     }
     out

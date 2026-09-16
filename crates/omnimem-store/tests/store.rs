@@ -2,7 +2,7 @@
 
 use omnimem_core::classification::DEFAULT_CLASSIFICATION;
 use omnimem_core::{Namespace, content_hash};
-use omnimem_store::{Fields, SearchFilter, Store, StoreError};
+use omnimem_store::{Fields, MemoryFilter, SearchFilter, Store, StoreError};
 
 fn fields(pairs: &[(&str, &str)]) -> Fields {
     pairs
@@ -300,6 +300,386 @@ fn get_fields_multi_projects_and_aligns() {
     ];
     let rows = s.get_fields_multi(&keys, &["state", "outcome"]).unwrap();
     assert_eq!(rows, vec![Some(fields(&[("state", "active")])), None]);
+}
+
+/// Rows with every awkward value the filters have to agree on: states that
+/// are missing, empty or unusual; a project on either field or both; feed
+/// names; timestamps the engine's parser and SQLite's `CAST` read
+/// differently; values with quotes, backslashes and non-ASCII text.
+fn awkward_rows(s: &Store) -> Vec<String> {
+    let rows: Vec<(&str, Vec<(&str, &str)>)> = vec![
+        (
+            "mem:episodic:01",
+            vec![
+                ("content", "plain \"quoted\" back\\slash caf\u{e9}"),
+                ("state", "active"),
+                ("project", "alpha"),
+                ("created_at", "1700000000.5"),
+                ("effort_score", "4"),
+            ],
+        ),
+        (
+            "mem:episodic:02",
+            vec![
+                ("content", "no state"),
+                ("project", ""),
+                ("project_name", "alpha"),
+                ("created_at", "nan"),
+            ],
+        ),
+        (
+            "mem:episodic:03",
+            vec![
+                ("content", "empty state"),
+                ("state", ""),
+                ("project", "beta"),
+                ("project_name", "alpha"),
+                ("created_at", "inf"),
+            ],
+        ),
+        (
+            "mem:episodic:04",
+            vec![
+                ("state", "deprioritised"),
+                ("project_name", "alpha"),
+                ("created_at", " 1800000000"),
+                ("effort_score", ""),
+            ],
+        ),
+        (
+            "mem:episodic:05",
+            vec![
+                ("content", "archived"),
+                ("state", "archived"),
+                ("project", "alpha"),
+                ("created_at", "1800000000.0"),
+            ],
+        ),
+        (
+            "mem:episodic:06",
+            vec![("tags", "[\"x\"]"), ("created_at", "abc")],
+        ),
+        (
+            "mem:knowledge:07",
+            vec![
+                ("content", "article"),
+                ("state", "active"),
+                ("feed_name", "Feed A"),
+                ("created_at", "1800000000.0"),
+            ],
+        ),
+        (
+            "mem:knowledge:08",
+            vec![
+                ("content", "unfed"),
+                ("state", "active"),
+                ("feed_name", ""),
+                ("created_at", "1800000001"),
+            ],
+        ),
+        (
+            "mem:knowledge:09",
+            vec![("content", "feedless"), ("created_at", "1e12")],
+        ),
+        (
+            "mem:skill:gen:python-local",
+            vec![("name", "python-local"), ("domain", "python")],
+        ),
+        (
+            "mem:skill:hand",
+            vec![("name", "hand"), ("state", "active")],
+        ),
+    ];
+    rows.iter()
+        .map(|(key, pairs)| {
+            s.set_fields(key, &fields(pairs)).unwrap();
+            (*key).to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn projected_reads_match_whole_records() {
+    let s = store();
+    let mut keys = awkward_rows(&s);
+    keys.push("mem:episodic:missing".to_owned());
+    let whole = s.get_multi(&keys).unwrap();
+    for projection in [
+        &["content", "state", "project", "project_name", "created_at"][..],
+        &["effort_score", "tags"],
+        &["feed_name"],
+        &["nothing_here"],
+    ] {
+        let projected = s.get_fields_multi(&keys, projection).unwrap();
+        let expected: Vec<Option<Fields>> = whole
+            .iter()
+            .map(|row| {
+                row.as_ref().and_then(|all| {
+                    let p: Fields = projection
+                        .iter()
+                        .filter_map(|f| all.get(*f).map(|v| ((*f).to_owned(), v.clone())))
+                        .collect();
+                    (!p.is_empty()).then_some(p)
+                })
+            })
+            .collect();
+        assert_eq!(projected, expected, "projection {projection:?}");
+    }
+    assert_eq!(
+        s.get_fields_multi(&keys, &[]).unwrap(),
+        vec![None; keys.len()]
+    );
+}
+
+/// `list_memories` must return exactly what a full scan filtered in Rust
+/// would, because the engine's callers were doing the latter.
+#[test]
+fn filtered_listings_match_a_scan_filtered_by_hand() {
+    let s = store();
+    awkward_rows(&s);
+    let all_fields = [
+        "content",
+        "state",
+        "project",
+        "project_name",
+        "feed_name",
+        "created_at",
+        "effort_score",
+        "tags",
+        "name",
+        "domain",
+    ];
+    let scan = |ns: Namespace| -> Vec<(String, Fields)> {
+        let keys = s.scan_prefix(&format!("mem:{ns}:")).unwrap();
+        let rows = s.get_fields_multi(&keys, &all_fields).unwrap();
+        keys.into_iter()
+            .zip(rows)
+            .filter_map(|(k, r)| r.map(|r| (k, r)))
+            .collect()
+    };
+    let by_hand = |ns: Namespace, keep: &dyn Fn(&str, &Fields) -> bool| -> Vec<String> {
+        scan(ns)
+            .into_iter()
+            .filter(|(k, r)| keep(k, r))
+            .map(|(k, _)| k)
+            .collect()
+    };
+    let listed = |ns: Namespace, filter: &MemoryFilter| -> Vec<String> {
+        s.list_memories(ns, filter, &all_fields)
+            .unwrap()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect()
+    };
+    let doc_project = |r: &Fields| -> Option<String> {
+        r.get("project")
+            .filter(|p| !p.is_empty())
+            .or_else(|| r.get("project_name").filter(|p| !p.is_empty()))
+            .cloned()
+    };
+    let ep = Namespace::Episodic;
+    let kn = Namespace::Knowledge;
+
+    // Unfiltered: the whole namespace, in key order, with the projection.
+    assert_eq!(
+        s.list_memories(ep, &MemoryFilter::default(), &all_fields)
+            .unwrap(),
+        scan(ep)
+    );
+
+    // States: a missing state is active, an empty one is nothing.
+    let active = MemoryFilter {
+        states: vec!["active".into()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &active),
+        by_hand(ep, &|_, r| r.get("state").is_none_or(|st| st == "active"))
+    );
+    assert_eq!(
+        listed(ep, &active),
+        ["mem:episodic:01", "mem:episodic:02", "mem:episodic:06"]
+    );
+    let live = MemoryFilter {
+        states: vec!["deprioritised".into(), "archived".into()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &live),
+        by_hand(ep, &|_, r| matches!(
+            r.get("state").map(String::as_str),
+            Some("deprioritised" | "archived")
+        ))
+    );
+
+    // Project: `project` when non-empty, else `project_name`.
+    let alpha = MemoryFilter {
+        project: Some("alpha".into()),
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &alpha),
+        by_hand(ep, &|_, r| doc_project(r).as_deref() == Some("alpha"))
+    );
+    assert_eq!(
+        listed(ep, &alpha),
+        [
+            "mem:episodic:01",
+            "mem:episodic:02",
+            "mem:episodic:04",
+            "mem:episodic:05"
+        ]
+    );
+    let alpha_field = MemoryFilter {
+        project_field: Some("alpha".into()),
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &alpha_field),
+        by_hand(ep, &|_, r| r.get("project").map(String::as_str)
+            == Some("alpha"))
+    );
+    let nobody = MemoryFilter {
+        project: Some(String::new()),
+        ..MemoryFilter::default()
+    };
+    assert!(listed(ep, &nobody).is_empty());
+
+    // Feed names, with the empty name matching records without a feed.
+    let feed_a = MemoryFilter {
+        feed_names: vec!["Feed A".into()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(listed(kn, &feed_a), ["mem:knowledge:07"]);
+    let unfed = MemoryFilter {
+        feed_names: vec![String::new()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(kn, &unfed),
+        by_hand(kn, &|_, r| r.get("feed_name").is_none_or(String::is_empty))
+    );
+
+    // Presence of a field, whatever its value.
+    let with_effort = MemoryFilter {
+        present_any: vec!["effort_score".into(), "tags".into()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &with_effort),
+        by_hand(ep, &|_, r| r.contains_key("effort_score")
+            || r.contains_key("tags"))
+    );
+
+    // Timestamps: a superset of the engine's parse, which re-checks. Every
+    // row the engine would keep is listed, and the extras are exactly the
+    // ones whose text is not a plain number.
+    let since = MemoryFilter {
+        created_at_min: Some(1_750_000_000.0),
+        ..MemoryFilter::default()
+    };
+    let parsed = |r: &Fields| r.get("created_at").and_then(|c| c.parse::<f64>().ok());
+    let engine_keeps = by_hand(ep, &|_, r| parsed(r).is_some_and(|c| c >= 1_750_000_000.0));
+    let sql_keeps = listed(ep, &since);
+    assert!(
+        engine_keeps.iter().all(|k| sql_keeps.contains(k)),
+        "{sql_keeps:?}"
+    );
+    assert_eq!(
+        sql_keeps,
+        [
+            "mem:episodic:02",
+            "mem:episodic:03",
+            "mem:episodic:04",
+            "mem:episodic:05"
+        ],
+        "nan and inf pass through for the caller to judge; ' 1800000000' is kept by SQLite's CAST"
+    );
+    assert_eq!(
+        listed(kn, &since),
+        ["mem:knowledge:07", "mem:knowledge:08", "mem:knowledge:09"]
+    );
+
+    // Key prefix inside a namespace, key cap, and limit.
+    let generated = MemoryFilter {
+        key_prefix: Some("mem:skill:gen:".into()),
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(Namespace::Skill, &generated),
+        ["mem:skill:gen:python-local"]
+    );
+    let capped = MemoryFilter {
+        key_cap: Some(3),
+        states: vec!["active".into()],
+        ..MemoryFilter::default()
+    };
+    assert_eq!(
+        listed(ep, &capped),
+        ["mem:episodic:01", "mem:episodic:02"],
+        "the cap takes the first keys of the namespace, then the filter applies"
+    );
+    let limited = MemoryFilter {
+        limit: Some(2),
+        ..MemoryFilter::default()
+    };
+    assert_eq!(listed(ep, &limited), ["mem:episodic:01", "mem:episodic:02"]);
+
+    // With no projection every matching key is listed with no fields; with
+    // one, a row that has none of the fields is left out.
+    assert_eq!(
+        s.list_memories(ep, &MemoryFilter::default(), &[])
+            .unwrap()
+            .len(),
+        6
+    );
+    assert_eq!(
+        s.list_memories(ep, &MemoryFilter::default(), &["effort_score"])
+            .unwrap(),
+        vec![
+            (
+                "mem:episodic:01".to_owned(),
+                fields(&[("effort_score", "4")])
+            ),
+            (
+                "mem:episodic:04".to_owned(),
+                fields(&[("effort_score", "")])
+            ),
+        ]
+    );
+    assert!(matches!(
+        s.list_memories(ep, &MemoryFilter::default(), &["bad\"name"]),
+        Err(StoreError::InvalidField(_))
+    ));
+}
+
+#[test]
+fn delete_many_reports_what_existed_and_drops_vectors() {
+    let s = store();
+    for key in ["mem:episodic:a", "mem:episodic:b", "mem:knowledge:c"] {
+        s.upsert(
+            key,
+            &fields(&[("content", key)]),
+            Some(&unit([1.0, 0.0, 0.0])),
+        )
+        .unwrap();
+    }
+    s.hash_set("meta:x", &fields(&[("n", "1")])).unwrap();
+    let keys: Vec<String> = [
+        "mem:episodic:a",
+        "mem:episodic:a",
+        "mem:episodic:missing",
+        "mem:knowledge:c",
+        "meta:x",
+        "meta:missing",
+    ]
+    .iter()
+    .map(|k| (*k).to_owned())
+    .collect();
+    assert_eq!(s.delete_many(&keys).unwrap(), 3);
+    assert_eq!(s.vector_count(Namespace::Episodic), 1);
+    assert_eq!(s.vector_count(Namespace::Knowledge), 0);
+    assert_eq!(s.scan_prefix("").unwrap(), ["mem:episodic:b"]);
 }
 
 #[test]

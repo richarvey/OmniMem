@@ -3,10 +3,11 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use omnimem_core::Namespace;
 use omnimem_core::classification::{LICENCE_OWN, PROVENANCE_ASSERTED, PROVENANCE_CONCLUDED};
-use omnimem_store::{Fields, Store};
+use omnimem_store::{Fields, MemoryFilter, Store};
 use serde_json::{Map, Value, json};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::domains::{
     DomainInput, is_valid_domain, normalise_domains, parse_domains, resolve_domain,
@@ -26,10 +27,25 @@ const STACK_STOPWORDS: [&str; 28] = [
 ];
 const MIN_TAG_OCCURRENCES: usize = 2;
 const MAX_SUGGEST_SCAN_KEYS: usize = 5000;
-const PROJECT_NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
+const PROJECT_NAMESPACES: [Namespace; 4] = [
+    Namespace::Episodic,
+    Namespace::Project,
+    Namespace::Knowledge,
+    Namespace::Preference,
+];
 
 /// A project's memories per namespace, as (key, fields).
 type ProjectRows = Vec<(&'static str, Vec<(String, Fields)>)>;
+
+/// The listing filter for memories that belong to `name` and are active
+/// (a missing state counts as active; an empty one does not).
+fn active_in_project(name: &str) -> MemoryFilter {
+    MemoryFilter {
+        states: vec!["active".to_owned()],
+        project: Some(name.to_owned()),
+        ..MemoryFilter::default()
+    }
+}
 
 /// (changed per namespace, total to change, skipped per state, changed).
 type BulkOutcome = (Map<String, Value>, usize, Map<String, Value>, usize);
@@ -45,14 +61,6 @@ fn project_name(name: &str) -> Result<()> {
 
 fn text(fields: &Fields, name: &str) -> Option<String> {
     fields.get(name).filter(|v| !v.is_empty()).cloned()
-}
-
-fn doc_project(fields: &Fields) -> Option<&str> {
-    fields
-        .get("project")
-        .filter(|p| !p.is_empty())
-        .or_else(|| fields.get("project_name").filter(|p| !p.is_empty()))
-        .map(String::as_str)
 }
 
 fn read_domains(fields: Option<&Fields>) -> Vec<String> {
@@ -104,15 +112,17 @@ pub struct Suggestion {
 /// Seed domains from each project's stack, once (6.6 migration). Returns
 /// (seeded, marked empty).
 pub fn migrate_project_domains(store: &Store) -> omnimem_store::Result<(usize, usize)> {
-    let keys = store.scan_prefix("mem:project:")?;
-    let rows = store.get_fields_multi(&keys, &["stack", "domains", "goals"])?;
+    let rows = store.list_memories(
+        Namespace::Project,
+        &MemoryFilter::default(),
+        &["stack", "domains", "goals"],
+    )?;
     let (mut seeded, mut marked) = (0, 0);
-    for (key, row) in keys.iter().zip(rows) {
-        let Some(row) = row else { continue };
+    for (key, row) in &rows {
         if row.contains_key("domains") {
             continue;
         }
-        if text(&row, "stack").is_none() && text(&row, "goals").is_none() {
+        if text(row, "stack").is_none() && text(row, "goals").is_none() {
             continue;
         }
         let candidates: Vec<String> = parse_domains(DomainInput::Text(
@@ -171,27 +181,21 @@ impl Engine {
         }
 
         let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
-        let mut keys = self.store.scan_prefix("mem:episodic:")?;
-        if keys.len() > MAX_SUGGEST_SCAN_KEYS {
-            warn!(
-                cap = MAX_SUGGEST_SCAN_KEYS,
-                total = keys.len(),
-                "domain suggestion scan capped"
-            );
-            keys.truncate(MAX_SUGGEST_SCAN_KEYS);
-        }
-        for row in self
+        self.warn_if_capped(
+            Namespace::Episodic,
+            MAX_SUGGEST_SCAN_KEYS,
+            "domain suggestion",
+        );
+        // The project's active memories, and only their tags, out of the
+        // capped key range: the state and project tests run in SQL.
+        let filter = MemoryFilter {
+            key_cap: Some(MAX_SUGGEST_SCAN_KEYS),
+            ..active_in_project(name)
+        };
+        for (_, row) in self
             .store
-            .get_fields_multi(&keys, &["project", "project_name", "tags", "state"])?
-            .into_iter()
-            .flatten()
+            .list_memories(Namespace::Episodic, &filter, &["tags"])?
         {
-            if !matches!(row.get("state").map(String::as_str), None | Some("active")) {
-                continue;
-            }
-            if doc_project(&row) != Some(name) {
-                continue;
-            }
             for tag in parse_tag_field(row.get("tags").map(String::as_str)) {
                 let (canonical, _) = resolve_domain(&tag);
                 if is_valid_domain(&canonical) {
@@ -345,9 +349,9 @@ impl Engine {
                 Some(n.domains[0].clone())
             }
         };
-        let keys = self.store.scan_prefix("mem:project:")?;
-        let rows = self.store.get_fields_multi(
-            &keys,
+        let rows = self.store.list_memories(
+            Namespace::Project,
+            &MemoryFilter::default(),
             &[
                 "project_name",
                 "project",
@@ -359,12 +363,11 @@ impl Engine {
             ],
         )?;
         let mut projects: Vec<(String, Map<String, Value>, Vec<String>)> = Vec::new();
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            let name = text(&data, "project_name")
-                .or_else(|| text(&data, "project"))
+        for (key, data) in &rows {
+            let name = text(data, "project_name")
+                .or_else(|| text(data, "project"))
                 .unwrap_or_else(|| key.rsplit(':').next().unwrap_or("").to_owned());
-            let is_context = text(&data, "goals").is_some() || text(&data, "stack").is_some();
+            let is_context = text(data, "goals").is_some() || text(data, "stack").is_some();
             let index = if let Some(i) = projects.iter().position(|(n, _, _)| *n == name) {
                 i
             } else {
@@ -386,7 +389,7 @@ impl Engine {
                     "state".into(),
                     data.get("state").map_or("active", String::as_str).into(),
                 );
-                *domains = read_domains(Some(&data));
+                *domains = read_domains(Some(data));
             } else {
                 let n = entry["memory_count"].as_i64().unwrap_or(0) + 1;
                 entry.insert("memory_count".into(), n.into());
@@ -435,16 +438,17 @@ impl Engine {
             }));
         }
         let s = self.suggest_domains_for_project(name, 10)?;
-        let mut saved = false;
-        if auto_save && s.merged != s.existing {
+        let saved = if auto_save && s.merged != s.existing {
             let updates = Fields::from([
                 ("domains".to_owned(), s.merged.join(",")),
                 ("updated_at".to_owned(), now_str()),
             ]);
             self.store.set_fields(&key, &updates)?;
             self.invalidate_domain_cache();
-            saved = true;
-        }
+            true
+        } else {
+            false
+        };
         let mut m = Map::new();
         m.insert("status".into(), "compiled".into());
         m.insert("project_name".into(), name.into());
@@ -515,21 +519,22 @@ impl Engine {
     /// Keys per namespace belonging to a project, the context entry only when asked.
     fn project_keys(&self, name: &str, include_context: bool) -> Result<ProjectRows> {
         let context_key = format!("mem:project:{name}");
+        // The project test runs in SQL over the two project indexes, so a
+        // bulk transition or delete reads only the project's own rows.
+        let filter = MemoryFilter {
+            project: Some(name.to_owned()),
+            ..MemoryFilter::default()
+        };
         let mut out = Vec::new();
         for ns in PROJECT_NAMESPACES {
-            let keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
-            let rows = self
+            let matched: Vec<(String, Fields)> = self
                 .store
-                .get_fields_multi(&keys, &["project", "project_name", "state"])?;
-            let matched: Vec<(String, Fields)> = keys
+                .list_memories(ns, &filter, &["project", "project_name", "state"])?
                 .into_iter()
-                .zip(rows)
-                .filter_map(|(k, r)| r.map(|r| (k, r)))
-                .filter(|(_, r)| doc_project(r) == Some(name))
                 .filter(|(k, _)| include_context || *k != context_key)
                 .collect();
             if !matched.is_empty() {
-                out.push((ns, matched));
+                out.push((ns.as_str(), matched));
             }
         }
         Ok(out)
@@ -603,8 +608,7 @@ impl Engine {
             }
         }
         let total = to_change.len();
-        let mut changed = 0;
-        if apply && total > 0 {
+        let changed = if apply && total > 0 {
             let mut updates = Fields::from([
                 ("state".to_owned(), new_state.as_str().to_owned()),
                 (
@@ -618,8 +622,10 @@ impl Engine {
             {
                 updates.insert("deprioritised_reason".to_owned(), r.to_owned());
             }
-            changed = self.store.set_fields_multi(&to_change, &updates)?;
-        }
+            self.store.set_fields_multi(&to_change, &updates)?
+        } else {
+            0
+        };
         Ok((counts, total, skipped, changed))
     }
 
@@ -753,22 +759,30 @@ impl Engine {
                 compact(m)
             });
 
-        let keys = self.store.scan_prefix("mem:episodic:")?;
-        let rows = self.store.get_multi(&keys)?;
+        // Every episodic record used to be read whole here; now only the
+        // project's active memories arrive, and only the fields the draft
+        // is built from.
+        let rows = self.store.list_memories(
+            Namespace::Episodic,
+            &active_in_project(name),
+            &[
+                "updated_at",
+                "tags",
+                "content",
+                "effort_score",
+                "outcome",
+                "breakthrough",
+                "gotchas",
+                "abandoned_approaches",
+            ],
+        )?;
         let mut memories: Vec<(f64, Value)> = Vec::new();
         let mut tag_counts: Vec<(String, usize)> = Vec::new();
         let (mut breakthroughs, mut gotchas) = (Vec::new(), Vec::new());
         let mut abandoned: Vec<Value> = Vec::new();
         let mut seen_abandoned: HashSet<String> = HashSet::new();
 
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            if !matches!(data.get("state").map(String::as_str), None | Some("active")) {
-                continue;
-            }
-            if doc_project(&data) != Some(name) {
-                continue;
-            }
+        for (key, data) in &rows {
             let updated_at = data
                 .get("updated_at")
                 .cloned()
@@ -805,14 +819,14 @@ impl Engine {
             {
                 entry.insert("effort_score".into(), (effort as i64).into());
             }
-            if let Some(outcome) = text(&data, "outcome") {
+            if let Some(outcome) = text(data, "outcome") {
                 entry.insert("outcome".into(), outcome.into());
             }
             memories.push((updated_at.parse().unwrap_or(0.0), Value::Object(entry)));
-            if let Some(bt) = text(&data, "breakthrough") {
+            if let Some(bt) = text(data, "breakthrough") {
                 breakthroughs.push(bt);
             }
-            if let Some(g) = text(&data, "gotchas") {
+            if let Some(g) = text(data, "gotchas") {
                 gotchas.push(g);
             }
             if let Some(Value::Array(approaches)) = data
@@ -901,8 +915,7 @@ impl Engine {
         draft.insert("notes".into(), notes_parts.join("\n").into());
         let draft = compact(draft);
 
-        let mut saved = false;
-        if auto_save && (!memories.is_empty() || existing_context.is_some()) {
+        let saved = if auto_save && (!memories.is_empty() || existing_context.is_some()) {
             let now = now_str();
             let field = |f: &str| {
                 draft
@@ -940,8 +953,10 @@ impl Engine {
             }
             self.store.upsert(&existing_key, &fields, Some(&vector))?;
             self.invalidate_domain_cache();
-            saved = true;
-        }
+            true
+        } else {
+            false
+        };
 
         let mut result = Map::new();
         result.insert("project_name".into(), name.into());

@@ -48,7 +48,7 @@ pub(crate) fn save_download(
                     .map_err(|e| format!("Could not write {}: {e}", path.display()))?;
                 return Ok(path);
             }
-            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
             Err(e) => return Err(format!("Could not write {}: {e}", path.display())),
         }
     }

@@ -149,9 +149,9 @@ impl ModelFiles {
         let commit = downloader.resolve_commit(&repo, &revision)?;
         info!(%repo, %revision, %commit, "model not cached; downloading");
         for file in [config.onnx_file.as_str(), TOKENIZER_FILE] {
-            if let Fetched::Absent = downloader.fetch(&repo, &commit, file)? {
+            if matches!(downloader.fetch(&repo, &commit, file)?, Fetched::Absent) {
                 return Err(EmbedError::ModelUnavailable {
-                    repo: repo.clone(),
+                    repo,
                     file: file.to_owned(),
                     detail: "the repository has no such file".to_owned(),
                 });

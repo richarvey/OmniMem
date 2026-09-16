@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use omnimem_core::Namespace;
-use omnimem_store::{Fields, SearchFilter};
+use omnimem_store::{Fields, MemoryFilter, SearchFilter, SearchHit};
 use serde_json::{Value, json};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::classification::{effective_licence, effective_provenance};
 use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
@@ -26,7 +26,7 @@ const MAX_ABANDONED_SCAN_KEYS: usize = 5000;
 /// Abandoned warnings a recall result carries at most. They are advisory
 /// and never displace the memories the caller asked for.
 const MAX_ABANDONED_WARNINGS: usize = 3;
-const RECALL_LOG_TTL: Duration = Duration::from_secs(30 * 86_400);
+const RECALL_LOG_TTL: Duration = Duration::from_secs((30) * 86_400);
 
 /// Does `haystack` mention `needle` as whole words? Both are expected
 /// lowercased. A substring match would let a short topic such as "e" hit
@@ -201,28 +201,29 @@ impl Engine {
                 return Ok(entries.clone());
             }
         }
-        let mut keys = self.store.scan_prefix("mem:episodic:")?;
-        if keys.len() > MAX_ABANDONED_SCAN_KEYS {
-            warn!(
-                cap = MAX_ABANDONED_SCAN_KEYS,
-                total = keys.len(),
-                "abandoned scan capped"
-            );
-            keys.truncate(MAX_ABANDONED_SCAN_KEYS);
-        }
-        let rows = self
-            .store
-            .get_fields_multi(&keys, &["abandoned_approaches", "effort_score", "project"])?;
+        self.warn_if_capped(Namespace::Episodic, MAX_ABANDONED_SCAN_KEYS, "abandoned");
+        // Only memories that logged an abandoned approach can contribute,
+        // so the presence test runs in SQL over the capped key range and
+        // the rest of the namespace is never read.
+        let filter = MemoryFilter {
+            present_any: vec!["abandoned_approaches".to_owned()],
+            key_cap: Some(MAX_ABANDONED_SCAN_KEYS),
+            ..MemoryFilter::default()
+        };
+        let rows = self.store.list_memories(
+            Namespace::Episodic,
+            &filter,
+            &["abandoned_approaches", "effort_score", "project"],
+        )?;
         let mut entries = Vec::new();
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(row) = row else { continue };
+        for (key, row) in &rows {
             let Some(approaches) = row
                 .get("abandoned_approaches")
                 .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok())
             else {
                 continue;
             };
-            let effort = integer(&row, "effort_score");
+            let effort = integer(row, "effort_score");
             for approach in approaches {
                 // Names stored before they were validated may be blank or a
                 // letter or two; those would match everything, so they never
@@ -265,11 +266,14 @@ impl Engine {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let mut seen = HashSet::new();
+        let entries = self.abandoned_entries()?;
+        let mut seen: HashSet<(&str, &str)> = HashSet::new();
         let mut matches = Vec::new();
-        for entry in self.abandoned_entries()?.iter() {
+        for entry in entries.iter() {
             let name = &entry.name_lower;
-            if cross_mentions(&query, name) && seen.insert(format!("{}:{name}", entry.memory_key)) {
+            if cross_mentions(&query, name)
+                && seen.insert((entry.memory_key.as_str(), name.as_str()))
+            {
                 matches.push(entry.clone());
             }
         }
@@ -482,7 +486,12 @@ impl Engine {
                 .store
                 .search(namespace, vector, scope.per_ns_k, &filter, None)?
             {
-                let doc = &hit.fields;
+                let SearchHit {
+                    key,
+                    distance,
+                    fields,
+                } = hit;
+                let doc = &fields;
                 let state = doc.get("state").map_or("active", String::as_str);
                 if matches!(state, "archived" | "deleted") {
                     continue;
@@ -501,15 +510,16 @@ impl Engine {
                     continue;
                 }
 
-                let raw_score = (1.0 - f64::from(hit.distance)).max(0.0);
+                let raw_score = (1.0 - f64::from(distance)).max(0.0);
                 let surface = number(doc, "surface_score", 1.0);
                 let created_at = number(doc, "created_at", scope.now);
                 let age_days = (scope.now - created_at) / 86_400.0;
-                let mut recency = 1.0;
-                if age_days > self.config.recency_decay_days {
+                let recency = if age_days > self.config.recency_decay_days {
                     let excess = (age_days - self.config.recency_decay_days) / 30.0;
-                    recency = (1.0 - 0.05 * excess).max(0.3);
-                }
+                    (1.0 - 0.05 * excess).max(0.3)
+                } else {
+                    1.0
+                };
                 let exp_weight = number(doc, "experience_weight", 1.0);
                 let event_date = doc
                     .get("event_date")
@@ -534,9 +544,10 @@ impl Engine {
                     .filter(|v| !v.is_empty())
                     .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok())
                     .unwrap_or_default();
+                let provenance = effective_provenance(doc, ns, Some(&key)).to_owned();
 
                 results.push(RecallResult {
-                    key: hit.key.clone(),
+                    key,
                     namespace: ns.clone(),
                     content,
                     score: raw_score,
@@ -564,7 +575,7 @@ impl Engine {
                     enriched_from: doc.get("enriched_from").cloned(),
                     licence: Some(effective_licence(doc, ns).to_owned()),
                     licence_note: doc.get("licence_note").cloned(),
-                    provenance: Some(effective_provenance(doc, ns, Some(&hit.key)).to_owned()),
+                    provenance: Some(provenance),
                 });
             }
         }
@@ -588,10 +599,10 @@ impl Engine {
         let outcome = self
             .store
             .hash_set(&log_key, &fields)
-            .and_then(|_| self.store.expire(&log_key, RECALL_LOG_TTL))
+            .and_then(|()| self.store.expire(&log_key, RECALL_LOG_TTL))
             .and_then(|_| self.store.bump_recall_counts(&keys, &timestamp));
         if let Err(e) = outcome {
-            warn!(error = %e, "failed to log recall event");
+            tracing::warn!(error = %e, "failed to log recall event");
         }
     }
 }

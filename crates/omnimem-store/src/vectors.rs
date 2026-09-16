@@ -24,6 +24,7 @@ pub(crate) struct VectorIndex {
 
 impl VectorIndex {
     pub(crate) fn new(dim: usize) -> Self {
+        debug_assert!(dim > 0, "a vector space needs at least one dimension");
         Self {
             dim,
             spaces: HashMap::new(),
@@ -45,7 +46,7 @@ impl VectorIndex {
                 continue;
             };
             if let Some(vector) = from_bytes(&data, dim) {
-                index.insert(namespace, &key, &vector)
+                index.insert(namespace, &key, &vector);
             } else {
                 warn!(
                     key,
@@ -118,21 +119,36 @@ impl VectorIndex {
         let Some(space) = self.spaces.get(&namespace) else {
             return Vec::new();
         };
-        let query_norm = query.iter().map(|x| x * x).sum::<f32>().sqrt();
         let dim = self.dim;
-        let mut scored: Vec<(f32, usize)> = space
-            .keys
-            .iter()
-            .enumerate()
-            .filter(|(_, key)| allowed.is_none_or(|set| set.contains(key.as_str())))
-            .map(|(row, _)| {
-                let v = &space.data[row * dim..(row + 1) * dim];
-                let dot: f32 = v.iter().zip(query).map(|(a, b)| a * b).sum();
-                let denom = space.norms[row] * query_norm;
-                let cosine = if denom > 0.0 { dot / denom } else { 0.0 };
-                (1.0 - cosine, row)
-            })
-            .collect();
+        debug_assert_eq!(query.len(), dim);
+        let query_norm = query.iter().map(|x| x * x).sum::<f32>().sqrt();
+        // One pass over the contiguous matrix. `chunks_exact` hands the loop
+        // rows of a length the compiler knows, so the per-element bounds
+        // checks go; the multiply-add stays a sequential sum, because the
+        // distances are pinned to the last bit and a reassociated sum would
+        // move them. The filter runs before the dot product: a set lookup
+        // on a short key is far cheaper than the 384 multiply-adds it can
+        // skip, and an unselective filter costs about a hash per row.
+        let mut scored: Vec<(f32, usize)> = Vec::with_capacity(match allowed {
+            Some(set) => set.len().min(space.keys.len()),
+            None => space.keys.len(),
+        });
+        let rows = space
+            .data
+            .chunks_exact(dim)
+            .zip(&space.keys)
+            .zip(&space.norms);
+        for (row, ((v, key), &norm)) in rows.enumerate() {
+            if let Some(set) = allowed
+                && !set.contains(key.as_str())
+            {
+                continue;
+            }
+            let dot: f32 = v.iter().zip(query).map(|(a, b)| a * b).sum();
+            let denom = norm * query_norm;
+            let cosine = if denom > 0.0 { dot / denom } else { 0.0 };
+            scored.push((1.0 - cosine, row));
+        }
         let order = |a: &(f32, usize), b: &(f32, usize)| {
             a.0.total_cmp(&b.0)
                 .then_with(|| space.keys[a.1].cmp(&space.keys[b.1]))
@@ -150,7 +166,11 @@ impl VectorIndex {
 }
 
 pub(crate) fn to_bytes(vector: &[f32]) -> Vec<u8> {
-    vector.iter().flat_map(|x| x.to_le_bytes()).collect()
+    let mut bytes = Vec::with_capacity(vector.len() * 4);
+    for x in vector {
+        bytes.extend_from_slice(&x.to_le_bytes());
+    }
+    bytes
 }
 
 pub(crate) fn from_bytes(data: &[u8], dim: usize) -> Option<Vec<f32>> {

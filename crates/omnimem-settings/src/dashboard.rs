@@ -16,7 +16,7 @@ use omnimem_engine::Engine;
 use serde_json::{Map, Value, json};
 
 use crate::PanelState;
-use crate::pages::starting;
+use crate::pages::{off_runtime, starting};
 use crate::render::page;
 
 const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
@@ -96,7 +96,7 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_store::Result<Value> {
                     projects.push((name.clone(), None, Vec::new()));
                     projects.len() - 1
                 };
-                if *key == format!("mem:project:{name}") {
+                if key.strip_prefix("mem:project:") == Some(name.as_str()) {
                     projects[index].1 = Some(state.clone());
                 } else {
                     projects[index].2.push(state.clone());
@@ -209,33 +209,37 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
         .then(|| state.caches().dashboard.clone())
         .flatten()
         .filter(|(at, _)| at.elapsed() < ttl);
-    let (computed_at, stats) = if let Some(hit) = cached {
+    let (computed_at, counts) = if let Some(hit) = cached {
         hit
     } else {
         let worker = engine.clone();
         let computed = tokio::task::spawn_blocking(move || compute(&worker)).await;
-        let stats = match computed {
-            Ok(Ok(stats)) => stats,
+        let counts = match computed {
+            Ok(Ok(counts)) => counts,
             _ => {
                 json!({"ns_stats": {}, "total": 0, "skills": {"total": 0, "states": zero_states(), "proposals": 0}, "recent": []})
             }
         };
-        let fresh = (Instant::now(), stats);
+        let fresh = (Instant::now(), counts);
         if !ttl.is_zero() {
             state.caches().dashboard = Some(fresh.clone());
         }
         fresh
     };
-    let enrichment_pending = engine.store().enrichment_pending().map_or(-1, |n| n as i64);
+    // The queue depth is a store read, so it goes off the workers too.
+    let enrichment_pending =
+        off_runtime(move || engine.store().enrichment_pending().map_or(-1, |n| n as i64))
+            .await
+            .unwrap_or(-1);
     page(
         state.templates(),
         "dashboard.html",
         context! {
             current_page => "dashboard",
-            ns_stats => stats["ns_stats"],
-            total => stats["total"],
-            skills => stats["skills"],
-            recent => stats["recent"],
+            ns_stats => counts["ns_stats"],
+            total => counts["total"],
+            skills => counts["skills"],
+            recent => counts["recent"],
             stats_age => (!ttl.is_zero()).then(|| computed_at.elapsed().as_secs()),
             health => json!({"store": true, "model": true}),
             enrichment_pending => enrichment_pending,

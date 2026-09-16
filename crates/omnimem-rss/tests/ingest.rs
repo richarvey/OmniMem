@@ -2,6 +2,7 @@
 //! article pages, a scripted model for Claude, and SQLite runs in memory.
 
 use std::collections::VecDeque;
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -125,20 +126,20 @@ fn route(routes: &Routes, path: &str, body: &str) {
 
 /// An RSS 2.0 document; an empty path leaves the item without a link.
 fn rss(base: &str, items: &[(&str, &str, &str)]) -> String {
-    let items: String = items
-        .iter()
-        .map(|(path, title, description)| {
-            let link = if path.is_empty() {
-                String::new()
-            } else {
-                format!("<link>{base}{path}</link>")
-            };
-            format!(
-                "<item><title>{title}</title>{link}<description><![CDATA[{description}]]></description>\
-                 <pubDate>Wed, 01 Jul 2026 12:00:00 GMT</pubDate></item>"
-            )
-        })
-        .collect();
+    let mut items_xml = String::new();
+    for (path, title, description) in items {
+        let link = if path.is_empty() {
+            String::new()
+        } else {
+            format!("<link>{base}{path}</link>")
+        };
+        let _ = write!(
+            items_xml,
+            "<item><title>{title}</title>{link}<description><![CDATA[{description}]]></description>\
+             <pubDate>Wed, 01 Jul 2026 12:00:00 GMT</pubDate></item>"
+        );
+    }
+    let items = items_xml;
     format!(
         "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>Example</title>\
          <link>{base}</link><description>d</description>{items}</channel></rss>"
@@ -171,7 +172,7 @@ fn ingester(model: Option<Arc<Scripted>>, config: RssConfig) -> (Ingester, Arc<S
     (Ingester::new(Arc::new(engine), config).unwrap(), store)
 }
 
-fn feed(value: Value) -> Map<String, Value> {
+fn feed(value: &Value) -> Map<String, Value> {
     value.as_object().unwrap().clone()
 }
 
@@ -209,6 +210,9 @@ fn write_feeds(path: &Path, yaml: &str) {
     std::fs::write(path, yaml).unwrap();
 }
 
+// The expiry is `now + 30 days` in whole seconds, which f64 holds exactly
+// at this magnitude, so the difference is exact and the test pins it.
+#[allow(clippy::float_cmp)]
 #[test]
 fn summary_mode_stores_articles_and_skips_them_next_time() {
     let (base, routes, _) = server();
@@ -226,7 +230,7 @@ fn summary_mode_stores_articles_and_skips_them_next_time() {
     let model = Scripted::with(&["  A summary.  "]);
     let (ingester, store) = ingester(Some(model.clone()), config(no_feeds_file()));
     let feed =
-        feed(json!({"url": format!("{base}/feed.xml"), "name": "Example", "topics": ["rust"]}));
+        feed(&json!({"url": format!("{base}/feed.xml"), "name": "Example", "topics": ["rust"]}));
 
     let first = ingester.ingest_feed(&feed).unwrap();
     assert_eq!(
@@ -267,7 +271,7 @@ fn without_a_model_summaries_fall_back_and_refusals_are_skipped() {
         "/feed.xml",
         &rss(&base, &[("/post", "A Post", "<p>Hello <b>world</b></p>")]),
     );
-    let feed = feed(json!({"url": format!("{base}/feed.xml"), "name": "Example"}));
+    let feed = feed(&json!({"url": format!("{base}/feed.xml"), "name": "Example"}));
     let key = format!("mem:knowledge:{}", url_hash(&format!("{base}/post")));
 
     let (offline, store) = ingester(None, config(no_feeds_file()));
@@ -301,8 +305,8 @@ fn licences_and_project_labels_come_from_the_feed() {
     let key = format!("mem:knowledge:{}", url_hash(&format!("{base}/post")));
     let ingest = |extra: Value| {
         let (ingester, store) = ingester(None, config(no_feeds_file()));
-        let mut f = feed(json!({"url": url, "name": "Example"}));
-        f.extend(feed(extra));
+        let mut f = feed(&json!({"url": url, "name": "Example"}));
+        f.extend(feed(&extra));
         assert_eq!(ingester.ingest_feed(&f).unwrap().added, 1);
         store.get(&key).unwrap().unwrap()
     };
@@ -340,7 +344,7 @@ fn require_licence_refuses_before_any_fetch() {
 
     let (gated, _) = ingester(None, strict.clone());
     let undeclared = gated
-        .ingest_feed(&feed(json!({"url": url, "name": "E"})))
+        .ingest_feed(&feed(&json!({"url": url, "name": "E"})))
         .unwrap();
     assert_eq!(
         stats(undeclared),
@@ -348,7 +352,7 @@ fn require_licence_refuses_before_any_fetch() {
     );
     let explicit = gated
         .ingest_feed(&feed(
-            json!({"url": url, "name": "E", "licence": "unknown"}),
+            &json!({"url": url, "name": "E", "licence": "unknown"}),
         ))
         .unwrap();
     assert_eq!(explicit.refused, 1);
@@ -356,7 +360,7 @@ fn require_licence_refuses_before_any_fetch() {
 
     let (declared, _) = ingester(None, strict);
     let accepted = declared
-        .ingest_feed(&feed(json!({"url": url, "name": "E", "licence": "open"})))
+        .ingest_feed(&feed(&json!({"url": url, "name": "E", "licence": "open"})))
         .unwrap();
     assert_eq!(accepted.added, 1);
 }
@@ -386,7 +390,7 @@ fn digest_mode_fetches_teaser_pages_and_stores_each_item() {
     let model = Scripted::with(&[reply]);
     let (digester, store) = ingester(Some(model.clone()), config(no_feeds_file()));
     let digest =
-        feed(json!({"url": format!("{base}/feed.xml"), "name": "Weekly", "mode": "digest"}));
+        feed(&json!({"url": format!("{base}/feed.xml"), "name": "Weekly", "mode": "digest"}));
 
     let first = digester.ingest_feed(&digest).unwrap();
     assert_eq!(

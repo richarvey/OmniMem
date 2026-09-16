@@ -35,7 +35,7 @@ application/x-netcdf,application/xml;q=0.9,text/xml;q=0.2,*/*;q=0.1";
 /// server that drips a byte at a time. `BUDGET` is the wall-clock limit on a
 /// whole fetch, checked between chunks.
 const TIMEOUT: Duration = Duration::from_secs(30);
-const BUDGET: Duration = Duration::from_secs(60);
+const BUDGET: Duration = Duration::from_mins(1);
 const MAX_REDIRECTS: usize = 5;
 const CHUNK: usize = 64 * 1024;
 

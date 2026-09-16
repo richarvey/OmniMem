@@ -287,6 +287,17 @@ fn server_error(e: &dyn std::fmt::Display) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
 }
 
+/// The OAuth core reads and writes SQLite, so each call to it runs off the
+/// async workers, as the `/mcp` token check does. A worker that panics is
+/// answered as any other server failure.
+async fn off_runtime<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, Response> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| server_error(&e))
+}
+
 fn found(location: &str, extra: &[(&'static str, &'static str)]) -> Response {
     match HeaderValue::from_str(location) {
         Ok(value) => {
@@ -319,6 +330,10 @@ fn escape(text: &str) -> String {
 /// The login page. `prompt` names the client asking and where the browser
 /// goes afterwards, so a user sent here by a link can see who they'd be
 /// letting in before they type a password.
+///
+/// The braced names are the template's own placeholders, not format
+/// arguments, hence the allow.
+#[allow(clippy::literal_string_with_formatting_args)]
 fn render_login(session: &str, prompt: Option<&SignInPrompt>, problem: Option<&str>) -> String {
     let error_block = problem
         .map(|p| format!(r#"<div class="error">{}</div>"#, escape(p)))
@@ -380,21 +395,26 @@ async fn authorize(State(oauth): State<Arc<OAuth>>, request: Request) -> Respons
     } else {
         Params::parse(parts.uri.query().unwrap_or_default().as_bytes())
     };
-    match oauth.authorize(&ip, &params) {
-        Ok(Authorize::Redirect(location)) => found(&location, &[("cache-control", "no-store")]),
-        Ok(Authorize::BadRequest(body)) => json_response(
+    match off_runtime(move || oauth.authorize(&ip, &params)).await {
+        Ok(Ok(Authorize::Redirect(location))) => found(&location, &[("cache-control", "no-store")]),
+        Ok(Ok(Authorize::BadRequest(body))) => json_response(
             StatusCode::BAD_REQUEST,
             &body,
             &[("cache-control", "no-store")],
         ),
-        Err(e) => server_error(&e),
+        Ok(Err(e)) => server_error(&e),
+        Err(response) => response,
     }
 }
 
 async fn token(State(oauth): State<Arc<OAuth>>, headers: HeaderMap, body: Bytes) -> Response {
-    match oauth.token(&Params::parse(&body), authorization(&headers)) {
-        Ok(tokens) => json_response(StatusCode::OK, &tokens, NO_STORE),
-        Err(failure) => failure_response(failure, NO_STORE),
+    let authorization = authorization(&headers).map(str::to_owned);
+    let result =
+        off_runtime(move || oauth.token(&Params::parse(&body), authorization.as_deref())).await;
+    match result {
+        Ok(Ok(tokens)) => json_response(StatusCode::OK, &tokens, NO_STORE),
+        Ok(Err(failure)) => failure_response(failure, NO_STORE),
+        Err(response) => response,
     }
 }
 
@@ -403,20 +423,25 @@ async fn register(State(oauth): State<Arc<OAuth>>, request: Request) -> Response
     let Ok(body) = axum::body::to_bytes(request.into_body(), BODY_LIMIT).await else {
         return (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large").into_response();
     };
-    match oauth.register(&ip, &body) {
-        Ok(client) => json_response(StatusCode::CREATED, &client, &[]),
-        Err(failure) => failure_response(failure, &[]),
+    match off_runtime(move || oauth.register(&ip, &body)).await {
+        Ok(Ok(client)) => json_response(StatusCode::CREATED, &client, &[]),
+        Ok(Err(failure)) => failure_response(failure, &[]),
+        Err(response) => response,
     }
 }
 
 async fn revoke(State(oauth): State<Arc<OAuth>>, headers: HeaderMap, body: Bytes) -> Response {
-    match oauth.revoke(&Params::parse(&body), authorization(&headers)) {
-        Ok(()) => {
+    let authorization = authorization(&headers).map(str::to_owned);
+    let result =
+        off_runtime(move || oauth.revoke(&Params::parse(&body), authorization.as_deref())).await;
+    match result {
+        Ok(Ok(())) => {
             let mut response = StatusCode::OK.into_response();
             add_headers(&mut response, NO_STORE);
             response
         }
-        Err(failure) => failure_response(failure, &[]),
+        Ok(Err(failure)) => failure_response(failure, &[]),
+        Err(response) => response,
     }
 }
 
@@ -471,16 +496,18 @@ async fn login_submit(State(oauth): State<Arc<OAuth>>, request: Request) -> Resp
         );
     }
     oauth.reset_login_failures(&ip);
-    match oauth.complete_sign_in(session) {
-        Ok(Some(location)) => {
+    let session = session.to_owned();
+    match off_runtime(move || oauth.complete_sign_in(&session)).await {
+        Ok(Ok(Some(location))) => {
             info!("OAuth sign-in complete, sending the browser back to the client");
             found(&location, &[])
         }
-        Ok(None) => html(
+        Ok(Ok(None)) => html(
             StatusCode::BAD_REQUEST,
             render_login("", None, Some("Session expired. Please try again.")),
         ),
-        Err(e) => server_error(&e),
+        Ok(Err(e)) => server_error(&e),
+        Err(response) => response,
     }
 }
 

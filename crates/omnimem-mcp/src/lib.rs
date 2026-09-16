@@ -20,10 +20,12 @@ pub use oauth::{OAuthConfig, OAuthSetup};
 pub const INSTRUCTIONS: &str = include_str!("instructions.md");
 
 /// What OmniMem puts in an agent's context before any tool is called, in
-/// characters: the instructions, every tool's name, description and
-/// parameter schema as `tools/list` sends them, and the deferred
-/// `mcp__omnimem__<tool>` names a client lists. 6.x hardcoded these counts;
-/// here they are measured from what the server actually sends.
+/// characters.
+///
+/// The instructions, every tool's name, description and parameter schema as
+/// `tools/list` sends them, and the deferred `mcp__omnimem__<tool>` names a
+/// client lists. 6.x hardcoded these counts; here they are measured from
+/// what the server actually sends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContextOverhead {
     pub instructions_chars: usize,

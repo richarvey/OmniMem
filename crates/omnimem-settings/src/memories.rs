@@ -5,6 +5,7 @@
 //! link) gets the rows partial, anything else the whole page.
 
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::Write as _;
 
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, Uri};
@@ -259,6 +260,7 @@ pub(crate) async fn handler(
         })
         .collect();
 
+    // Writing into a String cannot fail.
     let mut extra_params = String::new();
     for (name, value) in [
         ("namespace", &filters.namespace),
@@ -269,11 +271,11 @@ pub(crate) async fn handler(
         ("provenance", &filters.provenance),
     ] {
         if !value.is_empty() {
-            extra_params.push_str(&format!("&{name}={}", quote(value)));
+            let _ = write!(extra_params, "&{name}={}", quote(value));
         }
     }
     if sort != "newest" {
-        extra_params.push_str(&format!("&sort={}", quote(&sort)));
+        let _ = write!(extra_params, "&sort={}", quote(&sort));
     }
 
     let nav_page = match (filters.namespace.as_str(), filters.source.as_str()) {
@@ -325,7 +327,7 @@ mod tests {
     #[test]
     fn recall_heat_fades_with_time() {
         let now = 100.0 * 86_400.0;
-        let ago = |days: f64| Some((now - days * 86_400.0).to_string());
+        let ago = |days: f64| Some(days.mul_add(-86_400.0, now).to_string());
         assert_eq!(recall_heat(ago(1.0).as_ref(), now), "hot");
         assert_eq!(recall_heat(ago(10.0).as_ref(), now), "warm");
         assert_eq!(recall_heat(ago(60.0).as_ref(), now), "cool");

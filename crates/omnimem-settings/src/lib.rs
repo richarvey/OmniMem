@@ -58,9 +58,10 @@ pub use configuration::{SecretStore, secret_settings};
 const MAX_RESPONSE_BYTES: usize = 512 * 1024 * 1024;
 
 /// What OmniMem's MCP surface puts in an agent's context before any tool is
-/// called, in characters. The app measures it from the server
-/// (`omnimem_mcp::context_overhead`) and hands it over, so this crate needs
-/// no MCP dependency.
+/// called, in characters.
+///
+/// The app measures it from the server (`omnimem_mcp::context_overhead`)
+/// and hands it over, so this crate needs no MCP dependency.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StaticOverhead {
     pub instructions_chars: usize,

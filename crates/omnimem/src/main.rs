@@ -89,7 +89,7 @@ enum Command {
 
 fn main() -> Result<()> {
     let Cli { db, command } = Cli::parse();
-    let default_level = if !matches!(
+    let default_level = if matches!(
         command,
         Some(
             Command::Import { .. }
@@ -99,9 +99,9 @@ fn main() -> Result<()> {
                 | Command::Embed { .. }
         )
     ) {
-        "info"
-    } else {
         "warn"
+    } else {
+        "info"
     };
     let filter = tracing_subscriber::EnvFilter::try_from_env("OMNIMEM_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));

@@ -72,7 +72,7 @@ struct Session {
     client: reqwest::Client,
     base: String,
     token: Option<String>,
-    session: Option<String>,
+    id: Option<String>,
     next_id: u64,
 }
 
@@ -87,12 +87,12 @@ impl Session {
         if let Some(token) = &self.token {
             request = request.header("authorization", format!("Bearer {token}"));
         }
-        if let Some(session) = &self.session {
-            request = request.header("mcp-session-id", session);
+        if let Some(id) = &self.id {
+            request = request.header("mcp-session-id", id);
         }
         let response = request.send().await.unwrap();
         if let Some(id) = response.headers().get("mcp-session-id") {
-            self.session = Some(id.to_str().unwrap().to_owned());
+            self.id = Some(id.to_str().unwrap().to_owned());
         }
         let status = response.status();
         (status, response.text().await.unwrap())
@@ -141,7 +141,7 @@ fn session(base: &str, token: Option<&str>) -> Session {
         client: reqwest::Client::new(),
         base: base.to_owned(),
         token: token.map(str::to_owned),
-        session: None,
+        id: None,
         next_id: 0,
     }
 }

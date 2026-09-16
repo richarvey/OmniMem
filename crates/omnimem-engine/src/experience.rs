@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use chrono::Utc;
-use omnimem_store::Fields;
+use omnimem_core::Namespace;
+use omnimem_store::{Fields, MemoryFilter};
 use serde_json::{Map, Value, json};
 use tracing::info;
 
@@ -287,16 +288,23 @@ impl Engine {
     pub fn experience_summary(&self, project: Option<&str>) -> Result<Value> {
         let project = project.filter(|p| !p.is_empty());
         validate_project_name(project)?;
-        let keys = self.store.scan_prefix("mem:episodic:")?;
-        let rows = self.store.get_fields_multi(
-            &keys,
+        // Only memories with an effort score count, whatever their state,
+        // and the project match is on the `project` field alone; both are
+        // evaluated in SQL so the rest of the namespace is never read.
+        let filter = MemoryFilter {
+            project_field: project.map(str::to_owned),
+            present_any: vec!["effort_score".to_owned()],
+            ..MemoryFilter::default()
+        };
+        let rows = self.store.list_memories(
+            Namespace::Episodic,
+            &filter,
             &[
                 "effort_score",
                 "outcome",
                 "content",
                 "abandoned_approaches",
                 "breakthrough",
-                "project",
             ],
         )?;
         let (mut total_effort, mut count) = (0i64, 0i64);
@@ -306,14 +314,8 @@ impl Engine {
         let mut seen_names: HashSet<String> = HashSet::new();
         let mut breakthroughs: Vec<(i64, Value)> = Vec::new();
 
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            if let Some(p) = project
-                && data.get("project").map(String::as_str) != Some(p)
-            {
-                continue;
-            }
-            let Some(effort) = effort(&data) else {
+        for (key, data) in &rows {
+            let Some(effort) = effort(data) else {
                 continue;
             };
             let outcome = data.get("outcome").map_or("unknown", String::as_str);
@@ -417,14 +419,14 @@ impl Engine {
 mod tests {
     use super::*;
 
-    fn approach(value: Value) -> Map<String, Value> {
+    fn approach(value: &Value) -> Map<String, Value> {
         value.as_object().unwrap().clone()
     }
 
     #[test]
     fn approaches_need_a_real_name_and_a_known_type() {
         let ok = validate_approach(&approach(
-            json!({"name": "  Celery ", "type": "library", "reason": "slow", "extra": 1}),
+            &json!({"name": "  Celery ", "type": "library", "reason": "slow", "extra": 1}),
         ))
         .unwrap();
         assert_eq!(ok["name"], "Celery", "the stored name is trimmed");
@@ -439,7 +441,7 @@ mod tests {
             json!({"name": "Celery", "type": 3}),
             json!({"name": "Celery", "reason": "r".repeat(2001)}),
         ] {
-            assert!(validate_approach(&approach(bad.clone())).is_err(), "{bad}");
+            assert!(validate_approach(&approach(&bad)).is_err(), "{bad}");
         }
     }
 

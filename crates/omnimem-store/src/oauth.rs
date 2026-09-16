@@ -30,10 +30,13 @@ impl TokenKind {
 
 /// The SHA-256 of a secret, as lowercase hex.
 pub fn secret_hash(secret: &str) -> String {
+    use std::fmt::Write as _;
     Sha256::digest(secret.as_bytes())
         .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+        .fold(String::with_capacity(64), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
 }
 
 fn parse(what: &str, raw: &str) -> Result<Value> {

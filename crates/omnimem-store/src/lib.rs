@@ -29,7 +29,8 @@ pub use error::StoreError;
 pub use migrations::MigrationReport;
 pub use oauth::{OAuthStore, TokenKind, secret_hash};
 pub use store::{
-    Fields, MAX_KEY_BYTES, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES, discovery_text,
+    Fields, MAX_KEY_BYTES, MemoryFilter, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES,
+    discovery_text,
 };
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

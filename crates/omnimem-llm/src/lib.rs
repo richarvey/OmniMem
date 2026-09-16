@@ -45,7 +45,7 @@ impl AnthropicConfig {
         Self {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_owned(),
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_mins(2),
             max_retries: 2,
         }
     }
@@ -62,7 +62,9 @@ impl AnthropicConfig {
         if let Some(base) = omnimem_core::env::var("ANTHROPIC_BASE_URL")
             && !base.trim().is_empty()
         {
-            config.base_url = base.trim().trim_end_matches('/').to_owned();
+            base.trim()
+                .trim_end_matches('/')
+                .clone_into(&mut config.base_url);
         }
         Some(config)
     }

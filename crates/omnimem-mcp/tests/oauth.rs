@@ -214,13 +214,13 @@ async fn the_http_surface_matches_6x() {
     }
 
     // The challenges /mcp sends.
-    let reply = send(&app, mcp_post(None)).await;
-    assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
+    let no_credentials = send(&app, mcp_post(None)).await;
+    assert_eq!(no_credentials.status, StatusCode::UNAUTHORIZED);
     assert_eq!(
-        reply.header("www-authenticate"),
+        no_credentials.header("www-authenticate"),
         golden["mcp_no_auth"]["headers"]["www-authenticate"].as_str()
     );
-    assert_eq!(reply.body, "");
+    assert_eq!(no_credentials.body, "");
     assert_as_6x(
         &send(&app, mcp_post(Some("Bearer nope"))).await,
         "mcp_bad_token",

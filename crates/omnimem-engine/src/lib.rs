@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use omnimem_core::{LanguageModel, TextEmbedder};
+use omnimem_core::{LanguageModel, Namespace, TextEmbedder};
 use omnimem_store::Store;
 
 pub use config::EngineConfig;
@@ -57,6 +57,12 @@ pub use recall::{RecallResult, compute_experience_weight};
 pub use tools::DomainFilter;
 
 pub type Result<T, E = EngineError> = std::result::Result<T, E>;
+
+/// Texts per embedding call. The ONNX embedder pads each batch to its
+/// longest member, so a batch of a few hundred document chunks would cost
+/// memory in proportion; this bounds every caller without each having to
+/// chunk for itself.
+const EMBED_BATCH: usize = 32;
 
 /// A value cached with the time it was computed.
 type Cached<T> = Mutex<Option<(Instant, Arc<T>)>>;
@@ -95,6 +101,7 @@ impl Engine {
     /// Turn on the Claude Haiku features: fact extraction, query expansion
     /// and contradiction tier 2. Without a model they degrade as 6.x did
     /// with no API key.
+    #[must_use]
     pub fn with_llm(mut self, llm: Arc<dyn LanguageModel>) -> Self {
         self.llm = Some(llm);
         self
@@ -116,10 +123,36 @@ impl Engine {
             .ok_or_else(|| EngineError::Embedding("the embedder returned no vector".into()))
     }
 
+    /// Vectors for `texts`, embedded [`EMBED_BATCH`] at a time.
     pub(crate) fn embed_many(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        self.embedder
-            .embed_texts(texts)
-            .map_err(|e| EngineError::Embedding(e.to_string()))
+        let mut vectors = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(EMBED_BATCH) {
+            let embedded = self
+                .embedder
+                .embed_texts(batch)
+                .map_err(|e| EngineError::Embedding(e.to_string()))?;
+            if embedded.len() != batch.len() {
+                return Err(EngineError::Embedding(format!(
+                    "asked for {} vectors, got {}",
+                    batch.len(),
+                    embedded.len()
+                )));
+            }
+            vectors.extend(embedded);
+        }
+        Ok(vectors)
+    }
+
+    /// Record count of a namespace, for the scans that cap how many keys
+    /// they consider and say so when the cap bites.
+    pub(crate) fn warn_if_capped(&self, namespace: Namespace, cap: usize, what: &str) {
+        match self.store.count_records(namespace) {
+            Ok(total) if total > cap => {
+                tracing::warn!(cap, total, "{what} scan capped");
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(error = %e, "could not count {namespace} records"),
+        }
     }
 
     /// Drop the cached abandoned-approach list after a write that may change it.

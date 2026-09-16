@@ -273,7 +273,9 @@ fn pool<'a>(
                 count += 1.0;
             }
             let count = count.max(1e-9);
-            sum.iter_mut().for_each(|s| *s /= count);
+            for s in &mut sum {
+                *s /= count;
+            }
             sum
         }
     }
@@ -282,7 +284,9 @@ fn pool<'a>(
 /// L2 normalisation with the Python engine's 1e-12 floor.
 fn normalise(v: &mut [f32]) {
     let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
-    v.iter_mut().for_each(|x| *x /= norm);
+    for x in v {
+        *x /= norm;
+    }
 }
 
 /// The first `n` characters of `s`, on a character boundary; `s` itself

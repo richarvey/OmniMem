@@ -8,7 +8,7 @@ use tracing::error;
 use crate::embedded::TEMPLATES;
 
 /// `"{:,}".format(n)`: digits grouped in threes.
-fn thousands(value: Value) -> String {
+fn thousands(value: &Value) -> String {
     let number = value.to_string();
     let (sign, digits) = number
         .strip_prefix('-')
@@ -102,10 +102,10 @@ mod tests {
 
     #[test]
     fn numbers_group_in_threes() {
-        assert_eq!(thousands(Value::from(1234567)), "1,234,567");
-        assert_eq!(thousands(Value::from(999)), "999");
-        assert_eq!(thousands(Value::from(-1000)), "-1,000");
-        assert_eq!(thousands(Value::from(12345.5)), "12,345.5");
+        assert_eq!(thousands(&Value::from(1_234_567)), "1,234,567");
+        assert_eq!(thousands(&Value::from(999)), "999");
+        assert_eq!(thousands(&Value::from(-1000)), "-1,000");
+        assert_eq!(thousands(&Value::from(12345.5)), "12,345.5");
     }
 
     #[test]

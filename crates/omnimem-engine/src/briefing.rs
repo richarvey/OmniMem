@@ -6,6 +6,8 @@
 
 use std::collections::HashSet;
 
+use omnimem_core::Namespace;
+use omnimem_store::MemoryFilter;
 use serde_json::{Map, Value, json};
 use tracing::{error, warn};
 
@@ -14,21 +16,17 @@ use crate::pyfmt::{compact, now_secs, py_json, take_chars};
 use crate::tools::validate_project_name;
 use crate::{Engine, Result};
 
-const SKILL_KEY_PREFIX: &str = "mem:skill:";
-
 impl Engine {
     /// Memory keys that compiled into a skill: exempt from the stale list,
     /// read live from each skill's manifest (issue #34).
     pub(crate) fn skill_source_keys(&self) -> HashSet<String> {
         let read = || -> Result<HashSet<String>> {
-            let keys = self.store.scan_prefix(SKILL_KEY_PREFIX)?;
             let mut sources = HashSet::new();
-            for row in self
-                .store
-                .get_fields_multi(&keys, &["source_manifest"])?
-                .into_iter()
-                .flatten()
-            {
+            for (_, row) in self.store.list_memories(
+                Namespace::Skill,
+                &MemoryFilter::default(),
+                &["source_manifest"],
+            )? {
                 if let Some(Value::Array(items)) = row
                     .get("source_manifest")
                     .and_then(|m| serde_json::from_str(m).ok())
@@ -57,13 +55,19 @@ impl Engine {
         let now = now_secs();
         let cutoff = now - stale_days as f64 * 86_400.0;
         let skill_sources = self.skill_source_keys();
-        let keys = self.store.scan_prefix("mem:episodic:")?;
-        let rows = self.store.get_fields_multi(
-            &keys,
+        // Only active and deprioritised rows of the project take part, so
+        // the filter runs in SQL and archived memories, other projects'
+        // memories and every unread field stay in the database.
+        let filter = MemoryFilter {
+            states: vec!["active".to_owned(), "deprioritised".to_owned()],
+            project: project.map(str::to_owned),
+            ..MemoryFilter::default()
+        };
+        let rows = self.store.list_memories(
+            Namespace::Episodic,
+            &filter,
             &[
                 "state",
-                "project",
-                "project_name",
                 "updated_at",
                 "content",
                 "contradictions",
@@ -72,17 +76,7 @@ impl Engine {
             ],
         )?;
         let (mut stale, mut reinstate, mut contradictions) = (Vec::new(), Vec::new(), Vec::new());
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            if let Some(p) = project {
-                let doc_project = data
-                    .get("project")
-                    .filter(|v| !v.is_empty())
-                    .or_else(|| data.get("project_name").filter(|v| !v.is_empty()));
-                if doc_project.map(String::as_str) != Some(p) {
-                    continue;
-                }
-            }
+        for (key, data) in &rows {
             let content = take_chars(data.get("content").map_or("", String::as_str), 80);
             match data.get("state").map(String::as_str) {
                 Some("active") => {
@@ -142,11 +136,18 @@ impl Engine {
 
     fn new_knowledge(&self, since_days: i64) -> Result<Vec<Value>> {
         let cutoff = now_secs() - since_days as f64 * 86_400.0;
-        let keys = self.store.scan_prefix("mem:knowledge:")?;
-        let rows = self.store.get_fields_multi(
-            &keys,
+        // The week's articles out of a knowledge namespace that RSS fills
+        // for years: state and age are filtered in SQL, and the age is
+        // re-checked below because the store's cut is a superset.
+        let filter = MemoryFilter {
+            states: vec!["active".to_owned()],
+            created_at_min: Some(cutoff),
+            ..MemoryFilter::default()
+        };
+        let rows = self.store.list_memories(
+            Namespace::Knowledge,
+            &filter,
             &[
-                "state",
                 "created_at",
                 "content",
                 "source_url",
@@ -159,11 +160,7 @@ impl Engine {
             ],
         )?;
         let mut articles = Vec::new();
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            if data.get("state").map(String::as_str) != Some("active") {
-                continue;
-            }
+        for (key, data) in &rows {
             if data
                 .get("created_at")
                 .and_then(|c| c.parse::<f64>().ok())
@@ -188,7 +185,7 @@ impl Engine {
                 data.get("feed_name")
                     .map_or(Value::Null, |v| v.as_str().into()),
             );
-            m.extend(classification_fields(&data, "knowledge", Some(key)));
+            m.extend(classification_fields(data, "knowledge", Some(key)));
             articles.push(compact(m));
             if articles.len() >= 10 {
                 break;

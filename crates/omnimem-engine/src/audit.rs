@@ -1,7 +1,7 @@
 //! Audit tools (`tools/audit.py`).
 
 use omnimem_core::Namespace;
-use omnimem_store::Fields;
+use omnimem_store::{Fields, MemoryFilter};
 use serde_json::{Map, Value, json};
 
 use crate::classification::classification_fields;
@@ -39,7 +39,7 @@ impl Engine {
         let limit = limit.clamp(1, AUDIT_MAX_LIMIT) as usize;
         let offset = offset.max(0) as usize;
         let project = project.filter(|p| !p.is_empty());
-        let prefixes: Vec<String> = match namespace.filter(|n| !n.is_empty()) {
+        let namespaces: Vec<&str> = match namespace.filter(|n| !n.is_empty()) {
             Some(ns) => {
                 if !AUDIT_NAMESPACES.contains(&ns) {
                     return Err(invalid(format!(
@@ -47,12 +47,9 @@ impl Engine {
                         AUDIT_NAMESPACES.join(", ")
                     )));
                 }
-                vec![format!("mem:{ns}:")]
+                vec![ns]
             }
-            None => AUDIT_NAMESPACES
-                .iter()
-                .map(|ns| format!("mem:{ns}:"))
-                .collect(),
+            None => AUDIT_NAMESPACES.to_vec(),
         };
 
         let mut counts: Vec<(String, i64)> = ["active", "deprioritised", "archived", "deleted"]
@@ -68,10 +65,16 @@ impl Engine {
         };
         let mut entries = Vec::new();
         let mut matching = 0usize;
-        for prefix in prefixes {
-            let keys = self.store.scan_prefix(&prefix)?;
-            let rows = self.store.get_fields_multi(
-                &keys,
+        for ns in namespaces {
+            let Ok(namespace) = ns.parse::<Namespace>() else {
+                continue;
+            };
+            // Every row counts towards the summary, archived ones before the
+            // project filter applies, so the listing is unfiltered; the
+            // projection alone keeps the read to the six fields shown.
+            let rows = self.store.list_memories(
+                namespace,
+                &MemoryFilter::default(),
                 &[
                     "state",
                     "content",
@@ -81,15 +84,14 @@ impl Engine {
                     "project_name",
                 ],
             )?;
-            for (key, row) in keys.iter().zip(rows) {
-                let Some(data) = row else { continue };
+            for (key, data) in &rows {
                 let state = data.get("state").map_or("active", String::as_str);
                 if state == "archived" && !include_archived {
                     bump(&mut counts, "archived");
                     continue;
                 }
                 if let Some(p) = project
-                    && doc_project(&data) != Some(p)
+                    && doc_project(data) != Some(p)
                 {
                     continue;
                 }
@@ -118,7 +120,7 @@ impl Engine {
                 );
                 e.insert(
                     "project".into(),
-                    doc_project(&data).map_or(Value::Null, Value::from),
+                    doc_project(data).map_or(Value::Null, Value::from),
                 );
                 entries.push(compact(e));
             }

@@ -1,7 +1,9 @@
 //! `recent_knowledge` (`tools/knowledge.py`). `promote_knowledge` arrives
 //! with the skill compiler in phase 4.
 
+use omnimem_core::Namespace;
 use omnimem_core::classification::LICENCE_CLASSES;
+use omnimem_store::MemoryFilter;
 use serde_json::{Map, Value};
 
 use crate::classification::{classification_fields, effective_licence};
@@ -33,11 +35,18 @@ impl Engine {
         let feed_name = feed_name.filter(|f| !f.is_empty());
         let topics = topics.filter(|t| !t.is_empty());
 
-        let keys = self.store.scan_prefix("mem:knowledge:")?;
-        let rows = self.store.get_fields_multi(
-            &keys,
+        // State, age and feed are evaluated in SQL; the age is re-checked
+        // below because the store's cut is a superset of this parse.
+        let filter = MemoryFilter {
+            states: vec!["active".to_owned()],
+            feed_names: feed_name.map(|f| vec![f.to_owned()]).unwrap_or_default(),
+            created_at_min: Some(cutoff),
+            ..MemoryFilter::default()
+        };
+        let rows = self.store.list_memories(
+            Namespace::Knowledge,
+            &filter,
             &[
-                "state",
                 "created_at",
                 "feed_name",
                 "topics",
@@ -54,11 +63,7 @@ impl Engine {
             ],
         )?;
         let mut results: Vec<(f64, Value)> = Vec::new();
-        for (key, row) in keys.iter().zip(rows) {
-            let Some(data) = row else { continue };
-            if data.get("state").map(String::as_str) != Some("active") {
-                continue;
-            }
+        for (key, data) in &rows {
             let created = data
                 .get("created_at")
                 .and_then(|c| c.parse::<f64>().ok())
@@ -66,13 +71,8 @@ impl Engine {
             if created < cutoff {
                 continue;
             }
-            if let Some(f) = feed_name
-                && data.get("feed_name").map(String::as_str) != Some(f)
-            {
-                continue;
-            }
             if let Some(l) = licence
-                && effective_licence(&data, "knowledge") != l
+                && effective_licence(data, "knowledge") != l
             {
                 continue;
             }
@@ -109,7 +109,7 @@ impl Engine {
                     Value::Null
                 },
             );
-            m.extend(classification_fields(&data, "knowledge", Some(key)));
+            m.extend(classification_fields(data, "knowledge", Some(key)));
             results.push((created, compact(m)));
         }
         results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));

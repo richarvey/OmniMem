@@ -1,5 +1,7 @@
 //! The starting page, pages not ported yet, and the window's POST check.
 
+use std::fmt::Write as _;
+
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri, header};
 use axum::response::{Html, IntoResponse, Response};
@@ -8,15 +10,26 @@ use minijinja::context;
 use crate::PanelState;
 use crate::render::{failure, page};
 
+/// Run file or store work that has no engine error of its own off the async
+/// workers: the panel shares its runtime with the webview, so a directory
+/// scan or a YAML parse on a worker would stall every other page. A worker
+/// that stops becomes the error page.
+pub(crate) async fn off_runtime<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, Response> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| failure(&format!("the request's worker stopped: {e}")))
+}
+
 /// Run store and engine work off the async workers. An error becomes the
 /// error page.
 pub(crate) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> omnimem_engine::Result<T> + Send + 'static,
 ) -> Result<T, Response> {
-    match tokio::task::spawn_blocking(work).await {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(e)) => Err(failure(&format!("{e:#}"))),
-        Err(e) => Err(failure(&format!("the request's worker stopped: {e}"))),
+    match off_runtime(work).await? {
+        Ok(value) => Ok(value),
+        Err(e) => Err(failure(&format!("{e:#}"))),
     }
 }
 
@@ -47,7 +60,10 @@ fn percent_encode(text: &str, keep: impl Fn(u8) -> bool) -> String {
                 out.push(byte as char);
             }
             b if keep(b) => out.push(b as char),
-            _ => out.push_str(&format!("%{byte:02X}")),
+            // Writing into a String cannot fail.
+            _ => {
+                let _ = write!(out, "%{byte:02X}");
+            }
         }
     }
     out

@@ -25,7 +25,7 @@ use tracing::{info, warn};
 use crate::kv::{hash_merge_expiring, set_union};
 use crate::migrations::MigrationReport;
 use crate::store::{
-    discovery_text, load_fields, memory_namespace, merge_memory, validate_key, write_vector,
+    discovery_text, load_fields, memory_namespace, merge_memory_into, validate_key, write_vector,
 };
 use crate::time::{iso8601_utc, now};
 use crate::{Fields, Result, Store, StoreError};
@@ -78,8 +78,9 @@ pub fn read_backup(path: &Path) -> Result<BackupFile> {
 /// Distinguishes partial files written by this process in the same instant.
 static PARTIAL_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Written beside the target and renamed into place. A backup is never
-/// overwritten: a caller naming an existing file gets
+/// Write a backup beside the target and rename it into place.
+///
+/// A backup is never overwritten: a caller naming an existing file gets
 /// [`StoreError::Backup`], so a repeated name (or a request that guesses
 /// one) cannot replace the copy already on disk. The partial file has a
 /// unique name and is created exclusively, so two writers never share one.
@@ -135,9 +136,8 @@ impl BackupFile {
         let Value::Object(mut top) = value else {
             return Err(StoreError::Backup("a backup is a JSON object".into()));
         };
-        let data = match top.remove("data") {
-            Some(Value::Object(data)) => data,
-            _ => return Err(StoreError::Backup("the backup has no `data` object".into())),
+        let Some(Value::Object(data)) = top.remove("data") else {
+            return Err(StoreError::Backup("the backup has no `data` object".into()));
         };
         Ok(Self {
             metadata: top.remove("metadata").unwrap_or(Value::Null),
@@ -255,7 +255,10 @@ impl Store {
                         }
                         _ => 0.0,
                     };
-                    let stored = load_fields(&tx, key)?.and_then(|f| {
+                    // Read once: the same record decides whether the backup
+                    // is newer and is what the merge builds on.
+                    let existing = load_fields(&tx, key)?;
+                    let stored = existing.as_ref().and_then(|f| {
                         f.get("updated_at")
                             .and_then(|v| v.parse::<f64>().ok())
                             .filter(|at| at.is_finite())
@@ -264,7 +267,14 @@ impl Store {
                         report.skipped_older += 1;
                         continue;
                     }
-                    merge_memory(&tx, key, memory_namespace(key)?, &fields, &self.origin_id)?;
+                    merge_memory_into(
+                        &tx,
+                        key,
+                        memory_namespace(key)?,
+                        existing,
+                        &fields,
+                        &self.origin_id,
+                    )?;
                     restored.push(key.clone());
                     report.memories += 1;
                 } else {
@@ -291,9 +301,10 @@ impl Store {
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect();
-            let (embedded, not_embedded) = self.embed_memories(&to_embed, embedder, progress)?;
-            report.embedded = embedded;
-            report.not_embedded = not_embedded;
+            let (given_vectors, without_text) =
+                self.embed_memories(&to_embed, embedder, progress)?;
+            report.embedded = given_vectors;
+            report.not_embedded = without_text;
         }
         info!(?report, "backup imported");
         Ok(report)
@@ -455,7 +466,7 @@ mod tests {
         }
     }
 
-    fn backup(data: Value) -> BackupFile {
+    fn backup(data: &Value) -> BackupFile {
         BackupFile::from_value(json!({"metadata": {}, "data": data})).unwrap()
     }
 
@@ -472,9 +483,9 @@ mod tests {
     fn a_backup_is_never_overwritten() {
         let dir = scratch("overwrite");
         let path = dir.join("memory_backup.json");
-        let first = backup(json!({"meta:a": {"n": "1"}}));
+        let first = backup(&json!({"meta:a": {"n": "1"}}));
         write_backup(&path, &first).unwrap();
-        let second = backup(json!({"meta:a": {"n": "2"}}));
+        let second = backup(&json!({"meta:a": {"n": "2"}}));
         let refused = write_backup(&path, &second).unwrap_err();
         assert!(
             matches!(&refused, StoreError::Backup(m) if m.ends_with("already exists")),
@@ -501,7 +512,7 @@ mod tests {
             .unwrap();
         let report = store
             .restore_backup(
-                &backup(json!({
+                &backup(&json!({
                     "topics:suppressed": {"_type": "set", "members": ["alpine"]},
                     "topics:other": {"_type": "set", "members": ["b"]},
                 })),
@@ -528,7 +539,7 @@ mod tests {
             .unwrap();
         let report = store
             .restore_backup(
-                &backup(json!({
+                &backup(&json!({
                     "mem:episodic:a": {"content": "new", "updated_at": "NaN"},
                     "mem:episodic:b": {"content": "b", "updated_at": "inf"},
                     "log:recall:1": {"query": "q", "timestamp": "NaN"},
@@ -553,7 +564,7 @@ mod tests {
             .unwrap();
         let report = store
             .restore_backup(
-                &backup(json!({"mem:episodic:a": {"content": "real", "updated_at": "5"}})),
+                &backup(&json!({"mem:episodic:a": {"content": "real", "updated_at": "5"}})),
                 None,
                 &mut |_, _| {},
             )
@@ -574,7 +585,7 @@ mod tests {
         });
         // As `import --no-embed`, or a run that died before embedding.
         let first = store
-            .restore_backup(&backup(data.clone()), None, &mut |_, _| {})
+            .restore_backup(&backup(&data), None, &mut |_, _| {})
             .unwrap();
         assert_eq!(first.memories, 2);
         assert_eq!(first.embedded, 0);
@@ -585,7 +596,7 @@ mod tests {
         );
 
         let second = store
-            .restore_backup(&backup(data), Some(&Unit), &mut |_, _| {})
+            .restore_backup(&backup(&data), Some(&Unit), &mut |_, _| {})
             .unwrap();
         assert_eq!(second.skipped_older, 2, "nothing newer to write");
         assert_eq!(

@@ -21,18 +21,27 @@ use tracing::{error, info};
 
 use crate::PanelState;
 use crate::files::{read_upload, save_download};
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{blocking, off_runtime, quote, see_other, starting};
 use crate::render::page;
 
 /// Uploads and restores are capped as the MCP restore tool caps them.
 const MAX_BACKUP_BYTES: usize = 100 * 1024 * 1024;
+
+/// True for a name ending in `.json` exactly. The check is case-sensitive
+/// on purpose: the engine's backup rule is, so a `.JSON` accepted here would
+/// be a file the restore tool then refuses.
+fn has_json_extension(filename: &str) -> bool {
+    filename
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| ext == "json")
+}
 
 /// A plain `<name>.json`: letters, digits, `_`, `-` and `.` only, so a
 /// request can't name anything outside the backup folder.
 fn is_safe_filename(filename: &str) -> bool {
     filename.len() > ".json".len()
         && filename.len() <= 255
-        && filename.ends_with(".json")
+        && has_json_extension(filename)
         && filename
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
@@ -83,13 +92,18 @@ pub(crate) async fn list(
     let Some(dir) = backup_dir(&state) else {
         return starting(&state);
     };
+    // A directory scan with a stat per file: off the workers.
+    let backups = match off_runtime(move || listing(&dir)).await {
+        Ok(backups) => backups,
+        Err(failure) => return failure,
+    };
     let param = |name: &str| query.get(name).cloned().unwrap_or_default();
     page(
         state.templates(),
         "backups.html",
         context! {
             current_page => "backups",
-            backups => listing(&dir),
+            backups,
             message => param("message"),
             error => param("error"),
         },
@@ -136,7 +150,7 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
         Ok(_) => return with_message(true, "No file selected"),
         Err(problem) => return with_message(true, &problem),
     };
-    if !filename.ends_with(".json") {
+    if !has_json_extension(&filename) {
         return with_message(true, "Only .json files are allowed");
     }
     // Keep only the base name, and only safe characters in it.
@@ -145,7 +159,7 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
         .collect();
-    if !safe.ends_with(".json") {
+    if !has_json_extension(&safe) {
         safe.push_str(".json");
     }
     if !is_safe_filename(&safe) {
@@ -161,28 +175,34 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
         return with_message(true, "File is not valid JSON");
     }
     let path = dir.join(&safe);
+    let bytes = data.len();
     // `create_new` claims the name and writes in one step, so an upload can
-    // never replace a backup that is already there.
-    let written = std::fs::create_dir_all(&dir).and_then(|()| {
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .and_then(|mut file| file.write_all(&data))
-    });
+    // never replace a backup that is already there. Up to 100 MB is written,
+    // so it goes off the workers.
+    let written = off_runtime(move || {
+        std::fs::create_dir_all(&dir).and_then(|()| {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .and_then(|mut file| file.write_all(&data))
+        })
+    })
+    .await;
     match written {
-        Ok(()) => {
-            info!(file = safe, bytes = data.len(), "uploaded a backup");
+        Ok(Ok(())) => {
+            info!(file = safe, bytes, "uploaded a backup");
             with_message(false, &format!("Uploaded {safe}"))
         }
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => with_message(
+        Ok(Err(e)) if e.kind() == ErrorKind::AlreadyExists => with_message(
             true,
             &format!("A backup named {safe} already exists. Rename the file and upload it again."),
         ),
-        Err(e) => {
+        Ok(Err(e)) => {
             error!(error = %e, "backup upload failed");
             with_message(true, &format!("Upload failed: {e}"))
         }
+        Err(failure) => failure,
     }
 }
 
@@ -294,12 +314,17 @@ pub(crate) async fn download(
         Ok(path) => path,
         Err(response) => return *response,
     };
-    let saved = std::fs::read(&path)
-        .map_err(|e| format!("Could not read {filename}: {e}"))
-        .and_then(|data| save_download(state.downloads_dir(), &filename, &data));
+    let downloads = state.downloads_dir();
+    let saved = off_runtime(move || {
+        std::fs::read(&path)
+            .map_err(|e| format!("Could not read {filename}: {e}"))
+            .and_then(|data| save_download(downloads, &filename, &data))
+    })
+    .await;
     match saved {
-        Ok(saved) => with_message(false, &format!("Saved a copy to {}.", saved.display())),
-        Err(problem) => with_message(true, &problem),
+        Ok(Ok(saved)) => with_message(false, &format!("Saved a copy to {}.", saved.display())),
+        Ok(Err(problem)) => with_message(true, &problem),
+        Err(failure) => failure,
     }
 }
 
@@ -311,12 +336,13 @@ pub(crate) async fn delete(
         Ok(path) => path,
         Err(response) => return *response,
     };
-    match std::fs::remove_file(&path) {
-        Ok(()) => {
+    match off_runtime(move || std::fs::remove_file(&path)).await {
+        Ok(Ok(())) => {
             info!(file = filename, "deleted a backup");
             with_message(false, &format!("Deleted {filename}"))
         }
-        Err(e) => with_message(true, &format!("Delete failed: {e}")),
+        Ok(Err(e)) => with_message(true, &format!("Delete failed: {e}")),
+        Err(failure) => failure,
     }
 }
 

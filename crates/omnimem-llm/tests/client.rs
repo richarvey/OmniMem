@@ -58,7 +58,7 @@ fn server(responses: Vec<(u16, &'static str, &'static str)>) -> (String, Arc<Mut
 
 fn client(url: &str) -> AnthropicClient {
     let mut config = AnthropicConfig::new("sk-test");
-    config.base_url = url.to_owned();
+    url.clone_into(&mut config.base_url);
     AnthropicClient::new(config).unwrap()
 }
 

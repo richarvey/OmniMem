@@ -16,7 +16,7 @@
 mod routes;
 
 use std::collections::{HashMap, VecDeque};
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -260,7 +260,12 @@ fn random_bytes<const N: usize>() -> [u8; N] {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        // Writing into a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 /// Python's `secrets.token_urlsafe(32)`: 32 random bytes, base64url, unpadded.
@@ -1306,7 +1311,6 @@ impl OAuth {
     /// The token endpoint's client authentication, as the SDK's
     /// `ClientAuthenticator` did it.
     fn authenticate_client(
-        &self,
         o: &OAuthStore<'_>,
         form: &Params,
         authorization: Option<&str>,
@@ -1382,7 +1386,7 @@ impl OAuth {
     /// fresh access and refresh token pair.
     fn token(&self, form: &Params, authorization: Option<&str>) -> Result<Value, Failure> {
         self.store.with_oauth(|o| {
-            let client = self.authenticate_client(o, form, authorization)?;
+            let client = Self::authenticate_client(o, form, authorization)?;
             let grant_type = match form.get("grant_type") {
                 Some(g @ ("authorization_code" | "refresh_token" | JWT_BEARER)) => g,
                 Some(other) => {
@@ -1607,8 +1611,7 @@ impl OAuth {
     /// another client, is not an error.
     fn revoke(&self, form: &Params, authorization: Option<&str>) -> Result<(), Failure> {
         self.store.with_oauth(|o| {
-            let client = self
-                .authenticate_client(o, form, authorization)
+            let client = Self::authenticate_client(o, form, authorization)
                 .map_err(Failure::for_revocation)?;
             let hint = form.get("token_type_hint");
             let mut errors = Vec::new();
@@ -1859,6 +1862,9 @@ mod tests {
         assert_eq!(error, "invalid_grant");
     }
 
+    // The cap is copied from record to record, never recomputed, so the two
+    // reads must be the same f64.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn a_refresh_chain_keeps_its_absolute_cap() {
         let store = Arc::new(Store::open_in_memory().unwrap());
@@ -2055,7 +2061,7 @@ mod tests {
             ))
             .contains("client_name: String should have at most")
         );
-        let many: Vec<String> = (0..MAX_LIST_ITEMS + 1)
+        let many: Vec<String> = (0..=MAX_LIST_ITEMS)
             .map(|i| format!("https://a{i}.example/cb"))
             .collect();
         assert!(
@@ -2171,7 +2177,11 @@ mod tests {
             .unwrap();
         let client = oauth.register(IP, body.as_bytes()).unwrap();
         assert!(client["client_id"].is_string());
-        assert!(store.with_oauth(|o| o.client_count()).unwrap() <= CLIENT_LIMIT);
+        // The fn item can't stand in for the closure: `with_oauth` wants it
+        // for any store lifetime and the method is tied to one.
+        #[allow(clippy::redundant_closure_for_method_calls)]
+        let count = store.with_oauth(|o| o.client_count()).unwrap();
+        assert!(count <= CLIENT_LIMIT);
     }
 
     #[test]
@@ -2179,7 +2189,7 @@ mod tests {
         let mut limiter = LoginLimiter::default();
         let at = 10_000.0;
         for i in 0..LIMITER_ENTRIES * 2 {
-            limiter.record_failure(&format!("ip{i}"), at + i as f64 * 0.001, 900.0);
+            limiter.record_failure(&format!("ip{i}"), (i as f64).mul_add(0.001, at), 900.0);
         }
         assert!(limiter.failures.len() <= LIMITER_ENTRIES + 1);
     }

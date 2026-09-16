@@ -3,6 +3,7 @@
 //! (`web_ui/routes/experience.py`).
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
@@ -131,12 +132,13 @@ pub(crate) async fn summary(
         .take(EFFORTFUL_PAGE_SIZE)
         .collect();
 
+    // Writing into a String cannot fail.
     let mut extra_params = String::new();
     if !outcome_filter.is_empty() {
-        extra_params.push_str(&format!("&outcome={}", quote(&outcome_filter)));
+        let _ = write!(extra_params, "&outcome={}", quote(&outcome_filter));
     }
     if !project.is_empty() {
-        extra_params.push_str(&format!("&project={}", quote(&project)));
+        let _ = write!(extra_params, "&project={}", quote(&project));
     }
     let template = if headers.get("HX-Request").is_some_and(|v| v == "true") {
         "experience/_effortful.html"

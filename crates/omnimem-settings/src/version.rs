@@ -15,7 +15,7 @@ use crate::render::page;
 
 const RELEASES_API_URL: &str =
     "https://code.squarecows.com/api/v1/repos/ric/omnimem/releases/latest";
-const CACHE_TTL: Duration = Duration::from_secs(3600);
+const CACHE_TTL: Duration = Duration::from_hours(1);
 
 fn parse(version: &str) -> Option<Vec<u64>> {
     version.split('.').map(|part| part.parse().ok()).collect()

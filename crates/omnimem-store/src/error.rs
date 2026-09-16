@@ -8,6 +8,11 @@ pub enum StoreError {
     #[error("invalid key: {0}")]
     InvalidKey(String),
 
+    /// A field name that can't be quoted into a JSON path for a filtered
+    /// listing. Every field the engine reads is a plain identifier.
+    #[error("invalid field name: {0}")]
+    InvalidField(String),
+
     #[error("{key} holds a {actual}, not a {expected}")]
     WrongType {
         key: String,

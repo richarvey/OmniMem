@@ -47,6 +47,9 @@ pub(crate) fn date_and_time(ts: f64) -> (String, String) {
 mod tests {
     use super::*;
 
+    // `number` parses or falls back to 0.0; nothing is computed, so the
+    // values compare exactly.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn missing_values_print_as_dashes() {
         assert_eq!(number(Some(&" 2.5".to_owned())), 2.5);

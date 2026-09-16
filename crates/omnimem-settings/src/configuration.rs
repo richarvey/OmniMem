@@ -10,7 +10,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::sync::Arc;
 
 use axum::Form;
 use axum::extract::{Query, State};
@@ -636,7 +635,8 @@ pub(crate) async fn save(
         return unavailable(&state);
     };
     let store = state.secret_store();
-    let outcome = tokio::task::spawn_blocking(move || save_blocking(&path, store, &form)).await;
+    let outcome =
+        tokio::task::spawn_blocking(move || save_blocking(&path, store.as_deref(), &form)).await;
     match outcome {
         Ok(Ok(())) => see_other(&format!(
             "/configuration?message={}",
@@ -649,7 +649,7 @@ pub(crate) async fn save(
 
 fn save_blocking(
     path: &Path,
-    store: Option<Arc<dyn SecretStore>>,
+    store: Option<&dyn SecretStore>,
     form: &[(String, String)],
 ) -> Result<(), String> {
     let field = |name: &str| {
@@ -693,7 +693,7 @@ fn save_blocking(
         if !clear && value.is_none() {
             continue;
         }
-        let Some(store) = &store else {
+        let Some(store) = store else {
             problems.push(format!("{name} wasn't saved: the keychain isn't available"));
             continue;
         };
@@ -725,7 +725,7 @@ mod tests {
     fn the_catalogue_is_consistent() {
         let names: Vec<&str> = settings().map(|s| s.name).collect();
         let mut unique = names.clone();
-        unique.sort();
+        unique.sort_unstable();
         unique.dedup();
         assert_eq!(names.len(), unique.len(), "no setting is listed twice");
         assert!(names.iter().all(|n| omnimem_core::env::is_setting_name(n)));

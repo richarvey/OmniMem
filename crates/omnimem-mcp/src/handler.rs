@@ -15,7 +15,14 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::args::*;
+use crate::args::{
+    Archive, Bless, Briefing, BulkProject, CheckContradictions, CompileProject, CompileSkill,
+    Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, FindDuplicates, FindSkills, Forget,
+    GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs, OptionalProject,
+    ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex, RecentKnowledge,
+    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, SetLicence,
+    SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
+};
 use crate::descriptions as d;
 
 /// 6.x's `meta:tool_metrics:{tool}` counters.
@@ -28,7 +35,7 @@ fn schema<T: JsonSchema>() -> Arc<JsonObject> {
             object.remove("$schema");
             object.remove("title");
             if !object.contains_key("properties") {
-                object.insert("properties".into(), Value::Object(Default::default()));
+                object.insert("properties".into(), Value::Object(JsonObject::new()));
             }
             Arc::new(object)
         }
@@ -446,7 +453,7 @@ fn record_metrics(engine: &Engine, tool: &str, started: Instant, response_chars:
     let now = omnimem_engine::pyfmt::now_str();
     let _ = store.hash_set(
         &key,
-        &[("last_called_at".to_owned(), now)].into_iter().collect(),
+        &omnimem_store::Fields::from([("last_called_at".to_owned(), now)]),
     );
 }
 

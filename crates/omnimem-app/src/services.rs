@@ -47,8 +47,10 @@ pub fn feeds_path(db: &Path) -> PathBuf {
     RssConfig::from_env(data_dir(db).join("feeds.yml")).feeds_path
 }
 
-/// The desktop app's data folder: `%APPDATA%\squarecows\OmniMem\data` on
-/// Windows, `~/Library/Application Support/com.squarecows.OmniMem` on macOS,
+/// The desktop app's data folder.
+///
+/// `%APPDATA%\squarecows\OmniMem\data` on Windows,
+/// `~/Library/Application Support/com.squarecows.OmniMem` on macOS,
 /// `$XDG_DATA_HOME/omnimem` on Linux (inside a Flatpak, the app's own).
 pub fn default_data_dir() -> Result<PathBuf> {
     directories::ProjectDirs::from("com", "squarecows", "OmniMem")

@@ -17,6 +17,8 @@
 //! right for prose and would be wrong for content where indentation or
 //! trailing space carries meaning; leading indentation is preserved.
 
+use std::fmt::Write as _;
+
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
@@ -47,7 +49,8 @@ pub fn content_hash(content: &str) -> String {
     let mut out = String::with_capacity(HASH_PREFIX.len() + digest.len() * 2);
     out.push_str(HASH_PREFIX);
     for byte in &digest {
-        out.push_str(&format!("{byte:02x}"));
+        // Writing into a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
     }
     out
 }

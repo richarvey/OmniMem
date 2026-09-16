@@ -1,5 +1,6 @@
 //! Feed ingestion and the scheduler (`rss_worker/ingester.py`, `worker.py`).
 
+use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,11 +72,14 @@ fn feed_topics(feed: &Map<String, Value>) -> Value {
 
 /// The first 16 hex characters of the URL's sha256: an article's key.
 pub fn url_hash(url: &str) -> String {
-    Sha256::digest(url.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>()[..16]
-        .to_owned()
+    let digest = Sha256::digest(url.as_bytes());
+    let mut out = String::with_capacity(16);
+    // Sixteen hex characters is the first eight bytes; writing into a
+    // String cannot fail.
+    for byte in &digest[..8] {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 pub fn format_item(item: &DigestItem) -> String {
@@ -379,7 +383,7 @@ impl Ingester {
             }
             if digest {
                 if let Some(items) = self.digest_articles(entry, &link) {
-                    articles.extend(items)
+                    articles.extend(items);
                 } else {
                     info!(
                         title = entry_title(entry),
@@ -407,6 +411,9 @@ impl Ingester {
 
         let now = now_secs();
         let created = py_float(now);
+        // Not `mul_add`: it rounds once where this rounds twice, and the
+        // stored expiry has to match 6.x's `now + days * 86400` exactly.
+        #[allow(clippy::suboptimal_flops)]
         let expires = py_float(now + self.config.max_knowledge_age_days as f64 * 86_400.0);
         let topics_json = py_json(&topics);
         for chunk in articles.chunks(EMBED_CHUNK) {
@@ -516,7 +523,7 @@ impl Ingester {
                 .ok_or_else(|| "feed entry is not a mapping".to_owned())
                 .and_then(|f| {
                     catch_unwind(AssertUnwindSafe(|| self.ingest_feed(f))).unwrap_or_else(
-                        |payload| Err(format!("ingest panicked: {}", panic_message(&payload))),
+                        |payload| Err(format!("ingest panicked: {}", panic_message(&*payload))),
                     )
                 });
             match result {
