@@ -27,9 +27,10 @@
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <meta name="twitter:image:alt" content="OmniMem: persistent semantic memory for AI coding agents.">
   <meta name="twitter:site" content="@Ric">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="favicon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <style>@font-face {
   font-family: 'Ubuntu';
@@ -106,6 +107,8 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   .omm-header-bar{display:flex;align-items:center;justify-content:space-between;gap:24px;height:62px;padding:0 28px;transition:height .25s ease-out,padding .25s ease-out}
   .omm-wordmark,.omm-wordmark:hover{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:16px;color:#e7e9ec;letter-spacing:-.02em;display:flex;align-items:center;flex:0 0 auto}
   .omm-wordmark-bracket{color:#63bd85}
+  .omm-wordmark img{height:28px;width:auto;display:block}
+  .omm-footer-wordmark img{height:32px;width:auto;display:block}
   .omm-header-links{flex:1 1 0%;min-width:0;display:flex;gap:2px;align-items:center;justify-content:center}
   .omm-nav-link{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#969ca5;padding:7px 10px;border-radius:6px;white-space:nowrap;transition:color .15s,background-color .15s}
   .omm-nav-link:hover{color:#e7e9ec;background:#16191e}
@@ -315,8 +318,8 @@ section[data-screen-label="Works with"] [style*="width: 1px"]{display:none!impor
 
 <div id="dc-root"><div class="sc-host" data-sc-name="index"><div style="min-height: 100vh; background: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.024) 1px, transparent 0px) 0% 0% / 44px 44px rgb(11, 12, 14);"><header class="omm-header" data-screen-label="Nav" data-scrolled="false" data-open="false">
   <nav class="omm-header-bar" aria-label="Main">
-    <a href="#top" class="omm-wordmark">
-      <span class="omm-wordmark-bracket">&lt;</span><span>OmniMem</span><span class="omm-wordmark-bracket">&gt;</span>
+    <a href="#top" class="omm-wordmark" aria-label="OmniMem, back to top">
+      <img src="images/omnimem-logo-horizontal-dark.png" alt="OmniMem" width="143" height="28" decoding="async">
     </a>
     <div class="omm-header-links">
       <a data-spy="problem" href="#problem" class="omm-nav-link">Why</a>
@@ -914,7 +917,7 @@ cp .env.example .env
   <div class="omm-footer-glow" aria-hidden="true"></div>
   <div class="omm-footer-grid">
     <div class="omm-footer-brand omm-reveal" style="--delay: 0.1s;">
-      <div class="omm-footer-wordmark"><span class="omm-wordmark-bracket">&lt;</span>OmniMem<span class="omm-wordmark-bracket">&gt;</span></div>
+      <div class="omm-footer-wordmark"><img src="images/omnimem-logo-horizontal-dark.png" alt="OmniMem" width="163" height="32" loading="lazy" decoding="async"></div>
       <p class="omm-footer-blurb">MIT Licensed. Built with <svg class="omm-footer-heart" viewBox="0 0 512 512" role="img" aria-label="love"><title>love</title><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path fill="currentColor" d="M241 87.1l15 20.7 15-20.7C296 52.5 336.2 32 378.9 32 452.4 32 512 91.6 512 165.1l0 2.6c0 112.2-139.9 242.5-212.9 298.2-12.4 9.4-27.6 14.1-43.1 14.1s-30.8-4.6-43.1-14.1C139.9 410.2 0 279.9 0 167.7l0-2.6C0 91.6 59.6 32 133.1 32 175.8 32 216 52.5 241 87.1z"></path></svg> by <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a>.</p>
       <a href="https://squarecows.com" class="omm-footer-logo"><img src="icons/squarecows-logo.png" alt="SquareCows Ltd" width="89" height="28" loading="lazy" decoding="async"></a>    </div>
     <div class="omm-footer-sections">
