@@ -74,7 +74,7 @@ impl MemoryState {
     }
 
     fn allowed(self) -> &'static [Self] {
-        use MemoryState::*;
+        use MemoryState::{Active, Archived, Deleted, Deprioritised};
         match self {
             Active => &[Deprioritised, Archived, Deleted],
             Deprioritised => &[Active, Archived, Deleted],
