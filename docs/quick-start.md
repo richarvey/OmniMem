@@ -82,7 +82,13 @@ Binding to `0.0.0.0` inside the container means OmniMem won't start without a to
 
 ## Build from source
 
-This is how you run 7.0 today. You'll need Rust 1.94 or newer ([rustup](https://rustup.rs) is easiest) and a C toolchain.
+This is how you run 7.0 today. You'll need Rust 1.94 or newer ([rustup](https://rustup.rs) is easiest) and a C toolchain. On a Mac that's Xcode's command line tools:
+
+```bash
+xcode-select --install
+```
+
+Then:
 
 ```bash
 git clone https://code.squarecows.com/ric/omnimem.git && cd omnimem
@@ -104,6 +110,8 @@ With no `OMNIMEM_DB` set, `serve` keeps its database at `data/omnimem.db` under 
 cargo build --release -p omnimem --features desktop
 ./target/release/omnimem            # no command runs the desktop app
 ```
+
+On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. Until 7.0.0 ships, that build has had far less exercise than the Linux one, so if it misbehaves, an issue with the error text is welcome.
 
 On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
 
