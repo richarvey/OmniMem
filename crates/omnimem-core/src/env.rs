@@ -116,6 +116,11 @@ pub fn render_settings(values: &BTreeMap<String, String>) -> String {
          # An environment variable of the same name takes precedence.\n",
     );
     for (name, value) in values {
+        // The file is read a line at a time, so a value holding a line break
+        // would come back as two settings. Control characters are dropped
+        // here rather than trusted to every caller's validation.
+        let cleaned: String = value.chars().filter(|c| !c.is_control()).collect();
+        let value = &cleaned;
         let plain = !value.is_empty()
             && value
                 .chars()

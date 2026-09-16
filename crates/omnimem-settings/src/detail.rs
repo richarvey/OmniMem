@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use crate::PanelState;
 use crate::choices::{LICENCE_CHOICES, PROVENANCE_CHOICES, licence_label, provenance_label};
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{blocking, is_web_url, quote, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
@@ -89,6 +89,8 @@ pub(crate) async fn handler(
         "reinstate_hints": json_list(data.get("reinstate_hints")),
         "deprioritised_reason": text("deprioritised_reason"),
         "source_url": text("source_url"),
+        // Linked only when it is a web address; anything else is shown as text.
+        "source_is_web": is_web_url(&text("source_url")),
         "feed_name": text("feed_name"),
         "licence_label": licence_label(&licence),
         "licence": licence,

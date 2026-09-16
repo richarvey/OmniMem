@@ -59,6 +59,8 @@ pub(crate) fn environment() -> Environment<'static> {
     minijinja_contrib::add_to_environment(&mut env);
     env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
     env.add_filter("thousands", thousands);
+    // For a value going into a query string, before HTML escaping.
+    env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
     env.add_global("version", env!("CARGO_PKG_VERSION"));
     for (name, source) in TEMPLATES {
         env.add_template(name, source)
@@ -127,5 +129,80 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(env.templates().count(), TEMPLATES.len());
+    }
+
+    #[test]
+    fn query_values_are_percent_encoded_by_the_filter() {
+        let mut env = environment();
+        env.add_template("t", "?project={{ v | urlquote }}")
+            .unwrap();
+        let rendered = env
+            .get_template("t")
+            .unwrap()
+            .render(minijinja::context! { v => "a b&c=<d>" })
+            .unwrap();
+        assert_eq!(rendered, "?project=a%20b%26c%3D%3Cd%3E");
+    }
+
+    /// Where `<script` or an `on...=` attribute starts in `source`, if
+    /// anywhere: the two places a template value would run as code, whatever
+    /// the HTML escaping did to it. `<script src=` is a file, not code.
+    fn inline_script_or_handler(source: &str) -> Option<&str> {
+        let lower = source.to_ascii_lowercase();
+        for (at, _) in lower.match_indices("<script") {
+            let tag = &lower[at..lower[at..].find('>').map_or(lower.len(), |end| at + end)];
+            if !tag.contains(" src=") {
+                return Some(&source[at..]);
+            }
+        }
+        if let Some(at) = lower.find("javascript:") {
+            return Some(&source[at..]);
+        }
+        // An attribute name starting `on` followed by letters and `=`.
+        for (at, _) in lower.match_indices(" on") {
+            let rest = &lower[at + 3..];
+            let letters = rest.len()
+                - rest
+                    .trim_start_matches(|c: char| c.is_ascii_lowercase())
+                    .len();
+            if letters > 0 && rest[letters..].starts_with('=') {
+                return Some(&source[at..]);
+            }
+        }
+        None
+    }
+
+    /// The panel's Content Security Policy allows no inline script, so a
+    /// template value can never be parsed as code. This keeps it that way:
+    /// every handler lives in `static/panel.js` and reads data attributes.
+    #[test]
+    fn no_template_carries_inline_script_or_handlers() {
+        for (name, source) in TEMPLATES {
+            if let Some(found) = inline_script_or_handler(source) {
+                let excerpt: String = found.chars().take(80).collect();
+                panic!("{name} has inline script or a handler: {excerpt}");
+            }
+        }
+        assert!(inline_script_or_handler(r#"<form onsubmit="return confirm('x')">"#).is_some());
+        assert!(inline_script_or_handler("<SCRIPT>alert(1)</SCRIPT>").is_some());
+        assert!(inline_script_or_handler(r#"<a href="javascript:alert(1)">"#).is_some());
+        assert!(inline_script_or_handler(r#"<script src="/static/panel.js"></script>"#).is_none());
+        assert!(inline_script_or_handler(r#"<button data-confirm="Delete on Monday?">"#).is_none());
+    }
+
+    #[test]
+    fn the_base_template_sets_the_content_security_policy() {
+        let env = environment();
+        let html = env
+            .get_template("base.html")
+            .unwrap()
+            .render(minijinja::context! { current_page => "" })
+            .unwrap();
+        assert!(
+            html.contains(r#"http-equiv="Content-Security-Policy""#),
+            "{html}"
+        );
+        assert!(html.contains("script-src 'self';"), "{html}");
+        assert!(!html.contains("'unsafe-eval'"), "{html}");
     }
 }

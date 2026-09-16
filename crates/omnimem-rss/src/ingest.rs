@@ -1,5 +1,6 @@
 //! Feed ingestion and the scheduler (`rss_worker/ingester.py`, `worker.py`).
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
@@ -20,23 +21,52 @@ use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
 use crate::RssConfig;
-use crate::fetch::Fetcher;
+use crate::fetch::{Fetcher, strip_markup};
 use crate::summariser::{DigestItem, extract_items, summarise};
 
 /// Below this many characters a digest entry is a teaser: fetch the page.
 const MIN_CONTENT_LENGTH: usize = 500;
 const EMBED_CHUNK: usize = 32;
+/// The most a stored article's content may hold. This is the engine's
+/// `MAX_CONTENT_LENGTH` for `remember`; the constant is private to its
+/// tools module, so it is repeated here rather than exposed for one use.
+const MAX_CONTENT_CHARS: usize = 50_000;
+/// Titles come from the feed body, so they are stripped and capped.
+const MAX_TITLE_CHARS: usize = 500;
+/// A feed's name and each of its topics, from `feeds.yml`.
+const MAX_LABEL_CHARS: usize = 200;
+const MAX_TOPICS: usize = 50;
 
 static PROJECT_SAFE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_\-. ]+$").expect("valid"));
-static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").expect("valid"));
-static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("valid"));
 
+/// Plain text from feed HTML: script, style and comment blocks dropped,
+/// tags removed, entities decoded and whitespace collapsed.
 pub fn strip_html(text: &str) -> String {
-    WHITESPACE
-        .replace_all(&TAG.replace_all(text, ""), " ")
-        .trim()
-        .to_owned()
+    strip_markup(text, "")
+}
+
+/// The feed's display name: `name`, else its URL, capped.
+fn feed_name(feed: &Map<String, Value>, url: &str) -> String {
+    let name = feed.get("name").map_or_else(|| url.to_owned(), py_str);
+    take_chars(&name, MAX_LABEL_CHARS)
+}
+
+/// The feed's topics as stored: at most `MAX_TOPICS` entries, each string
+/// capped. Anything that isn't a list is dropped rather than stored as is.
+fn feed_topics(feed: &Map<String, Value>) -> Value {
+    let topics = feed
+        .get("topics")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(MAX_TOPICS)
+        .map(|t| match t {
+            Value::String(s) => Value::String(take_chars(s, MAX_LABEL_CHARS)),
+            other => Value::String(take_chars(&py_str(other), MAX_LABEL_CHARS)),
+        })
+        .collect();
+    Value::Array(topics)
 }
 
 /// The first 16 hex characters of the URL's sha256: an article's key.
@@ -55,11 +85,19 @@ pub fn format_item(item: &DigestItem) -> String {
     )
 }
 
+/// The entry's title as text: markup stripped and capped, `Untitled` when
+/// the feed gives none (or nothing but markup).
 fn entry_title(entry: &Entry) -> String {
-    entry
+    let title = entry
         .title
         .as_ref()
-        .map_or_else(|| "Untitled".to_owned(), |t| t.content.clone())
+        .map(|t| take_chars(&strip_html(&t.content), MAX_TITLE_CHARS))
+        .unwrap_or_default();
+    if title.is_empty() {
+        "Untitled".to_owned()
+    } else {
+        title
+    }
 }
 
 /// feedparser's `link`: the alternate link, else the first.
@@ -95,6 +133,15 @@ fn published_at(entry: &Entry) -> String {
         .and_then(|t| Local.from_local_datetime(&t.naive_utc()).earliest())
         .map(|t| py_float(t.timestamp() as f64))
         .unwrap_or_default()
+}
+
+/// The text of a panic payload, for the log line.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+        .unwrap_or_else(|| "non-string panic payload".to_owned())
 }
 
 fn mtime(path: &Path) -> f64 {
@@ -135,6 +182,20 @@ struct NewArticle {
     published_at: String,
 }
 
+impl NewArticle {
+    /// Title and content capped: the summary is model output or page text,
+    /// and either could run past what the store should hold.
+    fn new(key: String, title: &str, summary: &str, url: &str, published_at: String) -> Self {
+        Self {
+            key,
+            title: take_chars(title, MAX_TITLE_CHARS),
+            summary: take_chars(summary, MAX_CONTENT_CHARS),
+            url: url.to_owned(),
+            published_at,
+        }
+    }
+}
+
 pub struct Ingester {
     engine: Arc<Engine>,
     config: RssConfig,
@@ -143,7 +204,8 @@ pub struct Ingester {
 
 impl Ingester {
     pub fn new(engine: Arc<Engine>, config: RssConfig) -> Result<Self, String> {
-        let fetcher = Fetcher::new(config.max_page_bytes)?;
+        let fetcher =
+            Fetcher::with_private_hosts(config.max_page_bytes, config.allow_private_hosts)?;
         Ok(Self {
             engine,
             config,
@@ -249,12 +311,14 @@ impl Ingester {
             items
                 .iter()
                 .enumerate()
-                .map(|(i, item)| NewArticle {
-                    key: format!("mem:knowledge:{}", url_hash(&format!("{url}:{i}"))),
-                    title: item.title.clone(),
-                    summary: format_item(item),
-                    url: url.to_owned(),
-                    published_at: published_at.clone(),
+                .map(|(i, item)| {
+                    NewArticle::new(
+                        format!("mem:knowledge:{}", url_hash(&format!("{url}:{i}"))),
+                        &item.title,
+                        &format_item(item),
+                        url,
+                        published_at.clone(),
+                    )
                 })
                 .collect(),
         )
@@ -267,8 +331,8 @@ impl Ingester {
             None | Some(Value::Null) => return Err("feed has no url".to_owned()),
             Some(url) => py_str(url),
         };
-        let name = feed.get("name").map_or_else(|| url.clone(), py_str);
-        let topics = feed.get("topics").cloned().unwrap_or_else(|| json!([]));
+        let name = feed_name(feed, &url);
+        let topics = feed_topics(feed);
         let digest = feed.get("mode").map(py_str).as_deref() == Some("digest");
         let project = Self::project(feed, &name);
         let mut stats = FeedStats::default();
@@ -333,13 +397,13 @@ impl Ingester {
                 stats.skipped += 1;
                 continue;
             };
-            articles.push(NewArticle {
-                key: dedup_key,
-                title,
-                summary,
-                url: link,
-                published_at: published_at(entry),
-            });
+            articles.push(NewArticle::new(
+                dedup_key,
+                &title,
+                &summary,
+                &link,
+                published_at(entry),
+            ));
         }
 
         let now = now_secs();
@@ -393,14 +457,26 @@ impl Ingester {
         Ok(stats)
     }
 
+    /// The `feeds:` list, with each entry's name and topics capped so the
+    /// influence mirror and every article store the same bounded values.
     fn load_feeds(&self) -> Result<Vec<Value>, String> {
         let text = std::fs::read_to_string(&self.config.feeds_path).map_err(|e| e.to_string())?;
         let config: Value = serde_yaml_ng::from_str(&text).map_err(|e| e.to_string())?;
-        Ok(config
+        let mut feeds = config
             .get("feeds")
             .and_then(Value::as_array)
             .cloned()
-            .unwrap_or_default())
+            .unwrap_or_default();
+        for feed in feeds.iter_mut().filter_map(Value::as_object_mut) {
+            if let Some(name) = feed.get("name").map(py_str) {
+                feed.insert("name".to_owned(), json!(take_chars(&name, MAX_LABEL_CHARS)));
+            }
+            if feed.contains_key("topics") {
+                let topics = feed_topics(feed);
+                feed.insert("topics".to_owned(), topics);
+            }
+        }
+        Ok(feeds)
     }
 
     /// One cycle over every feed.
@@ -433,10 +509,17 @@ impl Ingester {
                 info!("stopping the RSS cycle between feeds");
                 break;
             }
+            // A panic in one feed (a parser edge case, a bad model reply)
+            // must not take the scheduler thread down with it, so it is
+            // caught and counted as that feed's error.
             let result = feed
                 .as_object()
                 .ok_or_else(|| "feed entry is not a mapping".to_owned())
-                .and_then(|f| self.ingest_feed(f));
+                .and_then(|f| {
+                    catch_unwind(AssertUnwindSafe(|| self.ingest_feed(f))).unwrap_or_else(
+                        |payload| Err(format!("ingest panicked: {}", panic_message(&payload))),
+                    )
+                });
             match result {
                 Ok(stats) => total.add(stats),
                 Err(e) => {
@@ -479,7 +562,7 @@ impl Ingester {
                 problems.push(json!({"feed": feed.get("name").map(py_str), "problem": "no url"}));
                 continue;
             };
-            let name = feed.get("name").map_or_else(|| url.clone(), py_str);
+            let name = feed_name(feed, &url);
             if self.licence(feed, &name).is_none() {
                 problems.push(json!({"feed": name, "problem": "refused: no usable licence"}));
                 continue;
@@ -527,14 +610,21 @@ impl Ingester {
         info!(path = %path.display(), "RSS scheduler started");
         let mut last_mtime = mtime(&path);
         self.ingest_all_until(stop);
-        let mut next_run = Instant::now() + self.config.schedule;
+        // `None` when there is no schedule, or when adding it to the clock
+        // would overflow (a schedule too far out to ever fire).
+        let next_after = |now: Instant| {
+            (!self.config.schedule.is_zero())
+                .then(|| now.checked_add(self.config.schedule))
+                .flatten()
+        };
+        let mut next_run = next_after(Instant::now());
         let mut last_check = Instant::now();
         while !stop.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_millis(100));
-            if !self.config.schedule.is_zero() && Instant::now() >= next_run {
+            if next_run.is_some_and(|due| Instant::now() >= due) {
                 info!("starting scheduled RSS ingestion");
                 self.ingest_all_until(stop);
-                next_run = Instant::now() + self.config.schedule;
+                next_run = next_after(Instant::now());
                 continue;
             }
             if last_check.elapsed() >= self.config.watch_interval {
@@ -561,6 +651,85 @@ mod tests {
             strip_html("<p>Hello <b>world</b></p>\n\n  x "),
             "Hello world x"
         );
+    }
+
+    #[test]
+    fn html_stripping_drops_script_style_and_comment_contents() {
+        assert_eq!(
+            strip_html("<SCRIPT>var s = 1;</SCRIPT><style>p{}</style><!-- c -->A &amp; B"),
+            "A & B"
+        );
+    }
+
+    /// The one entry of an RSS document whose item title is `title`.
+    fn titled(title: &str) -> Entry {
+        let doc = format!(
+            "<rss version=\"2.0\"><channel><title>F</title><item><title><![CDATA[{title}]]></title>\
+             </item></channel></rss>"
+        );
+        feed_rs::parser::parse(doc.as_bytes())
+            .unwrap()
+            .entries
+            .remove(0)
+    }
+
+    #[test]
+    fn titles_are_stripped_and_capped() {
+        assert_eq!(
+            entry_title(&titled("<b>Bold</b> &amp; plain")),
+            "Bold & plain"
+        );
+        assert_eq!(entry_title(&titled("<script>x</script>")), "Untitled");
+        assert_eq!(entry_title(&Entry::default()), "Untitled");
+        let long = "é".repeat(MAX_TITLE_CHARS + 10);
+        assert_eq!(entry_title(&titled(&long)).chars().count(), MAX_TITLE_CHARS);
+    }
+
+    #[test]
+    fn feed_labels_are_capped() {
+        let feed = json!({
+            "name": "n".repeat(300),
+            "topics": ["t".repeat(300), 7, {"x": 1}],
+        });
+        let feed = feed.as_object().unwrap();
+        assert_eq!(feed_name(feed, "u").chars().count(), MAX_LABEL_CHARS);
+        let topics = feed_topics(feed);
+        let topics = topics.as_array().unwrap();
+        assert_eq!(topics.len(), 3);
+        assert_eq!(topics[0].as_str().unwrap().chars().count(), MAX_LABEL_CHARS);
+        assert_eq!(topics[1], json!("7"));
+        let many: Vec<Value> = (0..100).map(|i| json!(i.to_string())).collect();
+        let feed = json!({"topics": many});
+        assert_eq!(
+            feed_topics(feed.as_object().unwrap())
+                .as_array()
+                .unwrap()
+                .len(),
+            MAX_TOPICS
+        );
+        let none = json!({"name": "x", "topics": "not a list"});
+        assert_eq!(feed_topics(none.as_object().unwrap()), json!([]));
+    }
+
+    #[test]
+    fn stored_content_is_capped() {
+        let article = NewArticle::new(
+            "k".into(),
+            &"t".repeat(1000),
+            &"c".repeat(MAX_CONTENT_CHARS + 5),
+            "u",
+            String::new(),
+        );
+        assert_eq!(article.title.chars().count(), MAX_TITLE_CHARS);
+        assert_eq!(article.summary.chars().count(), MAX_CONTENT_CHARS);
+    }
+
+    #[test]
+    fn panic_payloads_read_as_text() {
+        let payload = catch_unwind(|| panic!("boom {}", 1)).unwrap_err();
+        assert_eq!(panic_message(&*payload), "boom 1");
+        let payload = catch_unwind(|| std::panic::panic_any(7u8)).unwrap_err();
+        assert_eq!(panic_message(&*payload), "non-string panic payload");
     }
 
     #[test]

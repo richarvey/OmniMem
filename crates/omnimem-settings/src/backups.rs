@@ -6,6 +6,8 @@
 //! it brings back. Downloads are saved into the Downloads folder.
 
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 
 use axum::extract::{Multipart, Path, Query, State};
@@ -159,12 +161,29 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
         return with_message(true, "File is not valid JSON");
     }
     let path = dir.join(&safe);
-    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &data)) {
-        error!(error = %e, "backup upload failed");
-        return with_message(true, &format!("Upload failed: {e}"));
+    // `create_new` claims the name and writes in one step, so an upload can
+    // never replace a backup that is already there.
+    let written = std::fs::create_dir_all(&dir).and_then(|()| {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .and_then(|mut file| file.write_all(&data))
+    });
+    match written {
+        Ok(()) => {
+            info!(file = safe, bytes = data.len(), "uploaded a backup");
+            with_message(false, &format!("Uploaded {safe}"))
+        }
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => with_message(
+            true,
+            &format!("A backup named {safe} already exists. Rename the file and upload it again."),
+        ),
+        Err(e) => {
+            error!(error = %e, "backup upload failed");
+            with_message(true, &format!("Upload failed: {e}"))
+        }
     }
-    info!(file = safe, bytes = data.len(), "uploaded a backup");
-    with_message(false, &format!("Uploaded {safe}"))
 }
 
 fn plain(status: StatusCode, text: &'static str) -> Response {

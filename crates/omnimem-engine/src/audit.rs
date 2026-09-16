@@ -269,9 +269,12 @@ impl Engine {
         Ok(compact(m))
     }
 
-    /// Rebuild the in-memory vector matrix from the database. There is no
-    /// separate index to fall out of step any more, so nothing is ever
-    /// "phantom"; the shape of 6.x's report is kept.
+    /// Rebuild the in-memory vector matrix from the database, then embed
+    /// any memory that has no vector: what a restore cut short, or an
+    /// `import --no-embed`, leaves unsearchable, and nothing else would
+    /// ever go back for. There is no separate index to fall out of step any
+    /// more, so nothing is ever "phantom"; the shape of 6.x's report is
+    /// kept, with `embedded` and `unembeddable` added.
     pub fn reindex(&self, namespace: Option<&str>) -> Result<Value> {
         let namespace = namespace.filter(|n| !n.is_empty());
         if let Some(ns) = namespace
@@ -285,22 +288,48 @@ impl Engine {
             )));
         }
         let report = self.store.reload_vectors()?;
-        let counts = self.store.count_all_records()?;
         let targets: Vec<&str> = namespace.map_or_else(|| REINDEX_ORDER.to_vec(), |n| vec![n]);
+        let vectorless: Vec<String> = self
+            .store
+            .memories_without_vectors()?
+            .into_iter()
+            .filter(|key| {
+                targets
+                    .iter()
+                    .any(|ns| key.starts_with(&format!("mem:{ns}:")))
+            })
+            .collect();
+        let (embedded, unembeddable) =
+            self.store
+                .embed_memories(&vectorless, self.embedder.as_ref(), &mut |_, _| {})?;
+        if embedded > 0 {
+            tracing::info!(
+                embedded,
+                unembeddable,
+                "reindex embedded vectorless memories"
+            );
+        }
+        let counts = self.store.count_all_records()?;
         let results: Vec<Value> = targets
             .iter()
             .filter_map(|ns| ns.parse::<Namespace>().ok())
             .map(|ns| {
-                let (before, after) = report[&ns];
+                let (before, _) = report[&ns];
                 json!({
                     "namespace": ns.as_str(),
                     "before_num_docs": before,
-                    "after_num_docs": after,
+                    "after_num_docs": self.store.vector_count(ns),
                     "actual_records": counts[&ns],
                     "removed_phantoms": 0,
                 })
             })
             .collect();
-        Ok(json!({"status": "ok", "reindexed": results, "total_phantoms_removed": 0}))
+        Ok(json!({
+            "status": "ok",
+            "reindexed": results,
+            "total_phantoms_removed": 0,
+            "embedded": embedded,
+            "unembeddable": unembeddable,
+        }))
     }
 }

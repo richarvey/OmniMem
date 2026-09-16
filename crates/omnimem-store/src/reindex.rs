@@ -19,11 +19,13 @@ impl Store {
             .iter()
             .map(|ns| (*ns, self.vector_count(*ns)))
             .collect();
-        let index = {
+        {
+            // The connection stays held until the swap, so no write commits
+            // between reading the table and replacing the matrix.
             let conn = self.conn();
-            VectorIndex::load(&conn, self.dimension())?
-        };
-        *self.vectors_write() = index;
+            let index = VectorIndex::load(&conn, self.dimension())?;
+            *self.vectors_write() = index;
+        }
         Ok(Namespace::ALL
             .iter()
             .map(|ns| (*ns, (before[ns], self.vector_count(*ns))))

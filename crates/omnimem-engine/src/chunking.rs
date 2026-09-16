@@ -10,6 +10,9 @@ use crate::error::invalid;
 pub const VALID_STRATEGIES: [&str; 4] = ["fixed_tokens", "paragraphs", "sentences", "turn_pairs"];
 
 const DEFAULT_FIXED_TOKEN_SIZE: usize = 200;
+/// Below this a document shatters into hundreds of near-empty chunks, each
+/// embedded and stored on its own.
+pub const MIN_FIXED_TOKEN_SIZE: usize = 20;
 const DEFAULT_FIXED_TOKEN_OVERLAP: f64 = 0.1;
 
 static TURN_RE: LazyLock<Regex> =
@@ -148,8 +151,10 @@ pub fn chunk_fixed_tokens(content: &str, chunk_size: Option<i64>) -> Result<Vec<
         None | Some(0) => DEFAULT_FIXED_TOKEN_SIZE as i64,
         Some(n) => n,
     };
-    if size < 1 {
-        return Err(invalid("chunk_size must be >= 1"));
+    if size < MIN_FIXED_TOKEN_SIZE as i64 {
+        return Err(invalid(format!(
+            "chunk_size must be >= {MIN_FIXED_TOKEN_SIZE}"
+        )));
     }
     let size = size as usize;
     let words: Vec<&str> = content.split_whitespace().collect();
@@ -225,18 +230,33 @@ mod tests {
 
     #[test]
     fn fixed_tokens_overlap() {
-        let text = (1..=25)
+        let text = (1..=50)
             .map(|n| n.to_string())
             .collect::<Vec<_>>()
             .join(" ");
-        let chunks = chunk_fixed_tokens(&text, Some(10)).unwrap();
+        let chunks = chunk_fixed_tokens(&text, Some(20)).unwrap();
         assert_eq!(chunks.len(), 3);
-        assert!(chunks[0].starts_with("1 ") && chunks[0].ends_with(" 10"));
+        assert!(chunks[0].starts_with("1 ") && chunks[0].ends_with(" 20"));
         assert!(
-            chunks[1].starts_with("10 "),
-            "step 9 keeps a one-word overlap"
+            chunks[1].starts_with("19 20 21 "),
+            "step 18 keeps a two-word overlap"
         );
         assert!(chunk_fixed_tokens("x", Some(-1)).is_err());
         assert!(chunk("x", "chapters", None).is_err());
+    }
+
+    #[test]
+    fn fixed_tokens_refuse_tiny_windows() {
+        let message = chunk_fixed_tokens("a b c", Some(1))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(message, "chunk_size must be >= 20");
+        assert!(chunk_fixed_tokens("a b c", Some(19)).is_err());
+        assert_eq!(chunk_fixed_tokens("a b c", Some(20)).unwrap(), ["a b c"]);
+        assert_eq!(
+            chunk_fixed_tokens("a b c", None).unwrap(),
+            ["a b c"],
+            "unset means the default window"
+        );
     }
 }

@@ -122,6 +122,10 @@ impl Store {
         &self.origin_id
     }
 
+    // Lock order: the connection first, then the vector matrix, never the
+    // other way round. A writer takes the matrix lock before committing and
+    // keeps it until the matrix matches the rows, so a delete can't land
+    // between a row's commit and its vector's insertion and leave a phantom.
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
     }
@@ -160,10 +164,12 @@ impl Store {
         if let Some(v) = vector {
             write_vector(&tx, key, v)?;
         }
+        // The matrix lock is taken before the commit so no delete can slip
+        // between the row landing and the matrix learning of it.
+        let mut index = self.vectors_write();
         tx.commit()?;
-        drop(conn);
         if let Some(v) = vector {
-            self.vectors_write().insert(namespace, key, v);
+            index.insert(namespace, key, v);
         }
         Ok(())
     }
@@ -172,14 +178,30 @@ impl Store {
     pub fn set_vector(&self, key: &str, vector: &[f32]) -> Result<bool> {
         let namespace = memory_namespace(key)?;
         self.check_dim(vector)?;
-        let conn = self.conn();
+        let mut conn = self.conn();
         if load_fields(&conn, key)?.is_none() {
             return Ok(false);
         }
-        write_vector(&conn, key, vector)?;
-        drop(conn);
-        self.vectors_write().insert(namespace, key, vector);
+        let tx = conn.transaction()?;
+        write_vector(&tx, key, vector)?;
+        let mut index = self.vectors_write();
+        tx.commit()?;
+        index.insert(namespace, key, vector);
         Ok(true)
+    }
+
+    /// Memories with no stored vector: what a restore that failed part way
+    /// through re-embedding, or an import run with embedding off, leaves
+    /// unsearchable. Sorted by key.
+    pub fn memories_without_vectors(&self) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT m.key FROM memories m LEFT JOIN vectors v ON v.key = m.key
+             WHERE v.key IS NULL ORDER BY m.key",
+        )?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(StoreError::from)
     }
 
     /// All fields of a memory, or of a non-memory hash.
@@ -307,14 +329,11 @@ impl Store {
             };
             deleted += n;
         }
+        let mut index = self.vectors_write();
         tx.commit()?;
-        drop(conn);
-        if !removed_memories.is_empty() {
-            let mut index = self.vectors_write();
-            for key in &removed_memories {
-                if let Ok(ns) = memory_namespace(key) {
-                    index.remove(ns, key);
-                }
+        for key in &removed_memories {
+            if let Ok(ns) = memory_namespace(key) {
+                index.remove(ns, key);
             }
         }
         Ok(deleted)
@@ -462,12 +481,24 @@ impl Store {
 
 // -- shared row helpers ------------------------------------------------------
 
+/// The longest key the store accepts. Keys are ULIDs, project names and
+/// `mem:skill:gen:<domain>-<user>` forms, all far shorter; the cap keeps a
+/// backup or bundle from smuggling in a key the size of a record.
+pub const MAX_KEY_BYTES: usize = 512;
+
+/// A key must carry a known prefix and a non-empty id after it, with no
+/// control characters (a NUL or newline would corrupt logs and any text
+/// export) and a bounded length.
 pub(crate) fn validate_key(key: &str) -> Result<()> {
-    if VALID_KEY_PREFIXES.iter().any(|p| key.starts_with(p)) {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidKey(key.chars().take(50).collect()))
+    let invalid = || StoreError::InvalidKey(key.chars().take(50).collect());
+    let rest = VALID_KEY_PREFIXES
+        .iter()
+        .find_map(|p| key.strip_prefix(p))
+        .ok_or_else(invalid)?;
+    if rest.is_empty() || key.len() > MAX_KEY_BYTES || key.chars().any(char::is_control) {
+        return Err(invalid());
     }
+    Ok(())
 }
 
 pub(crate) fn memory_namespace(key: &str) -> Result<Namespace> {
@@ -561,4 +592,104 @@ pub(crate) fn write_vector(conn: &Connection, key: &str, vector: &[f32]) -> Resu
         params![key, to_bytes(vector)],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_need_a_prefix_an_id_and_no_control_characters() {
+        for key in [
+            "mem:episodic:01J8X0Q9Z4T5M6N7P8R9S0T1U2",
+            "mem:skill:gen:python-local",
+            "meta:tool_metrics:recall",
+            "topics:suppressed",
+            "log:recall:1700000000.5",
+        ] {
+            assert!(validate_key(key).is_ok(), "{key}");
+        }
+        for key in [
+            "",
+            "secret:x",
+            "mem:episodic:",
+            "meta:",
+            "mem:episodic:a\0b",
+            "mem:episodic:a\nb",
+            "mem:episodic:a\u{7f}",
+        ] {
+            assert!(
+                matches!(validate_key(key), Err(StoreError::InvalidKey(_))),
+                "{key:?}"
+            );
+        }
+        let long = format!("mem:episodic:{}", "a".repeat(MAX_KEY_BYTES));
+        assert!(matches!(
+            validate_key(&long),
+            Err(StoreError::InvalidKey(_))
+        ));
+        let just_fits = format!("mem:episodic:{}", "a".repeat(MAX_KEY_BYTES - 13));
+        assert_eq!(just_fits.len(), MAX_KEY_BYTES);
+        assert!(validate_key(&just_fits).is_ok());
+    }
+
+    #[test]
+    fn vectorless_memories_are_listed_until_given_a_vector() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let fields = Fields::from([("content".to_owned(), "x".to_owned())]);
+        store.upsert("mem:episodic:a", &fields, None).unwrap();
+        store
+            .upsert("mem:knowledge:b", &fields, Some(&[1.0, 0.0]))
+            .unwrap();
+        store.set_fields("mem:episodic:c", &fields).unwrap();
+        assert_eq!(
+            store.memories_without_vectors().unwrap(),
+            ["mem:episodic:a", "mem:episodic:c"]
+        );
+        assert!(store.set_vector("mem:episodic:a", &[0.0, 1.0]).unwrap());
+        assert_eq!(
+            store.memories_without_vectors().unwrap(),
+            ["mem:episodic:c"]
+        );
+    }
+
+    #[test]
+    fn rows_and_matrix_change_together_under_contention() {
+        // Writers and deleters race on the same keys; at every quiet point
+        // the matrix must hold exactly the vectors of the rows that exist.
+        let store = std::sync::Arc::new(Store::open_in_memory_with_dim(2).unwrap());
+        let fields = Fields::from([("content".to_owned(), "x".to_owned())]);
+        let keys: Vec<String> = (0..8).map(|i| format!("mem:episodic:{i}")).collect();
+        let workers: Vec<_> = (0..4)
+            .map(|w| {
+                let store = std::sync::Arc::clone(&store);
+                let keys = keys.clone();
+                let fields = fields.clone();
+                std::thread::spawn(move || {
+                    for round in 0..200 {
+                        let key = &keys[(round + w) % keys.len()];
+                        if (round + w) % 3 == 0 {
+                            store.delete(key).unwrap();
+                        } else {
+                            store.upsert(key, &fields, Some(&[1.0, 0.0])).unwrap();
+                        }
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let rows = store.scan_prefix("mem:episodic:").unwrap();
+        let with_vector = store.memories_without_vectors().unwrap();
+        assert!(
+            with_vector.is_empty(),
+            "every row was written with a vector"
+        );
+        assert_eq!(store.vector_count(Namespace::Episodic), rows.len());
+        let vectors = store.get_vectors_multi(&rows);
+        assert!(vectors.iter().all(Option::is_some));
+        let report = store.reload_vectors().unwrap();
+        assert_eq!(report[&Namespace::Episodic], (rows.len(), rows.len()));
+    }
 }

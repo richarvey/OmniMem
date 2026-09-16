@@ -1,7 +1,7 @@
 //! Project context tools and domain suggestion (`tools/project.py`, and the
 //! suggestion half of `memory/project_domains.py`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use omnimem_core::classification::{LICENCE_OWN, PROVENANCE_ASSERTED, PROVENANCE_CONCLUDED};
 use omnimem_store::{Fields, Store};
@@ -14,7 +14,9 @@ use crate::domains::{
 use crate::error::invalid;
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{compact, now_str, py_float, take_chars};
-use crate::tools::{DomainFilter, validate_project_name};
+use crate::tools::{
+    DomainFilter, MAX_LONG_TEXT, MAX_SHORT_TEXT, validate_project_name, validate_text,
+};
 use crate::{Engine, Result};
 
 const STACK_STOPWORDS: [&str; 28] = [
@@ -237,6 +239,13 @@ impl Engine {
         domains: Option<&DomainFilter>,
     ) -> Result<Value> {
         project_name(name)?;
+        validate_text("description", description, MAX_SHORT_TEXT)?;
+        validate_text("stack", stack, MAX_SHORT_TEXT)?;
+        validate_text("goals", goals, MAX_LONG_TEXT)?;
+        validate_text("current_state", current_state, MAX_LONG_TEXT)?;
+        if let Some(notes) = notes {
+            validate_text("notes", notes, MAX_LONG_TEXT)?;
+        }
         let key = format!("mem:project:{name}");
         let now = now_str();
         let vector = self.embed(&format!("{description} {goals} {current_state}"))?;
@@ -485,6 +494,10 @@ impl Engine {
         notes: Option<&str>,
     ) -> Result<Value> {
         project_name(name)?;
+        validate_text("current_state", current_state, MAX_LONG_TEXT)?;
+        if let Some(notes) = notes {
+            validate_text("notes", notes, MAX_LONG_TEXT)?;
+        }
         let key = format!("mem:project:{name}");
         if self.store.get(&key)?.is_none() {
             return Ok(json!({"status": "not_found"}));
@@ -619,6 +632,9 @@ impl Engine {
         include_context: bool,
     ) -> Result<Value> {
         project_name(name)?;
+        if let Some(reason) = reason {
+            validate_text("reason", reason, MAX_SHORT_TEXT)?;
+        }
         let (counts, total, skipped, changed) = self.bulk_transition_project(
             name,
             MemoryState::Deprioritised,
@@ -744,7 +760,7 @@ impl Engine {
         let mut tag_counts: Vec<(String, usize)> = Vec::new();
         let (mut breakthroughs, mut gotchas) = (Vec::new(), Vec::new());
         let mut abandoned: Vec<Value> = Vec::new();
-        let mut seen_abandoned: Vec<String> = Vec::new();
+        let mut seen_abandoned: HashSet<String> = HashSet::new();
 
         for (key, row) in keys.iter().zip(rows) {
             let Some(data) = row else { continue };
@@ -812,10 +828,9 @@ impl Engine {
                     else {
                         continue;
                     };
-                    if seen_abandoned.contains(&n.to_lowercase()) {
+                    if !seen_abandoned.insert(n.to_lowercase()) {
                         continue;
                     }
-                    seen_abandoned.push(n.to_lowercase());
                     abandoned.push(json!({
                         "name": n,
                         "type": a.get("type").and_then(Value::as_str).unwrap_or(""),

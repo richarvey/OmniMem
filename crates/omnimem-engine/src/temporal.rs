@@ -139,18 +139,27 @@ fn date_clamped(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
         .find_map(|d| NaiveDate::from_ymd_opt(year, month, d))
 }
 
+/// Largest count a relative expression may carry ("1000 years ago"); beyond
+/// it the phrase is not a date, and the arithmetic below stays in range.
+const MAX_SHIFT_MAGNITUDE: u64 = 1000;
+
 fn shift(now: NaiveDateTime, unit: &str, n: i64) -> Option<NaiveDateTime> {
     let unit = unit.to_lowercase();
     let magnitude = n.unsigned_abs();
+    if magnitude > MAX_SHIFT_MAGNITUDE {
+        return None;
+    }
+    let months = u32::try_from(magnitude).ok()?;
+    let years_in_months = months.checked_mul(12)?;
     match (unit.as_str(), n >= 0) {
         ("day", true) => now.checked_add_days(Days::new(magnitude)),
         ("day", false) => now.checked_sub_days(Days::new(magnitude)),
-        ("week", true) => now.checked_add_days(Days::new(magnitude * 7)),
-        ("week", false) => now.checked_sub_days(Days::new(magnitude * 7)),
-        ("month", true) => now.checked_add_months(Months::new(magnitude as u32)),
-        ("month", false) => now.checked_sub_months(Months::new(magnitude as u32)),
-        ("year", true) => now.checked_add_months(Months::new(magnitude as u32 * 12)),
-        ("year", false) => now.checked_sub_months(Months::new(magnitude as u32 * 12)),
+        ("week", true) => now.checked_add_days(Days::new(magnitude.checked_mul(7)?)),
+        ("week", false) => now.checked_sub_days(Days::new(magnitude.checked_mul(7)?)),
+        ("month", true) => now.checked_add_months(Months::new(months)),
+        ("month", false) => now.checked_sub_months(Months::new(months)),
+        ("year", true) => now.checked_add_months(Months::new(years_in_months)),
+        ("year", false) => now.checked_sub_months(Months::new(years_in_months)),
         _ => None,
     }
 }

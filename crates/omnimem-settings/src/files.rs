@@ -6,27 +6,32 @@
 //! existing file, and the page says where it went. Uploads arrive as
 //! multipart forms.
 
-use std::path::{Path, PathBuf};
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write};
+use std::path::PathBuf;
 
 use axum::extract::Multipart;
 
-/// A path in `dir` for `filename` that doesn't overwrite anything:
-/// `name.zip`, then `name (1).zip` and so on.
-pub(crate) fn free_path(dir: &Path, filename: &str) -> PathBuf {
-    let candidate = dir.join(filename);
-    if !candidate.exists() {
-        return candidate;
-    }
+/// How many `name (n).ext` variants are tried before giving up: a folder
+/// with that many copies of one download is not what anyone wants.
+const MAX_VARIANTS: usize = 1000;
+
+/// The names tried in turn for `filename`: `name.zip`, then `name (1).zip`
+/// and so on.
+fn candidate_names(filename: &str) -> impl Iterator<Item = String> + '_ {
     let (stem, ext) = filename
         .rsplit_once('.')
         .map_or((filename, String::new()), |(s, e)| (s, format!(".{e}")));
-    (1..)
-        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
-        .find(|p| !p.exists())
-        .unwrap_or(candidate)
+    std::iter::once(filename.to_owned())
+        .chain((1..MAX_VARIANTS).map(move |n| format!("{stem} ({n}){ext}")))
 }
 
 /// Save `data` into the downloads folder as `filename`, or a free variant.
+///
+/// Each name is claimed with `create_new`, which fails if anything is
+/// already there, a symlink included, so the check and the write are one
+/// step: nothing can be replaced or written through a link that appeared
+/// between looking and writing.
 pub(crate) fn save_download(
     dir: Option<PathBuf>,
     filename: &str,
@@ -35,9 +40,22 @@ pub(crate) fn save_download(
     let dir = dir.ok_or_else(|| "There is no Downloads folder to save the file in.".to_owned())?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
-    let path = free_path(&dir, filename);
-    std::fs::write(&path, data).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
-    Ok(path)
+    for name in candidate_names(filename) {
+        let path = dir.join(&name);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                file.write_all(data)
+                    .map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("Could not write {}: {e}", path.display())),
+        }
+    }
+    Err(format!(
+        "Could not find a free name for {filename} in {}.",
+        dir.display()
+    ))
 }
 
 /// The first uploaded file in the form field `name`: its filename (empty
@@ -77,7 +95,41 @@ mod tests {
         assert_eq!(first, dir.join("rust.zip"));
         assert_eq!(second, dir.join("rust (1).zip"));
         assert_eq!(std::fs::read(&first).unwrap(), b"one");
-        assert_eq!(free_path(&dir, "feeds"), dir.join("feeds"));
+        assert_eq!(
+            save_download(Some(dir.clone()), "feeds", b"x").unwrap(),
+            dir.join("feeds"),
+            "no extension, no suffix"
+        );
+        assert_eq!(
+            candidate_names("a.b.zip").nth(2).as_deref(),
+            Some("a.b (2).zip")
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A symlink at the target name is not followed: the download lands
+    /// beside it under the next free name and the link's target is untouched.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_in_the_way_is_not_written_through() {
+        let dir = std::env::temp_dir().join(format!("omnimem-files-{}", ulid::Ulid::generate()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("precious.txt");
+        std::fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, dir.join("export.json")).unwrap();
+        let dangling = dir.join("gone.json");
+        std::os::unix::fs::symlink(dir.join("nowhere"), &dangling).unwrap();
+
+        let saved = save_download(Some(dir.clone()), "export.json", b"new").unwrap();
+        assert_eq!(saved, dir.join("export (1).json"));
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep");
+        let saved = save_download(Some(dir.clone()), "gone.json", b"new").unwrap();
+        assert_eq!(
+            saved,
+            dir.join("gone (1).json"),
+            "a dangling link counts too"
+        );
+        assert!(!dir.join("nowhere").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

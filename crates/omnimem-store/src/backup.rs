@@ -3,16 +3,19 @@
 //! Import follows `restore_from_file`: hashes merge, and a record already in
 //! the store with an `updated_at` at least as new as the backup's is left
 //! alone. Then the migrations run, and every restored memory is re-embedded,
-//! because backups never carried vectors.
+//! because backups never carried vectors; so is any memory already in the
+//! store without a vector, so a restore that was cut short can be re-run.
 //!
 //! Two deliberate differences from 6.x. Recall logs keep their 30-day expiry
 //! (Python restored them with none, so an old dump resurrected them forever),
 //! and ones already past it are skipped. And every migration runs, not only
 //! licence and provenance, because importing is how a 6.x store arrives.
 
-use std::collections::BTreeMap;
-use std::fs;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use omnimem_core::TextEmbedder;
 use serde::Serialize;
@@ -54,8 +57,10 @@ pub struct ImportReport {
     pub skipped_older: usize,
     pub skipped_invalid: usize,
     pub skipped_expired: usize,
+    /// Memories given a vector: the ones restored, plus any the store
+    /// already held without one.
     pub embedded: usize,
-    /// Restored memories with no text to embed.
+    /// Memories that needed a vector but had no text to embed.
     pub not_embedded: usize,
     pub migrations: MigrationReport,
 }
@@ -70,7 +75,14 @@ pub fn read_backup(path: &Path) -> Result<BackupFile> {
     BackupFile::from_value(value)
 }
 
-/// Written beside the target and renamed into place.
+/// Distinguishes partial files written by this process in the same instant.
+static PARTIAL_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Written beside the target and renamed into place. A backup is never
+/// overwritten: a caller naming an existing file gets
+/// [`StoreError::Backup`], so a repeated name (or a request that guesses
+/// one) cannot replace the copy already on disk. The partial file has a
+/// unique name and is created exclusively, so two writers never share one.
 pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
     let body = serde_json::to_string_pretty(&json!({
         "metadata": backup.metadata,
@@ -81,12 +93,40 @@ pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
         path: path.display().to_string(),
         source,
     };
+    let exists = || StoreError::Backup(format!("{} already exists", path.display()));
+    if path.exists() {
+        return Err(exists());
+    }
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent).map_err(io)?;
     }
-    let partial = path.with_extension("json.partial");
-    fs::write(&partial, body).map_err(io)?;
-    fs::rename(&partial, path).map_err(io)?;
+    let partial = path.with_extension(format!(
+        "json.{}.{}.partial",
+        std::process::id(),
+        PARTIAL_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&partial)
+        .and_then(|mut file| {
+            file.write_all(body.as_bytes())
+                .and_then(|()| file.sync_all())
+        });
+    if let Err(source) = written {
+        let _ = fs::remove_file(&partial);
+        return Err(io(source));
+    }
+    // Re-checked just before the rename; the window between this check and
+    // the rename is the only one left, and it is the file system's.
+    if path.exists() {
+        let _ = fs::remove_file(&partial);
+        return Err(exists());
+    }
+    if let Err(source) = fs::rename(&partial, path) {
+        let _ = fs::remove_file(&partial);
+        return Err(io(source));
+    }
     Ok(())
 }
 
@@ -141,7 +181,7 @@ impl Store {
             let tx = conn.transaction()?;
             for (key, value) in &backup.data {
                 if validate_key(key).is_err() {
-                    warn!(key = %key.chars().take(50).collect::<String>(), "skipping a key with an unknown prefix");
+                    warn!(key = %key.chars().take(50).collect::<String>(), "skipping an invalid key");
                     report.skipped_invalid += 1;
                     continue;
                 }
@@ -161,8 +201,14 @@ impl Store {
                         .map(|a| a.iter().filter_map(as_field).collect())
                         .unwrap_or_default();
                     if !members.is_empty() {
-                        set_union(&tx, key, &members)?;
-                        report.sets += 1;
+                        // A key already holding a hash is left alone, as the
+                        // hash path leaves a set alone: one odd record must
+                        // not abort the whole restore.
+                        match set_union(&tx, key, &members) {
+                            Ok(_) => report.sets += 1,
+                            Err(StoreError::WrongType { .. }) => report.skipped_invalid += 1,
+                            Err(e) => return Err(e),
+                        }
                     }
                     continue;
                 }
@@ -178,10 +224,16 @@ impl Store {
 
                 let mut expires_at = None;
                 if let Some(stamp) = key.strip_prefix("log:recall:") {
-                    let at = fields
-                        .get("timestamp")
-                        .and_then(|t| t.parse::<f64>().ok())
-                        .or_else(|| stamp.parse::<f64>().ok());
+                    // "NaN" or "inf" parse as f64 but make no instant: the
+                    // expiry arithmetic below would keep such a log for ever.
+                    let at = match fields.get("timestamp").map(|t| t.parse::<f64>()) {
+                        Some(Ok(at)) if at.is_finite() => Some(at),
+                        Some(Ok(_)) => {
+                            report.skipped_invalid += 1;
+                            continue;
+                        }
+                        _ => stamp.parse::<f64>().ok().filter(|at| at.is_finite()),
+                    };
                     if let Some(at) = at {
                         if at + RECALL_LOG_TTL <= now() {
                             report.skipped_expired += 1;
@@ -192,12 +244,22 @@ impl Store {
                 }
 
                 if key.starts_with("mem:") {
-                    let incoming = fields
-                        .get("updated_at")
-                        .and_then(|v| v.parse::<f64>().ok())
-                        .unwrap_or(0.0);
-                    let stored = load_fields(&tx, key)?
-                        .and_then(|f| f.get("updated_at").and_then(|v| v.parse::<f64>().ok()));
+                    // A non-finite `updated_at` compares as newer than
+                    // anything (NaN fails every `>=`), so it is refused
+                    // rather than allowed to win every merge.
+                    let incoming = match fields.get("updated_at").map(|v| v.parse::<f64>()) {
+                        Some(Ok(at)) if at.is_finite() => at,
+                        Some(Ok(_)) => {
+                            report.skipped_invalid += 1;
+                            continue;
+                        }
+                        _ => 0.0,
+                    };
+                    let stored = load_fields(&tx, key)?.and_then(|f| {
+                        f.get("updated_at")
+                            .and_then(|v| v.parse::<f64>().ok())
+                            .filter(|at| at.is_finite())
+                    });
                     if stored.is_some_and(|stored| stored >= incoming) {
                         report.skipped_older += 1;
                         continue;
@@ -218,7 +280,18 @@ impl Store {
 
         report.migrations = self.run_migrations()?;
         if let Some(embedder) = embedder {
-            let (embedded, not_embedded) = self.embed_memories(&restored, embedder, progress)?;
+            // The rows are committed before embedding starts, so a run that
+            // fails part way leaves memories without vectors, and a re-run
+            // would skip them as "not newer". Embedding everything that
+            // lacks a vector, not only what this run wrote, makes a re-run
+            // (or a later import after `--no-embed`) repair them.
+            let to_embed: Vec<String> = restored
+                .into_iter()
+                .chain(self.memories_without_vectors()?)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let (embedded, not_embedded) = self.embed_memories(&to_embed, embedder, progress)?;
             report.embedded = embedded;
             report.not_embedded = not_embedded;
         }
@@ -287,10 +360,10 @@ impl Store {
                 for ((key, _), vector) in batch.iter().zip(&vectors) {
                     write_vector(&tx, key, vector)?;
                 }
-                tx.commit()?;
-            }
-            {
+                // Connection then matrix, held together across the commit,
+                // as every writer in the store does.
                 let mut index = self.vectors_write();
+                tx.commit()?;
                 for ((key, _), vector) in batch.iter().zip(&vectors) {
                     index.insert(memory_namespace(key)?, key, vector);
                 }
@@ -362,5 +435,165 @@ impl Store {
             "version": env!("CARGO_PKG_VERSION"),
         });
         Ok(BackupFile { metadata, data })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use omnimem_core::{EmbeddingError, Namespace};
+
+    /// One fixed unit vector per text, enough to see that a memory got one.
+    struct Unit;
+
+    impl TextEmbedder for Unit {
+        fn dimension(&self) -> usize {
+            2
+        }
+        fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            Ok(texts.iter().map(|_| vec![1.0, 0.0]).collect())
+        }
+    }
+
+    fn backup(data: Value) -> BackupFile {
+        BackupFile::from_value(json!({"metadata": {}, "data": data})).unwrap()
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "omnimem-store-backup-{}-{name}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn a_backup_is_never_overwritten() {
+        let dir = scratch("overwrite");
+        let path = dir.join("memory_backup.json");
+        let first = backup(json!({"meta:a": {"n": "1"}}));
+        write_backup(&path, &first).unwrap();
+        let second = backup(json!({"meta:a": {"n": "2"}}));
+        let refused = write_backup(&path, &second).unwrap_err();
+        assert!(
+            matches!(&refused, StoreError::Backup(m) if m.ends_with("already exists")),
+            "{refused}"
+        );
+        assert_eq!(read_backup(&path).unwrap().data, first.data);
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "memory_backup.json")
+            .collect();
+        assert!(leftovers.is_empty(), "partial files left: {leftovers:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_set_over_a_hash_is_skipped_not_fatal() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        store
+            .hash_set(
+                "topics:suppressed",
+                &Fields::from([("x".to_owned(), "1".to_owned())]),
+            )
+            .unwrap();
+        let report = store
+            .restore_backup(
+                &backup(json!({
+                    "topics:suppressed": {"_type": "set", "members": ["alpine"]},
+                    "topics:other": {"_type": "set", "members": ["b"]},
+                })),
+                None,
+                &mut |_, _| {},
+            )
+            .unwrap();
+        assert_eq!(report.skipped_invalid, 1);
+        assert_eq!(report.sets, 1);
+        assert_eq!(store.set_members("topics:other").unwrap(), ["b"]);
+    }
+
+    #[test]
+    fn non_finite_timestamps_are_invalid() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        store
+            .set_fields(
+                "mem:episodic:a",
+                &Fields::from([
+                    ("content".to_owned(), "old".to_owned()),
+                    ("updated_at".to_owned(), "100".to_owned()),
+                ]),
+            )
+            .unwrap();
+        let report = store
+            .restore_backup(
+                &backup(json!({
+                    "mem:episodic:a": {"content": "new", "updated_at": "NaN"},
+                    "mem:episodic:b": {"content": "b", "updated_at": "inf"},
+                    "log:recall:1": {"query": "q", "timestamp": "NaN"},
+                    "log:recall:2": {"query": "q", "timestamp": "-inf"},
+                })),
+                None,
+                &mut |_, _| {},
+            )
+            .unwrap();
+        assert_eq!(report.skipped_invalid, 4);
+        assert_eq!(report.memories, 0);
+        assert_eq!(report.other_records, 0);
+        assert_eq!(
+            store.get("mem:episodic:a").unwrap().unwrap()["content"],
+            "old"
+        );
+        assert!(store.get("mem:episodic:b").unwrap().is_none());
+
+        // A poisoned record already in the store does not block a real one.
+        store
+            .set_field("mem:episodic:a", "updated_at", "NaN")
+            .unwrap();
+        let report = store
+            .restore_backup(
+                &backup(json!({"mem:episodic:a": {"content": "real", "updated_at": "5"}})),
+                None,
+                &mut |_, _| {},
+            )
+            .unwrap();
+        assert_eq!(report.memories, 1);
+        assert_eq!(
+            store.get("mem:episodic:a").unwrap().unwrap()["content"],
+            "real"
+        );
+    }
+
+    #[test]
+    fn a_re_run_embeds_what_the_first_run_left_without_vectors() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let data = json!({
+            "mem:episodic:a": {"content": "alpha", "updated_at": "10"},
+            "mem:knowledge:b": {"content": "beta", "updated_at": "10"},
+        });
+        // As `import --no-embed`, or a run that died before embedding.
+        let first = store
+            .restore_backup(&backup(data.clone()), None, &mut |_, _| {})
+            .unwrap();
+        assert_eq!(first.memories, 2);
+        assert_eq!(first.embedded, 0);
+        assert_eq!(store.vector_count(Namespace::Episodic), 0);
+        assert_eq!(
+            store.memories_without_vectors().unwrap(),
+            ["mem:episodic:a", "mem:knowledge:b"]
+        );
+
+        let second = store
+            .restore_backup(&backup(data), Some(&Unit), &mut |_, _| {})
+            .unwrap();
+        assert_eq!(second.skipped_older, 2, "nothing newer to write");
+        assert_eq!(
+            second.embedded, 2,
+            "but the vectorless memories are repaired"
+        );
+        assert_eq!(store.vector_count(Namespace::Episodic), 1);
+        assert_eq!(store.vector_count(Namespace::Knowledge), 1);
+        assert!(store.memories_without_vectors().unwrap().is_empty());
     }
 }

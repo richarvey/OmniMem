@@ -155,6 +155,8 @@ fn config(feeds_path: PathBuf) -> RssConfig {
         max_page_bytes: 1024 * 1024,
         max_knowledge_age_days: 30,
         require_licence: false,
+        // The test servers listen on loopback.
+        allow_private_hosts: true,
     }
 }
 
@@ -523,7 +525,7 @@ fn the_scheduler_runs_at_start_and_when_feeds_yml_changes() {
 fn pages_are_capped_and_only_fetched_over_http() {
     let (base, routes, _) = server();
     route(&routes, "/big", &format!("<p>{}</p>", "a".repeat(100)));
-    let fetcher = Fetcher::new(20).unwrap();
+    let fetcher = Fetcher::with_private_hosts(20, true).unwrap();
     let text = fetcher.fetch_page_content(&format!("{base}/big")).unwrap();
     assert_eq!(
         text,

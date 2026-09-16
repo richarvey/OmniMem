@@ -200,7 +200,9 @@ impl Store {
                     field: field.to_owned(),
                 })?,
         };
-        let next = current + by;
+        // A counter fed from outside (a backup, a bundle) may already sit at
+        // the edge; clamp rather than panic in debug or wrap in release.
+        let next = current.saturating_add(by);
         fields.insert(field.to_owned(), next.to_string());
         hash_merge(&conn, key, &fields)?;
         Ok(next)

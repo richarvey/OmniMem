@@ -13,7 +13,7 @@ mod http;
 mod oauth;
 
 pub use handler::OmniMemServer;
-pub use http::{ServerConfig, ServerError, router, serve};
+pub use http::{ServerConfig, ServerError, bind_address, router, serve};
 pub use oauth::{OAuthConfig, OAuthSetup};
 
 /// Sent to every client on connect: the agent's operating instructions.

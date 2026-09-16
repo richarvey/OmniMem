@@ -98,6 +98,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `RSS_MAX_ARTICLES_PER_FEED` | `20` | Articles per feed per check |
 | `RSS_MAX_DIGEST_ENTRIES` | `2` | Entries per check for feeds set to `mode: digest` |
 | `RSS_MAX_PAGE_BYTES` | `10485760` | Most bytes read when fetching a full article page (10 MB) |
+| `RSS_ALLOW_PRIVATE_HOSTS` | off | Let feeds and article pages live on this machine or the local network (loopback, private and link-local addresses). Off, a feed entry can't point OmniMem at either, which matters on a server with internal services behind it |
 | `RSS_REQUIRE_LICENCE` | off | Skip feeds whose `feeds.yml` entry doesn't declare a licence, before fetching anything, instead of ingesting their articles as `unknown` |
 | `MAX_KNOWLEDGE_AGE_DAYS` | `30` | Days before an ingested article expires and is archived |
 

@@ -28,6 +28,8 @@ pub use backup::{BACKUP_KEY_PREFIXES, BackupFile, ImportReport, read_backup, wri
 pub use error::StoreError;
 pub use migrations::MigrationReport;
 pub use oauth::{OAuthStore, TokenKind, secret_hash};
-pub use store::{Fields, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES, discovery_text};
+pub use store::{
+    Fields, MAX_KEY_BYTES, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES, discovery_text,
+};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

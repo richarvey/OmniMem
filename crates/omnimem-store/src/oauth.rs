@@ -59,6 +59,29 @@ impl OAuthStore<'_> {
         Ok(())
     }
 
+    pub fn client_count(&self) -> Result<usize> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM oauth_clients", [], |r| r.get(0))?;
+        Ok(usize::try_from(n).unwrap_or(0))
+    }
+
+    /// Delete clients registered more than `idle_seconds` ago that hold no
+    /// live token: registrations that never signed in, which anyone who can
+    /// reach the server can create. Returns how many went.
+    pub fn purge_idle_clients(&self, idle_seconds: f64) -> Result<usize> {
+        let at = now();
+        Ok(self.conn.execute(
+            "DELETE FROM oauth_clients
+             WHERE created_at <= ?1
+               AND client_id NOT IN (
+                   SELECT json_extract(record, '$.client_id') FROM oauth_tokens
+                   WHERE expires_at > ?2 AND json_extract(record, '$.client_id') IS NOT NULL
+               )",
+            params![at - idle_seconds, at],
+        )?)
+    }
+
     pub fn client(&self, client_id: &str) -> Result<Option<Value>> {
         let raw: Option<String> = self
             .conn
@@ -148,12 +171,32 @@ impl OAuthStore<'_> {
         parse("oauth token", &raw).map(Some)
     }
 
+    /// True for a token that exists and hasn't expired, without touching the
+    /// table: the check every `/mcp` request makes.
+    pub fn token_is_live(&self, kind: TokenKind, token: &str) -> Result<bool> {
+        let expires_at: Option<f64> = self
+            .conn
+            .query_row(
+                "SELECT expires_at FROM oauth_tokens WHERE kind = ?1 AND token_hash = ?2",
+                params![kind.as_str(), secret_hash(token)],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(expires_at.is_some_and(|t| t > now()))
+    }
+
     /// True when the token was there to delete.
     pub fn delete_token(&self, kind: TokenKind, token: &str) -> Result<bool> {
         Ok(self.conn.execute(
             "DELETE FROM oauth_tokens WHERE kind = ?1 AND token_hash = ?2",
             params![kind.as_str(), secret_hash(token)],
         )? > 0)
+    }
+
+    /// The raw connection, for tests that need to backdate rows.
+    #[doc(hidden)]
+    pub fn conn_for_tests(&self) -> &Connection {
+        self.conn
     }
 
     /// Delete every expired code and token. Reads already ignore them; this
@@ -186,6 +229,16 @@ impl Store {
         let value = f(&OAuthStore { conn: &tx })?;
         tx.commit().map_err(StoreError::from)?;
         Ok(value)
+    }
+
+    /// A read of the OAuth tables that takes no write lock, for the check on
+    /// every `/mcp` request. `f` must not write.
+    pub fn read_oauth<T, E: From<StoreError>>(
+        &self,
+        f: impl FnOnce(&OAuthStore<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let conn = self.conn();
+        f(&OAuthStore { conn: &conn })
     }
 }
 
@@ -254,6 +307,37 @@ mod tests {
                 Ok::<_, StoreError>(())
             })
             .unwrap();
+    }
+
+    #[test]
+    fn idle_clients_are_purged_and_live_ones_kept() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .with_oauth(|o| {
+                o.save_client("idle", &json!({"client_id": "idle"}))?;
+                o.save_client("active", &json!({"client_id": "active"}))?;
+                o.save_token(
+                    TokenKind::Access,
+                    "t",
+                    &json!({"client_id": "active"}),
+                    now() + 60.0,
+                )?;
+                assert_eq!(o.client_count()?, 2);
+                // Nothing is old enough yet.
+                assert_eq!(o.purge_idle_clients(3600.0)?, 0);
+                assert_eq!(o.purge_idle_clients(0.0)?, 1);
+                assert!(o.client("idle")?.is_none());
+                assert!(o.client("active")?.is_some());
+                assert!(o.token_is_live(TokenKind::Access, "t")?);
+                assert!(!o.token_is_live(TokenKind::Refresh, "t")?);
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
+        assert!(
+            store
+                .read_oauth(|o| o.token_is_live(TokenKind::Access, "t"))
+                .unwrap()
+        );
     }
 
     #[test]

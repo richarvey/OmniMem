@@ -11,8 +11,8 @@
       {% if states.deprioritised %}<span class="indicator warn">{{ states.deprioritised }} deprioritised</span>{% endif %}
       {% if states.archived %}<span class="indicator warn">{{ states.archived }} archived</span>{% endif %}
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-modal').style.display='flex'">Import Skill</button>
-    <button class="btn btn-primary btn-sm" onclick="document.getElementById('compile-modal').style.display='flex'">New Skill</button>
+    <button class="btn btn-secondary btn-sm" data-show="import-modal">Import Skill</button>
+    <button class="btn btn-primary btn-sm" data-show="compile-modal">New Skill</button>
   </div>
 </header>
 
@@ -46,7 +46,7 @@
     <div id="compile-result"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm"
-              onclick="document.getElementById('compile-modal').style.display='none';document.getElementById('compile-result').innerHTML=''">Close</button>
+              data-hide="compile-modal" data-clear="compile-result">Close</button>
     </div>
   </div>
 </div>
@@ -67,7 +67,7 @@
     <div id="import-result"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm"
-              onclick="document.getElementById('import-modal').style.display='none';document.getElementById('import-result').innerHTML=''">Close</button>
+              data-hide="import-modal" data-clear="import-result">Close</button>
     </div>
   </div>
 </div>
@@ -109,7 +109,7 @@
       <td><span class="recall-badge">{{ s.recall_count }}</span></td>
       <td class="skill-actions">
         <a href="/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
-        <form method="POST" action="/skills/delete" style="display:inline" onsubmit="return confirm('Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.')">
+        <form method="POST" action="/skills/delete" style="display:inline" data-confirm="Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.">
           <input type="hidden" name="key" value="{{ s.key }}">
           <button type="submit" class="btn btn-danger btn-sm">Delete</button>
         </form>

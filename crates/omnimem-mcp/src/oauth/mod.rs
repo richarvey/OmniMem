@@ -40,6 +40,31 @@ const AUTH_CODE_SECONDS: f64 = 300.0;
 /// Sign-ins in progress kept at once; beyond this the oldest is dropped, so
 /// unauthenticated `/authorize` calls can't grow memory without bound.
 const PENDING_LIMIT: usize = 1000;
+/// Registered clients kept at once. Anyone who can reach the server can
+/// register, so past this idle registrations are purged and, if that isn't
+/// enough, new ones are refused.
+const CLIENT_LIMIT: usize = 500;
+/// A client that has never signed in is dropped after this long when the
+/// table is full.
+const IDLE_CLIENT_SECONDS: f64 = 3600.0;
+/// Registrations and sign-in starts allowed per address in
+/// `OAUTH_LOGIN_WINDOW_SECONDS`, both unauthenticated and both cheap to
+/// abuse. Generous for people, tight for scripts.
+const UNAUTHENTICATED_ATTEMPTS: usize = 60;
+/// Failed-login buckets kept before the oldest are dropped.
+const LIMITER_ENTRIES: usize = 4096;
+/// Caps on what a client may register (RFC 7591 leaves them to the server).
+const MAX_TEXT_FIELD: usize = 256;
+const MAX_URL_FIELD: usize = 2048;
+const MAX_LIST_ITEMS: usize = 10;
+const MAX_JWKS_BYTES: usize = 8192;
+/// RFC 7636 §4.1 and §4.2: verifier and challenge are 43 to 128 characters.
+const PKCE_MIN: usize = 43;
+const PKCE_MAX: usize = 128;
+/// Schemes a redirect URI may never use: the browser would run or render
+/// the "redirect" instead of leaving the page.
+const FORBIDDEN_REDIRECT_SCHEMES: [&str; 6] =
+    ["javascript", "data", "file", "vbscript", "blob", "about"];
 const JWT_BEARER: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const DEFAULT_GRANT_TYPES: [&str; 2] = ["authorization_code", "refresh_token"];
 const AUTH_METHODS: [&str; 4] = [
@@ -263,7 +288,33 @@ fn uuid4() -> String {
 /// An absolute URL, normalised, so a registered redirect and the one a
 /// request names compare equal however they were written.
 fn normalise_url(raw: &str) -> Option<String> {
+    if raw.len() > MAX_URL_FIELD {
+        return None;
+    }
     Url::parse(raw).ok().map(|u| u.to_string())
+}
+
+/// A redirect URI a client may register: any scheme a browser will leave the
+/// page for (https, http, or an app's own scheme), never one it would run or
+/// render, and no fragment (RFC 6749 §3.1.2).
+fn redirect_uri(raw: &str) -> Option<String> {
+    if raw.len() > MAX_URL_FIELD {
+        return None;
+    }
+    let url = Url::parse(raw).ok()?;
+    if url.fragment().is_some() || FORBIDDEN_REDIRECT_SCHEMES.contains(&url.scheme()) {
+        return None;
+    }
+    Some(url.to_string())
+}
+
+/// RFC 7636: 43 to 128 characters of `[A-Za-z0-9._~-]` (a base64url
+/// challenge is a subset of that).
+fn pkce_well_formed(value: &str) -> bool {
+    (PKCE_MIN..=PKCE_MAX).contains(&value.len())
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~'))
 }
 
 /// `base` with `pairs` appended to its query, dropping any blank values it
@@ -500,6 +551,12 @@ fn text_field(
 ) -> Option<String> {
     match request.get(name) {
         None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s.chars().count() > MAX_TEXT_FIELD => {
+            errors.push(format!(
+                "{name}: String should have at most {MAX_TEXT_FIELD} characters"
+            ));
+            None
+        }
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => {
             errors.push(format!("{name}: Input should be a valid string"));
@@ -515,10 +572,19 @@ fn list_field(
 ) -> Option<Vec<String>> {
     match request.get(name) {
         None | Some(Value::Null) => None,
+        Some(Value::Array(items)) if items.len() > MAX_LIST_ITEMS => {
+            errors.push(format!(
+                "{name}: List should have at most {MAX_LIST_ITEMS} items"
+            ));
+            None
+        }
         Some(Value::Array(items)) => {
             let mut list = Vec::new();
             for (i, item) in items.iter().enumerate() {
                 match item.as_str() {
+                    Some(s) if s.chars().count() > MAX_TEXT_FIELD => errors.push(format!(
+                        "{name}.{i}: String should have at most {MAX_TEXT_FIELD} characters"
+                    )),
                     Some(s) => list.push(s.to_owned()),
                     None => errors.push(format!("{name}.{i}: Input should be a valid string")),
                 }
@@ -563,13 +629,21 @@ impl ClientMetadata {
                 );
                 Vec::new()
             }
+            Some(Value::Array(items)) if items.len() > MAX_LIST_ITEMS => {
+                errors.push(format!(
+                    "redirect_uris: List should have at most {MAX_LIST_ITEMS} items"
+                ));
+                Vec::new()
+            }
             Some(Value::Array(items)) => items
                 .iter()
                 .enumerate()
                 .filter_map(|(i, item)| {
-                    let url = item.as_str().and_then(normalise_url);
+                    let url = item.as_str().and_then(redirect_uri);
                     if url.is_none() {
-                        errors.push(format!("redirect_uris.{i}: Input should be a valid URL"));
+                        errors.push(format!(
+                            "redirect_uris.{i}: Input should be a valid redirect URL without a fragment"
+                        ));
                     }
                     url
                 })
@@ -610,7 +684,15 @@ impl ClientMetadata {
             tos_uri: web_url_field(request, "tos_uri", &mut errors),
             policy_uri: web_url_field(request, "policy_uri", &mut errors),
             jwks_uri: web_url_field(request, "jwks_uri", &mut errors),
-            jwks: request.get("jwks").filter(|v| !v.is_null()).cloned(),
+            jwks: match request.get("jwks").filter(|v| !v.is_null()) {
+                Some(jwks) if jwks.to_string().len() > MAX_JWKS_BYTES => {
+                    errors.push(format!(
+                        "jwks: Input should be at most {MAX_JWKS_BYTES} bytes"
+                    ));
+                    None
+                }
+                jwks => jwks.cloned(),
+            },
             software_id: text_field(request, "software_id", &mut errors),
             software_version: text_field(request, "software_version", &mut errors),
             redirect_uris,
@@ -669,10 +751,19 @@ impl ClientMetadata {
     }
 }
 
+/// What the login page says about the sign-in it is completing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SignInPrompt {
+    pub(crate) client: String,
+    pub(crate) redirect_host: String,
+}
+
 /// An authorisation request waiting for the user to sign in.
 #[derive(Debug)]
 struct Pending {
     client_id: String,
+    /// What the login page tells the user they are signing in for.
+    client_name: Option<String>,
     state: Option<String>,
     scopes: Option<Vec<String>>,
     code_challenge: String,
@@ -682,7 +773,8 @@ struct Pending {
     created_at: f64,
 }
 
-/// Failed logins by client address, in a sliding window.
+/// Attempts by client address, in a sliding window: failed logins, and the
+/// unauthenticated requests that create state (registrations, sign-ins).
 #[derive(Debug, Default)]
 struct LoginLimiter {
     failures: HashMap<String, VecDeque<f64>>,
@@ -696,6 +788,28 @@ impl LoginLimiter {
             }
             if bucket.is_empty() {
                 self.failures.remove(ip);
+            }
+        }
+        // Buckets for other addresses are only pruned on their own next
+        // visit, so a flood from many addresses is bounded here instead.
+        if self.failures.len() > LIMITER_ENTRIES {
+            self.failures
+                .retain(|_, bucket| bucket.back().is_some_and(|t| *t >= at - window));
+            while self.failures.len() > LIMITER_ENTRIES {
+                let Some(oldest) = self
+                    .failures
+                    .iter()
+                    .min_by(|a, b| {
+                        a.1.back()
+                            .copied()
+                            .unwrap_or(0.0)
+                            .total_cmp(&b.1.back().copied().unwrap_or(0.0))
+                    })
+                    .map(|(k, _)| k.clone())
+                else {
+                    break;
+                };
+                self.failures.remove(&oldest);
             }
         }
     }
@@ -780,8 +894,22 @@ impl OAuth {
         })
     }
 
+    /// Too many registrations or sign-in starts from one address in the
+    /// login window: both are unauthenticated and both create state.
+    fn unauthenticated_flood(&self, ip: &str) -> bool {
+        let at = now();
+        let window = self.config.login_window_seconds as f64;
+        let mut limiter = self.limiter();
+        let key = format!("state:{ip}");
+        if limiter.is_blocked(&key, at, UNAUTHENTICATED_ATTEMPTS, window) {
+            return true;
+        }
+        limiter.record_failure(&key, at, window);
+        false
+    }
+
     /// Dynamic client registration (RFC 7591 §3.1): the registered client.
-    fn register(&self, body: &[u8]) -> Result<Value, Failure> {
+    fn register(&self, ip: &str, body: &[u8]) -> Result<Value, Failure> {
         let invalid = |description: String| {
             Failure::new(
                 StatusCode::BAD_REQUEST,
@@ -789,6 +917,14 @@ impl OAuth {
                 description,
             )
         };
+        if self.unauthenticated_flood(ip) {
+            warn!(ip, "OAuth registration rate limit hit");
+            return Err(Failure::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "temporarily_unavailable",
+                "Too many registrations from this address; try again later",
+            ));
+        }
         let request = match serde_json::from_slice::<Value>(body) {
             Ok(Value::Object(request)) => request,
             Ok(_) => return Err(invalid(": Input should be an object".into())),
@@ -851,8 +987,24 @@ impl OAuth {
             stored.remove("client_secret");
             stored.insert("client_secret_sha256".into(), secret_hash(secret).into());
         }
-        self.store
-            .with_oauth(|o| o.save_client(&client_id, &Value::Object(stored)))?;
+        self.store.with_oauth(|o| {
+            // Registration is open to anyone who can reach the server, so
+            // the table is capped: idle registrations go first, and when
+            // every slot holds a live client the new one is refused.
+            if o.client_count()? >= CLIENT_LIMIT {
+                let purged = o.purge_idle_clients(IDLE_CLIENT_SECONDS)?;
+                info!(purged, "purged idle OAuth clients");
+                if o.client_count()? >= CLIENT_LIMIT {
+                    return Err(Failure::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "temporarily_unavailable",
+                        "Too many registered clients; try again later",
+                    ));
+                }
+            }
+            o.save_client(&client_id, &Value::Object(stored))?;
+            Ok(())
+        })?;
         info!(
             client_id,
             name = metadata.client_name.as_deref().unwrap_or("unnamed"),
@@ -864,12 +1016,23 @@ impl OAuth {
     /// An authorisation request (RFC 6749 §4.1.1): off to the login page, or
     /// an error sent back to the client when its redirect is known, or shown
     /// here when it isn't.
-    fn authorize(&self, params: &Params) -> Result<Authorize, StoreError> {
+    fn authorize(&self, ip: &str, params: &Params) -> Result<Authorize, StoreError> {
         let mut errors = Vec::new();
         let mut error = "invalid_request";
         let client_id = params.get("client_id");
         if client_id.is_none() {
             errors.push("client_id: Field required".to_owned());
+        }
+        for (name, max) in [
+            ("state", 1024),
+            ("scope", MAX_TEXT_FIELD),
+            ("resource", MAX_URL_FIELD),
+        ] {
+            if params.get(name).is_some_and(|v| v.len() > max) {
+                errors.push(format!(
+                    "{name}: String should have at most {max} characters"
+                ));
+            }
         }
         let redirect_uri = match params.get("redirect_uri") {
             None => None,
@@ -890,8 +1053,13 @@ impl OAuth {
             }
         }
         let code_challenge = params.get("code_challenge");
-        if code_challenge.is_none() {
-            errors.push("code_challenge: Field required".to_owned());
+        match code_challenge {
+            None => errors.push("code_challenge: Field required".to_owned()),
+            Some(challenge) if !pkce_well_formed(challenge) => errors.push(
+                "code_challenge: Input should be 43 to 128 characters of [A-Za-z0-9._~-]"
+                    .to_owned(),
+            ),
+            Some(_) => {}
         }
         if params
             .get("code_challenge_method")
@@ -941,8 +1109,20 @@ impl OAuth {
                 );
             }
         };
+        if self.unauthenticated_flood(ip) {
+            warn!(ip, "OAuth authorisation rate limit hit");
+            return self.authorize_error(
+                params,
+                Some(client),
+                Some(redirect),
+                "temporarily_unavailable",
+                "Too many sign-in attempts from this address; try again later".to_owned(),
+                true,
+            );
+        }
         let session = self.begin_sign_in(Pending {
             client_id: client.id().to_owned(),
+            client_name: client.text("client_name").map(str::to_owned),
             state: params.get("state").map(str::to_owned),
             scopes,
             code_challenge: code_challenge.to_owned(),
@@ -1028,16 +1208,28 @@ impl OAuth {
         session
     }
 
-    /// True while a sign-in is waiting for its login form.
-    fn sign_in_pending(&self, session: &str) -> bool {
+    /// While a sign-in is waiting for its login form: who is asking (the
+    /// client's registered name, or its ID) and where the browser goes
+    /// afterwards, so the page can say what the user is about to allow.
+    fn sign_in_pending(&self, session: &str) -> Option<SignInPrompt> {
         let mut pending = self.pending();
         match pending.get(session) {
-            Some(p) if now() - p.created_at <= AUTH_CODE_SECONDS => true,
+            Some(p) if now() - p.created_at <= AUTH_CODE_SECONDS => Some(SignInPrompt {
+                client: p
+                    .client_name
+                    .clone()
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| p.client_id.clone()),
+                redirect_host: Url::parse(&p.redirect_uri)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_owned))
+                    .unwrap_or_else(|| p.redirect_uri.clone()),
+            }),
             Some(_) => {
                 pending.remove(session);
-                false
+                None
             }
-            None => false,
+            None => None,
         }
     }
 
@@ -1270,6 +1462,11 @@ impl OAuth {
             ));
         }
         let verifier = form.get("code_verifier").unwrap_or_default();
+        if !pkce_well_formed(verifier) {
+            return Err(Failure::invalid_request(
+                "code_verifier: Input should be 43 to 128 characters of [A-Za-z0-9._~-]",
+            ));
+        }
         let hashed = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         if grant["code_challenge"].as_str() != Some(hashed.as_str()) {
             return Err(Failure::invalid_grant("incorrect code_verifier"));
@@ -1309,7 +1506,12 @@ impl OAuth {
             ));
         }
         // Inside the grace window a rotated token replays the pair it rotated
-        // to, so concurrent or retried refreshes all get working tokens.
+        // to, so concurrent or retried refreshes all get working tokens. The
+        // successor pair has to be stored as issued for that, so for the
+        // length of the window (`OAUTH_REFRESH_GRACE_SECONDS`, 120 by
+        // default) a copy of the database holds one live pair per rotation.
+        // That is the trade-off for claude.ai staying signed in; 0 turns it
+        // off.
         if let Some(successor) = record.get("rotated_to").filter(|v| v.is_object()) {
             info!(
                 client_id = client.id(),
@@ -1386,18 +1588,16 @@ impl OAuth {
         Ok(token_response(&access, &refresh, scopes))
     }
 
-    /// True for a live access token. Checked on every `/mcp` request.
-    pub(crate) fn verify_access(&self, token: &str) -> bool {
+    /// True for a live access token. Checked on every `/mcp` request, so it
+    /// is a plain read: expired rows are left for the next issue or
+    /// revocation to purge. A store error is reported as such rather than
+    /// as a bad token, which would have clients throw their tokens away.
+    pub(crate) fn verify_access(&self, token: &str) -> Result<bool, StoreError> {
         if token.is_empty() {
-            return false;
+            return Ok(false);
         }
-        match self.store.with_oauth(|o| o.token(TokenKind::Access, token)) {
-            Ok(record) => record.is_some(),
-            Err(e) => {
-                warn!(error = %e, "could not check an OAuth access token");
-                false
-            }
-        }
+        self.store
+            .read_oauth(|o| o.token_is_live(TokenKind::Access, token))
     }
 
     /// Token revocation (RFC 7009). A token that doesn't exist, or belongs to
@@ -1460,8 +1660,12 @@ mod tests {
         )
     }
 
+    /// Each test registers from its own address so the flood limit never
+    /// trips across a test's own calls.
+    const IP: &str = "203.0.113.7";
+
     fn register(oauth: &OAuth, body: &str) -> Value {
-        oauth.register(body.as_bytes()).unwrap()
+        oauth.register(IP, body.as_bytes()).unwrap()
     }
 
     fn confidential(oauth: &OAuth) -> Value {
@@ -1479,20 +1683,24 @@ mod tests {
     fn sign_in(oauth: &OAuth, client: &Value) -> String {
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes()));
         let Authorize::Redirect(login) = oauth
-            .authorize(&params(&[
-                ("client_id", id(client)),
-                ("response_type", "code"),
-                ("code_challenge", &challenge),
-                ("redirect_uri", CALLBACK),
-                ("state", "st"),
-                ("scope", "omnimem"),
-            ]))
+            .authorize(
+                IP,
+                &params(&[
+                    ("client_id", id(client)),
+                    ("response_type", "code"),
+                    ("code_challenge", &challenge),
+                    ("redirect_uri", CALLBACK),
+                    ("state", "st"),
+                    ("scope", "omnimem"),
+                ]),
+            )
             .unwrap()
         else {
             panic!("expected the login page");
         };
         let session = login.split("session=").nth(1).unwrap();
-        assert!(oauth.sign_in_pending(session));
+        let prompt = oauth.sign_in_pending(session).expect("a pending sign-in");
+        assert_eq!(prompt.redirect_host, "claude.ai");
         let back = oauth.complete_sign_in(session).unwrap().unwrap();
         assert!(back.starts_with(&format!("{CALLBACK}?code=")), "{back}");
         assert!(back.ends_with("&state=st"), "{back}");
@@ -1562,10 +1770,18 @@ mod tests {
         assert_eq!(tokens["token_type"], "Bearer");
         assert_eq!(tokens["expires_in"], 3600);
         assert_eq!(tokens["scope"], "omnimem");
-        assert!(oauth.verify_access(tokens["access_token"].as_str().unwrap()));
-        assert!(!oauth.verify_access(tokens["refresh_token"].as_str().unwrap()));
-        assert!(!oauth.verify_access("bogus"));
-        assert!(!oauth.verify_access(""));
+        assert!(
+            oauth
+                .verify_access(tokens["access_token"].as_str().unwrap())
+                .unwrap()
+        );
+        assert!(
+            !oauth
+                .verify_access(tokens["refresh_token"].as_str().unwrap())
+                .unwrap()
+        );
+        assert!(!oauth.verify_access("bogus").unwrap());
+        assert!(!oauth.verify_access("").unwrap());
     }
 
     #[test]
@@ -1573,7 +1789,8 @@ mod tests {
         let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
         let client = confidential(&oauth);
         let code = sign_in(&oauth, &client);
-        let (status, error, description) = error_of(exchange(&oauth, &client, &code, "wrong"));
+        let wrong = "w".repeat(43);
+        let (status, error, description) = error_of(exchange(&oauth, &client, &code, &wrong));
         assert_eq!((status, error), (StatusCode::UNAUTHORIZED, "invalid_grant"));
         assert_eq!(description, "incorrect code_verifier");
         exchange(&oauth, &client, &code, VERIFIER).unwrap();
@@ -1680,7 +1897,11 @@ mod tests {
         let store = Arc::new(Store::open_in_memory().unwrap());
         let (client, tokens) = issue(&provider(store.clone(), 120));
         let restarted = provider(store, 120);
-        assert!(restarted.verify_access(tokens["access_token"].as_str().unwrap()));
+        assert!(
+            restarted
+                .verify_access(tokens["access_token"].as_str().unwrap())
+                .unwrap()
+        );
         refresh(
             &restarted,
             &client,
@@ -1704,7 +1925,7 @@ mod tests {
                 None,
             )
             .unwrap();
-        assert!(!oauth.verify_access(access));
+        assert!(!oauth.verify_access(access).unwrap());
     }
 
     #[test]
@@ -1768,6 +1989,7 @@ mod tests {
         let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
         let sign_in = |created_at: f64| Pending {
             client_id: "c".into(),
+            client_name: None,
             state: None,
             scopes: None,
             code_challenge: "x".into(),
@@ -1777,11 +1999,186 @@ mod tests {
             created_at,
         };
         let stale = oauth.begin_sign_in(sign_in(now() - AUTH_CODE_SECONDS - 1.0));
-        assert!(!oauth.sign_in_pending(&stale));
+        assert!(oauth.sign_in_pending(&stale).is_none());
         for _ in 0..PENDING_LIMIT + 5 {
             oauth.begin_sign_in(sign_in(now()));
         }
         assert_eq!(oauth.pending().len(), PENDING_LIMIT);
+    }
+
+    #[test]
+    fn the_login_page_names_the_client_and_where_it_sends_you() {
+        let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
+        let client = confidential(&oauth);
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes()));
+        let Authorize::Redirect(login) = oauth
+            .authorize(
+                IP,
+                &params(&[
+                    ("client_id", id(&client)),
+                    ("response_type", "code"),
+                    ("code_challenge", &challenge),
+                ]),
+            )
+            .unwrap()
+        else {
+            panic!("expected the login page");
+        };
+        let session = login.split("session=").nth(1).unwrap();
+        assert_eq!(
+            oauth.sign_in_pending(session),
+            Some(SignInPrompt {
+                client: "test".into(),
+                redirect_host: "claude.ai".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn registrations_are_capped_field_by_field() {
+        let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
+        let long = "x".repeat(MAX_TEXT_FIELD + 1);
+        let refused = |body: String| match oauth.register(IP, body.as_bytes()) {
+            Err(Failure::OAuth {
+                error: "invalid_client_metadata",
+                description,
+                ..
+            }) => description,
+            other => panic!("expected a refusal, got {other:?}"),
+        };
+        assert!(
+            refused(format!(
+                r#"{{"redirect_uris": ["https://a.example/cb"], "client_name": "{long}"}}"#
+            ))
+            .contains("client_name: String should have at most")
+        );
+        let many: Vec<String> = (0..MAX_LIST_ITEMS + 1)
+            .map(|i| format!("https://a{i}.example/cb"))
+            .collect();
+        assert!(
+            refused(format!(
+                r#"{{"redirect_uris": {}}}"#,
+                serde_json::to_string(&many).unwrap()
+            ))
+            .contains("redirect_uris: List should have at most")
+        );
+        let jwks = format!(r#"{{"keys": ["{}"]}}"#, "k".repeat(MAX_JWKS_BYTES));
+        assert!(
+            refused(format!(
+                r#"{{"redirect_uris": ["https://a.example/cb"], "jwks": {jwks}}}"#
+            ))
+            .contains("jwks: Input should be at most")
+        );
+        for bad in [
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "file:///etc/passwd",
+            "https://a.example/cb#fragment",
+        ] {
+            assert!(
+                refused(format!(r#"{{"redirect_uris": ["{bad}"]}}"#)).contains("redirect_uris.0"),
+                "{bad} should be refused"
+            );
+        }
+        // An app's own scheme, and loopback http, are how native clients work.
+        register(
+            &oauth,
+            r#"{"redirect_uris": ["myapp://callback", "http://127.0.0.1:3000/cb"]}"#,
+        );
+    }
+
+    #[test]
+    fn pkce_parameters_must_be_well_formed() {
+        assert!(pkce_well_formed(VERIFIER));
+        assert!(pkce_well_formed(&"a".repeat(128)));
+        assert!(!pkce_well_formed(&"a".repeat(42)));
+        assert!(!pkce_well_formed(&"a".repeat(129)));
+        assert!(!pkce_well_formed(""));
+        assert!(!pkce_well_formed(&format!("{}+/=", "a".repeat(43))));
+
+        let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
+        let client = confidential(&oauth);
+        let Authorize::Redirect(location) = oauth
+            .authorize(
+                IP,
+                &params(&[
+                    ("client_id", id(&client)),
+                    ("response_type", "code"),
+                    ("code_challenge", "short"),
+                    ("state", "st"),
+                ]),
+            )
+            .unwrap()
+        else {
+            panic!("a bad challenge goes back to the client as an error");
+        };
+        assert!(location.contains("error=invalid_request"), "{location}");
+        assert!(location.contains("code_challenge"), "{location}");
+
+        let code = sign_in(&oauth, &client);
+        let (status, error, description) = error_of(exchange(&oauth, &client, &code, "short"));
+        assert_eq!(
+            (status, error),
+            (StatusCode::BAD_REQUEST, "invalid_request")
+        );
+        assert!(description.starts_with("code_verifier"), "{description}");
+    }
+
+    #[test]
+    fn floods_of_registrations_and_sign_ins_are_throttled_per_address() {
+        let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
+        let body = r#"{"redirect_uris": ["https://a.example/cb"]}"#;
+        let mut refused = None;
+        for _ in 0..=UNAUTHENTICATED_ATTEMPTS {
+            if let Err(Failure::OAuth { status, .. }) =
+                oauth.register("198.51.100.1", body.as_bytes())
+            {
+                refused = Some(status);
+                break;
+            }
+        }
+        assert_eq!(refused, Some(StatusCode::TOO_MANY_REQUESTS));
+        // Another address is unaffected.
+        oauth.register("198.51.100.2", body.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn the_client_table_is_capped_with_idle_clients_purged_first() {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let oauth = provider(store.clone(), 120);
+        let body = r#"{"redirect_uris": ["https://a.example/cb"]}"#;
+        // Fill the table straight through the store, backdated so every
+        // client counts as idle.
+        store
+            .with_oauth(|o| {
+                for i in 0..CLIENT_LIMIT {
+                    o.save_client(&format!("c{i}"), &json!({"client_id": format!("c{i}")}))?;
+                }
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
+        store
+            .read_oauth(|o| {
+                o.conn_for_tests().execute(
+                    "UPDATE oauth_clients SET created_at = created_at - ?1",
+                    [IDLE_CLIENT_SECONDS + 1.0],
+                )?;
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
+        let client = oauth.register(IP, body.as_bytes()).unwrap();
+        assert!(client["client_id"].is_string());
+        assert!(store.with_oauth(|o| o.client_count()).unwrap() <= CLIENT_LIMIT);
+    }
+
+    #[test]
+    fn the_login_limiter_stays_bounded_across_many_addresses() {
+        let mut limiter = LoginLimiter::default();
+        let at = 10_000.0;
+        for i in 0..LIMITER_ENTRIES * 2 {
+            limiter.record_failure(&format!("ip{i}"), at + i as f64 * 0.001, 900.0);
+        }
+        assert!(limiter.failures.len() <= LIMITER_ENTRIES + 1);
     }
 
     #[test]

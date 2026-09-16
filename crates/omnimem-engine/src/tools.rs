@@ -18,14 +18,30 @@ use crate::chunking::{self, VALID_STRATEGIES};
 use crate::classification::{classification_fields, licence_for_write, provenance_for_write};
 use crate::domains::DomainInput;
 use crate::error::invalid;
-use crate::lifecycle::{MemoryState, SUPPRESSED_KEY};
+use crate::lifecycle::{
+    MAX_TOPIC_CHARS, MIN_TOPIC_CHARS, MemoryState, SUPPRESSED_KEY, validate_reinstate_hints,
+};
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
 use crate::tags::validate_tags;
 use crate::{Engine, EngineError, Result};
 
 pub const MAX_CONTENT_LENGTH: usize = 50_000;
+/// Cap on short free text: reasons, hints, names, descriptions.
+pub(crate) const MAX_SHORT_TEXT: usize = 2_000;
+/// Cap on longer free text that is stored and embedded: lessons, notes, state.
+pub(crate) const MAX_LONG_TEXT: usize = 10_000;
 pub const MAX_TOP_K: i64 = 50;
+/// A document that chunks into more pieces than this is refused: every
+/// chunk is embedded, stored and (in full mode) enriched by an LLM call.
+pub(crate) const MAX_DOCUMENT_CHUNKS: usize = 200;
+/// Above this many chunks a document is stored but not enriched, so one
+/// call cannot queue hundreds of LLM jobs.
+pub(crate) const MAX_ENRICHED_CHUNKS: usize = 50;
+/// Query-mode lifecycle tools act only on hits at least this similar. Raw
+/// similarity, not the adjusted score: experience and temporal multipliers
+/// can lift a loosely related memory past any threshold.
+const QUERY_TARGET_MIN_SCORE: f64 = 0.85;
 const MAX_BACKUP_FILE_SIZE: u64 = 100 * 1024 * 1024;
 const BACKUP_PREFIXES: [&str; 4] = ["mem:", "topics:", "log:recall:", "meta:"];
 const WRITABLE: [&str; 4] = ["episodic", "knowledge", "preference", "project"];
@@ -100,6 +116,40 @@ fn validate_content(content: &str) -> Result<()> {
     if length > MAX_CONTENT_LENGTH {
         return Err(invalid(format!(
             "Content too long ({length} chars). Maximum is {MAX_CONTENT_LENGTH}."
+        )));
+    }
+    Ok(())
+}
+
+/// Cap a free-text field that is stored (and often embedded) verbatim.
+/// `field` names it in the error as the caller passed it.
+pub(crate) fn validate_text(field: &str, value: &str, max: usize) -> Result<()> {
+    let length = value.chars().count();
+    if length > max {
+        return Err(invalid(format!(
+            "{field} too long ({length} chars). Maximum is {max}."
+        )));
+    }
+    Ok(())
+}
+
+/// A `mem:` key in one of the namespaces tools may change. Compiled skills
+/// are build output written only through the compile gate, so lifecycle
+/// and experience tools must not reach them; `action` names the tool in the
+/// error, as retag's does.
+pub(crate) fn validate_writable_key(key: &str, action: &str) -> Result<()> {
+    let parts: Vec<&str> = key.split(':').collect();
+    if !key.starts_with("mem:") || parts.len() < 3 || parts[2].is_empty() {
+        return Err(invalid(format!(
+            "Invalid memory key: {}",
+            take_chars(key, 50)
+        )));
+    }
+    let namespace = parts[1];
+    if !WRITABLE.contains(&namespace) {
+        return Err(invalid(format!(
+            "Cannot {action} '{namespace}' entries. Only {} memories can be changed.",
+            WRITABLE.join(", ")
         )));
     }
     Ok(())
@@ -348,9 +398,17 @@ impl Engine {
         if chunks.is_empty() {
             return Ok(json!({"doc_id": null, "keys": [], "chunks_stored": 0}));
         }
+        if chunks.len() > MAX_DOCUMENT_CHUNKS {
+            return Err(invalid(format!(
+                "Document splits into {} chunks. Maximum is {MAX_DOCUMENT_CHUNKS}; raise \
+                 chunk_size or split the document.",
+                chunks.len()
+            )));
+        }
         let doc_id = Ulid::generate().to_string();
         let now = now_str();
-        let enrich_after = mode == "full" && namespace != "knowledge";
+        let too_many_to_enrich = chunks.len() > MAX_ENRICHED_CHUNKS;
+        let enrich_after = mode == "full" && namespace != "knowledge" && !too_many_to_enrich;
         let batch_mode = self.config.enrichment_batch_mode;
 
         let texts: Vec<String> = chunks
@@ -424,18 +482,30 @@ impl Engine {
             (true, false) => "queued",
             _ => "none",
         };
-        Ok(json!({
-            "doc_id": doc_id,
-            "keys": keys,
-            "chunks_stored": keys.len(),
-            "chunks_total": chunks.len(),
-            "duplicates_skipped": skipped,
-            "namespace": namespace,
-            "mode": mode,
-            "licence": licence_fields["licence"],
-            "provenance": provenance_class,
-            "enrichment": enrichment,
-        }))
+        let mut result = Map::new();
+        result.insert("doc_id".into(), doc_id.into());
+        result.insert("keys".into(), json!(keys));
+        result.insert("chunks_stored".into(), keys.len().into());
+        result.insert("chunks_total".into(), chunks.len().into());
+        result.insert("duplicates_skipped".into(), skipped.into());
+        result.insert("namespace".into(), namespace.into());
+        result.insert("mode".into(), mode.as_str().into());
+        result.insert("licence".into(), licence_fields["licence"].as_str().into());
+        result.insert("provenance".into(), provenance_class.into());
+        result.insert("enrichment".into(), enrichment.into());
+        if mode == "full" && namespace != "knowledge" && too_many_to_enrich {
+            result.insert(
+                "note".into(),
+                format!(
+                    "Stored without enrichment: {} chunks is above the {MAX_ENRICHED_CHUNKS} \
+                     that one document may queue. Raise chunk_size or split the document to \
+                     have it enriched.",
+                    chunks.len()
+                )
+                .into(),
+            );
+        }
+        Ok(Value::Object(result))
     }
 
     /// Project and domain filters to the project list recall takes, with the
@@ -715,9 +785,27 @@ impl Engine {
         Ok(Value::Array(output))
     }
 
-    /// Recall with the default namespaces, for the key-or-query lifecycle tools.
+    /// Recall with the default namespaces, for the key-or-query lifecycle
+    /// tools. Only real memories that the query closely matches are targets:
+    /// an abandoned warning carries the key of the memory that logged it and
+    /// a reinstate candidate a synthetic score, and neither was chosen by
+    /// similarity to the query.
     fn query_targets(&self, query: &str) -> Result<Vec<RecallResult>> {
-        self.recall_results(query, None, Some(3), &[], None, None)
+        Ok(self
+            .query_hits(query)?
+            .into_iter()
+            .filter(|r| !r.reinstate_candidate && r.score > QUERY_TARGET_MIN_SCORE)
+            .collect())
+    }
+
+    /// The top recall hits for a query with abandoned warnings removed: they
+    /// are not memories, whatever key they carry.
+    fn query_hits(&self, query: &str) -> Result<Vec<RecallResult>> {
+        Ok(self
+            .recall_results(query, None, Some(3), &[], None, None)?
+            .into_iter()
+            .filter(|r| r.result_type != "abandoned_warning")
+            .collect())
     }
 
     pub fn deprioritise(
@@ -726,26 +814,31 @@ impl Engine {
         reason: &str,
         hints: Option<&[String]>,
     ) -> Result<Value> {
+        validate_text("reason", reason, MAX_SHORT_TEXT)?;
+        let hints = hints
+            .filter(|h| !h.is_empty())
+            .map(validate_reinstate_hints)
+            .transpose()?;
         let mut affected = Vec::new();
-        let hints = hints.filter(|h| !h.is_empty());
         if key_or_query.starts_with("mem:") {
+            validate_writable_key(key_or_query, "deprioritise")?;
             affected.push(Value::Object(self.transition(
                 key_or_query,
                 MemoryState::Deprioritised,
                 Some(reason),
             )?));
-            if let Some(hints) = hints {
+            if let Some(hints) = &hints {
                 self.add_reinstate_hints(key_or_query, hints)?;
             }
         } else {
             for r in self.query_targets(key_or_query)? {
-                if r.adjusted_score > 0.85 && r.state == "active" {
+                if r.state == "active" {
                     affected.push(Value::Object(self.transition(
                         &r.key,
                         MemoryState::Deprioritised,
                         Some(reason),
                     )?));
-                    if let Some(hints) = hints {
+                    if let Some(hints) = &hints {
                         self.add_reinstate_hints(&r.key, hints)?;
                     }
                 }
@@ -755,8 +848,12 @@ impl Engine {
     }
 
     pub fn archive(&self, key_or_query: &str, reason: Option<&str>) -> Result<Value> {
+        if let Some(reason) = reason {
+            validate_text("reason", reason, MAX_SHORT_TEXT)?;
+        }
         let mut affected = Vec::new();
         if key_or_query.starts_with("mem:") {
+            validate_writable_key(key_or_query, "archive")?;
             affected.push(Value::Object(self.transition(
                 key_or_query,
                 MemoryState::Archived,
@@ -764,14 +861,12 @@ impl Engine {
             )?));
         } else {
             for r in self.query_targets(key_or_query)? {
-                if r.adjusted_score > 0.85 {
-                    match self.transition(&r.key, MemoryState::Archived, reason) {
-                        Ok(t) => affected.push(Value::Object(t)),
-                        Err(EngineError::Invalid(e)) => {
-                            warn!(key = %r.key, error = %e, "cannot archive")
-                        }
-                        Err(e) => return Err(e),
+                match self.transition(&r.key, MemoryState::Archived, reason) {
+                    Ok(t) => affected.push(Value::Object(t)),
+                    Err(EngineError::Invalid(e)) => {
+                        warn!(key = %r.key, error = %e, "cannot archive")
                     }
+                    Err(e) => return Err(e),
                 }
             }
         }
@@ -789,12 +884,17 @@ impl Engine {
     pub fn reinstate(&self, key_or_query: &str) -> Result<Value> {
         let mut affected = Vec::new();
         if key_or_query.starts_with("mem:") {
+            validate_writable_key(key_or_query, "reinstate")?;
             let t = self.transition(key_or_query, MemoryState::Active, None)?;
             self.clear_deprioritisation(key_or_query)?;
             affected.push(Value::Object(t));
         } else {
-            for r in self.query_targets(key_or_query)? {
-                if matches!(r.state.as_str(), "deprioritised" | "archived") {
+            // A reinstate candidate is what this tool exists to bring back,
+            // so hint matches count alongside close similarity.
+            for r in self.query_hits(key_or_query)? {
+                if matches!(r.state.as_str(), "deprioritised" | "archived")
+                    && (r.reinstate_candidate || r.score > QUERY_TARGET_MIN_SCORE)
+                {
                     match self.transition(&r.key, MemoryState::Active, None) {
                         Ok(t) => {
                             self.clear_deprioritisation(&r.key)?;
@@ -814,15 +914,14 @@ impl Engine {
     pub fn forget(&self, key_or_query: &str, confirm: bool) -> Result<Value> {
         let mut targets: Vec<(String, String)> = Vec::new();
         if key_or_query.starts_with("mem:") {
+            validate_writable_key(key_or_query, "forget")?;
             if let Some(data) = self.store.get(key_or_query)?.filter(|d| !d.is_empty()) {
                 let content = data.get("content").map_or("", String::as_str);
                 targets.push((key_or_query.to_owned(), take_chars(content, 80)));
             }
         } else {
             for r in self.query_targets(key_or_query)? {
-                if r.adjusted_score > 0.85 {
-                    targets.push((r.key.clone(), take_chars(&r.content, 80)));
-                }
+                targets.push((r.key.clone(), take_chars(&r.content, 80)));
             }
         }
         if targets.is_empty() {
@@ -847,14 +946,30 @@ impl Engine {
     }
 
     pub fn suppress_topic(&self, topic: &str, reason: Option<&str>) -> Result<Value> {
-        if topic.trim().is_empty() {
+        let trimmed = topic.trim();
+        if trimmed.is_empty() {
             return Err(invalid("Topic cannot be empty"));
         }
-        if topic.chars().count() > 200 {
-            return Err(invalid("Topic too long (max 200 characters)"));
+        // A one- or two-character topic matches inside almost every word and
+        // would hide most of the store from recall.
+        if trimmed.chars().count() < MIN_TOPIC_CHARS {
+            return Err(invalid(format!(
+                "Topic too short (min {MIN_TOPIC_CHARS} characters)"
+            )));
+        }
+        if trimmed.chars().count() > MAX_TOPIC_CHARS {
+            return Err(invalid(format!(
+                "Topic too long (max {MAX_TOPIC_CHARS} characters)"
+            )));
+        }
+        if trimmed.chars().any(char::is_control) {
+            return Err(invalid("Topic contains control characters"));
+        }
+        if let Some(reason) = reason {
+            validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
         self.store
-            .set_add(SUPPRESSED_KEY, &[topic.to_lowercase()])?;
+            .set_add(SUPPRESSED_KEY, &[trimmed.to_lowercase()])?;
         info!(topic, "suppressed topic");
         let mut m = Map::new();
         m.insert("topic".into(), topic.into());

@@ -7,9 +7,39 @@ use tracing::info;
 
 use crate::error::invalid;
 use crate::pyfmt::{now_str, py_float, py_json};
+use crate::recall::mentions;
 use crate::{Engine, Result};
 
 pub(crate) const SUPPRESSED_KEY: &str = "topics:suppressed";
+/// Shortest topic, abandoned-approach name or reinstate hint that may match
+/// against text: anything shorter appears inside most words.
+pub(crate) const MIN_TOPIC_CHARS: usize = 3;
+pub(crate) const MAX_TOPIC_CHARS: usize = 200;
+
+/// Trim a topic-like term (a suppressed topic, an abandoned approach name or
+/// a reinstate hint) and check it is something that can sensibly be matched.
+pub(crate) fn validate_term(what: &str, value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    let length = trimmed.chars().count();
+    if !(MIN_TOPIC_CHARS..=MAX_TOPIC_CHARS).contains(&length) {
+        return Err(invalid(format!(
+            "{what} must be {MIN_TOPIC_CHARS}-{MAX_TOPIC_CHARS} characters"
+        )));
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err(invalid(format!("{what} contains control characters")));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Reinstate hints, trimmed. A blank or one-letter hint would flag the
+/// memory as a candidate for every query.
+pub(crate) fn validate_reinstate_hints(hints: &[String]) -> Result<Vec<String>> {
+    hints
+        .iter()
+        .map(|h| validate_term("Reinstate hint", h))
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryState {
@@ -161,10 +191,16 @@ impl Engine {
     }
 }
 
-/// True if a deprioritised memory has a reinstate hint the query contains,
-/// or that contains the query.
+/// True if a deprioritised memory has a reinstate hint the query mentions,
+/// or that mentions the query, matched on word boundaries. A blank query
+/// matches nothing, and hints too short to be meaningful (from data stored
+/// before hints were validated) are ignored.
 pub(crate) fn check_reinstate_eligibility(doc: &Fields, query: &str) -> bool {
     if doc.get("state").map(String::as_str).unwrap_or("active") != "deprioritised" {
+        return false;
+    }
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
         return false;
     }
     let Some(hints) = doc
@@ -173,9 +209,50 @@ pub(crate) fn check_reinstate_eligibility(doc: &Fields, query: &str) -> bool {
     else {
         return false;
     };
-    let query = query.to_lowercase();
     hints.iter().filter_map(Value::as_str).any(|hint| {
-        let hint = hint.to_lowercase();
-        query.contains(&hint) || hint.contains(&query)
+        let hint = hint.trim().to_lowercase();
+        hint.chars().count() >= MIN_TOPIC_CHARS
+            && (mentions(&query, &hint) || mentions(&hint, &query))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deprioritised(hints: &str) -> Fields {
+        Fields::from([
+            ("state".to_owned(), "deprioritised".to_owned()),
+            ("reinstate_hints".to_owned(), hints.to_owned()),
+        ])
+    }
+
+    #[test]
+    fn reinstate_hints_are_validated_and_trimmed() {
+        assert_eq!(
+            validate_reinstate_hints(&["  file watching ".to_owned()]).unwrap(),
+            ["file watching"]
+        );
+        for bad in ["", " ", "ab", "a\nb"] {
+            assert!(
+                validate_reinstate_hints(&[bad.to_owned()]).is_err(),
+                "{bad:?} should be rejected"
+            );
+        }
+        assert!(validate_reinstate_hints(&["x".repeat(201)]).is_err());
+    }
+
+    #[test]
+    fn blank_queries_and_short_hints_never_match() {
+        let doc = deprioritised(r#"["", "e", "file watching"]"#);
+        assert!(!check_reinstate_eligibility(&doc, ""));
+        assert!(!check_reinstate_eligibility(&doc, "   "));
+        assert!(!check_reinstate_eligibility(&doc, "elephants"));
+        assert!(check_reinstate_eligibility(&doc, "File watching again"));
+        assert!(check_reinstate_eligibility(&doc, "watching"));
+        assert!(
+            !check_reinstate_eligibility(&doc, "profile watch"),
+            "hints match whole words only"
+        );
+    }
 }

@@ -124,6 +124,9 @@ impl ModelFiles {
             });
         }
         let revision = config.effective_revision();
+        // The revision is joined into cache paths and hub URLs below, so it
+        // is checked before either sees it.
+        download::check_revision(&revision)?;
         if let Some(snapshot) = hf_snapshot_dir(&repo, &revision) {
             return Ok(Self {
                 repo,

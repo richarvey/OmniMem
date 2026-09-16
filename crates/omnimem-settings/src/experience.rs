@@ -14,7 +14,7 @@ use omnimem_store::Fields;
 use serde_json::{Value, json};
 
 use crate::PanelState;
-use crate::pages::{blocking, starting};
+use crate::pages::{blocking, quote, starting};
 use crate::render::page;
 
 const EFFORTFUL_PAGE_SIZE: usize = 10;
@@ -133,10 +133,10 @@ pub(crate) async fn summary(
 
     let mut extra_params = String::new();
     if !outcome_filter.is_empty() {
-        extra_params.push_str(&format!("&outcome={outcome_filter}"));
+        extra_params.push_str(&format!("&outcome={}", quote(&outcome_filter)));
     }
     if !project.is_empty() {
-        extra_params.push_str(&format!("&project={project}"));
+        extra_params.push_str(&format!("&project={}", quote(&project)));
     }
     let template = if headers.get("HX-Request").is_some_and(|v| v == "true") {
         "experience/_effortful.html"

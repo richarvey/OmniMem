@@ -19,7 +19,7 @@ use omnimem_core::classification::{
 use omnimem_store::{Fields, discovery_text};
 use regex::Regex;
 use serde_json::{Map, Value, json};
-use tracing::info;
+use tracing::{debug, info};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -63,11 +63,73 @@ static UNSAFE_FILENAME: LazyLock<Regex> =
 /// Per-instance telemetry and binary data never travel.
 const INSTANCE_LOCAL_FIELDS: [&str; 3] = ["vector", "recall_count", "last_recalled"];
 
+/// What a bundled memory may bring in: what it says about itself in words.
+/// What the exporting instance decided about it (blessing, ranking scores,
+/// lifecycle state, lineage to its own records, identity stamps) stays
+/// behind, because the importing instance has no way to check any of it
+/// and would otherwise rank and trust a stranger's memory on its say-so.
+/// `licence` and `provenance` are on the list but re-checked on apply.
+const IMPORTABLE_MEMORY_FIELDS: [&str; 20] = [
+    "content",
+    "tags",
+    "project",
+    "project_name",
+    "title",
+    "source_url",
+    "published_at",
+    "event_date",
+    "topics",
+    "outcome",
+    "iterations",
+    "breakthrough",
+    "gotchas",
+    "lesson",
+    "abandoned_approaches",
+    "created_at",
+    "updated_at",
+    "licence",
+    "licence_note",
+    "provenance",
+];
+
+/// What a compiled skill legitimately carries: its identity, its text and
+/// the manifests saying what it was compiled from. Blessing, surface score
+/// and domain routing are the importing instance's to decide.
+const IMPORTABLE_SKILL_FIELDS: [&str; 13] = [
+    "name",
+    "description",
+    "domain",
+    "user",
+    "body",
+    "generated",
+    "contract_version",
+    "compiled_at",
+    "created_at",
+    "updated_at",
+    "tags",
+    "source_manifest",
+    "rule_manifest",
+];
+
 fn strip_instance_local(fields: &Fields) -> Fields {
     fields
         .iter()
         .filter(|(k, _)| !INSTANCE_LOCAL_FIELDS.contains(&k.as_str()))
         .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+/// Keep the fields on `allowed`; the rest are logged and dropped.
+fn keep_importable(fields: Fields, allowed: &[&str], entry: &str) -> Fields {
+    fields
+        .into_iter()
+        .filter(|(name, _)| {
+            let keep = allowed.contains(&name.as_str());
+            if !keep {
+                debug!(entry, field = %name, "dropping a field an import may not carry");
+            }
+            keep
+        })
         .collect()
 }
 
@@ -301,10 +363,11 @@ impl Engine {
                 continue;
             }
             let namespace = key.split(':').nth(1).unwrap_or("");
+            // Only the descriptive fields survived validation; the store
+            // stamps origin, epoch, classification and content hash afresh
+            // on the write, as for any new memory.
             let mut fields = bundled.clone();
-            fields
-                .entry("state".into())
-                .or_insert_with(|| "active".into());
+            fields.insert("state".into(), "active".into());
             // An imported memory is someone else's work: a bundled "own" is
             // the exporter's. Open and restricted travel; the rest is unknown.
             let licence = fields.get("licence").map(String::as_str);
@@ -326,10 +389,10 @@ impl Engine {
 
         let mut skill_written = false;
         if self.store.get(&bundle.skill_key)?.is_none() {
+            // Unblessed and at the default surface score, as a skill compiled
+            // here would start.
             let mut fields = bundle.skill_fields.clone();
-            fields
-                .entry("state".into())
-                .or_insert_with(|| "active".into());
+            fields.insert("state".into(), "active".into());
             fields.insert("imported_at".into(), now);
             let field = |name: &str| fields.get(name).cloned().unwrap_or_default();
             let vector = self.embed(&discovery_text(
@@ -357,11 +420,31 @@ impl Engine {
     }
 }
 
-fn read_entry(archive: &mut ZipArchive<Cursor<&[u8]>>, name: &str) -> Option<Vec<u8>> {
-    let mut file = archive.by_name(name).ok()?;
+/// Read one entry without trusting its header. The declared size was
+/// checked against the cap already, but a deflate stream can inflate to
+/// far more than its header claims, so the stream itself is cut at the cap
+/// and must produce exactly the declared number of bytes.
+fn read_entry(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    name: &str,
+) -> std::result::Result<Vec<u8>, String> {
+    let unreadable = || format!("Could not read {name}");
+    let mut file = archive.by_name(name).map_err(|_| unreadable())?;
+    let declared = file.size();
     let mut data = Vec::new();
-    file.read_to_end(&mut data).ok()?;
-    Some(data)
+    (&mut file)
+        .take(MAX_ENTRY_UNCOMPRESSED + 1)
+        .read_to_end(&mut data)
+        .map_err(|_| unreadable())?;
+    if data.len() as u64 > MAX_ENTRY_UNCOMPRESSED {
+        return Err(format!("Bundle entry {name} is too large"));
+    }
+    if data.len() as u64 != declared {
+        return Err(format!(
+            "Bundle entry {name} does not match its declared size"
+        ));
+    }
+    Ok(data)
 }
 
 fn validate_memory(raw: &[u8], entry: &str) -> std::result::Result<(String, Fields), String> {
@@ -407,7 +490,10 @@ fn validate_memory(raw: &[u8], entry: &str) -> std::result::Result<(String, Fiel
     if chars(content) > MAX_CONTENT {
         return Err(format!("{entry} content exceeds {MAX_CONTENT} chars"));
     }
-    Ok((key.to_owned(), strip_instance_local(&fields)))
+    Ok((
+        key.to_owned(),
+        keep_importable(fields, &IMPORTABLE_MEMORY_FIELDS, entry),
+    ))
 }
 
 fn validate_feeds(
@@ -575,8 +661,11 @@ pub fn validate_skill_import(data: &[u8]) -> std::result::Result<ValidatedBundle
         return Err("Bundle is missing skill.json or SKILL.md".to_owned());
     }
 
-    let raw_manifest =
-        read_entry(&mut archive, "manifest.json").ok_or("Could not read manifest.json")?;
+    // The declared sizes summed under the cap; the bytes actually produced
+    // are counted too, in case the headers lied.
+    let mut inflated = 0u64;
+    let raw_manifest = read_entry(&mut archive, "manifest.json")?;
+    inflated += raw_manifest.len() as u64;
     let manifest: Value = std::str::from_utf8(&raw_manifest)
         .ok()
         .and_then(|s| serde_json::from_str(s).ok())
@@ -607,7 +696,11 @@ pub fn validate_skill_import(data: &[u8]) -> std::result::Result<ValidatedBundle
     };
     let mut contents: HashMap<String, Vec<u8>> = HashMap::new();
     for name in &payload {
-        let raw = read_entry(&mut archive, name).ok_or_else(|| format!("Could not read {name}"))?;
+        let raw = read_entry(&mut archive, name)?;
+        inflated += raw.len() as u64;
+        if inflated > MAX_TOTAL_UNCOMPRESSED {
+            return Err("Bundle expands too large".to_owned());
+        }
         if checksums.get(name).and_then(Value::as_str) != Some(sha256_hex(&raw).as_str()) {
             return Err(format!(
                 "Checksum mismatch on {name} — the bundle is corrupt or was modified after export"
@@ -633,6 +726,7 @@ pub fn validate_skill_import(data: &[u8]) -> std::result::Result<ValidatedBundle
         }
         skill_fields.insert(name.clone(), value.to_owned());
     }
+    let skill_fields = keep_importable(skill_fields, &IMPORTABLE_SKILL_FIELDS, "skill.json");
     let field = |name: &str| skill_fields.get(name).cloned().unwrap_or_default();
     let (domain, user) = (field("domain"), field("user"));
     if !is_valid_domain(&domain) || !is_valid_domain(&user) {
@@ -838,4 +932,202 @@ pub fn merge_feed_influences(
         }
     }
     (merged, added, updated, skipped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A zip of `files`, deflated, as the exporter writes one.
+    fn zipped(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let owned: Vec<(String, Vec<u8>)> = files
+            .iter()
+            .map(|(n, d)| ((*n).to_owned(), d.to_vec()))
+            .collect();
+        zip_bytes(&owned).unwrap()
+    }
+
+    /// Rewrite the uncompressed size an entry declares, in both its local
+    /// header and its central directory record, leaving the compressed
+    /// stream and CRC as they are: a bundle whose header lies.
+    fn declare_size(zip: &mut [u8], name: &str, size: u32) {
+        let mut patched = 0;
+        let mut i = 0;
+        while i + 4 <= zip.len() {
+            let (name_len_at, name_at, size_at) = match &zip[i..i + 4] {
+                [0x50, 0x4b, 0x03, 0x04] => (26, 30, 22),
+                [0x50, 0x4b, 0x01, 0x02] => (28, 46, 24),
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+            let name_len =
+                u16::from_le_bytes([zip[i + name_len_at], zip[i + name_len_at + 1]]) as usize;
+            if &zip[i + name_at..i + name_at + name_len] == name.as_bytes() {
+                zip[i + size_at..i + size_at + 4].copy_from_slice(&size.to_le_bytes());
+                patched += 1;
+            }
+            i += name_at;
+        }
+        assert_eq!(patched, 2, "local header and central directory record");
+    }
+
+    #[test]
+    fn a_large_entry_is_refused_even_though_it_compresses_to_almost_nothing() {
+        let big = vec![b' '; 3 * 1024 * 1024];
+        let data = zipped(&[
+            ("manifest.json", &big),
+            ("skill.json", b"{}"),
+            ("SKILL.md", b"x"),
+        ]);
+        assert!(data.len() < 64 * 1024, "deflate makes it tiny");
+        assert_eq!(
+            validate_skill_import(&data).unwrap_err(),
+            "Bundle entry manifest.json is too large"
+        );
+    }
+
+    #[test]
+    fn an_entry_that_lies_about_its_size_is_refused() {
+        // Declares a kilobyte, inflates to three megabytes.
+        let big = vec![b' '; 3 * 1024 * 1024];
+        let mut data = zipped(&[
+            ("manifest.json", &big),
+            ("skill.json", b"{}"),
+            ("SKILL.md", b"x"),
+        ]);
+        declare_size(&mut data, "manifest.json", 1024);
+        assert_eq!(
+            validate_skill_import(&data).unwrap_err(),
+            "Bundle entry manifest.json is too large"
+        );
+
+        // Declares a kilobyte, inflates to four: under the cap, still a lie.
+        let small = vec![b' '; 4 * 1024];
+        let mut data = zipped(&[
+            ("manifest.json", &small),
+            ("skill.json", b"{}"),
+            ("SKILL.md", b"x"),
+        ]);
+        declare_size(&mut data, "manifest.json", 1024);
+        assert_eq!(
+            validate_skill_import(&data).unwrap_err(),
+            "Bundle entry manifest.json does not match its declared size"
+        );
+    }
+
+    /// A complete, checksummed bundle around one memory and one skill, with
+    /// whatever extra fields the test wants smuggled in.
+    fn bundle(memory_extra: &[(&str, &str)], skill_extra: &[(&str, &str)]) -> Vec<u8> {
+        let key = "mem:episodic:01A";
+        let body = "# python-local\n\nUse queues.\n";
+        let mut skill = json!({
+            "name": "python-local",
+            "description": "Lessons from python work",
+            "domain": "python",
+            "user": "local",
+            "body": body,
+            "generated": "true",
+            "contract_version": "1",
+            "created_at": "1700000000.0",
+            "updated_at": "1700000000.0",
+            "tags": "[\"python\"]",
+            "source_manifest": format!("[\"{key}\"]"),
+            "rule_manifest": "[]",
+        });
+        for (name, value) in skill_extra {
+            skill[*name] = json!(value);
+        }
+        let mut fields = json!({
+            "content": "work on alpha",
+            "tags": "[\"python\"]",
+            "project": "alpha",
+            "outcome": "succeeded",
+            "lesson": "Use queues.",
+            "created_at": "1700000000.0",
+            "updated_at": "1700000000.0",
+        });
+        for (name, value) in memory_extra {
+            fields[*name] = json!(value);
+        }
+        let memory = serde_json::to_vec(&json!({"key": key, "fields": fields})).unwrap();
+        let skill_json = serde_json::to_vec(&skill).unwrap();
+        let files: Vec<(&str, Vec<u8>)> = vec![
+            ("skill.json", skill_json),
+            ("SKILL.md", body.as_bytes().to_vec()),
+            ("memories/0000.json", memory),
+        ];
+        let checksums: Map<String, Value> = files
+            .iter()
+            .map(|(n, d)| ((*n).to_owned(), sha256_hex(d).into()))
+            .collect();
+        let manifest = serde_json::to_vec(&json!({
+            "format": EXPORT_FORMAT,
+            "format_version": EXPORT_FORMAT_VERSION,
+            "skill_key": "mem:skill:gen:python-local",
+            "memory_count": 1,
+            "checksums": checksums,
+        }))
+        .unwrap();
+        let mut all: Vec<(&str, &[u8])> = vec![("manifest.json", &manifest)];
+        all.extend(files.iter().map(|(n, d)| (*n, d.as_slice())));
+        zipped(&all)
+    }
+
+    #[test]
+    fn imports_keep_only_the_fields_a_stranger_may_set() {
+        let smuggled = [
+            ("blessed", "1"),
+            ("blessed_at", "1700000001.0"),
+            ("surface_score", "9.0"),
+            ("effort_score", "10"),
+            ("experience_weight", "5.0"),
+            ("skill_domains", "[\"python\"]"),
+            ("origin_id", "someone-else"),
+            ("epoch", "42"),
+            ("classification", "restricted"),
+            ("content_hash", "deadbeef"),
+            ("expires_at", "0"),
+            ("enriched_from", "mem:knowledge:x"),
+            ("source_doc_id", "doc"),
+            ("feed_name", "news"),
+            ("recall_count", "99"),
+            ("last_recalled", "1700000002.0"),
+            ("state", "deleted"),
+            ("deprioritised_reason", "x"),
+        ];
+        let validated = validate_skill_import(&bundle(&smuggled, &smuggled)).unwrap();
+
+        let (key, fields) = &validated.memories[0];
+        assert_eq!(key, "mem:episodic:01A");
+        for (name, _) in &smuggled {
+            assert!(!fields.contains_key(*name), "memory field {name} travelled");
+            assert!(
+                !validated.skill_fields.contains_key(*name),
+                "skill field {name} travelled"
+            );
+        }
+        for name in [
+            "content",
+            "tags",
+            "project",
+            "outcome",
+            "lesson",
+            "created_at",
+        ] {
+            assert!(fields.contains_key(name), "memory field {name} was dropped");
+        }
+        // Every importable field the bundle carries survives (it has no
+        // compiled_at, which is optional).
+        for name in IMPORTABLE_SKILL_FIELDS
+            .iter()
+            .filter(|n| **n != "compiled_at")
+        {
+            assert!(
+                validated.skill_fields.contains_key(*name),
+                "skill field {name} was dropped"
+            );
+        }
+    }
 }

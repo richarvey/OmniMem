@@ -11,6 +11,7 @@ use tracing::{error, warn};
 
 use crate::classification::classification_fields;
 use crate::pyfmt::{compact, now_secs, py_json, take_chars};
+use crate::tools::validate_project_name;
 use crate::{Engine, Result};
 
 const SKILL_KEY_PREFIX: &str = "mem:skill:";
@@ -198,6 +199,9 @@ impl Engine {
 
     pub fn briefing(&self, project: Option<&str>, include_knowledge: bool) -> Result<Value> {
         let project = project.filter(|p| !p.is_empty());
+        // The name becomes part of the `meta:maintenance:` key below, so it
+        // must be a project name and not an arbitrary key fragment.
+        validate_project_name(project)?;
         let mut result = Map::new();
 
         if let Some(p) = project {

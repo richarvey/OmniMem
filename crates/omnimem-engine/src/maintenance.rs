@@ -10,13 +10,21 @@ use crate::contradiction::has_negation_pair;
 use crate::error::invalid;
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{now_secs, now_str, py_json, take_chars};
-use crate::skills::{py_str, py_truthy};
+use crate::skills::py_str;
+use crate::tools::validate_namespace;
 use crate::{Engine, Result};
 
 const SCAN_CAP: usize = 200;
 const COMPARISON_CAP: usize = 2000;
 const SIMILARITY_THRESHOLD: f64 = 0.5;
 const RESULTS_CAP: usize = 10;
+
+/// A model-reported confidence as a number in 0..=1; anything else is 0.
+fn clamped_confidence(raw: Option<&Value>) -> f64 {
+    raw.and_then(Value::as_f64)
+        .filter(|c| c.is_finite())
+        .map_or(0.0, |c| c.clamp(0.0, 1.0))
+}
 
 fn doc_project(fields: &Fields) -> Option<&str> {
     fields
@@ -91,6 +99,9 @@ impl Engine {
         project_filter: Option<&str>,
         use_api: bool,
     ) -> Result<Value> {
+        // Compiled skills are build output and never contradict each other in
+        // a way worth linking, so only the writable namespaces are scanned.
+        validate_namespace(namespace)?;
         let ns: Namespace = namespace
             .parse()
             .map_err(|_| invalid(format!("Invalid namespace: {namespace}")))?;
@@ -172,7 +183,9 @@ impl Engine {
                 let mut explanation = "Opposing language patterns detected.".to_owned();
                 if use_api {
                     let verdict = self.check_contradiction_api(content_a, content_b);
-                    if !verdict.get("is_contradiction").is_some_and(py_truthy) {
+                    // The verdict is model output: only a JSON `true` confirms,
+                    // not a truthy string such as "false" or "maybe".
+                    if verdict.get("is_contradiction") != Some(&Value::Bool(true)) {
                         continue;
                     }
                     let stated = verdict
@@ -183,10 +196,7 @@ impl Engine {
                         .as_str()
                         .map_or_else(|| py_str(&stated), str::to_owned);
                     entry["method"] = "api_confirmed".into();
-                    entry["confidence"] = verdict
-                        .get("confidence")
-                        .cloned()
-                        .unwrap_or_else(|| json!(0.0));
+                    entry["confidence"] = json!(clamped_confidence(verdict.get("confidence")));
                     entry["explanation"] = stated;
                 }
                 self.link_contradiction(key_a, key_b, &explanation)?;
@@ -334,5 +344,19 @@ impl Engine {
             "contradictions_found": contradictions,
             "knowledge_expired": expired,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confidence_is_a_clamped_number() {
+        assert_eq!(clamped_confidence(Some(&json!(0.7))), 0.7);
+        assert_eq!(clamped_confidence(Some(&json!(3))), 1.0);
+        assert_eq!(clamped_confidence(Some(&json!(-1.5))), 0.0);
+        assert_eq!(clamped_confidence(Some(&json!("high"))), 0.0);
+        assert_eq!(clamped_confidence(None), 0.0);
     }
 }

@@ -23,13 +23,39 @@ use tracing::{info, warn};
 
 use crate::PanelState;
 use crate::format::{date_and_time, number, timestamp};
-use crate::pages::{blocking, see_other, starting};
+use crate::pages::{blocking, quote, quote_segment, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
 
+/// The longest project name, as `validate_project_name` in the engine's
+/// tools counts it.
+const MAX_PROJECT_NAME_CHARS: usize = 200;
+
+/// The rule MCP applies to a project name (`SAFE_NAME_RE` in the engine's
+/// tools, which isn't exported): alphanumeric, hyphen, underscore, dot or
+/// space, 1 to 200 characters. The panel's forms enforce the same, so a name
+/// the panel accepts is one every tool can address.
+pub(crate) fn check_project_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.chars().count() > MAX_PROJECT_NAME_CHARS {
+        return Err("Project name must be 1-200 characters".to_owned());
+    }
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ' ');
+    if !name.chars().all(allowed) {
+        return Err(
+            "Project name contains invalid characters. Only alphanumeric, hyphens, underscores, dots, and spaces are allowed."
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
 fn context_key(name: &str) -> String {
     format!("mem:project:{name}")
+}
+
+fn project_page(name: &str) -> String {
+    format!("/projects/{}", quote_segment(name))
 }
 
 fn read_domains(fields: &Fields) -> Vec<String> {
@@ -248,6 +274,7 @@ async fn edit_page(
     state: PanelState,
     engine: std::sync::Arc<Engine>,
     name: Option<String>,
+    error: Option<String>,
 ) -> Response {
     let is_new = name.is_none();
     let found = blocking(move || {
@@ -277,18 +304,21 @@ async fn edit_page(
         Ok(Some((project, domain_options))) => page(
             state.templates(),
             "projects/edit.html",
-            context! { project, current_page => "projects", is_new, domain_options },
+            context! { project, current_page => "projects", is_new, domain_options, error },
         ),
         Ok(None) => project_not_found(&state),
         Err(failure) => failure,
     }
 }
 
-pub(crate) async fn new_form(State(state): State<PanelState>) -> Response {
+pub(crate) async fn new_form(
+    State(state): State<PanelState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    edit_page(state, engine, None).await
+    edit_page(state, engine, None, query.get("error").cloned()).await
 }
 
 pub(crate) async fn edit_form(
@@ -298,7 +328,7 @@ pub(crate) async fn edit_form(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    edit_page(state, engine, Some(name)).await
+    edit_page(state, engine, Some(name), None).await
 }
 
 /// Write a project context from the form, as `set_project_context` stamps
@@ -356,7 +386,10 @@ pub(crate) async fn create(
     if name.is_empty() {
         return see_other("/projects/new");
     }
-    let target = format!("/projects/{name}");
+    if let Err(problem) = check_project_name(&name) {
+        return see_other(&format!("/projects/new?error={}", quote(&problem)));
+    }
+    let target = project_page(&name);
     match blocking(move || save_context(&engine, &name, &form, true)).await {
         Ok(()) => see_other(&target),
         Err(failure) => failure,
@@ -371,7 +404,12 @@ pub(crate) async fn save(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let target = format!("/projects/{name}");
+    // The name comes from the address, so a bad one is a page that doesn't
+    // exist rather than a form to correct.
+    if check_project_name(&name).is_err() {
+        return project_not_found(&state);
+    }
+    let target = project_page(&name);
     match blocking(move || save_context(&engine, &name, &form, false)).await {
         Ok(()) => see_other(&target),
         Err(failure) => failure,
@@ -487,4 +525,23 @@ pub(crate) async fn reinstate(
     Path(name): Path<String>,
 ) -> Response {
     bulk(state, name, false).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_names_follow_the_mcp_rule() {
+        assert!(check_project_name("omnimem").is_ok());
+        assert!(check_project_name("My Project v2.0_beta-1").is_ok());
+        assert!(check_project_name("").is_err());
+        assert!(check_project_name(&"a".repeat(201)).is_err());
+        assert!(check_project_name(&"a".repeat(200)).is_ok());
+        assert!(check_project_name("a/b").is_err());
+        assert!(check_project_name("<script>").is_err());
+        assert!(check_project_name("it's").is_err());
+        assert!(check_project_name("café").is_err());
+        assert_eq!(project_page("My Project"), "/projects/My%20Project");
+    }
 }

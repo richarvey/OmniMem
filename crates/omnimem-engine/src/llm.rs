@@ -308,10 +308,26 @@ impl Engine {
                 let text = reply.trim();
                 match JSON_OBJECT.find(text) {
                     None => unconfirmed(take_chars(text, 200)),
-                    Some(found) => serde_json::from_str(found.as_str()).unwrap_or_else(|e| {
-                        error!(error = %e, "contradiction API check failed");
-                        unconfirmed(format!("API check failed: {e}"))
-                    }),
+                    Some(found) => match serde_json::from_str::<Value>(found.as_str()) {
+                        // The model's answer is untrusted: only a JSON true
+                        // confirms, the confidence is clamped, and nothing
+                        // else in its object reaches the caller.
+                        Ok(verdict) => json!({
+                            "is_contradiction": verdict["is_contradiction"].as_bool() == Some(true),
+                            "confidence": verdict["confidence"]
+                                .as_f64()
+                                .filter(|c| c.is_finite())
+                                .map_or(0.0, |c| c.clamp(0.0, 1.0)),
+                            "explanation": take_chars(
+                                verdict["explanation"].as_str().unwrap_or(""),
+                                1000
+                            ),
+                        }),
+                        Err(e) => {
+                            error!(error = %e, "contradiction API check failed");
+                            unconfirmed(format!("API check failed: {e}"))
+                        }
+                    },
                 }
             }
         }

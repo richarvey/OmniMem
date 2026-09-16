@@ -158,6 +158,17 @@ impl Default for Panel {
 
 impl Panel {
     pub fn new() -> Self {
+        Self::build(false)
+    }
+
+    /// A panel that also answers the desktop smoke test's `/_panel/*` routes.
+    /// They echo request bodies and redirect wherever a form asks, so they
+    /// exist only while the smoke test is running.
+    pub fn with_smoke_routes() -> Self {
+        Self::build(true)
+    }
+
+    fn build(smoke_routes: bool) -> Self {
         let state = PanelState(Arc::new(Shared {
             engine: RwLock::new(None),
             failure: RwLock::new(None),
@@ -238,7 +249,11 @@ impl Panel {
             .route("/feeds", get(feeds::list))
             .route("/feeds/new", get(feeds::new_form).post(feeds::create))
             .route("/feeds/download", get(feeds::download))
-            .route("/feeds/upload", post(feeds::upload))
+            .route(
+                "/feeds/upload",
+                // A reading list is a few kilobytes; a large file is a mistake.
+                post(feeds::upload).layer(DefaultBodyLimit::max(256 * 1024)),
+            )
             .route(
                 "/feeds/{index}/edit",
                 get(feeds::edit_form).post(feeds::save),
@@ -259,12 +274,16 @@ impl Panel {
                 "/configuration",
                 get(configuration::form).post(configuration::save),
             )
-            .route("/static/{*path}", get(assets::serve))
-            .route("/_panel/echo", post(pages::echo))
-            .route("/_panel/redirect", post(pages::redirect))
-            .route("/_panel/landed", get(pages::landed))
-            .fallback(pages::pending)
-            .with_state(state.clone());
+            .route("/static/{*path}", get(assets::serve));
+        let router = if smoke_routes {
+            router
+                .route("/_panel/echo", post(pages::echo))
+                .route("/_panel/redirect", post(pages::redirect))
+                .route("/_panel/landed", get(pages::landed))
+        } else {
+            router
+        };
+        let router = router.fallback(pages::pending).with_state(state.clone());
         Self { state, router }
     }
 

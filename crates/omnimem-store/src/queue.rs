@@ -68,7 +68,10 @@ impl Store {
                 .and_then(|c| c.trim().parse::<i64>().ok())
                 .unwrap_or(0);
             let updates = Fields::from([
-                ("recall_count".to_owned(), (count + 1).to_string()),
+                (
+                    "recall_count".to_owned(),
+                    count.saturating_add(1).to_string(),
+                ),
                 ("last_recalled".to_owned(), timestamp.to_owned()),
             ]);
             merge_memory(&tx, key, namespace, &updates, &self.origin_id)?;

@@ -128,6 +128,28 @@ fn number<T: std::str::FromStr>(name: &str, default: T) -> T {
     }
 }
 
+/// A float setting clamped into `range`. `NaN` and the infinities parse
+/// as floats but poison every comparison they take part in (a `NaN`
+/// threshold would let everything or nothing through), so they fall back
+/// to the default like a non-number would.
+fn float(name: &str, default: f64, range: std::ops::RangeInclusive<f64>) -> f64 {
+    let value = number(name, default);
+    let value = if value.is_finite() {
+        value
+    } else {
+        warn!("{name}={value} is not a finite number; using the default");
+        default
+    };
+    let clamped = value.clamp(*range.start(), *range.end());
+    if clamped != value {
+        warn!("{name}={value} is outside {range:?}; using {clamped}");
+    }
+    clamped
+}
+
+const UNIT: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+const NON_NEGATIVE: std::ops::RangeInclusive<f64> = 0.0..=f64::MAX;
+
 fn flag(name: &str) -> bool {
     text(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
 }
@@ -147,17 +169,18 @@ impl EngineConfig {
         Self {
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
-            recall_expand_count: number("RECALL_EXPAND_COUNT", d.recall_expand_count),
-            recall_top_k: number("MEMORY_RECALL_TOP_K", d.recall_top_k),
-            recall_min_score: number("RECALL_MIN_SCORE", d.recall_min_score).max(0.0),
-            recall_weak_score: number("RECALL_WEAK_SCORE", d.recall_weak_score).max(0.0),
-            recency_decay_days: number("RECENCY_DECAY_DAYS", d.recency_decay_days),
+            recall_expand_count: number("RECALL_EXPAND_COUNT", d.recall_expand_count).clamp(1, 10),
+            recall_top_k: number("MEMORY_RECALL_TOP_K", d.recall_top_k).clamp(1, 50),
+            recall_min_score: float("RECALL_MIN_SCORE", d.recall_min_score, UNIT),
+            recall_weak_score: float("RECALL_WEAK_SCORE", d.recall_weak_score, UNIT),
+            recency_decay_days: float("RECENCY_DECAY_DAYS", d.recency_decay_days, NON_NEGATIVE),
             abandoned_cache_ttl: Duration::from_secs(number("ABANDONED_CACHE_TTL_SECONDS", 60)),
-            deprioritised_weight: number("DEPRIORITISED_WEIGHT", d.deprioritised_weight),
-            dedup_threshold: number("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold),
-            contradiction_threshold: number(
+            deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
+            dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
+            contradiction_threshold: float(
                 "CONTRADICTION_SIMILARITY_THRESHOLD",
                 d.contradiction_threshold,
+                UNIT,
             ),
             ingest_mode: text("INGEST_MODE")
                 .map(|m| m.to_ascii_lowercase())
@@ -169,36 +192,46 @@ impl EngineConfig {
                 .unwrap_or_else(|| backup_dir.join("skills")),
             backup_dir,
             expand_queries: flag("RECALL_EXPAND_QUERIES"),
-            stale_memory_days: number("STALE_MEMORY_DAYS", d.stale_memory_days),
+            stale_memory_days: number("STALE_MEMORY_DAYS", d.stale_memory_days).max(0),
             auto_maintenance_interval: number(
                 "AUTO_MAINTENANCE_INTERVAL",
                 d.auto_maintenance_interval,
             )
             .max(0),
             skill_user,
-            skill_min_score: number("SKILL_MIN_SCORE", d.skill_min_score).max(0.0),
-            skill_cluster_threshold: number("SKILL_CLUSTER_THRESHOLD", d.skill_cluster_threshold),
-            skill_domain_suggest_threshold: number(
+            skill_min_score: float("SKILL_MIN_SCORE", d.skill_min_score, UNIT),
+            skill_cluster_threshold: float(
+                "SKILL_CLUSTER_THRESHOLD",
+                d.skill_cluster_threshold,
+                UNIT,
+            ),
+            skill_domain_suggest_threshold: float(
                 "SKILL_DOMAIN_SUGGEST_THRESHOLD",
                 d.skill_domain_suggest_threshold,
+                UNIT,
             ),
             skill_proposal_ttl: Duration::from_secs(number("SKILL_PROPOSAL_TTL_SECONDS", 86_400)),
-            skill_feed_max_articles: number("SKILL_FEED_MAX_ARTICLES", d.skill_feed_max_articles),
+            skill_feed_max_articles: number("SKILL_FEED_MAX_ARTICLES", d.skill_feed_max_articles)
+                .max(0),
             skill_knowledge_watch_days: number(
                 "SKILL_KNOWLEDGE_WATCH_DAYS",
                 d.skill_knowledge_watch_days,
-            ),
-            skill_knowledge_watch_threshold: number(
+            )
+            .max(0),
+            skill_knowledge_watch_threshold: float(
                 "SKILL_KNOWLEDGE_WATCH_THRESHOLD",
                 d.skill_knowledge_watch_threshold,
+                UNIT,
             ),
-            skill_suggest_min_similarity: number(
+            skill_suggest_min_similarity: float(
                 "SKILL_SUGGEST_MIN_SIMILARITY",
                 d.skill_suggest_min_similarity,
+                UNIT,
             ),
-            skill_scan_interval_hours: number(
+            skill_scan_interval_hours: float(
                 "SKILL_SCAN_INTERVAL_HOURS",
                 d.skill_scan_interval_hours,
+                NON_NEGATIVE,
             ),
             skill_scan_max_proposals: number(
                 "SKILL_SCAN_MAX_PROPOSALS",
@@ -209,5 +242,67 @@ impl EngineConfig {
             skill_scan_cross_project: text("SKILL_SCAN_CROSS_PROJECT")
                 .is_none_or(|v| !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "no")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The env reader goes through `omnimem_core::env`, so the tests set
+    /// real process variables; each uses its own name to stay independent.
+    fn with_var<T>(name: &str, value: &str, body: impl FnOnce() -> T) -> T {
+        // SAFETY: tests in this module touch distinct variable names and the
+        // engine reads them only through `from_env`, called inside `body`.
+        unsafe { std::env::set_var(name, value) };
+        let out = body();
+        unsafe { std::env::remove_var(name) };
+        out
+    }
+
+    #[test]
+    fn float_settings_reject_nan_and_clamp() {
+        let d = EngineConfig::default();
+        assert_eq!(
+            with_var("OMNIMEM_TEST_NAN", "NaN", || float(
+                "OMNIMEM_TEST_NAN",
+                0.5,
+                UNIT
+            )),
+            0.5
+        );
+        assert_eq!(
+            with_var("OMNIMEM_TEST_INF", "inf", || float(
+                "OMNIMEM_TEST_INF",
+                0.5,
+                UNIT
+            )),
+            0.5
+        );
+        assert_eq!(
+            with_var("OMNIMEM_TEST_NEG", "-3", || float(
+                "OMNIMEM_TEST_NEG",
+                0.5,
+                UNIT
+            )),
+            0.0
+        );
+        assert_eq!(
+            with_var("OMNIMEM_TEST_BIG", "7", || float(
+                "OMNIMEM_TEST_BIG",
+                0.5,
+                UNIT
+            )),
+            1.0
+        );
+        assert_eq!(
+            with_var("OMNIMEM_TEST_DAYS", "-90", || float(
+                "OMNIMEM_TEST_DAYS",
+                d.recency_decay_days,
+                NON_NEGATIVE
+            )),
+            0.0
+        );
+        assert_eq!(float("OMNIMEM_TEST_UNSET", 0.25, UNIT), 0.25);
     }
 }

@@ -22,7 +22,8 @@ use tracing::info;
 
 use crate::PanelState;
 use crate::choices::{LICENCE_CHOICES, PROVENANCE_CHOICES};
-use crate::pages::{blocking, see_other, starting};
+use crate::pages::{blocking, quote_segment, see_other, starting};
+use crate::projects::check_project_name;
 use crate::render::page;
 
 const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
@@ -101,6 +102,12 @@ pub(crate) async fn submit(
             None,
         );
     }
+    // The same rule `remember` applies over MCP.
+    if !project.is_empty()
+        && let Err(problem) = check_project_name(&project)
+    {
+        return render_form(&state, values, Some(problem), None);
+    }
     let namespace = NAMESPACES
         .iter()
         .find(|ns| **ns == namespace)
@@ -168,7 +175,7 @@ pub(crate) async fn submit(
     .await;
 
     match outcome {
-        Ok(Created::Stored(key)) => see_other(&format!("/memory/{key}")),
+        Ok(Created::Stored(key)) => see_other(&format!("/memory/{}", quote_segment(&key))),
         Ok(Created::Refused(message)) => render_form(&state, values, Some(message), None),
         Ok(Created::Duplicate(duplicate)) => render_form(&state, values, None, Some(duplicate)),
         Err(failure) => failure,

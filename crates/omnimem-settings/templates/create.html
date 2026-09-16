@@ -10,7 +10,7 @@
 {% if error %}
 <div class="flash flash-error">
   {{ error }}
-  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+  <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
@@ -18,7 +18,7 @@
 <div class="flash flash-warning" style="flex-direction:column;align-items:start">
   <div style="display:flex;justify-content:space-between;width:100%">
     <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
-    <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+    <button class="flash-close" data-dismiss>&times;</button>
   </div>
   <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="/memory/{{ duplicate.key }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
   <p style="margin:0;font-size:0.85rem;color:var(--text-dim)">{{ duplicate.content }}</p>

@@ -120,7 +120,7 @@ async fn static_files_are_embedded_and_nothing_else_is_served() {
 
 #[tokio::test]
 async fn unported_pages_say_so_and_post_bodies_arrive() {
-    let panel = Panel::new();
+    let panel = Panel::with_smoke_routes();
     let pending = get(&panel, "/metrics?format=prometheus").await;
     assert_eq!(pending.status(), 200);
     assert!(text(&pending).contains("<code>/metrics</code> isn't in the panel yet"));
@@ -147,8 +147,10 @@ async fn unported_pages_say_so_and_post_bodies_arrive() {
         redirect.headers()["x-omnimem-redirect"],
         "/_panel/landed?echo=panel-post-ok&css=42265"
     );
+    // The target is a JavaScript string literal with `&` escaped, so no
+    // HTML entity can form inside the script.
     assert!(text(&redirect).contains(
-        r#"<script>location.replace("/_panel/landed?echo=panel-post-ok&css=42265")</script>"#
+        r#"<script>location.replace("/_panel/landed?echo=panel-post-ok\u0026css=42265")</script>"#
     ));
     let landed = get(&panel, "/_panel/landed?echo=panel-post-ok").await;
     assert!(text(&landed).contains("window.ipc.postMessage"));

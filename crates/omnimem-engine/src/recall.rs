@@ -5,7 +5,7 @@
 //! dedupe keeps every key's best score.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tracing::{debug, warn};
 
 use crate::classification::{effective_licence, effective_provenance};
-use crate::lifecycle::check_reinstate_eligibility;
+use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
 use crate::pyfmt::{now_secs, py_float, py_json, take_chars};
 use crate::temporal::{parse_query_date, temporal_boost};
 use crate::{Engine, Result};
@@ -23,7 +23,36 @@ use crate::{Engine, Result};
 pub const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
 
 const MAX_ABANDONED_SCAN_KEYS: usize = 5000;
+/// Abandoned warnings a recall result carries at most. They are advisory
+/// and never displace the memories the caller asked for.
+const MAX_ABANDONED_WARNINGS: usize = 3;
 const RECALL_LOG_TTL: Duration = Duration::from_secs(30 * 86_400);
+
+/// Does `haystack` mention `needle` as whole words? Both are expected
+/// lowercased. A substring match would let a short topic such as "e" hit
+/// nearly every memory, so the occurrence must be bounded by non-alphanumeric
+/// characters or the ends of the text. A blank needle mentions nothing.
+pub(crate) fn mentions(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let bounded = |text: &str, at: usize, before: bool| {
+        let neighbour = if before {
+            text[..at].chars().next_back()
+        } else {
+            text[at..].chars().next()
+        };
+        neighbour.is_none_or(|c| !c.is_alphanumeric())
+    };
+    haystack.match_indices(needle).any(|(start, found)| {
+        bounded(haystack, start, true) && bounded(haystack, start + found.len(), false)
+    })
+}
+
+/// A query mentions an abandoned name, or the name mentions the query.
+fn cross_mentions(query: &str, name: &str) -> bool {
+    mentions(query, name) || mentions(name, query)
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct AbandonedEntry {
@@ -192,10 +221,14 @@ impl Engine {
             };
             let effort = integer(&row, "effort_score");
             for approach in approaches {
+                // Names stored before they were validated may be blank or a
+                // letter or two; those would match everything, so they never
+                // take part in matching.
                 let Some(name) = approach
                     .get("name")
                     .and_then(Value::as_str)
-                    .filter(|n| !n.is_empty())
+                    .map(str::trim)
+                    .filter(|n| n.chars().count() >= MIN_TOPIC_CHARS)
                 else {
                     continue;
                 };
@@ -219,19 +252,18 @@ impl Engine {
         Ok(entries)
     }
 
-    /// Abandoned approaches whose name the query mentions, or which mention it.
+    /// Abandoned approaches whose name the query mentions, or which mention
+    /// it, on word boundaries. A blank query matches nothing.
     pub(crate) fn abandoned_matches(&self, query: &str) -> Result<Vec<AbandonedEntry>> {
-        let query = query.to_lowercase();
-        let mut seen = Vec::new();
+        let query = query.trim().to_lowercase();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut seen = HashSet::new();
         let mut matches = Vec::new();
         for entry in self.abandoned_entries()?.iter() {
             let name = &entry.name_lower;
-            if query.contains(name.as_str()) || name.contains(query.as_str()) {
-                let id = format!("{}:{name}", entry.memory_key);
-                if seen.contains(&id) {
-                    continue;
-                }
-                seen.push(id);
+            if cross_mentions(&query, name) && seen.insert(format!("{}:{name}", entry.memory_key)) {
                 matches.push(entry.clone());
             }
         }
@@ -256,7 +288,11 @@ impl Engine {
         };
 
         let mut results: Vec<RecallResult> = Vec::new();
-        for warning in self.abandoned_matches(query)? {
+        for warning in self
+            .abandoned_matches(query)?
+            .into_iter()
+            .take(MAX_ABANDONED_WARNINGS)
+        {
             results.push(RecallResult {
                 key: warning.memory_key,
                 namespace: "episodic".into(),
@@ -291,7 +327,14 @@ impl Engine {
 
         let vector = self.embed(query)?;
         let now = now_secs();
-        let suppressed = self.suppressed_topics()?;
+        // Topics stored before suppression was validated may be too short to
+        // match anything but noise; they are skipped rather than honoured.
+        let suppressed: Vec<String> = self
+            .suppressed_topics()?
+            .into_iter()
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| t.chars().count() >= MIN_TOPIC_CHARS)
+            .collect();
         let scope = Scope {
             namespaces: &namespaces,
             projects,
@@ -402,7 +445,13 @@ impl Engine {
                 }
             }
         }
-        results.truncate(top_k as usize);
+        // Warnings lead the list and sit outside the top_k budget, so a few
+        // graveyard entries can never crowd out the memories asked for.
+        let (warnings, memories): (Vec<RecallResult>, Vec<RecallResult>) = results
+            .into_iter()
+            .partition(|r| r.result_type == "abandoned_warning");
+        let mut results = warnings;
+        results.extend(memories.into_iter().take(top_k as usize));
         self.log_recall_event(query, &results);
         Ok(results)
     }
@@ -438,7 +487,7 @@ impl Engine {
                 let content = doc.get("content").cloned().unwrap_or_default();
                 if !scope.suppressed.is_empty() {
                     let lower = content.to_lowercase();
-                    if scope.suppressed.iter().any(|t| lower.contains(t.as_str())) {
+                    if scope.suppressed.iter().any(|t| mentions(&lower, t)) {
                         continue;
                     }
                 }
@@ -569,5 +618,24 @@ mod tests {
         assert_eq!(parse_tags(Some(r#"["a","b"]"#)), json!(["a", "b"]));
         assert_eq!(parse_tags(Some("a, b,")), json!(["a", "b"]));
         assert_eq!(parse_tags(None), json!([]));
+    }
+
+    #[test]
+    fn mentions_match_whole_words_only() {
+        assert!(mentions("should we use alpine", "alpine"));
+        assert!(mentions("alpine", "alpine"));
+        assert!(mentions("use alpine-linux here", "alpine"));
+        assert!(mentions("try redis queue now", "redis queue"));
+        assert!(!mentions("the celery worker", "e"));
+        assert!(!mentions("alpinelinux", "alpine"));
+        assert!(!mentions("nothing", ""));
+        assert!(!mentions("", "x"));
+        assert!(mentions("café au lait", "café"));
+        assert!(
+            !mentions("cafés", "café"),
+            "accented letters are word characters"
+        );
+        assert!(cross_mentions("celery", "celery worker pool"));
+        assert!(!cross_mentions("cel", "celery"));
     }
 }

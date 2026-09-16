@@ -119,13 +119,31 @@ fn start_at_login() -> Option<AutoLaunch> {
         .ok()
 }
 
-/// Open a link from the panel in the system browser.
+/// Open a link from the panel in the system browser. Only web links (and
+/// mail links) are handed to the OS: a `file:`, `smb:` or custom-scheme URL
+/// rendered from a memory's `source_url` would otherwise launch whatever
+/// handles that scheme.
 fn open_externally(url: String) {
+    if !is_openable(&url) {
+        warn!(
+            url,
+            "refusing to open a link that isn't http, https or mailto"
+        );
+        return;
+    }
     std::thread::spawn(move || {
         if let Err(e) = open::that(&url) {
             warn!(url, error = %e, "could not open the link");
         }
     });
+}
+
+fn is_openable(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    ["http://", "https://", "mailto:"]
+        .iter()
+        .any(|scheme| lower.starts_with(scheme))
+        && !url.chars().any(char::is_control)
 }
 
 impl App {

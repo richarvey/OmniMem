@@ -1,18 +1,26 @@
 //! Experience tools (`tools/experience.py`).
 
+use std::collections::HashSet;
+
 use chrono::Utc;
 use omnimem_store::Fields;
 use serde_json::{Map, Value, json};
 use tracing::info;
 
 use crate::error::invalid;
-use crate::lifecycle::SUPPRESSED_KEY;
+use crate::lifecycle::{SUPPRESSED_KEY, validate_term};
 use crate::pyfmt::{compact, now_str, py_float, py_json, round_to, take_chars};
 use crate::recall::compute_experience_weight;
+use crate::tools::{
+    MAX_LONG_TEXT, MAX_SHORT_TEXT, validate_project_name, validate_text, validate_writable_key,
+};
 use crate::{Engine, Result};
 
 const OUTCOMES: [&str; 3] = ["succeeded", "pivoted", "abandoned"];
 const APPROACH_TYPES: [&str; 5] = ["approach", "library", "pattern", "service", "tool"];
+/// Abandoned approaches one memory may hold. Every entry is scanned on each
+/// recall and rendered into compiled skills, so the list cannot grow freely.
+pub(crate) const MAX_ABANDONED_PER_MEMORY: usize = 50;
 
 fn validate_memory_key(key: &str) -> Result<()> {
     if key.starts_with("mem:") {
@@ -20,6 +28,62 @@ fn validate_memory_key(key: &str) -> Result<()> {
     } else {
         Err(invalid("Key must start with 'mem:' prefix"))
     }
+}
+
+/// A memory that experience may be recorded against: a `mem:` key in a
+/// writable namespace. The prefix message is kept for callers that pass
+/// something that is not a key at all.
+fn validate_experience_key(key: &str, action: &str) -> Result<()> {
+    validate_memory_key(key)?;
+    validate_writable_key(key, action)
+}
+
+fn validate_approach_type(kind: &str) -> Result<()> {
+    if APPROACH_TYPES.contains(&kind) {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "type must be one of {}, got '{kind}'",
+            set_repr(&APPROACH_TYPES)
+        )))
+    }
+}
+
+/// One abandoned approach as `record_experience` accepts it: the name is
+/// trimmed and bounded (it becomes a suppressed topic and a recall match
+/// term), the type must be a known one when given, and the reason is capped.
+/// Other keys pass through untouched, as 6.x stored the dict as given.
+fn validate_approach(approach: &Map<String, Value>) -> Result<Map<String, Value>> {
+    let mut entry = approach.clone();
+    let name = match approach.get("name") {
+        Some(Value::String(name)) => validate_term("Abandoned approach name", name)?,
+        _ => return Err(invalid("abandoned_approaches entries need a 'name' string")),
+    };
+    entry.insert("name".to_owned(), name.into());
+    if let Some(kind) = approach.get("type") {
+        match kind.as_str() {
+            Some("") => {}
+            Some(k) => validate_approach_type(k)?,
+            None => return Err(invalid("abandoned_approaches 'type' must be a string")),
+        }
+    }
+    if let Some(reason) = approach.get("reason") {
+        match reason.as_str() {
+            Some(r) => validate_text("Abandoned approach reason", r, MAX_SHORT_TEXT)?,
+            None => return Err(invalid("abandoned_approaches 'reason' must be a string")),
+        }
+    }
+    Ok(entry)
+}
+
+fn check_abandoned_capacity(existing: usize, adding: usize) -> Result<()> {
+    if existing + adding > MAX_ABANDONED_PER_MEMORY {
+        return Err(invalid(format!(
+            "abandoned_approaches: max {MAX_ABANDONED_PER_MEMORY} per memory (this memory has \
+             {existing})"
+        )));
+    }
+    Ok(())
 }
 
 /// Python's repr of a set of strings, for error messages.
@@ -54,7 +118,7 @@ impl Engine {
         gotchas: Option<&str>,
         lesson: Option<&str>,
     ) -> Result<Value> {
-        validate_memory_key(key)?;
+        validate_experience_key(key, "record experience for")?;
         if !(1..=5).contains(&effort_score) {
             return Err(invalid(format!(
                 "effort_score must be 1-5, got {effort_score}"
@@ -66,6 +130,24 @@ impl Engine {
                 set_repr(&OUTCOMES)
             )));
         }
+        if iterations < 0 {
+            return Err(invalid(format!(
+                "iterations must be >= 0, got {iterations}"
+            )));
+        }
+        for (name, value) in [
+            ("breakthrough", breakthrough),
+            ("gotchas", gotchas),
+            ("lesson", lesson),
+        ] {
+            if let Some(v) = value {
+                validate_text(name, v, MAX_LONG_TEXT)?;
+            }
+        }
+        let abandoned = abandoned_approaches
+            .filter(|a| !a.is_empty())
+            .map(|a| a.iter().map(validate_approach).collect::<Result<Vec<_>>>())
+            .transpose()?;
         let Some(data) = self.store.get(key)? else {
             return Err(invalid(format!("Memory key not found: {key}")));
         };
@@ -78,9 +160,9 @@ impl Engine {
             ("experience_weight".to_owned(), py_float(weight)),
             ("updated_at".to_owned(), now_str()),
         ]);
-        let abandoned = abandoned_approaches.filter(|a| !a.is_empty());
         if let Some(approaches) = &abandoned {
             let mut existing = parse_list(data.get("abandoned_approaches"));
+            check_abandoned_capacity(existing.len(), approaches.len())?;
             existing.extend(approaches.iter().cloned().map(Value::Object));
             updates.insert(
                 "abandoned_approaches".to_owned(),
@@ -106,6 +188,8 @@ impl Engine {
             && outcome == "abandoned"
             && let Some(approaches) = &abandoned
         {
+            // Names were validated above: trimmed, at least three characters,
+            // so a suppression can only ever match a real term.
             for approach in approaches {
                 let name = approach.get("name").and_then(Value::as_str).unwrap_or("");
                 if !name.is_empty() {
@@ -131,17 +215,15 @@ impl Engine {
     }
 
     pub fn log_abandoned(&self, key: &str, name: &str, kind: &str, reason: &str) -> Result<Value> {
-        validate_memory_key(key)?;
-        if !APPROACH_TYPES.contains(&kind) {
-            return Err(invalid(format!(
-                "type must be one of {}, got '{kind}'",
-                set_repr(&APPROACH_TYPES)
-            )));
-        }
+        validate_experience_key(key, "log abandoned approaches for")?;
+        validate_approach_type(kind)?;
+        let name = validate_term("Abandoned approach name", name)?;
+        validate_text("reason", reason, MAX_SHORT_TEXT)?;
         let Some(data) = self.store.get(key)? else {
             return Err(invalid(format!("Memory key not found: {key}")));
         };
         let mut existing = parse_list(data.get("abandoned_approaches"));
+        check_abandoned_capacity(existing.len(), 1)?;
         let entry = json!({
             "name": name,
             "type": kind,
@@ -204,6 +286,7 @@ impl Engine {
 
     pub fn experience_summary(&self, project: Option<&str>) -> Result<Value> {
         let project = project.filter(|p| !p.is_empty());
+        validate_project_name(project)?;
         let keys = self.store.scan_prefix("mem:episodic:")?;
         let rows = self.store.get_fields_multi(
             &keys,
@@ -220,7 +303,7 @@ impl Engine {
         let mut outcomes: Vec<(&str, i64)> = OUTCOMES.iter().map(|o| (*o, 0)).collect();
         let mut effortful: Vec<(i64, Value)> = Vec::new();
         let mut graveyard: Vec<Value> = Vec::new();
-        let mut seen_names: Vec<String> = Vec::new();
+        let mut seen_names: HashSet<String> = HashSet::new();
         let mut breakthroughs: Vec<(i64, Value)> = Vec::new();
 
         for (key, row) in keys.iter().zip(rows) {
@@ -255,10 +338,9 @@ impl Engine {
                         .and_then(Value::as_str)
                         .unwrap_or("?")
                         .to_owned();
-                    if seen_names.contains(&name.to_lowercase()) {
+                    if !seen_names.insert(name.to_lowercase()) {
                         continue;
                     }
-                    seen_names.push(name.to_lowercase());
                     graveyard.push(json!({
                         "name": name,
                         "type": a.get("type").and_then(Value::as_str).unwrap_or("?"),
@@ -328,5 +410,60 @@ impl Engine {
             })
             .collect();
         Ok(json!({"status": "warning", "matches": matches}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approach(value: Value) -> Map<String, Value> {
+        value.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn approaches_need_a_real_name_and_a_known_type() {
+        let ok = validate_approach(&approach(
+            json!({"name": "  Celery ", "type": "library", "reason": "slow", "extra": 1}),
+        ))
+        .unwrap();
+        assert_eq!(ok["name"], "Celery", "the stored name is trimmed");
+        assert_eq!(ok["extra"], 1, "other keys pass through");
+        for bad in [
+            json!({"type": "library"}),
+            json!({"name": " "}),
+            json!({"name": "e"}),
+            json!({"name": "a\u{0}b"}),
+            json!({"name": "x".repeat(201)}),
+            json!({"name": "Celery", "type": "framework"}),
+            json!({"name": "Celery", "type": 3}),
+            json!({"name": "Celery", "reason": "r".repeat(2001)}),
+        ] {
+            assert!(validate_approach(&approach(bad.clone())).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_abandoned_list_is_capped() {
+        assert!(check_abandoned_capacity(49, 1).is_ok());
+        assert!(check_abandoned_capacity(50, 1).is_err());
+        assert!(check_abandoned_capacity(0, 51).is_err());
+    }
+
+    #[test]
+    fn experience_keys_must_be_writable() {
+        assert_eq!(
+            validate_experience_key("topics:suppressed", "record experience for")
+                .unwrap_err()
+                .to_string(),
+            "Key must start with 'mem:' prefix"
+        );
+        assert!(
+            validate_experience_key("mem:skill:gen:python-local", "record experience for")
+                .unwrap_err()
+                .to_string()
+                .starts_with("Cannot record experience for 'skill' entries")
+        );
+        assert!(validate_experience_key("mem:episodic:01A", "x").is_ok());
     }
 }

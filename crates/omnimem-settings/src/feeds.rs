@@ -26,7 +26,7 @@ use crate::PanelState;
 use crate::choices::LICENCE_CHOICES;
 use crate::feeds_file;
 use crate::files::{read_upload, save_download};
-use crate::pages::{blocking, quote, see_other};
+use crate::pages::{blocking, is_web_url, quote, see_other};
 use crate::render::page;
 
 type Feed = Map<String, Value>;
@@ -434,6 +434,74 @@ pub(crate) async fn download(State(state): State<PanelState>) -> Response {
 }
 
 /// POST `/feeds/upload`: replace `feeds.yml` with a validated file.
+/// Feeds accepted from one uploaded file.
+const MAX_UPLOADED_FEEDS: usize = 500;
+
+/// An uploaded feed entry with the form's rules applied: a web URL, a name
+/// of at most 200 characters, a licence the classifier knows, a note within
+/// its cap, and a skills mapping that validates. Only the keys the reading
+/// list uses are kept, so an upload can't smuggle other YAML into the file.
+fn validate_uploaded_feed(feed: &Feed) -> Result<Feed, String> {
+    let url = text(feed, "url");
+    if !is_web_url(url.trim()) {
+        return Err("url must start with http:// or https://".to_owned());
+    }
+    let mut out = Feed::new();
+    out.insert("url".into(), Value::String(url.trim().to_owned()));
+    let name = text(feed, "name");
+    if name.chars().count() > 200 {
+        return Err("name must be at most 200 characters".to_owned());
+    }
+    if !name.trim().is_empty() {
+        out.insert("name".into(), Value::String(name.trim().to_owned()));
+    }
+    if let Some(topics) = feed.get("topics") {
+        let topics: Vec<Value> = topics
+            .as_array()
+            .ok_or_else(|| "topics must be a list".to_owned())?
+            .iter()
+            .take(50)
+            .map(|t| Value::String(scalar(t).chars().take(200).collect()))
+            .collect();
+        out.insert("topics".into(), Value::Array(topics));
+    }
+    match feed.get("mode").map(scalar) {
+        None => {}
+        Some(mode) if mode == "summary" || mode == "digest" => {
+            out.insert("mode".into(), Value::String(mode));
+        }
+        Some(_) => return Err("mode must be summary or digest".to_owned()),
+    }
+    if let Some(project) = feed.get("project") {
+        let project = scalar(project);
+        if project.chars().count() > 200 {
+            return Err("project must be at most 200 characters".to_owned());
+        }
+        out.insert("project".into(), Value::String(project));
+    }
+    if let Some(licence) = feed.get("licence") {
+        let raw = scalar(licence);
+        resolve_licence(&raw).map_err(|e| e.to_string())?;
+        out.insert("licence".into(), Value::String(raw));
+    }
+    let note = text(feed, "licence_note");
+    if !note.trim().is_empty() {
+        validate_licence_note(Some(&note)).map_err(|e| e.to_string())?;
+        out.insert("licence_note".into(), Value::String(note.trim().to_owned()));
+    }
+    if let Some(skills) = feed.get("skills") {
+        let skills = validate_feed_skills(Some(skills))?;
+        let mapping: Map<String, Value> = skills
+            .into_iter()
+            .map(|(domain, score)| (domain, Value::from(score)))
+            .collect();
+        if !mapping.is_empty() {
+            out.insert("skills".into(), Value::Object(mapping));
+        }
+    }
+    Ok(out)
+}
+
 pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multipart) -> Response {
     let Some(path) = state.feeds_path() else {
         return no_reading_list();
@@ -456,21 +524,30 @@ pub(crate) async fn upload(State(state): State<PanelState>, mut multipart: Multi
     let Some(feeds) = feeds.as_array() else {
         return with_error("/feeds", "'feeds' must be a list");
     };
-    let feeds: Vec<Feed> = feeds
-        .iter()
-        .filter_map(|f| f.as_object().cloned())
-        .collect();
-    let written = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::write(&path, &data));
-    if let Err(e) = written {
+    if feeds.len() > MAX_UPLOADED_FEEDS {
         return with_error(
             "/feeds",
-            &format!("Could not write {}: {e}", path.display()),
+            &format!("At most {MAX_UPLOADED_FEEDS} feeds can be uploaded at once"),
         );
     }
+    // Every entry gets the checks the form applies, and the file is
+    // rewritten from the checked entries (partial file, then rename) rather
+    // than copied from the upload as it came.
+    let mut checked = Vec::with_capacity(feeds.len());
+    for (index, feed) in feeds.iter().enumerate() {
+        match feed
+            .as_object()
+            .ok_or_else(|| "must be a mapping".to_owned())
+            .and_then(validate_uploaded_feed)
+        {
+            Ok(feed) => checked.push(feed),
+            Err(problem) => return with_error("/feeds", &format!("Feed {}: {problem}", index + 1)),
+        }
+    }
+    if let Err(problem) = feeds_file::save(&path, &checked) {
+        return with_error("/feeds", &problem);
+    }
+    let feeds = checked;
     sync_influence(state.engine().as_deref(), &feeds);
     info!(feeds = feeds.len(), filename, "uploaded a reading list");
     see_other(&format!(

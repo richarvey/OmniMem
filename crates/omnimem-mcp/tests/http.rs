@@ -223,5 +223,22 @@ async fn a_bearer_token_is_required_when_configured() {
         health.status().is_success(),
         "the health check needs no token"
     );
+
+    // Every method on /mcp sits behind the token, not only POST: the GET
+    // event stream and DELETE (session close) included.
+    let client = reqwest::Client::new();
+    for method in [reqwest::Method::GET, reqwest::Method::DELETE] {
+        let response = client
+            .request(method.clone(), format!("{base}/mcp"))
+            .header("accept", "text/event-stream")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "{method} /mcp without a token"
+        );
+    }
     shutdown.cancel();
 }

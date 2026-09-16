@@ -346,6 +346,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Skip feeds that don't say what their articles may be used for.",
             ),
             setting(
+                "RSS_ALLOW_PRIVATE_HOSTS",
+                "Allow private addresses",
+                Kind::Flag,
+                "false",
+                "Fetch feeds and article pages on this machine or the local network. Off, a feed can't point OmniMem at either.",
+            ),
+            setting(
                 "MAX_KNOWLEDGE_AGE_DAYS",
                 "Articles expire after (days)",
                 Kind::Integer,

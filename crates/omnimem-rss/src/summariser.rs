@@ -39,6 +39,11 @@ If the article covers a single topic, return an array with one object.\n\
 Skip promotional content, sponsor mentions, and calls-to-action.\n\
 Skip items where you cannot determine meaningful who/what/why.\n\n";
 
+/// The model's reply is not trusted to be small: at most this many items,
+/// each field capped, are kept from an extraction.
+const MAX_ITEMS: usize = 50;
+const MAX_ITEM_FIELD_CHARS: usize = 2000;
+
 /// One item pulled out of a digest article.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DigestItem {
@@ -156,8 +161,9 @@ pub fn extract_items(
                 .iter()
                 .all(|k| item.contains_key(*k))
         })
+        .take(MAX_ITEMS)
         .map(|item| {
-            let field = |k: &str| py_str(&item[k]).trim().to_owned();
+            let field = |k: &str| take_chars(py_str(&item[k]).trim(), MAX_ITEM_FIELD_CHARS);
             DigestItem {
                 title: field("title"),
                 who: field("who"),
@@ -182,6 +188,26 @@ mod tests {
     fn refusals_are_spotted_case_insensitively() {
         assert!(is_refusal("Sorry, I'm Unable To open links."));
         assert!(!is_refusal("Rust 1.96 stabilises let chains."));
+    }
+
+    struct Canned(String);
+
+    impl LanguageModel for Canned {
+        fn complete(&self, _: &str, _: &str, _: u32) -> Result<String, omnimem_core::LlmError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    #[test]
+    fn extracted_items_are_capped_in_count_and_size() {
+        let item = serde_json::json!({
+            "title": "t".repeat(3000), "who": "w", "what": "x", "why": "y"
+        });
+        let reply = Value::Array(vec![item; MAX_ITEMS + 20]).to_string();
+        let items = extract_items(Some(&Canned(reply)), "T", "u", "c").unwrap();
+        assert_eq!(items.len(), MAX_ITEMS);
+        assert_eq!(items[0].title.chars().count(), MAX_ITEM_FIELD_CHARS);
+        assert_eq!(items[0].who, "w");
     }
 
     #[test]

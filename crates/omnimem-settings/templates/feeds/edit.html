@@ -10,7 +10,7 @@
 {% if error %}
 <div class="flash flash-error">
   {{ error }}
-  <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+  <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
@@ -91,7 +91,7 @@
       <option value="{{ domain }}"></option>
       {% endfor %}
     </datalist>
-    <button type="button" class="btn btn-secondary btn-sm" onclick="addSkillRow()">+ Add another skill</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-add-skill-row>+ Add another skill</button>
   </div>
 
   <div style="display:flex;gap:0.5rem">
@@ -100,13 +100,4 @@
   </div>
 </form>
 
-<script>
-function addSkillRow() {
-  const rows = document.getElementById('skill-rows');
-  const row = rows.lastElementChild.cloneNode(true);
-  row.querySelector('input[name="skill_domain"]').value = '';
-  row.querySelector('input[name="skill_influence"]').value = '5';
-  rows.appendChild(row);
-}
-</script>
 {% endblock %}

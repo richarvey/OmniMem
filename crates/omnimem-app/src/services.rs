@@ -164,7 +164,7 @@ fn serve_until_shutdown(
                 shutdown.cancel();
             });
         }
-        let addr = format!("{}:{}", config.host, config.port);
+        let addr = omnimem_mcp::bind_address(&config.host, config.port);
         let listener = TcpListener::bind(&addr)
             .await
             .with_context(|| format!("could not bind {addr}"))?;

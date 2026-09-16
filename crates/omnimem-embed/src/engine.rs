@@ -13,6 +13,12 @@ use crate::model::{EmbedConfig, ModelFiles, TOKENIZER_FILE};
 
 /// Texts per ONNX Runtime call, as in the Python engine.
 const BATCH_SIZE: usize = 32;
+/// Characters kept per text before tokenising, as a multiple of the token
+/// cap. The tokeniser's normalisation is linear in the input, so a text of
+/// megabytes would be paid for in full only to keep its first few hundred
+/// tokens. A token is rarely more than a few characters, so 32 per token
+/// leaves the truncated output identical for any text that matters.
+const CHARS_PER_TOKEN: usize = 32;
 /// Output names that carry per-token embeddings, preferred over position.
 const TOKEN_OUTPUT_NAMES: [&str; 2] = ["last_hidden_state", "token_embeddings"];
 
@@ -159,9 +165,11 @@ impl Embedder {
     }
 
     fn embed_chunk(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        let limit = self.max_seq_length.saturating_mul(CHARS_PER_TOKEN);
+        let texts: Vec<&str> = texts.iter().map(|t| take_chars(t, limit)).collect();
         let encodings = self
             .tokenizer
-            .encode_batch(texts.to_vec(), true)
+            .encode_batch(texts, true)
             .map_err(|e| EmbedError::Tokenizer(e.to_string()))?;
         let batch = encodings.len();
         let tokens = encodings.first().map_or(0, |e| e.get_ids().len());
@@ -200,14 +208,26 @@ impl Embedder {
             .map_err(|_| EmbedError::Runtime("session lock poisoned".into()))?;
         let outputs = session.run(inputs)?;
         let (out_shape, data) = outputs[self.output_index].try_extract_tensor::<f32>()?;
-        if out_shape.len() != 3 {
-            return Err(EmbedError::BadOutput {
-                name: String::new(),
-                shape: out_shape.to_vec(),
-            });
+        let bad_output = || EmbedError::BadOutput {
+            name: String::new(),
+            shape: out_shape.to_vec(),
+        };
+        // The shape is checked against the batch and the data length before
+        // any slicing: a graph that answers with the wrong shape must be an
+        // error, not a panic that poisons the session lock for every later
+        // call.
+        if out_shape.len() != 3 || out_shape[0] != batch as i64 {
+            return Err(bad_output());
         }
-        let dim = out_shape[2] as usize;
-        let out_tokens = out_shape[1] as usize;
+        let dim = usize::try_from(out_shape[2]).map_err(|_| bad_output())?;
+        let out_tokens = usize::try_from(out_shape[1]).map_err(|_| bad_output())?;
+        if batch
+            .checked_mul(out_tokens)
+            .and_then(|n| n.checked_mul(dim))
+            .is_none_or(|n| n > data.len())
+        {
+            return Err(bad_output());
+        }
 
         let mut vectors = Vec::with_capacity(batch);
         for row in 0..batch {
@@ -265,9 +285,24 @@ fn normalise(v: &mut [f32]) {
     v.iter_mut().for_each(|x| *x /= norm);
 }
 
+/// The first `n` characters of `s`, on a character boundary; `s` itself
+/// when it is short enough.
+fn take_chars(s: &str, n: usize) -> &str {
+    s.char_indices().nth(n).map_or(s, |(i, _)| &s[..i])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn take_chars_cuts_on_character_boundaries() {
+        assert_eq!(take_chars("héllo", 2), "hé");
+        assert_eq!(take_chars("héllo", 5), "héllo");
+        assert_eq!(take_chars("héllo", 50), "héllo");
+        assert_eq!(take_chars("", 3), "");
+        assert_eq!(take_chars("abc", 0), "");
+    }
 
     fn rows() -> Vec<Vec<f32>> {
         vec![vec![1.0, 4.0], vec![3.0, 2.0], vec![100.0, 100.0]]

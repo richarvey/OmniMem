@@ -15,7 +15,7 @@
   {# The value rides in a data attribute rather than an inline JS string, so
      nothing from the store is ever parsed as code. #}
   <button type="button" class="btn btn-primary btn-sm" data-domains="{{ value }}"
-          onclick="document.getElementById('project-domains').value = this.dataset.domains; this.closest('.domain-suggestion').remove();">
+          data-fill-domains="project-domains">
     Use these
   </button>
   <span class="text-dim" style="margin-left:0.5rem">Nothing is saved until you press Save.</span>

@@ -5,7 +5,7 @@ pub enum StoreError {
     #[error("database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-    #[error("invalid key prefix: {0}")]
+    #[error("invalid key: {0}")]
     InvalidKey(String),
 
     #[error("{key} holds a {actual}, not a {expected}")]

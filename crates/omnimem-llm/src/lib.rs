@@ -19,13 +19,25 @@ const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const API_VERSION: &str = "2023-06-01";
 const PLACEHOLDER_KEY: &str = "your_key_here";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AnthropicConfig {
     pub api_key: String,
     /// `ANTHROPIC_BASE_URL`, as the SDK honoured it.
     pub base_url: String,
     pub timeout: Duration,
     pub max_retries: u32,
+}
+
+/// The key never appears in a log line, whatever formats the config.
+impl std::fmt::Debug for AnthropicConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnthropicConfig")
+            .field("api_key", &"<redacted>")
+            .field("base_url", &self.base_url)
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
 }
 
 impl AnthropicConfig {

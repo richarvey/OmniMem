@@ -17,7 +17,7 @@ use serde_json::json;
 
 use crate::PanelState;
 use crate::choices::{LICENCE_CHOICES, PROVENANCE_CHOICES, is_licence_class, is_provenance_class};
-use crate::pages::{blocking, now_seconds, starting};
+use crate::pages::{blocking, now_seconds, quote, starting};
 use crate::render::page;
 
 const PAGE_SIZE: usize = 25;
@@ -269,11 +269,11 @@ pub(crate) async fn handler(
         ("provenance", &filters.provenance),
     ] {
         if !value.is_empty() {
-            extra_params.push_str(&format!("&{name}={value}"));
+            extra_params.push_str(&format!("&{name}={}", quote(value)));
         }
     }
     if sort != "newest" {
-        extra_params.push_str(&format!("&sort={sort}"));
+        extra_params.push_str(&format!("&sort={}", quote(&sort)));
     }
 
     let nav_page = match (filters.namespace.as_str(), filters.source.as_str()) {

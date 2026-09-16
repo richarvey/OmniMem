@@ -189,7 +189,15 @@ async fn the_reading_list_is_edited_mirrored_and_replaced() {
         landed(&upload(&f.panel, "/feeds/upload", "feeds.yaml", replacement).await)
             .starts_with("/feeds?message=")
     );
-    assert_eq!(std::fs::read(&feeds).unwrap(), replacement);
+    let written = std::fs::read_to_string(&feeds).unwrap();
+    assert!(written.contains("https://example.com/a.xml"), "{written}");
+    assert!(written.contains("name: A"), "{written}");
+    // A bad entry refuses the whole upload, and says which one.
+    let smuggled = b"feeds:\n  - url: file:///etc/passwd\n    name: X\n";
+    assert!(
+        landed(&upload(&f.panel, "/feeds/upload", "feeds.yml", smuggled).await)
+            .contains("Feed%201")
+    );
 
     assert_eq!(
         landed(&post(&f.panel, "/feeds/0/delete", "").await),

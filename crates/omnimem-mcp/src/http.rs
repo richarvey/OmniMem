@@ -183,6 +183,15 @@ impl ServerConfig {
     }
 }
 
+/// `host:port` as `TcpListener::bind` wants it: an IPv6 address in brackets.
+pub fn bind_address(host: &str, port: u16) -> String {
+    if host.parse::<std::net::Ipv6Addr>().is_ok() {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 fn dedupe(items: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for item in items {
@@ -271,10 +280,27 @@ async fn require_auth(State(auth): State<McpAuth>, request: Request, next: Next)
     let presented = value.to_str().ok().and_then(|v| {
         v.get(..7)
             .filter(|scheme| scheme.eq_ignore_ascii_case("bearer "))
-            .map(|_| &v[7..])
+            .map(|_| v[7..].to_owned())
     });
-    if presented.is_some_and(|p| auth.shared_token_matches(p.trim()) || oauth.verify_access(p)) {
-        return next.run(request).await;
+    if let Some(presented) = presented {
+        if auth.shared_token_matches(presented.trim()) {
+            return next.run(request).await;
+        }
+        // The token lookup reads SQLite, so it runs off the async runtime.
+        let checker = oauth.clone();
+        let verified = tokio::task::spawn_blocking(move || checker.verify_access(&presented)).await;
+        match verified {
+            Ok(Ok(true)) => return next.run(request).await,
+            Ok(Ok(false)) => {}
+            Ok(Err(e)) => {
+                tracing::error!(error = %e, "could not check an OAuth access token");
+                return (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable").into_response();
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "the OAuth token check panicked");
+                return (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable").into_response();
+            }
+        }
     }
     unauthorised(
         format!(r#"{{"error": "invalid_token", "error_description": "{INVALID_TOKEN}"}}"#),
@@ -342,7 +368,7 @@ pub async fn serve(
     let listener = match listener {
         Some(l) => l,
         None => {
-            let addr = format!("{}:{}", config.host, config.port);
+            let addr = bind_address(&config.host, config.port);
             TcpListener::bind(&addr)
                 .await
                 .map_err(|source| ServerError::Bind { addr, source })?
@@ -449,6 +475,14 @@ mod tests {
     fn the_config_debug_never_shows_the_admin_password() {
         let config = OAuthConfig::new("https://oauth.example.com", "admin", "hunter2");
         assert!(!format!("{config:?}").contains("hunter2"));
+    }
+
+    #[test]
+    fn ipv6_hosts_are_bracketed_for_binding() {
+        assert_eq!(bind_address("::1", 8765), "[::1]:8765");
+        assert_eq!(bind_address("::", 8765), "[::]:8765");
+        assert_eq!(bind_address("127.0.0.1", 8765), "127.0.0.1:8765");
+        assert_eq!(bind_address("localhost", 8765), "localhost:8765");
     }
 
     #[test]

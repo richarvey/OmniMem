@@ -36,12 +36,19 @@
       border-radius: 6px; font-size: .85rem; margin-bottom: 1rem;
       text-align: center;
     }
+    .client {
+      background: #0f172a; border: 1px solid #334155; color: #cbd5e1;
+      padding: .6rem .75rem; border-radius: 6px; font-size: .85rem;
+      margin: 0 0 1rem; line-height: 1.5; word-break: break-word;
+    }
+    .client strong { color: #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>OmniMem</h1>
     <p class="sub">Sign in to authorise access</p>
+    {client_block}
     {error_block}
     <form method="post" action="/oauth/login">
       <input type="hidden" name="session" value="{session}">

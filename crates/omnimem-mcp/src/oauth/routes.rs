@@ -13,10 +13,12 @@ use axum::routing::{get, post};
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
-use super::{Authorize, Failure, OAuth, Params};
+use super::{Authorize, Failure, OAuth, Params, SignInPrompt};
 
-/// The SDK's request body cap.
-const BODY_LIMIT: usize = 4 * 1024 * 1024;
+/// Request body cap for every OAuth route. A registration, a token exchange
+/// or a login form is a few hundred bytes; 6.x allowed 4 MiB, which let
+/// anyone fill the database with registrations.
+const BODY_LIMIT: usize = 64 * 1024;
 const READ: &[&str] = &["GET", "OPTIONS"];
 const WRITE: &[&str] = &["POST", "OPTIONS"];
 /// Starlette's safelisted headers plus the one the SDK allowed.
@@ -309,12 +311,25 @@ fn escape(text: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
-fn render_login(session: &str, problem: Option<&str>) -> String {
+/// The login page. `prompt` names the client asking and where the browser
+/// goes afterwards, so a user sent here by a link can see who they'd be
+/// letting in before they type a password.
+fn render_login(session: &str, prompt: Option<&SignInPrompt>, problem: Option<&str>) -> String {
     let error_block = problem
         .map(|p| format!(r#"<div class="error">{}</div>"#, escape(p)))
         .unwrap_or_default();
+    let client_block = prompt
+        .map(|p| {
+            format!(
+                r#"<p class="client">Signing in will let <strong>{}</strong> use your memory. Afterwards you'll be sent to <strong>{}</strong>.</p>"#,
+                escape(&p.client),
+                escape(&p.redirect_host)
+            )
+        })
+        .unwrap_or_default();
     LOGIN_PAGE
         .replace("{error_block}", &error_block)
+        .replace("{client_block}", &client_block)
         .replace("{session}", &escape(session))
 }
 
@@ -322,6 +337,15 @@ fn authorization(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
+}
+
+/// The connecting address, which behind a reverse proxy is the proxy's, as
+/// it was in 6.x.
+fn client_ip(request: &Request) -> String {
+    request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string())
 }
 
 async fn server_metadata(State(oauth): State<Arc<OAuth>>) -> Response {
@@ -340,18 +364,18 @@ async fn resource_metadata(State(oauth): State<Arc<OAuth>>) -> Response {
     )
 }
 
-async fn authorize(
-    State(oauth): State<Arc<OAuth>>,
-    method: Method,
-    uri: Uri,
-    body: Bytes,
-) -> Response {
-    let params = if method == Method::POST {
+async fn authorize(State(oauth): State<Arc<OAuth>>, request: Request) -> Response {
+    let ip = client_ip(&request);
+    let (parts, body) = request.into_parts();
+    let params = if parts.method == Method::POST {
+        let Ok(body) = axum::body::to_bytes(body, BODY_LIMIT).await else {
+            return (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large").into_response();
+        };
         Params::parse(&body)
     } else {
-        Params::parse(uri.query().unwrap_or_default().as_bytes())
+        Params::parse(parts.uri.query().unwrap_or_default().as_bytes())
     };
-    match oauth.authorize(&params) {
+    match oauth.authorize(&ip, &params) {
         Ok(Authorize::Redirect(location)) => found(&location, &[("cache-control", "no-store")]),
         Ok(Authorize::BadRequest(body)) => json_response(
             StatusCode::BAD_REQUEST,
@@ -369,8 +393,12 @@ async fn token(State(oauth): State<Arc<OAuth>>, headers: HeaderMap, body: Bytes)
     }
 }
 
-async fn register(State(oauth): State<Arc<OAuth>>, body: Bytes) -> Response {
-    match oauth.register(&body) {
+async fn register(State(oauth): State<Arc<OAuth>>, request: Request) -> Response {
+    let ip = client_ip(&request);
+    let Ok(body) = axum::body::to_bytes(request.into_body(), BODY_LIMIT).await else {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large").into_response();
+    };
+    match oauth.register(&ip, &body) {
         Ok(client) => json_response(StatusCode::CREATED, &client, &[]),
         Err(failure) => failure_response(failure, &[]),
     }
@@ -390,22 +418,17 @@ async fn revoke(State(oauth): State<Arc<OAuth>>, headers: HeaderMap, body: Bytes
 async fn login_page(State(oauth): State<Arc<OAuth>>, uri: Uri) -> Response {
     let params = Params::parse(uri.query().unwrap_or_default().as_bytes());
     let session = params.get("session").unwrap_or_default();
-    if oauth.sign_in_pending(session) {
-        html(StatusCode::OK, render_login(session, None))
-    } else {
-        html(
+    match oauth.sign_in_pending(session) {
+        Some(prompt) => html(StatusCode::OK, render_login(session, Some(&prompt), None)),
+        None => html(
             StatusCode::BAD_REQUEST,
-            render_login("", Some("Invalid or expired session.")),
-        )
+            render_login("", None, Some("Invalid or expired session.")),
+        ),
     }
 }
 
 async fn login_submit(State(oauth): State<Arc<OAuth>>, request: Request) -> Response {
-    // Behind a reverse proxy this is the proxy's address, as it was in 6.x.
-    let ip = request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string());
+    let ip = client_ip(&request);
     let Ok(body) = axum::body::to_bytes(request.into_body(), BODY_LIMIT).await else {
         return (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large").into_response();
     };
@@ -417,16 +440,17 @@ async fn login_submit(State(oauth): State<Arc<OAuth>>, request: Request) -> Resp
             StatusCode::TOO_MANY_REQUESTS,
             render_login(
                 session,
+                None,
                 Some("Too many failed attempts. Please wait and try again."),
             ),
         );
     }
-    if !oauth.sign_in_pending(session) {
+    let Some(prompt) = oauth.sign_in_pending(session) else {
         return html(
             StatusCode::BAD_REQUEST,
-            render_login("", Some("Session expired. Please try again.")),
+            render_login("", None, Some("Session expired. Please try again.")),
         );
-    }
+    };
     let username = form.get("username").unwrap_or_default();
     let password = form.get("password").unwrap_or_default();
     if !oauth.verify_credentials(username, password) {
@@ -434,7 +458,11 @@ async fn login_submit(State(oauth): State<Arc<OAuth>>, request: Request) -> Resp
         warn!(ip = %ip, "failed OAuth login");
         return html(
             StatusCode::UNAUTHORIZED,
-            render_login(session, Some("Invalid username or password.")),
+            render_login(
+                session,
+                Some(&prompt),
+                Some("Invalid username or password."),
+            ),
         );
     }
     oauth.reset_login_failures(&ip);
@@ -445,7 +473,7 @@ async fn login_submit(State(oauth): State<Arc<OAuth>>, request: Request) -> Resp
         }
         Ok(None) => html(
             StatusCode::BAD_REQUEST,
-            render_login("", Some("Session expired. Please try again.")),
+            render_login("", None, Some("Session expired. Please try again.")),
         ),
         Err(e) => server_error(&e),
     }
@@ -504,9 +532,17 @@ mod tests {
 
     #[test]
     fn the_login_page_escapes_what_it_echoes() {
-        let page = render_login("a\"b<c>", Some("bad & worse"));
+        let prompt = SignInPrompt {
+            client: "<b>claude</b>".into(),
+            redirect_host: "claude.ai".into(),
+        };
+        let page = render_login("a\"b<c>", Some(&prompt), Some("bad & worse"));
         assert!(page.contains(r#"value="a&quot;b&lt;c&gt;""#));
         assert!(page.contains(r#"<div class="error">bad &amp; worse</div>"#));
-        assert!(!render_login("s", None).contains("class=\"error\""));
+        assert!(page.contains("<strong>&lt;b&gt;claude&lt;/b&gt;</strong>"));
+        assert!(page.contains("<strong>claude.ai</strong>"));
+        let bare = render_login("s", None, None);
+        assert!(!bare.contains("class=\"error\""));
+        assert!(!bare.contains("class=\"client\""));
     }
 }

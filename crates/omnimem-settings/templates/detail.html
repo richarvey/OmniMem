@@ -268,7 +268,7 @@
   {% endif %}
 
   <button class="btn btn-danger btn-sm"
-          onclick="document.getElementById('delete-modal').style.display='flex'">
+          data-show="delete-modal">
     Delete
   </button>
 </div>
@@ -279,7 +279,7 @@
     <p>Permanently delete <strong>{{ memory.key }}</strong>? This cannot be undone.</p>
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm"
-              onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
+              data-hide="delete-modal">Cancel</button>
       <form method="POST" action="/lifecycle/delete" style="display:inline">
         <input type="hidden" name="key" value="{{ memory.key }}">
         <button type="submit" class="btn btn-danger btn-sm">Delete</button>

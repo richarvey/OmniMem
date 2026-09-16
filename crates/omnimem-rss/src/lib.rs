@@ -18,17 +18,23 @@ use std::time::Duration;
 
 use tracing::warn;
 
-pub use fetch::{Fetcher, page_text};
+pub use fetch::{Fetcher, is_public_host, page_text};
 pub use ingest::{FeedStats, Ingester, format_item, strip_html, url_hash};
 pub use summariser::{DigestItem, extract_items, fallback_summary, is_refusal, summarise};
 
-/// The 6.x worker's settings, from the same environment variables.
+/// The longest schedule accepted: a year. Anything longer is a typo, and
+/// the clamp keeps the seconds arithmetic well inside a `Duration`.
+const MAX_SCHEDULE_HOURS: u64 = 24 * 365;
+
+/// The 6.x worker's settings, from the same environment variables. The
+/// fetcher also reads `RSS_ALLOW_PRIVATE_HOSTS`, which lets feeds on a LAN
+/// or on this host be fetched; it is off by default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RssConfig {
     /// `FEEDS_CONFIG_PATH`
     pub feeds_path: PathBuf,
-    /// `RSS_SCHEDULE_HOURS` (6). Zero leaves only the start-up run and runs
-    /// triggered by editing `feeds.yml`.
+    /// `RSS_SCHEDULE_HOURS` (6, at most a year). Zero leaves only the
+    /// start-up run and runs triggered by editing `feeds.yml`.
     pub schedule: Duration,
     /// `FEEDS_WATCH_INTERVAL` seconds (10): how often `feeds.yml` is checked.
     pub watch_interval: Duration,
@@ -42,6 +48,16 @@ pub struct RssConfig {
     pub max_knowledge_age_days: i64,
     /// `RSS_REQUIRE_LICENCE`: refuse feeds that declare no usable licence.
     pub require_licence: bool,
+    /// `RSS_ALLOW_PRIVATE_HOSTS`: fetch feeds and pages on loopback, private
+    /// and link-local addresses. Off by default, so a feed entry can't point
+    /// OmniMem at the machine it runs on or the network behind it.
+    pub allow_private_hosts: bool,
+}
+
+/// A `true`, `1` or `yes` setting.
+fn flag(name: &str) -> bool {
+    omnimem_core::env::var(name)
+        .is_some_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
 }
 
 fn number<T: std::str::FromStr>(name: &str, default: T) -> T {
@@ -60,17 +76,20 @@ impl RssConfig {
         let feeds_path = omnimem_core::env::var("FEEDS_CONFIG_PATH")
             .filter(|p| !p.trim().is_empty())
             .map_or(default_feeds_path, PathBuf::from);
+        let hours = number::<u64>("RSS_SCHEDULE_HOURS", 6);
+        if hours > MAX_SCHEDULE_HOURS {
+            warn!("RSS_SCHEDULE_HOURS={hours} is more than a year; using {MAX_SCHEDULE_HOURS}");
+        }
         Self {
             feeds_path,
-            schedule: Duration::from_secs(number::<u64>("RSS_SCHEDULE_HOURS", 6) * 3600),
+            schedule: Duration::from_secs(hours.min(MAX_SCHEDULE_HOURS).saturating_mul(3600)),
             watch_interval: Duration::from_secs(number("FEEDS_WATCH_INTERVAL", 10).max(1)),
             max_articles_per_feed: number("RSS_MAX_ARTICLES_PER_FEED", 20),
             max_digest_entries: number("RSS_MAX_DIGEST_ENTRIES", 2),
             max_page_bytes: number("RSS_MAX_PAGE_BYTES", 10 * 1024 * 1024),
             max_knowledge_age_days: number("MAX_KNOWLEDGE_AGE_DAYS", 30),
-            require_licence: omnimem_core::env::var("RSS_REQUIRE_LICENCE").is_some_and(|v| {
-                matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes")
-            }),
+            require_licence: flag("RSS_REQUIRE_LICENCE"),
+            allow_private_hosts: flag("RSS_ALLOW_PRIVATE_HOSTS"),
         }
     }
 }

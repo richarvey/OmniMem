@@ -22,6 +22,7 @@ use crate::skills::{
     build_feed_rules, build_reference_rules, draft_description, extract_lessons,
     generated_skill_key, render_skill_md, render_unified_diff, summarise_rule_changes,
 };
+use crate::tools::{MAX_SHORT_TEXT, validate_text};
 use crate::{Engine, Result};
 
 #[cfg(test)]
@@ -199,6 +200,9 @@ impl Engine {
             return Err(invalid(format!(
                 "mode must be 'propose' or 'write', got '{mode}'"
             )));
+        }
+        if let Some(description) = description {
+            validate_text("description", description, MAX_SHORT_TEXT)?;
         }
         let min_reinforcement = min_reinforcement.clamp(1, 10) as usize;
         let (canonical, aliased) = resolve_domain(domain);
