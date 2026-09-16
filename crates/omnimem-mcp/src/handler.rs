@@ -176,8 +176,8 @@ enum CallError {
 impl From<EngineError> for CallError {
     fn from(e: EngineError) -> Self {
         match e {
-            EngineError::Invalid(message) => CallError::Invalid(message),
-            other => CallError::Internal(other.to_string()),
+            EngineError::Invalid(message) => Self::Invalid(message),
+            other => Self::Internal(other.to_string()),
         }
     }
 }
@@ -492,7 +492,7 @@ impl ServerHandler for OmniMemServer {
         let outcome = tokio::task::spawn_blocking(move || {
             let started = Instant::now();
             let result = dispatch(&engine, &tool, args);
-            let text = result.as_ref().ok().map(|v| v.to_string());
+            let text = result.as_ref().ok().map(std::string::ToString::to_string);
             if !matches!(result, Err(CallError::UnknownTool(_))) {
                 record_metrics(
                     &engine,

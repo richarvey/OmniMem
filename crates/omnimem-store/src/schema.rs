@@ -10,7 +10,7 @@ pub(crate) const SCHEMA_VERSION: i64 = 3;
 /// Version 3: OAuth clients, authorisation codes and tokens, which were
 /// `oauth:*` Valkey keys. Codes and tokens are keyed by the SHA-256 of their
 /// value, never the value itself.
-const V3: &str = r#"
+const V3: &str = r"
 CREATE TABLE oauth_clients (
     client_id  TEXT PRIMARY KEY NOT NULL,
     info       TEXT NOT NULL CHECK (json_valid(info)),
@@ -33,16 +33,16 @@ CREATE TABLE oauth_tokens (
 
 CREATE INDEX oauth_codes_expires  ON oauth_codes (expires_at);
 CREATE INDEX oauth_tokens_expires ON oauth_tokens (expires_at);
-"#;
+";
 
 /// Version 2: the enrichment queue, durable where the Valkey list was not.
-const V2: &str = r#"
+const V2: &str = r"
 CREATE TABLE enrich_queue (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     payload    TEXT NOT NULL CHECK (json_valid(payload)),
     created_at REAL NOT NULL
 ) STRICT;
-"#;
+";
 
 /// Version 1.
 ///
@@ -50,7 +50,7 @@ CREATE TABLE enrich_queue (
 /// other memory column is generated from it: SQLite keeps them in step on
 /// every write, and the indexes on them are what filtered search and the
 /// list views use.
-const V1: &str = r#"
+const V1: &str = r"
 CREATE TABLE memories (
     key          TEXT PRIMARY KEY NOT NULL,
     namespace    TEXT NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE store_meta (
     name  TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL
 ) STRICT;
-"#;
+";
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;

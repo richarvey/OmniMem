@@ -525,18 +525,17 @@ pub(crate) async fn import_confirm(
         // already there (by URL) at most gains the entry it lacked.
         let (mut added, mut updated) = (Vec::new(), Vec::new());
         if !bundle.feeds.is_empty() {
-            match &feeds_path {
-                Some(path) => {
-                    let current = feeds_file::load(path).map_err(EngineError::Io)?;
-                    let merged;
-                    (merged, added, updated, _) = merge_feed_influences(&current, &bundle.feeds);
-                    if !added.is_empty() || !updated.is_empty() {
-                        feeds_file::save(path, &merged).map_err(EngineError::Io)?;
-                        let mirrored: Vec<Value> = merged.into_iter().map(Value::Object).collect();
-                        engine.sync_feed_influences(&mirrored)?;
-                    }
+            if let Some(path) = &feeds_path {
+                let current = feeds_file::load(path).map_err(EngineError::Io)?;
+                let merged;
+                (merged, added, updated, _) = merge_feed_influences(&current, &bundle.feeds);
+                if !added.is_empty() || !updated.is_empty() {
+                    feeds_file::save(path, &merged).map_err(EngineError::Io)?;
+                    let mirrored: Vec<Value> = merged.into_iter().map(Value::Object).collect();
+                    engine.sync_feed_influences(&mirrored)?;
                 }
-                None => warn!("no reading list is configured, so the bundle's feeds were left out"),
+            } else {
+                warn!("no reading list is configured, so the bundle's feeds were left out")
             }
         }
 

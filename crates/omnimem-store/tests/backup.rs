@@ -89,7 +89,7 @@ fn a_legacy_backup_imports_migrates_and_embeds() {
     let mut calls = Vec::new();
     let report = store
         .restore_backup(&legacy_backup(), Some(&Fake), &mut |done, total| {
-            calls.push((done, total))
+            calls.push((done, total));
         })
         .unwrap();
 

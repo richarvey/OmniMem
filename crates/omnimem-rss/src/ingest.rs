@@ -166,7 +166,7 @@ impl FeedStats {
         json!({"added": self.added, "skipped": self.skipped, "errors": self.errors, "refused": self.refused})
     }
 
-    fn add(&mut self, other: FeedStats) {
+    fn add(&mut self, other: Self) {
         self.added += other.added;
         self.skipped += other.skipped;
         self.errors += other.errors;
@@ -378,15 +378,14 @@ impl Ingester {
                 continue;
             }
             if digest {
-                match self.digest_articles(entry, &link) {
-                    Some(items) => articles.extend(items),
-                    None => {
-                        info!(
-                            title = entry_title(entry),
-                            "skipping: digest extraction failed"
-                        );
-                        stats.skipped += 1;
-                    }
+                if let Some(items) = self.digest_articles(entry, &link) {
+                    articles.extend(items)
+                } else {
+                    info!(
+                        title = entry_title(entry),
+                        "skipping: digest extraction failed"
+                    );
+                    stats.skipped += 1;
                 }
                 continue;
             }

@@ -365,14 +365,13 @@ pub async fn serve(
     shutdown: CancellationToken,
 ) -> Result<(), ServerError> {
     let app = router(engine, &config, shutdown.clone())?;
-    let listener = match listener {
-        Some(l) => l,
-        None => {
-            let addr = bind_address(&config.host, config.port);
-            TcpListener::bind(&addr)
-                .await
-                .map_err(|source| ServerError::Bind { addr, source })?
-        }
+    let listener = if let Some(l) = listener {
+        l
+    } else {
+        let addr = bind_address(&config.host, config.port);
+        TcpListener::bind(&addr)
+            .await
+            .map_err(|source| ServerError::Bind { addr, source })?
     };
     let local: SocketAddr = listener.local_addr()?;
     let auth = match (

@@ -68,15 +68,14 @@ pub fn open_engine(db: &Path) -> Result<Engine> {
     let embedder = Arc::new(load_embedder()?);
     let config = EngineConfig::from_env(data_dir(db).join("backups"));
     let mut engine = Engine::new(store, embedder, config);
-    match AnthropicConfig::from_env() {
-        Some(llm) => {
-            let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
-            engine = engine.with_llm(Arc::new(client));
-            info!("ANTHROPIC_API_KEY set: Claude Haiku features and RSS summaries are on");
-        }
-        None => info!(
+    if let Some(llm) = AnthropicConfig::from_env() {
+        let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
+        engine = engine.with_llm(Arc::new(client));
+        info!("ANTHROPIC_API_KEY set: Claude Haiku features and RSS summaries are on");
+    } else {
+        info!(
             "ANTHROPIC_API_KEY not set: Claude Haiku features are off and RSS summaries fall back to truncation"
-        ),
+        );
     }
     Ok(engine)
 }
@@ -171,8 +170,7 @@ fn serve_until_shutdown(
         let memories = engine
             .store()
             .count_all_records()
-            .map(|counts| counts.values().sum())
-            .unwrap_or(0);
+            .map_or(0, |counts| counts.values().sum());
         report(ServiceState::Running {
             mcp_url: local_mcp_url(listener.local_addr()?),
             memories,

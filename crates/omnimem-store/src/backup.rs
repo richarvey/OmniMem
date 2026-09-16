@@ -41,7 +41,7 @@ const EMBED_BATCH: usize = 32;
 
 const NAMESPACE_COUNTS: [&str; 5] = ["episodic", "project", "knowledge", "preference", "skill"];
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupFile {
     pub metadata: Value,
     pub data: Map<String, Value>,

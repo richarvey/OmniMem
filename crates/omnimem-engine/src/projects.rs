@@ -365,17 +365,16 @@ impl Engine {
                 .or_else(|| text(&data, "project"))
                 .unwrap_or_else(|| key.rsplit(':').next().unwrap_or("").to_owned());
             let is_context = text(&data, "goals").is_some() || text(&data, "stack").is_some();
-            let index = match projects.iter().position(|(n, _, _)| *n == name) {
-                Some(i) => i,
-                None => {
-                    let mut m = Map::new();
-                    m.insert("project_name".into(), name.as_str().into());
-                    m.insert("description".into(), "".into());
-                    m.insert("state".into(), "active".into());
-                    m.insert("memory_count".into(), 0.into());
-                    projects.push((name.clone(), m, Vec::new()));
-                    projects.len() - 1
-                }
+            let index = if let Some(i) = projects.iter().position(|(n, _, _)| *n == name) {
+                i
+            } else {
+                let mut m = Map::new();
+                m.insert("project_name".into(), name.as_str().into());
+                m.insert("description".into(), "".into());
+                m.insert("state".into(), "active".into());
+                m.insert("memory_count".into(), 0.into());
+                projects.push((name.clone(), m, Vec::new()));
+                projects.len() - 1
             };
             let (_, entry, domains) = &mut projects[index];
             if is_context {

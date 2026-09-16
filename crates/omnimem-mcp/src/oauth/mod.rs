@@ -229,9 +229,8 @@ impl Urls {
         let issuer = url.to_string();
         let prefix = issuer.trim_end_matches('/').to_owned();
         let resource = format!("{prefix}/mcp");
-        let resource_path = Url::parse(&resource)
-            .map(|u| u.path().to_owned())
-            .unwrap_or_else(|_| "/mcp".into());
+        let resource_path =
+            Url::parse(&resource).map_or_else(|_| "/mcp".into(), |u| u.path().to_owned());
         let resource_metadata_path =
             format!("/.well-known/oauth-protected-resource{resource_path}");
         let resource_metadata_url = format!(
@@ -1187,7 +1186,9 @@ impl OAuth {
     }
 
     fn pending(&self) -> MutexGuard<'_, HashMap<String, Pending>> {
-        self.pending.lock().unwrap_or_else(|p| p.into_inner())
+        self.pending
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Keep a sign-in until the login form comes back: its session ID.
@@ -1241,7 +1242,9 @@ impl OAuth {
     }
 
     fn limiter(&self) -> MutexGuard<'_, LoginLimiter> {
-        self.limiter.lock().unwrap_or_else(|p| p.into_inner())
+        self.limiter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn login_blocked(&self, ip: &str) -> bool {

@@ -62,9 +62,10 @@ impl EmbedConfig {
                 .filter(|v| !v.is_empty())
         };
         let number = |name: &str| {
-            text(name).and_then(|raw| match raw.parse::<usize>() {
-                Ok(n) => Some(n),
-                Err(_) => {
+            text(name).and_then(|raw| {
+                if let Ok(n) = raw.parse::<usize>() {
+                    Some(n)
+                } else {
                     warn!("{name}={raw:?} is not a whole number; ignoring it");
                     None
                 }
@@ -96,7 +97,7 @@ impl EmbedConfig {
         if let Some(rev) = &self.revision {
             return rev.clone();
         }
-        let default_repo = EmbedConfig::default().repo();
+        let default_repo = Self::default().repo();
         if self.repo() == default_repo {
             DEFAULT_MODEL_REVISION.to_owned()
         } else {
@@ -135,7 +136,7 @@ impl ModelFiles {
         }
         if download::offline() {
             return Err(EmbedError::ModelUnavailable {
-                repo: repo.clone(),
+                repo,
                 file: config.onnx_file.clone(),
                 detail: format!(
                     "revision {revision} is not in the Hugging Face cache at {} and HF_HUB_OFFLINE is set",
@@ -274,8 +275,7 @@ impl ModelFiles {
             None => self
                 .optional_json(SBERT_CONFIG_FILE)
                 .and_then(|c| c.get("max_seq_length").and_then(Value::as_u64))
-                .map(|n| n as usize)
-                .unwrap_or(DEFAULT_MAX_SEQ_LENGTH),
+                .map_or(DEFAULT_MAX_SEQ_LENGTH, |n| n as usize),
         };
         if value < MIN_SEQ_LENGTH {
             warn!(
@@ -453,7 +453,7 @@ mod tests {
                     N.fetch_add(1, Ordering::Relaxed)
                 ));
                 std::fs::create_dir_all(&path).unwrap();
-                Dir(path)
+                Self(path)
             }
             pub fn path(&self) -> &Path {
                 &self.0

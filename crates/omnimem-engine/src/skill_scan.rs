@@ -140,7 +140,7 @@ impl Engine {
         // Boost, never introduce: a domain nothing is tagged with would be
         // dropped at the pool gate anyway.
         let project_domains = self.domain_map()?;
-        for (domain, count) in counts.iter_mut() {
+        for (domain, count) in &mut counts {
             if let Some(projects) = project_domains.get(domain) {
                 *count += PROJECT_DOMAIN_WEIGHT * projects.len();
             }

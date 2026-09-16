@@ -20,17 +20,17 @@ pub(crate) enum Kind {
 impl Kind {
     fn as_str(self) -> &'static str {
         match self {
-            Kind::Hash => "hash",
-            Kind::Set => "set",
-            Kind::String => "string",
+            Self::Hash => "hash",
+            Self::Set => "set",
+            Self::String => "string",
         }
     }
 
-    fn parse(s: &str) -> Kind {
+    fn parse(s: &str) -> Self {
         match s {
-            "set" => Kind::Set,
-            "string" => Kind::String,
-            _ => Kind::Hash,
+            "set" => Self::Set,
+            "string" => Self::String,
+            _ => Self::Hash,
         }
     }
 }

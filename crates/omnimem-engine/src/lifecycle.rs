@@ -52,28 +52,28 @@ pub enum MemoryState {
 impl MemoryState {
     pub fn as_str(self) -> &'static str {
         match self {
-            MemoryState::Active => "active",
-            MemoryState::Deprioritised => "deprioritised",
-            MemoryState::Archived => "archived",
-            MemoryState::Deleted => "deleted",
+            Self::Active => "active",
+            Self::Deprioritised => "deprioritised",
+            Self::Archived => "archived",
+            Self::Deleted => "deleted",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
-            "active" => MemoryState::Active,
-            "deprioritised" => MemoryState::Deprioritised,
-            "archived" => MemoryState::Archived,
-            "deleted" => MemoryState::Deleted,
+            "active" => Self::Active,
+            "deprioritised" => Self::Deprioritised,
+            "archived" => Self::Archived,
+            "deleted" => Self::Deleted,
             _ => return None,
         })
     }
 
-    pub(crate) fn can_become(self, next: MemoryState) -> bool {
+    pub(crate) fn can_become(self, next: Self) -> bool {
         self.allowed().contains(&next)
     }
 
-    fn allowed(self) -> &'static [MemoryState] {
+    fn allowed(self) -> &'static [Self] {
         use MemoryState::*;
         match self {
             Active => &[Deprioritised, Archived, Deleted],
@@ -103,7 +103,7 @@ impl Engine {
         let Some(data) = self.store.get(key)? else {
             return Err(invalid(format!("Memory key not found: {key}")));
         };
-        let raw_state = data.get("state").map(String::as_str).unwrap_or("active");
+        let raw_state = data.get("state").map_or("active", String::as_str);
         let current = MemoryState::parse(raw_state)
             .ok_or_else(|| invalid(format!("'{raw_state}' is not a valid MemoryState")))?;
         if !current.allowed().contains(&new_state) {
@@ -196,7 +196,7 @@ impl Engine {
 /// matches nothing, and hints too short to be meaningful (from data stored
 /// before hints were validated) are ignored.
 pub(crate) fn check_reinstate_eligibility(doc: &Fields, query: &str) -> bool {
-    if doc.get("state").map(String::as_str).unwrap_or("active") != "deprioritised" {
+    if doc.get("state").map_or("active", String::as_str) != "deprioritised" {
         return false;
     }
     let query = query.trim().to_lowercase();

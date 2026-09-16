@@ -52,17 +52,16 @@ pub(crate) async fn check(State(state): State<PanelState>) -> Response {
         .latest_release
         .clone()
         .filter(|(at, _)| at.elapsed() < CACHE_TTL);
-    let latest = match cached {
-        Some((_, latest)) => latest,
-        None => {
-            let latest = tokio::task::spawn_blocking(fetch_latest)
-                .await
-                .ok()
-                .flatten();
-            debug!(?latest, "checked for a newer release");
-            state.caches().latest_release = Some((Instant::now(), latest.clone()));
-            latest
-        }
+    let latest = if let Some((_, latest)) = cached {
+        latest
+    } else {
+        let latest = tokio::task::spawn_blocking(fetch_latest)
+            .await
+            .ok()
+            .flatten();
+        debug!(?latest, "checked for a newer release");
+        state.caches().latest_release = Some((Instant::now(), latest.clone()));
+        latest
     };
     match latest.as_deref().and_then(|l| parse(l).map(|v| (l, v))) {
         Some((latest, version)) if version > current => page(

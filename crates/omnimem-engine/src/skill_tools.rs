@@ -186,7 +186,7 @@ impl Engine {
             let Some(data) = self.store.get(key).ok().flatten() else {
                 continue;
             };
-            if data.get("body").is_none_or(|b| b.is_empty()) {
+            if data.get("body").is_none_or(std::string::String::is_empty) {
                 continue;
             }
             // The same counters recall keeps, so telemetry sees skill loads.
@@ -371,7 +371,10 @@ impl Engine {
             fields.insert("expires_at".to_owned(), String::new());
         }
         if let Some(rules) = &validated {
-            let rules: Vec<Value> = rules.iter().map(|r| r.to_value()).collect();
+            let rules: Vec<Value> = rules
+                .iter()
+                .map(super::skills::ReferenceRule::to_value)
+                .collect();
             fields.insert("skill_rules".to_owned(), py_json(&Value::Array(rules)));
         }
         let changed = !fields.is_empty();
@@ -404,7 +407,10 @@ impl Engine {
             }
             m.insert(
                 "reference_rules".into(),
-                rules.iter().map(|r| r.to_value()).collect(),
+                rules
+                    .iter()
+                    .map(super::skills::ReferenceRule::to_value)
+                    .collect(),
             );
         }
         Ok(compact(m))

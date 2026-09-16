@@ -46,7 +46,7 @@ pub fn content_hash(content: &str) -> String {
     let digest = Sha256::digest(normalise_content(content).as_bytes());
     let mut out = String::with_capacity(HASH_PREFIX.len() + digest.len() * 2);
     out.push_str(HASH_PREFIX);
-    for byte in digest.iter() {
+    for byte in &digest {
         out.push_str(&format!("{byte:02x}"));
     }
     out

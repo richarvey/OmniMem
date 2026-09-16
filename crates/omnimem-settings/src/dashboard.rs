@@ -90,12 +90,11 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_store::Result<Value> {
                     .or_else(|| row.get("project").filter(|n| !n.is_empty()))
                     .cloned()
                     .unwrap_or_else(|| key.rsplit(':').next().unwrap_or("").to_owned());
-                let index = match projects.iter().position(|(n, _, _)| *n == name) {
-                    Some(i) => i,
-                    None => {
-                        projects.push((name.clone(), None, Vec::new()));
-                        projects.len() - 1
-                    }
+                let index = if let Some(i) = projects.iter().position(|(n, _, _)| *n == name) {
+                    i
+                } else {
+                    projects.push((name.clone(), None, Vec::new()));
+                    projects.len() - 1
                 };
                 if *key == format!("mem:project:{name}") {
                     projects[index].1 = Some(state.clone());
@@ -210,23 +209,22 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
         .then(|| state.caches().dashboard.clone())
         .flatten()
         .filter(|(at, _)| at.elapsed() < ttl);
-    let (computed_at, stats) = match cached {
-        Some(hit) => hit,
-        None => {
-            let worker = engine.clone();
-            let computed = tokio::task::spawn_blocking(move || compute(&worker)).await;
-            let stats = match computed {
-                Ok(Ok(stats)) => stats,
-                _ => {
-                    json!({"ns_stats": {}, "total": 0, "skills": {"total": 0, "states": zero_states(), "proposals": 0}, "recent": []})
-                }
-            };
-            let fresh = (Instant::now(), stats);
-            if !ttl.is_zero() {
-                state.caches().dashboard = Some(fresh.clone());
+    let (computed_at, stats) = if let Some(hit) = cached {
+        hit
+    } else {
+        let worker = engine.clone();
+        let computed = tokio::task::spawn_blocking(move || compute(&worker)).await;
+        let stats = match computed {
+            Ok(Ok(stats)) => stats,
+            _ => {
+                json!({"ns_stats": {}, "total": 0, "skills": {"total": 0, "states": zero_states(), "proposals": 0}, "recent": []})
             }
-            fresh
+        };
+        let fresh = (Instant::now(), stats);
+        if !ttl.is_zero() {
+            state.caches().dashboard = Some(fresh.clone());
         }
+        fresh
     };
     let enrichment_pending = engine.store().enrichment_pending().map_or(-1, |n| n as i64);
     page(

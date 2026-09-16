@@ -190,7 +190,10 @@ impl Engine {
     pub(crate) fn abandoned_entries(&self) -> Result<Arc<Vec<AbandonedEntry>>> {
         let ttl = self.config.abandoned_cache_ttl;
         {
-            let cache = self.abandoned.lock().unwrap_or_else(|p| p.into_inner());
+            let cache = self
+                .abandoned
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some((at, entries)) = cache.as_ref()
                 && !ttl.is_zero()
                 && at.elapsed() < ttl
@@ -247,7 +250,10 @@ impl Engine {
             }
         }
         let entries = Arc::new(entries);
-        *self.abandoned.lock().unwrap_or_else(|p| p.into_inner()) =
+        *self
+            .abandoned
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
             Some((Instant::now(), entries.clone()));
         Ok(entries)
     }
@@ -369,16 +375,13 @@ impl Engine {
         let mut deduped: Vec<RecallResult> = Vec::new();
         let mut index: HashMap<(String, &'static str), usize> = HashMap::new();
         for r in results {
-            match index.get(&(r.key.clone(), r.result_type)) {
-                Some(&i) => {
-                    if r.adjusted_score > deduped[i].adjusted_score {
-                        deduped[i] = r;
-                    }
+            if let Some(&i) = index.get(&(r.key.clone(), r.result_type)) {
+                if r.adjusted_score > deduped[i].adjusted_score {
+                    deduped[i] = r;
                 }
-                None => {
-                    index.insert((r.key.clone(), r.result_type), deduped.len());
-                    deduped.push(r);
-                }
+            } else {
+                index.insert((r.key.clone(), r.result_type), deduped.len());
+                deduped.push(r);
             }
         }
         let mut results = deduped;
@@ -480,7 +483,7 @@ impl Engine {
                 .search(namespace, vector, scope.per_ns_k, &filter, None)?
             {
                 let doc = &hit.fields;
-                let state = doc.get("state").map(String::as_str).unwrap_or("active");
+                let state = doc.get("state").map_or("active", String::as_str);
                 if matches!(state, "archived" | "deleted") {
                     continue;
                 }

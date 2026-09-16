@@ -127,15 +127,21 @@ impl Store {
     // keeps it until the matrix matches the rows, so a delete can't land
     // between a row's commit and its vector's insertion and leave a phantom.
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap_or_else(|p| p.into_inner())
+        self.conn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn vectors_read(&self) -> RwLockReadGuard<'_, VectorIndex> {
-        self.vectors.read().unwrap_or_else(|p| p.into_inner())
+        self.vectors
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub(crate) fn vectors_write(&self) -> RwLockWriteGuard<'_, VectorIndex> {
-        self.vectors.write().unwrap_or_else(|p| p.into_inner())
+        self.vectors
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn check_dim(&self, vector: &[f32]) -> Result<()> {

@@ -26,7 +26,7 @@ const MAX_SKILLS_PER_FEED: usize = 20;
 pub type FeedSkills = Vec<(String, i64)>;
 
 /// One mirrored feed entry.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedInfluence {
     pub url: String,
     pub topics: Vec<String>,

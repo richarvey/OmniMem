@@ -44,13 +44,14 @@ impl VectorIndex {
             let Ok(namespace) = namespace.parse::<Namespace>() else {
                 continue;
             };
-            match from_bytes(&data, dim) {
-                Some(vector) => index.insert(namespace, &key, &vector),
-                None => warn!(
+            if let Some(vector) = from_bytes(&data, dim) {
+                index.insert(namespace, &key, &vector)
+            } else {
+                warn!(
                     key,
                     bytes = data.len(),
                     "skipping a stored vector of the wrong size"
-                ),
+                );
             }
         }
         Ok(index)
@@ -61,17 +62,14 @@ impl VectorIndex {
         let dim = self.dim;
         let space = self.spaces.entry(namespace).or_default();
         let norm = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-        match space.rows.get(key) {
-            Some(&row) => {
-                space.data[row * dim..(row + 1) * dim].copy_from_slice(vector);
-                space.norms[row] = norm;
-            }
-            None => {
-                space.rows.insert(key.to_owned(), space.keys.len());
-                space.keys.push(key.to_owned());
-                space.data.extend_from_slice(vector);
-                space.norms.push(norm);
-            }
+        if let Some(&row) = space.rows.get(key) {
+            space.data[row * dim..(row + 1) * dim].copy_from_slice(vector);
+            space.norms[row] = norm;
+        } else {
+            space.rows.insert(key.to_owned(), space.keys.len());
+            space.keys.push(key.to_owned());
+            space.data.extend_from_slice(vector);
+            space.norms.push(norm);
         }
     }
 

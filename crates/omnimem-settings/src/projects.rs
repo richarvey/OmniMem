@@ -136,21 +136,20 @@ pub(crate) async fn list(
             let name = filled("project_name")
                 .or_else(|| filled("project"))
                 .unwrap_or_else(|| key.rsplit(':').next().unwrap_or("").to_owned());
-            let index = match projects.iter().position(|p| p.name == name) {
-                Some(i) => i,
-                None => {
-                    projects.push(Listed {
-                        name: name.clone(),
-                        description: String::new(),
-                        current_state: String::new(),
-                        state: "active".to_owned(),
-                        updated_at: 0.0,
-                        memory_count: 0,
-                        has_context: false,
-                        domains: Vec::new(),
-                    });
-                    projects.len() - 1
-                }
+            let index = if let Some(i) = projects.iter().position(|p| p.name == name) {
+                i
+            } else {
+                projects.push(Listed {
+                    name: name.clone(),
+                    description: String::new(),
+                    current_state: String::new(),
+                    state: "active".to_owned(),
+                    updated_at: 0.0,
+                    memory_count: 0,
+                    has_context: false,
+                    domains: Vec::new(),
+                });
+                projects.len() - 1
             };
             let project = &mut projects[index];
             project.updated_at = project.updated_at.max(number(data.get("updated_at")));

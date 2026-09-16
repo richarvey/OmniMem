@@ -484,7 +484,7 @@ impl Engine {
             .and_then(|e| e.get("body"))
             .filter(|b| !b.is_empty());
         let current_sha = existing_body.map(|b| body_sha(b)).unwrap_or_default();
-        if stash.get("based_on").map(String::as_str).unwrap_or("") != current_sha {
+        if stash.get("based_on").map_or("", String::as_str) != current_sha {
             return Ok(json!({
                 "status": "stale_proposal",
                 "skill_id": skill_id,

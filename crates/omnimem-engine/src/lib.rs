@@ -124,11 +124,17 @@ impl Engine {
 
     /// Drop the cached abandoned-approach list after a write that may change it.
     pub fn invalidate_abandoned_cache(&self) {
-        *self.abandoned.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self
+            .abandoned
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     /// Drop the cached domain-to-project map after a project write.
     pub fn invalidate_domain_cache(&self) {
-        *self.domain_map.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self
+            .domain_map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 }

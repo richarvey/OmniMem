@@ -140,8 +140,7 @@ fn inherited_classification(declared: Option<&Value>, source: Option<&Fields>) -
         merged
             .get(name)
             .filter(|v| py_truthy(v))
-            .map(py_str)
-            .unwrap_or_else(|| default.to_owned())
+            .map_or_else(|| default.to_owned(), py_str)
     };
     let mut fields = Fields::from([
         ("licence".to_owned(), pick("licence", "own")),

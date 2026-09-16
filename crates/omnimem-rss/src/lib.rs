@@ -29,7 +29,7 @@ const MAX_SCHEDULE_HOURS: u64 = 24 * 365;
 /// The 6.x worker's settings, from the same environment variables. The
 /// fetcher also reads `RSS_ALLOW_PRIVATE_HOSTS`, which lets feeds on a LAN
 /// or on this host be fetched; it is off by default.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RssConfig {
     /// `FEEDS_CONFIG_PATH`
     pub feeds_path: PathBuf,

@@ -44,8 +44,8 @@ pub enum DomainArg {
 impl From<DomainArg> for DomainFilter {
     fn from(arg: DomainArg) -> Self {
         match arg {
-            DomainArg::List(v) => DomainFilter::Many(v),
-            DomainArg::One(s) => DomainFilter::One(s),
+            DomainArg::List(v) => Self::Many(v),
+            DomainArg::One(s) => Self::One(s),
         }
     }
 }

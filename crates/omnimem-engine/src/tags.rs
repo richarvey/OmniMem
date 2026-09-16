@@ -97,20 +97,19 @@ impl Engine {
             return Ok(json!({"status": "not_found", "key": key}));
         };
         let current = parse_tags_field(data.get("tags").map(String::as_str));
-        let new_tags = match &tags {
-            Some(tags) => clean(tags),
-            None => {
-                let mut next = current.clone();
-                if let Some(remove) = &remove {
-                    let gone: Vec<&str> = remove.iter().map(|t| t.trim()).collect();
-                    next.retain(|t| !gone.contains(&t.as_str()));
-                }
-                if let Some(add) = &add {
-                    next.extend(add.iter().cloned());
-                    next = clean(&next);
-                }
-                next
+        let new_tags = if let Some(tags) = &tags {
+            clean(tags)
+        } else {
+            let mut next = current.clone();
+            if let Some(remove) = &remove {
+                let gone: Vec<&str> = remove.iter().map(|t| t.trim()).collect();
+                next.retain(|t| !gone.contains(&t.as_str()));
             }
+            if let Some(add) = &add {
+                next.extend(add.iter().cloned());
+                next = clean(&next);
+            }
+            next
         };
         validate_tags(Some(&new_tags))?;
         if new_tags == current {

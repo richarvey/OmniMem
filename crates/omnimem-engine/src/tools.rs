@@ -52,7 +52,7 @@ static SAFE_FILENAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_.\-]*\.json$").expect("valid"));
 
 /// `domain_filter`: one domain (or a comma list in a string), or a list.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum DomainFilter {
     One(String),
@@ -62,22 +62,22 @@ pub enum DomainFilter {
 impl DomainFilter {
     fn is_empty(&self) -> bool {
         match self {
-            DomainFilter::One(s) => s.is_empty(),
-            DomainFilter::Many(v) => v.is_empty(),
+            Self::One(s) => s.is_empty(),
+            Self::Many(v) => v.is_empty(),
         }
     }
 
     fn input(&self) -> DomainInput<'_> {
         match self {
-            DomainFilter::One(s) => DomainInput::Text(s),
-            DomainFilter::Many(v) => DomainInput::List(v),
+            Self::One(s) => DomainInput::Text(s),
+            Self::Many(v) => DomainInput::List(v),
         }
     }
 
     fn as_list(&self) -> Vec<String> {
         match self {
-            DomainFilter::One(s) => vec![s.clone()],
-            DomainFilter::Many(v) => v.clone(),
+            Self::One(s) => vec![s.clone()],
+            Self::Many(v) => v.clone(),
         }
     }
 }
@@ -864,7 +864,7 @@ impl Engine {
                 match self.transition(&r.key, MemoryState::Archived, reason) {
                     Ok(t) => affected.push(Value::Object(t)),
                     Err(EngineError::Invalid(e)) => {
-                        warn!(key = %r.key, error = %e, "cannot archive")
+                        warn!(key = %r.key, error = %e, "cannot archive");
                     }
                     Err(e) => return Err(e),
                 }
@@ -901,7 +901,7 @@ impl Engine {
                             affected.push(Value::Object(t));
                         }
                         Err(EngineError::Invalid(e)) => {
-                            warn!(key = %r.key, error = %e, "cannot reinstate")
+                            warn!(key = %r.key, error = %e, "cannot reinstate");
                         }
                         Err(e) => return Err(e),
                     }
@@ -1037,12 +1037,15 @@ impl Engine {
     }
 
     pub fn dump_to_file(&self, filename: Option<&str>) -> Result<Value> {
-        let filename = filename.map(str::to_owned).unwrap_or_else(|| {
-            format!(
-                "memory_backup_{}.json",
-                Local::now().format("%Y%m%d_%H%M%S")
-            )
-        });
+        let filename = filename.map_or_else(
+            || {
+                format!(
+                    "memory_backup_{}.json",
+                    Local::now().format("%Y%m%d_%H%M%S")
+                )
+            },
+            str::to_owned,
+        );
         let path = match self.backup_path(&filename) {
             Ok(p) => p,
             Err(message) => return Ok(json!({"status": "error", "message": message})),
@@ -1145,7 +1148,7 @@ impl Engine {
             return Ok(json!({"backups": []}));
         };
         let mut backups: Vec<(String, Value)> = entries
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.path().extension().is_some_and(|x| x == "json") && e.path().is_file())
             .filter_map(|e| {
                 let meta = e.metadata().ok()?;

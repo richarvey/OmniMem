@@ -139,7 +139,12 @@ pub(crate) async fn guard(
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .map(str::to_owned)
-        .or_else(|| request.uri().authority().map(|a| a.to_string()))
+        .or_else(|| {
+            request
+                .uri()
+                .authority()
+                .map(std::string::ToString::to_string)
+        })
         .unwrap_or_default();
     if !allow.host_allowed(&host) {
         warn!(

@@ -252,7 +252,7 @@ pub(crate) struct PoolMemory {
     pub updated_at: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceRule {
     pub kind: String,
     pub text: String,
@@ -276,7 +276,7 @@ pub(crate) struct PromotedItem {
 }
 
 /// A feed influencing a domain, strongest first.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeedLink {
     pub feed_name: String,
     pub influence: i64,
@@ -563,7 +563,7 @@ pub(crate) struct Rule {
 
 impl Rule {
     fn single(kind: &'static str, text: String, source: &str) -> Self {
-        Rule {
+        Self {
             kind,
             text,
             sources: vec![source.to_owned()],
@@ -1281,9 +1281,10 @@ impl Engine {
     pub(crate) fn known_domains(&self) -> Result<Vec<(String, usize)>> {
         let mut counts: Vec<(String, usize)> = Vec::new();
         let mut index: HashMap<String, usize> = HashMap::new();
-        let mut bump = |name: String| match index.get(&name) {
-            Some(i) => counts[*i].1 += 1,
-            None => {
+        let mut bump = |name: String| {
+            if let Some(i) = index.get(&name) {
+                counts[*i].1 += 1
+            } else {
                 index.insert(name.clone(), counts.len());
                 counts.push((name, 1));
             }

@@ -113,28 +113,25 @@ impl Engine {
             ) && project_filter.is_none_or(|p| doc_project(f) == Some(p))
         };
 
-        let entries: Vec<(String, Fields)> = match query.filter(|q| !q.is_empty()) {
-            Some(q) => {
-                let vector = self.embed(q)?;
-                self.store
-                    .search(ns, &vector, 20, &SearchFilter::default(), None)?
-                    .into_iter()
-                    .filter(|h| in_scope(&h.fields))
-                    .map(|h| (h.key, h.fields))
-                    .collect()
-            }
-            None => {
-                let mut keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
-                keys.truncate(SCAN_CAP);
-                let rows = self
-                    .store
-                    .get_fields_multi(&keys, &["state", "project", "project_name", "content"])?;
-                keys.into_iter()
-                    .zip(rows)
-                    .filter_map(|(k, r)| r.map(|r| (k, r)))
-                    .filter(|(_, r)| in_scope(r))
-                    .collect()
-            }
+        let entries: Vec<(String, Fields)> = if let Some(q) = query.filter(|q| !q.is_empty()) {
+            let vector = self.embed(q)?;
+            self.store
+                .search(ns, &vector, 20, &SearchFilter::default(), None)?
+                .into_iter()
+                .filter(|h| in_scope(&h.fields))
+                .map(|h| (h.key, h.fields))
+                .collect()
+        } else {
+            let mut keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
+            keys.truncate(SCAN_CAP);
+            let rows = self
+                .store
+                .get_fields_multi(&keys, &["state", "project", "project_name", "content"])?;
+            keys.into_iter()
+                .zip(rows)
+                .filter_map(|(k, r)| r.map(|r| (k, r)))
+                .filter(|(_, r)| in_scope(r))
+                .collect()
         };
         if entries.is_empty() {
             return Ok(json!({"contradictions": []}));
@@ -220,7 +217,9 @@ impl Engine {
         for (key, row) in keys.iter().zip(rows) {
             let Some(data) = row else { continue };
             if data.get("state").map(String::as_str) != Some("active")
-                || data.get("feed_name").is_none_or(|f| f.is_empty())
+                || data
+                    .get("feed_name")
+                    .is_none_or(std::string::String::is_empty)
             {
                 continue;
             }

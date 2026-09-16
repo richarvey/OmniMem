@@ -484,7 +484,7 @@ fn the_scheduler_runs_at_start_and_when_feeds_yml_changes() {
     let scheduler = Arc::new(scheduler);
     let stop = Arc::new(AtomicBool::new(false));
     let handle = {
-        let (scheduler, stop) = (scheduler.clone(), stop.clone());
+        let (scheduler, stop) = (scheduler, stop.clone());
         std::thread::spawn(move || scheduler.run(&stop))
     };
     let wait_for = |url: String| {

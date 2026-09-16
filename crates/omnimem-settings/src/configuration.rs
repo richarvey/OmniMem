@@ -46,12 +46,12 @@ enum Kind {
 impl Kind {
     fn as_str(self) -> &'static str {
         match self {
-            Kind::Text => "text",
-            Kind::Integer => "integer",
-            Kind::Decimal => "decimal",
-            Kind::Flag => "flag",
-            Kind::Choice(_) => "choice",
-            Kind::Secret => "secret",
+            Self::Text => "text",
+            Self::Integer => "integer",
+            Self::Decimal => "decimal",
+            Self::Flag => "flag",
+            Self::Choice(_) => "choice",
+            Self::Secret => "secret",
         }
     }
 }

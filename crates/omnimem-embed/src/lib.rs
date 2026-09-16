@@ -25,7 +25,7 @@ pub use model::{
 
 impl omnimem_core::TextEmbedder for Embedder {
     fn dimension(&self) -> usize {
-        Embedder::dimension(self)
+        Self::dimension(self)
     }
 
     fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, omnimem_core::EmbeddingError> {

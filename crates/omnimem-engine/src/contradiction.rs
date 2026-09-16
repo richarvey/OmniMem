@@ -68,11 +68,7 @@ impl Engine {
             .store
             .search(namespace, vector, 10, &SearchFilter::default(), None)?;
         for hit in hits {
-            let state = hit
-                .fields
-                .get("state")
-                .map(String::as_str)
-                .unwrap_or("active");
+            let state = hit.fields.get("state").map_or("active", String::as_str);
             if matches!(state, "archived" | "deleted") {
                 continue;
             }
@@ -90,7 +86,7 @@ impl Engine {
             if similarity < self.config.contradiction_threshold {
                 continue;
             }
-            let existing = hit.fields.get("content").map(String::as_str).unwrap_or("");
+            let existing = hit.fields.get("content").map_or("", String::as_str);
             if has_negation_pair(content, existing) {
                 return Ok(Some(ContradictionMatch {
                     existing_key: hit.key,

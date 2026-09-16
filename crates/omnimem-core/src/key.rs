@@ -29,34 +29,34 @@ pub enum Namespace {
 }
 
 impl Namespace {
-    pub const ALL: [Namespace; 5] = [
-        Namespace::Episodic,
-        Namespace::Project,
-        Namespace::Knowledge,
-        Namespace::Preference,
-        Namespace::Skill,
+    pub const ALL: [Self; 5] = [
+        Self::Episodic,
+        Self::Project,
+        Self::Knowledge,
+        Self::Preference,
+        Self::Skill,
     ];
 
     /// The namespaces `remember` may write to.
-    pub const WRITABLE: [Namespace; 4] = [
-        Namespace::Episodic,
-        Namespace::Project,
-        Namespace::Knowledge,
-        Namespace::Preference,
+    pub const WRITABLE: [Self; 4] = [
+        Self::Episodic,
+        Self::Project,
+        Self::Knowledge,
+        Self::Preference,
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Namespace::Episodic => "episodic",
-            Namespace::Project => "project",
-            Namespace::Knowledge => "knowledge",
-            Namespace::Preference => "preference",
-            Namespace::Skill => "skill",
+            Self::Episodic => "episodic",
+            Self::Project => "project",
+            Self::Knowledge => "knowledge",
+            Self::Preference => "preference",
+            Self::Skill => "skill",
         }
     }
 
     pub fn is_writable(self) -> bool {
-        self != Namespace::Skill
+        self != Self::Skill
     }
 }
 
@@ -70,7 +70,7 @@ impl FromStr for Namespace {
     type Err = KeyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Namespace::ALL
+        Self::ALL
             .into_iter()
             .find(|ns| ns.as_str() == s)
             .ok_or_else(|| KeyError::UnknownNamespace(s.to_owned()))

@@ -230,16 +230,16 @@ fn candidates(query: &str, now: NaiveDateTime) -> Vec<(usize, usize, NaiveDateTi
         let days_back = match c.get(1).map(|m| m.as_str().to_lowercase()) {
             Some(q) if q == "next" => {
                 let ahead = (7 - back) % 7;
-                -(if ahead == 0 { 7 } else { ahead } as i64)
+                -i64::from(if ahead == 0 { 7 } else { ahead })
             }
             Some(q) if q != "this" => {
                 if back == 0 {
                     7
                 } else {
-                    back as i64
+                    i64::from(back)
                 }
             }
-            _ => back as i64,
+            _ => i64::from(back),
         };
         push(c.get(0).unwrap(), shift(now, "day", -days_back));
     }

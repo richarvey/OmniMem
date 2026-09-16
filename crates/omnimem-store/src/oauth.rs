@@ -22,8 +22,8 @@ pub enum TokenKind {
 impl TokenKind {
     fn as_str(self) -> &'static str {
         match self {
-            TokenKind::Access => "access",
-            TokenKind::Refresh => "refresh",
+            Self::Access => "access",
+            Self::Refresh => "refresh",
         }
     }
 }

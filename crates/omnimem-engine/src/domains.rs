@@ -158,7 +158,10 @@ impl Engine {
     pub fn domain_map(&self) -> Result<Arc<BTreeMap<String, Vec<String>>>> {
         let ttl = self.config.domain_cache_ttl;
         {
-            let cache = self.domain_map.lock().unwrap_or_else(|p| p.into_inner());
+            let cache = self
+                .domain_map
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some((at, map)) = cache.as_ref()
                 && !ttl.is_zero()
                 && at.elapsed() < ttl
@@ -180,7 +183,7 @@ impl Engine {
                 continue;
             }
             let domains = normalise_domains(DomainInput::Text(
-                row.get("domains").map(String::as_str).unwrap_or(""),
+                row.get("domains").map_or("", String::as_str),
             ))
             .domains;
             if domains.is_empty() {
@@ -198,7 +201,10 @@ impl Engine {
             bucket.sort_by_key(|name| name.to_lowercase());
         }
         let mapping = Arc::new(mapping);
-        *self.domain_map.lock().unwrap_or_else(|p| p.into_inner()) =
+        *self
+            .domain_map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
             Some((Instant::now(), mapping.clone()));
         Ok(mapping)
     }

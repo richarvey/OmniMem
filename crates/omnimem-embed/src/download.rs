@@ -306,14 +306,12 @@ pub(crate) fn check_revision(revision: &str) -> Result<(), EmbedError> {
 
 /// `HF_HUB_OFFLINE` set to a true value.
 pub(crate) fn offline() -> bool {
-    omnimem_core::env::var("HF_HUB_OFFLINE")
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+    omnimem_core::env::var("HF_HUB_OFFLINE").is_some_and(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
 }
 
 pub(crate) fn is_commit(s: &str) -> bool {
@@ -358,11 +356,10 @@ mod tests {
                 }
                 counter.fetch_add(1, Ordering::SeqCst);
                 let path = request_line.split_whitespace().nth(1).unwrap_or("");
-                let (status, extra, body) = routes
-                    .iter()
-                    .find(|(p, _, _, _)| p == path)
-                    .map(|(_, s, h, b)| (*s, h.clone(), b.clone()))
-                    .unwrap_or((404, String::new(), b"not found".to_vec()));
+                let (status, extra, body) = routes.iter().find(|(p, _, _, _)| p == path).map_or(
+                    (404, String::new(), b"not found".to_vec()),
+                    |(_, s, h, b)| (*s, h.clone(), b.clone()),
+                );
                 if path == "/drip" {
                     let _ = stream.write_all(b"HTTP/1.1 200 X\r\nConnection: close\r\n\r\n");
                     while stream.write_all(b"a").is_ok() {
@@ -477,7 +474,7 @@ mod tests {
         );
         let leftovers: Vec<_> = fs::read_dir(file.parent().unwrap())
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.file_name().to_string_lossy().contains("incomplete"))
             .collect();
         assert!(leftovers.is_empty(), "the partial file was renamed away");
@@ -525,7 +522,7 @@ mod tests {
         );
         let leftovers: Vec<_> = fs::read_dir(&snapshot)
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.file_name().to_string_lossy().contains("incomplete"))
             .collect();
         assert!(leftovers.is_empty(), "the refused partial was removed");

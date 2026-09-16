@@ -38,11 +38,7 @@ impl Engine {
             .store
             .search(namespace, vector, 5, &SearchFilter::default(), None)?;
         for hit in hits {
-            let state = hit
-                .fields
-                .get("state")
-                .map(String::as_str)
-                .unwrap_or("active");
+            let state = hit.fields.get("state").map_or("active", String::as_str);
             if matches!(state, "archived" | "deleted") {
                 continue;
             }
@@ -114,13 +110,7 @@ impl Engine {
         if !missing.is_empty() {
             let texts: Vec<&str> = missing
                 .iter()
-                .map(|i| {
-                    entries[*i]
-                        .1
-                        .get("content")
-                        .map(String::as_str)
-                        .unwrap_or("")
-                })
+                .map(|i| entries[*i].1.get("content").map_or("", String::as_str))
                 .collect();
             for (i, v) in missing.iter().zip(self.embed_many(&texts)?) {
                 vectors[*i] = Some(v);
@@ -187,8 +177,7 @@ impl Engine {
                     m.insert("key".into(), key.as_str().into());
                     m.insert(
                         "content".into(),
-                        take_chars(data.get("content").map(String::as_str).unwrap_or(""), 200)
-                            .into(),
+                        take_chars(data.get("content").map_or("", String::as_str), 200).into(),
                     );
                     m.insert(
                         "project".into(),
@@ -196,10 +185,7 @@ impl Engine {
                     );
                     m.insert(
                         "state".into(),
-                        data.get("state")
-                            .map(String::as_str)
-                            .unwrap_or("active")
-                            .into(),
+                        data.get("state").map_or("active", String::as_str).into(),
                     );
                     m.insert(
                         "created_at".into(),

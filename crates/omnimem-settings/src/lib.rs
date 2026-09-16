@@ -139,7 +139,10 @@ impl PanelState {
     }
 
     pub(crate) fn caches(&self) -> std::sync::MutexGuard<'_, Caches> {
-        self.0.caches.lock().unwrap_or_else(|p| p.into_inner())
+        self.0
+            .caches
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 

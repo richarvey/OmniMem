@@ -113,9 +113,7 @@ fn main() -> Result<()> {
     let Some(command) = command else {
         return run_default(db);
     };
-    let db_path = db
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
+    let db_path = db.unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
     match command {
         Command::Serve => serve(&db_path),
         Command::Import { file, no_embed } => import(&db_path, &file, no_embed),
@@ -267,8 +265,7 @@ fn search(
             .fields
             .get("content")
             .or_else(|| hit.fields.get("name"))
-            .map(String::as_str)
-            .unwrap_or("");
+            .map_or("", String::as_str);
         let snippet: String = text
             .chars()
             .take(100)

@@ -159,9 +159,7 @@ impl EngineConfig {
     /// is unset (the server puts backups beside the database).
     pub fn from_env(default_backup_dir: PathBuf) -> Self {
         let d = Self::default();
-        let backup_dir = text("BACKUP_DIR")
-            .map(PathBuf::from)
-            .unwrap_or(default_backup_dir);
+        let backup_dir = text("BACKUP_DIR").map_or(default_backup_dir, PathBuf::from);
         let skill_user = text("OMNIMEM_USER")
             .map(|u| crate::domains::normalise_domain(&u))
             .filter(|u| crate::domains::is_valid_domain(u))
@@ -188,8 +186,7 @@ impl EngineConfig {
             enrichment_batch_mode: flag("ENRICHMENT_BATCH_MODE"),
             domain_cache_ttl: Duration::from_secs(number("PROJECT_DOMAIN_CACHE_TTL_SECONDS", 60)),
             skill_export_dir: text("SKILL_EXPORT_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| backup_dir.join("skills")),
+                .map_or_else(|| backup_dir.join("skills"), PathBuf::from),
             backup_dir,
             expand_queries: flag("RECALL_EXPAND_QUERIES"),
             stale_memory_days: number("STALE_MEMORY_DAYS", d.stale_memory_days).max(0),

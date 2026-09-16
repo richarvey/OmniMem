@@ -53,15 +53,12 @@ impl EmbedError {
     /// True when the model isn't present and couldn't be fetched, as opposed
     /// to present and broken. Tests skip on this; startup reports it with the fix.
     pub fn is_model_unavailable(&self) -> bool {
-        matches!(
-            self,
-            EmbedError::ModelUnavailable { .. } | EmbedError::Download(_)
-        )
+        matches!(self, Self::ModelUnavailable { .. } | Self::Download(_))
     }
 }
 
 impl From<ort::Error> for EmbedError {
     fn from(err: ort::Error) -> Self {
-        EmbedError::Runtime(err.to_string())
+        Self::Runtime(err.to_string())
     }
 }

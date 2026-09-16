@@ -5,8 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) fn now() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0)
+        .map_or(0.0, |d| d.as_secs_f64())
 }
 
 /// `YYYY-MM-DDTHH:MM:SSZ`, the format of a 6.x backup's `exported_at`.

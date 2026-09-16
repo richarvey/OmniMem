@@ -44,7 +44,7 @@ fn percent_encode(text: &str, keep: impl Fn(u8) -> bool) -> String {
     for byte in text.bytes() {
         match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-' | b'~' => {
-                out.push(byte as char)
+                out.push(byte as char);
             }
             b if keep(b) => out.push(b as char),
             _ => out.push_str(&format!("%{byte:02X}")),
