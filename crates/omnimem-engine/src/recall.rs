@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use omnimem_core::Namespace;
 use omnimem_store::{Fields, MemoryFilter, SearchFilter, SearchHit};
 use serde_json::{Value, json};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::classification::{effective_licence, effective_provenance};
 use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
@@ -495,6 +495,19 @@ impl Engine {
             .partition(|r| r.result_type == "abandoned_warning");
         let mut results = warnings;
         results.extend(memories.into_iter().take(top_k as usize));
+        // Counts only, never the query or the content. This is the line that
+        // separates "recall ran and found nothing" from "recall never ran",
+        // which the logs previously could not tell apart at all.
+        let warnings = results
+            .iter()
+            .filter(|r| r.result_type == "abandoned_warning")
+            .count();
+        info!(
+            results = results.len(),
+            warnings,
+            top_score = results.first().map_or(0.0, |r| r.adjusted_score),
+            "recall served"
+        );
         self.log_recall_event(query, &results);
         Ok(results)
     }

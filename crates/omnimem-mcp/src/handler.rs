@@ -14,7 +14,7 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::args::{
     Archive, Bless, Briefing, BulkProject, CheckContradictions, CompileProject, CompileSkill,
@@ -521,6 +521,19 @@ impl ServerHandler for OmniMemServer {
                     &tool,
                     started,
                     text.as_ref().map(|t| t.chars().count()),
+                );
+            }
+            // Successful calls were invisible: the server logged writes and
+            // failures, so "recall returned nothing" and "recall was never
+            // called" looked identical from the outside. Deliberately no
+            // arguments and no result content, because a query or a memory
+            // can hold anything the user typed.
+            if let Some(text) = text.as_ref() {
+                info!(
+                    tool = %tool,
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    chars = text.chars().count(),
+                    "tool call served"
                 );
             }
             result.map(|_| text.unwrap_or_default())
