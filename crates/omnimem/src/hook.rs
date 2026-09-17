@@ -98,7 +98,9 @@ fn project_name(explicit: Option<&str>, payload: &Value) -> Option<String> {
     if let Some(name) = explicit.map(str::trim).filter(|n| !n.is_empty()) {
         return Some(name.to_owned());
     }
-    if let Ok(name) = std::env::var("OMNIMEM_PROJECT")
+    // Through omnimem_core::env, not std::env::var, so the desktop app's
+    // omnimem.env overlay reaches a hook the same way it reaches the server.
+    if let Some(name) = omnimem_core::env::var("OMNIMEM_PROJECT")
         && !name.trim().is_empty()
     {
         return Some(name.trim().to_owned());

@@ -58,9 +58,10 @@ record_experience(
 )
 ```
 
-At `effort_score >= 4` with `outcome="abandoned"`, the approach names are
-suppressed automatically, so a later session is not sent back down the same
-path. Record dead ends as they happen with
+Abandoned approaches are not hidden, they are answered back: propose one in a
+later session and `recall` leads with a warning saying what was abandoned, why,
+what worked instead, and how firmly to take it. Record dead ends as they happen
+with
 `log_abandoned(key, name, type, reason)` rather than waiting for session end.
 
 Bug fixes are always worth a `remember()`: symptom, cause, fix.

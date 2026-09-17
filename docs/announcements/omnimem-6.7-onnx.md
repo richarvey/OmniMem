@@ -92,4 +92,4 @@ The model repo also ships quantised graphs (`onnx/model_qint8_arm64.onnx`, `onnx
 
 `scripts/embedding_bench.py` is in the repo. It ingests a corpus (a seeded synthetic one, or the text of your own backup), runs a fixed query set through the real recall pipeline against a real valkey-search, and writes a report with the raw vectors and the top-10 for every query. `compare before.json after.json` prints the tables above and exits non-zero if the two backends disagree. It refuses to run against a populated store and cleans up everything it wrote, so it is safe to run on a laptop and honest about what it finds.
 
-The full write-up, including how to run it yourself, is in [docs/embedding-benchmark.md](../embedding-benchmark.md).
+The full write-up, including how to run it yourself, is in `docs/embedding-benchmark.md` on the `v6.7.x` branch. This is a 6.x release post: the scripts and paths it names live there, not on the 7.0 branch, where the Python tree has been removed.

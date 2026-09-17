@@ -35,7 +35,7 @@ The first time it runs, OmniMem downloads the embedding model (all-MiniLM-L6-v2)
 
 Click the menu bar icon and you'll see:
 
-- **A status line**: whether it's running, how many memories it holds, and the MCP address
+- **A status line**: whether it's running and how many memories it holds. **Copy MCP URL** puts the address on the clipboard
 - **Settings…**: opens the settings window
 - **Copy MCP URL**: puts `http://127.0.0.1:8765/mcp` on your clipboard for your client config
 - **Start at login**: tick it and OmniMem comes up whenever you log in

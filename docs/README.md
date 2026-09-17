@@ -17,6 +17,8 @@ These pages describe OmniMem 7, the single Rust binary. It isn't released yet, s
 - [The skill compiler](skill-compiler.md): compiling experience into SKILL.md documents, the propose-and-accept gate, promoted reference material
 - [RSS feeds and the knowledge base](rss-knowledge.md): passive knowledge ingestion and promotion
 - [MCP tool reference](mcp-tools.md): all 48 tools with their parameters
+- [Claude Code hooks](claude-code-hook.md): briefing a session at its start, stopping a known dead end before it runs, and recording what a session did
+- [The agent guide](agent-guide.md): the long-form guidance an agent gets, which the tool descriptions point at
 - [The settings panel](settings-panel.md): the desktop app's window, page by page
 
 ## Internals

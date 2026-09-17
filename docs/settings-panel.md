@@ -11,7 +11,7 @@ That's deliberate. A dashboard on a port is something else on your machine (or y
 
 The desktop app (the Windows MSI, the macOS DMG or the Flatpak) puts an icon in your tray or menu bar while it runs. Its menu has:
 
-- a status line with the memory count and the MCP address
+- a status line with the memory count
 - **Settings…**, which opens the window
 - **Copy MCP URL**, for pasting into a client's config
 - **Start at login**

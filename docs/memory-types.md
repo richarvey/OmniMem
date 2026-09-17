@@ -103,7 +103,7 @@ recall(
     top_k=5,                        # default MEMORY_RECALL_TOP_K; at most 50
     namespaces=["episodic", "knowledge"],  # default: episodic, project, knowledge and
                                     # preference (skills are found with find_skills)
-    project_filter="omnimem",       # default None; a name or a list of names
+    project_filter="omnimem",       # default None; one project name
     domain_filter="python",         # default None; every project declaring the domain
     expand_queries=False,           # default follows RECALL_EXPAND_QUERIES; True adds
 )                                   # alternative phrasings from Claude Haiku

@@ -151,7 +151,7 @@ record_experience(
 
 For dead ends discovered mid-session, use `log_abandoned(key, name, type, reason)` to record them as they happen — do not wait until session end.
 
-If `effort_score >= 4` and `outcome == "abandoned"`, the system will automatically suppress the abandoned approach names.
+If `effort_score >= 4` and `outcome == "abandoned"`, the result lists the approach names under `auto_suppressed`, but nothing is suppressed: the names come back as a warning when a later session proposes one of them.
 
 **Effort score guide:**
 

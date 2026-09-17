@@ -19,7 +19,7 @@ default-members = [
 [workspace.package]
 version = "7.0.0-dev"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.91"
 license = "MIT"
 repository = "https://code.squarecows.com/ric/omnimem"
 authors = ["Ric Harvey <ric@squarecows.com>"]

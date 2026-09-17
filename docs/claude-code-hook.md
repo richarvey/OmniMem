@@ -12,7 +12,7 @@ choosing to use it. Three events:
 ## Why these exist
 
 Recall only helps an agent that asks, and agents mostly do not. On the dead-end
-benchmark (`scripts/benchmarking/run_deadend_bench.py`), across twenty runs with
+benchmark (`scripts/benchmarking/run_deadend_bench.py`, on the `main` branch), across twenty runs with
 the MCP server attached and the answer sitting in the store, the agent made
 **zero** memory calls. It read the project's TODO, took the crate that TODO
 recommended, and walked into the failure the project had already recorded. The

@@ -51,7 +51,7 @@ The collapse key on the network is `(origin_id, content_hash)`, never the hash a
 
 ### Implementation warning
 
-valkey-search tag filters diverge from the RediSearch documentation: backslash-escaped or quoted tag values match nothing, and in-brace alternation `{a|b}` returns an empty set. Interpolate raw values after allowlist validation and use clause-level OR. See the Gotchas in `CLAUDE.md`.
+This spec was written against 6.x, where filtering went through valkey-search: backslash-escaped or quoted tag values matched nothing and in-brace alternation `{a|b}` returned an empty set. None of it applies to 7.0, where filters are SQL and `content_hash` is an ordinary SQLite index (`crates/omnimem-store/src/schema.rs`). Kept because the 6.x branches still need it.
 
 ## 2. Classification is not licence
 
@@ -99,7 +99,7 @@ Rules:
 
 ### `provenance_class`
 
-**Normative: `retrieved`, `concluded`, `asserted`**, exactly the values of `PROVENANCE_CLASSES` in `mcp_server/memory/provenance.py`, as shipped in 6.6.2.
+**Normative: `retrieved`, `concluded`, `asserted`**, exactly the values shipped in 6.6.2 as `PROVENANCE_CLASSES` in `mcp_server/memory/provenance.py`, now `crates/omnimem-core/src/classification.rs`.
 
 | Value | Meaning |
 |---|---|

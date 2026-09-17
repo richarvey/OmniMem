@@ -23,7 +23,7 @@ Both run exactly the same memory engine.
 
 Start OmniMem and the icon appears. The first start downloads the embedding model (about 90 MB, once) and the menu says **Starting** until it's ready. After that the menu shows:
 
-- the status line: how many memories it holds and the MCP address
+- the status line: whether it is running, and how many memories it holds
 - **Settings…**: the settings window
 - **Copy MCP URL**: for pasting into your agent's config
 - **Start at login**
@@ -82,7 +82,7 @@ Binding to `0.0.0.0` inside the container means OmniMem won't start without a to
 
 ## Build from source
 
-This is how you run 7.0 today. You'll need Rust 1.94 or newer ([rustup](https://rustup.rs) is easiest) and a C toolchain. On a Mac that's Xcode's command line tools:
+This is how you run 7.0 today. You'll need Rust 1.91 or newer ([rustup](https://rustup.rs) is easiest) and a C toolchain. On a Mac that's Xcode's command line tools:
 
 ```bash
 xcode-select --install
@@ -129,15 +129,16 @@ The binary has a few other commands worth knowing:
 | `omnimem import <backup.json>` | Bring in a 6.x backup and embed it (`--no-embed` to skip embedding) |
 | `omnimem export <file>` | Write every memory to a backup in the same format |
 | `omnimem stats` | Records and vectors per namespace |
-| `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--json`) |
+| `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--json`) |
 | `omnimem rss` | Run one feed check now (`--dry-run` shows what it would ingest) |
 | `omnimem embed "<text>"` | Embed some text and print the start of the vector |
+| `omnimem hook [session-start\|session-end]` | Answer a Claude Code hook, so memory works without the agent choosing to use it. See [the hooks guide](claude-code-hook.md) |
 
 Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`).
 
 ## Coming from 6.x
 
-Your memories come with you, and they behave the same. The vectors, the recall scoring and the compiled skill bodies are identical to 6.x, so nothing needs retuning.
+Your memories come with you, and they behave the same. The vectors and the compiled skill bodies are identical to 6.x, so nothing needs retuning. Recall scoring has three deliberate changes: recency declines from day one, an abandoned outcome scores 1.0 rather than 0.1, and abandonment no longer auto-suppresses approach names.
 
 1. On 6.x, take a backup: ask your agent to call `dump_to_file()`, or use the Backups page in the old web UI. You get a JSON file.
 2. Stop 6.x, or at least make sure it isn't on port 8765.

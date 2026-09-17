@@ -78,7 +78,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results. A ceiling, not a target |
 | `RECALL_MIN_SCORE` | `0.15` | Relevance floor on raw similarity. Anything below it is left out, so a short or empty result is a real answer. Abandoned-approach warnings and reinstate candidates are exempt. `0` keeps everything |
 | `RECALL_WEAK_SCORE` | `0.35` | Results above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
-| `RECENCY_DECAY_DAYS` | `90` | Age after which the recency penalty starts |
+| `RECENCY_DECAY_DAYS` | `90` | Where the gentle decay ends and the steeper one begins. Recency declines from day one, reaching 0.9 here, then 5% per 30 days down to a 0.3 floor |
 | `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity at which two memories are checked for contradicting each other |

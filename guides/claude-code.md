@@ -87,6 +87,18 @@ OmniMem sends its usage guide in the MCP `instructions` field when Claude Code c
 
 If you want to tweak how Claude uses OmniMem, copy `claude_config/CLAUDE.md` from the repo into your project (or into `~/.claude/CLAUDE.md` for every project) and edit away.
 
+## Hooks: memory that does not wait to be asked
+
+Instructions are advice, and measurement says advice does not bind: across twenty
+benchmark runs with the server connected and the answer sitting in the store, the
+agent made zero memory calls. `omnimem hook` puts memory where it cannot be
+skipped instead, as Claude Code hooks: the project's briefing injected at session
+start, a tool call denied when it repeats an approach the project already
+abandoned, and a record written when the session ends.
+
+The settings entry and what each event will and will not do are in
+[the hooks guide](../docs/claude-code-hook.md).
+
 ## Verifying the connection
 
 Start Claude Code and run:

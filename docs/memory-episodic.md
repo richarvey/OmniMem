@@ -53,13 +53,13 @@ Each chunk is dedup-checked on its own, and a chunk that's already stored is ski
 The experience weight:
 
 ```
-base:   succeeded 1.0, pivoted 0.7, abandoned 0.1
+base:   succeeded 1.0, pivoted 0.7, abandoned 1.0
 effort: 1 → x1.0, 2 → x1.1, 3 → x1.25, 4 → x1.5, 5 → x1.8
 weight = base * effort, capped at 2.0
-an abandoned outcome is always 0.1: effort never amplifies it
+an abandoned outcome is always 1.0: effort never amplifies it
 ```
 
-Recording an `abandoned` outcome with an effort score of 4 or 5 also suppresses each abandoned approach's name as a topic (lowercased, in `topics:suppressed`), and the result lists them under `auto_suppressed`.
+Recording an `abandoned` outcome with an effort score of 4 or 5 lists the approach names under `auto_suppressed` in the result. They are not actually suppressed: nothing is added to `topics:suppressed`. Suppressing them hid the memory that explained the failure, and store-wide, so a dead end on one project silenced unrelated memories elsewhere. `suppress_topic` remains the only thing that writes that list.
 
 ### Lifecycle and cross-references
 

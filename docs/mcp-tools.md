@@ -1,6 +1,6 @@
 # MCP Tool Reference
 
-All 48 tools, grouped by what they're for. The names, parameters, defaults and descriptions are exactly what 6.x sent, so an agent that knew OmniMem 6 knows OmniMem 7.
+All 48 tools, grouped by what they're for. The names, parameters and defaults are exactly what 6.x sent, so an agent that knew OmniMem 6 knows OmniMem 7. The descriptions are shorter: the `Args:` blocks repeated the schema the client already has, and the longer guidance moved to `docs/agent-guide.md`.
 
 You don't have to teach your agent any of this. The server sends its operating instructions in the MCP `instructions` field on connect, and each tool carries its own description, so agents pick most of it up by themselves. This page is for you.
 
@@ -45,7 +45,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 
 | Tool | What it does |
 |---|---|
-| `record_experience(key, effort_score, outcome, iterations?, abandoned_approaches?, breakthrough?, gotchas?, lesson?)` | How hard it was (effort 1 to 5), how it ended (`succeeded`, `pivoted`, `abandoned`), what failed, what worked, and the `lesson` that transfers. Abandoned high-effort work auto-suppresses the approach names |
+| `record_experience(key, effort_score, outcome, iterations?, abandoned_approaches?, breakthrough?, gotchas?, lesson?)` | How hard it was (effort 1 to 5), how it ended (`succeeded`, `pivoted`, `abandoned`), what failed, what worked, and the `lesson` that transfers. Abandoned approaches are not suppressed; they come back as a warning when a later session proposes one |
 | `log_abandoned(key, name, type, reason)` | Add one dead end mid-session. `type` is `library`, `approach`, `tool`, `pattern` or `service` |
 | `warn_if_abandoned(query)` | Check the graveyard before suggesting something |
 | `experience_summary(project?)` | Effort stats, outcomes, the graveyard and breakthroughs |

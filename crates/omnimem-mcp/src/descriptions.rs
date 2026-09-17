@@ -1,5 +1,10 @@
-//! Tool descriptions, verbatim from the 6.x docstrings (FastMCP sent the
-//! whole docstring, `Args:` block included, and agents read it).
+//! Tool descriptions, from the 6.x docstrings.
+//!
+//! FastMCP sent the whole docstring, `Args:` block included. Those blocks
+//! restated the JSON schema the client already has, in prose, in every
+//! session, so they were stripped: 11,623 bytes of the 19,610 went, and the
+//! longer guidance moved to `docs/agent-guide.md`. Two `Args:` blocks
+//! survive where they say something the schema does not.
 
 pub const VERSION: &str = "Return the current OmniMem version.";
 
@@ -69,7 +74,7 @@ pub const LIST_BACKUPS: &str = "List available backup files, newest first.";
 // Phase 3: experience, projects, audit, classification, contradictions,
 // briefing and knowledge.
 
-pub const RECORD_EXPERIENCE: &str = r#"Record effort, outcome, dead ends, and breakthroughs for a memory. High-effort successes surface more; high-effort failures (>=4, abandoned) auto-suppress the approach names.
+pub const RECORD_EXPERIENCE: &str = r#"Record effort, outcome, dead ends, and breakthroughs for a memory. High-effort successes surface more; abandoned approaches come back as a warning when a later session proposes one of them.
 
     Args:
         key: Memory key to attach experience to.

@@ -52,7 +52,7 @@ WARNING: previously abandoned approaches match this query
   openai embeddings service     API cost and latency were prohibitive   effort: 2/5
 ```
 
-The fast path is a keyword scan of the graveyard, so it doesn't even wait for an embedding. Record dead ends with `record_experience` at the end of some work, or one at a time with `log_abandoned` as you go. Abandon something that took real effort (4 or more) and the approach names are suppressed automatically.
+The fast path is a keyword scan of the graveyard, so it doesn't even wait for an embedding. Record dead ends with `record_experience` at the end of some work, or one at a time with `log_abandoned` as you go. Nothing is hidden as a result: abandoning an approach does not suppress anything, it means a later session that proposes the same approach is answered with what happened last time and what worked instead.
 
 Dead ends don't get a second chance to waste your afternoon.
 
@@ -70,7 +70,7 @@ OmniMem gives every memory an experience weight from its effort and outcome:
 | 4 | Significant struggle | 1.5x |
 | 5 | Battle-hardened | 1.8x |
 
-A pivot starts from 0.7 and gets the same multiplier, so a hard-won pivot still counts. An abandoned outcome is a flat 0.1 however much effort went in: effort multiplies success, it never amplifies a failure.
+A pivot starts from 0.7 and gets the same multiplier, so a hard-won pivot still counts. An abandoned outcome is a flat 1.0 however much effort went in: effort multiplies success, it never amplifies a failure. It used to be 0.1, which buried the write-up of the failure along with the approach, so the one memory that explained why something did not work ranked below almost everything else.
 
 That weight goes straight into the ranking:
 

@@ -41,7 +41,7 @@ One embedder serves every caller. In 6.x each Python service loaded its own copy
 
 `omnimem` with no command (on a build with the `desktop` feature) runs the desktop app: the same services on background threads, with the platform event loop on the main thread driving a tray or menu bar icon and the settings window. See [the settings panel](settings-panel.md).
 
-The other commands are for moving data and poking at a store: `import` (a 6.x backup), `export`, `stats`, `search`, `embed` and `rss` (one ingestion cycle by hand, or `--dry-run` to see what it would fetch).
+The other commands are for moving data and poking at a store: `import` (a 6.x backup), `export`, `stats`, `search`, `embed` and `rss` (one ingestion cycle by hand, or `--dry-run` to see what it would fetch). `hook` answers a Claude Code hook, reading the store directly rather than over MCP; see [the hooks guide](claude-code-hook.md).
 
 ## Crates
 
@@ -109,7 +109,7 @@ score = similarity x surface_score x recency x experience_weight x date_boost
 ```
 
 - **Surface score** comes from the lifecycle state: active 1.0, deprioritised 0.2 (`DEPRIORITISED_WEIGHT`), archived 0.
-- **Recency** stays at 1.0 until a memory is `RECENCY_DECAY_DAYS` old (90), then loses 5% per 30 days, bottoming out at 0.3.
+- **Recency** declines steadily from the day a memory is written, reaching 0.9 at `RECENCY_DECAY_DAYS` (90), after which it loses 5% per 30 days and bottoms out at 0.3. Yesterday's memory outranks an identical one from three months ago, and an abandoned-approach warning never falls below 0.6 however old it is.
 - **Experience weight** rewards hard-won lessons, up to 1.8x for effort 5. [Features in depth](features.md#experience-scoring) has the table.
 - **Date boost** (up to 1.5x) applies when the query mentions a date and the memory has an `event_date` close to it.
 
@@ -127,7 +127,7 @@ A deprioritised memory whose reinstate hints match the query comes back as a rei
 
 ## Compared with 6.x
 
-What stays the same: the 48 tool names, parameters and descriptions, the JSON they return, the vectors, the recall scoring, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones.
+What stays the same: the 48 tool names, parameters and defaults, the JSON they return, the vectors, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones. Two things changed on purpose: the tool descriptions were trimmed (the `Args:` blocks duplicated the schema; the full guidance moved to `docs/agent-guide.md`), and recall scoring differs in recency, the abandoned weight and auto-suppression, all covered above.
 
 What's gone: Valkey, the Compose stack, the web UI and `/metrics` over HTTP, the SSE transport (streamable HTTP only) and the PyTorch backend.
 

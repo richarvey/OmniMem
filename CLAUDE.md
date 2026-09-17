@@ -22,14 +22,14 @@ crates/
   omnimem-engine/    Recall pipeline, lifecycle, dedup, contradictions, experience, projects and domains,
                      lineage, chunking, temporal, briefing, maintenance, skills compiler/scan/transfer, enrichment
   omnimem-llm/       Blocking Anthropic Messages client behind the core LanguageModel trait
-  omnimem-mcp/       The 48 tools (descriptions copied verbatim from 6.x), instructions, streamable HTTP,
+  omnimem-mcp/       The 48 tools (descriptions trimmed of their Args: blocks; the full guidance lives in docs/agent-guide.md), instructions, streamable HTTP,
                      bearer auth, the OAuth 2.1 authorisation server (src/oauth/), Host/Origin guards
   omnimem-rss/       Feed fetch and parse, summary and digest modes, licence gate, scheduler, feed influence
   omnimem-settings/  The settings panel: axum routes never bound to a socket, minijinja templates and static
                      files embedded by build.rs, the Configuration page and the SecretStore trait
   omnimem-app/       What server and desktop share: open the engine, run the services, data folder, instance lock
   omnimem-desktop/   Tray or menu bar icon, settings window on the omnimem:// scheme with IPC, keychain, start at login
-  omnimem/           The binary: serve, import, export, stats, search, embed, rss, and desktop (default with the feature)
+  omnimem/           The binary: serve, import, export, stats, search, embed, rss, hook (Claude Code hooks), and desktop (default with the feature)
 ci/desktop/          Container with GTK/WebKitGTK/AppIndicator for building and smoke-testing the desktop crate
 claude_config/       CLAUDE.md template and MCP config for end users
 examples/feeds.yml   Sample reading list
