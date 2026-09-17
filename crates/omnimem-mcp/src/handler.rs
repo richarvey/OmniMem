@@ -6,7 +6,8 @@ use std::time::Instant;
 use omnimem_engine::{DomainFilter, Engine, EngineError};
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+    CacheScope, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
+    ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::schemars::JsonSchema;
 use rmcp::service::RequestContext;
@@ -482,9 +483,23 @@ impl ServerHandler for OmniMemServer {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(self.tools.as_ref().clone()))
+        let result = ListToolsResult::with_all_items(self.tools.as_ref().clone());
+        // Protocol 2026-07-28 requires ttlMs and cacheScope on paginated results
+        // (SEP-2549). rmcp models them as Option with skip_serializing_if, so
+        // with_all_items alone omits them, and a strict client rejects the entire
+        // tools/list response: Claude Code shows the server as connected with zero
+        // tools. Gated on the negotiated version, with 0 / Public, exactly as
+        // rmcp's own #[tool_handler] macro emits them.
+        let supports_cache_hints = context
+            .protocol_version()
+            .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28);
+        Ok(if supports_cache_hints {
+            result.with_ttl_ms(0).with_cache_scope(CacheScope::Public)
+        } else {
+            result
+        })
     }
 
     async fn call_tool(
