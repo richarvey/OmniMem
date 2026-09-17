@@ -49,6 +49,32 @@ pub(crate) fn mentions(haystack: &str, needle: &str) -> bool {
     })
 }
 
+/// Runs of separators collapsed to one space, so that `tollgate-rs`,
+/// `tollgate rs` and `tollgate_rs` compare equal.
+///
+/// Without this, `warn_if_abandoned` is a literal lookup: an approach stored
+/// as `tollgate-rs` warns for `tollgate-rs` and `tollgate`, but not for
+/// `Tollgate RS`, because neither string contains the other on a word
+/// boundary. An agent that names a crate slightly differently from however it
+/// was recorded walks straight back into the dead end. Word boundaries are
+/// still enforced by `mentions`, so a one-letter name cannot match everything.
+pub(crate) fn normalise_name(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut sep = false;
+    for ch in text.to_lowercase().chars() {
+        if ch.is_alphanumeric() {
+            if sep && !out.is_empty() {
+                out.push(' ');
+            }
+            sep = false;
+            out.push(ch);
+        } else {
+            sep = true;
+        }
+    }
+    out
+}
+
 /// A query mentions an abandoned name, or the name mentions the query.
 fn cross_mentions(query: &str, name: &str) -> bool {
     mentions(query, name) || mentions(name, query)
@@ -238,7 +264,7 @@ impl Engine {
                 };
                 entries.push(AbandonedEntry {
                     memory_key: key.clone(),
-                    name_lower: name.to_lowercase(),
+                    name_lower: normalise_name(name),
                     abandoned_name: name.to_owned(),
                     reason: approach
                         .get("reason")
@@ -262,7 +288,7 @@ impl Engine {
     /// Abandoned approaches whose name the query mentions, or which mention
     /// it, on word boundaries. A blank query matches nothing.
     pub(crate) fn abandoned_matches(&self, query: &str) -> Result<Vec<AbandonedEntry>> {
-        let query = query.trim().to_lowercase();
+        let query = normalise_name(query);
         if query.is_empty() {
             return Ok(Vec::new());
         }
