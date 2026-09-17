@@ -376,14 +376,15 @@ fn an_abandoned_warning_carries_the_way_out() {
             ("lesson", "limiters assuming one runtime do not fit shards"),
         ],
     );
-    let out = e
-        .recall("kestrel-rs", 5, None, None, None, None)
-        .unwrap();
+    let out = e.recall("kestrel-rs", 5, None, None, None, None).unwrap();
     assert_eq!(out[0]["result_type"], "abandoned_warning");
     let content = out[0]["content"].as_str().unwrap();
     // A warning that says only "not that" leaves the agent to re-derive the
     // answer, which is the work the graveyard exists to save.
-    assert!(content.contains("What worked instead: pellham"), "{content}");
+    assert!(
+        content.contains("What worked instead: pellham"),
+        "{content}"
+    );
     assert!(content.contains("Lesson: limiters assuming"), "{content}");
     // The reason carries its own full stop; joining clauses must not double it.
     assert!(!content.contains(".."), "{content}");

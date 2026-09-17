@@ -150,7 +150,10 @@ fn record_experience_validates_and_records_without_suppressing() {
     // The point of the fix: recording a dead end must not hide the memory that
     // explains it. suppress_topic remains the only writer of this set.
     assert!(
-        e.store().set_members("topics:suppressed").unwrap().is_empty(),
+        e.store()
+            .set_members("topics:suppressed")
+            .unwrap()
+            .is_empty(),
         "recording an abandonment must not suppress the topic"
     );
 

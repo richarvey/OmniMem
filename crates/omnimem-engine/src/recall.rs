@@ -25,7 +25,7 @@ pub const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preferen
 const MAX_ABANDONED_SCAN_KEYS: usize = 5000;
 /// Abandoned warnings a recall result carries at most. They are advisory
 /// and never displace the memories the caller asked for.
-const MAX_ABANDONED_WARNINGS: usize = 3;
+pub(crate) const MAX_ABANDONED_WARNINGS: usize = 3;
 const RECALL_LOG_TTL: Duration = Duration::from_secs((30) * 86_400);
 
 /// Does `haystack` mention `needle` as whole words? Both are expected
@@ -131,6 +131,72 @@ pub(crate) struct AbandonedEntry {
     pub lesson: Option<String>,
     /// When it was abandoned, so age can be ranked on and stated.
     pub created_at: Option<f64>,
+}
+
+/// The sentence a dead end gets when it surfaces, in recall or at a hook.
+///
+/// One function so the two can never drift: a warning shown when the agent
+/// asks and a warning shown when the agent acts must say the same thing.
+/// `age_days` is how long ago it was abandoned, where that is known.
+pub(crate) fn warning_text(warning: &AbandonedEntry, age_days: Option<f64>) -> String {
+    let mut text = format!(
+        "Abandoned approach: {} — {}",
+        warning.abandoned_name, warning.reason
+    );
+    // Trailing punctuation is stripped before joining, or a
+    // breakthrough that ends in a full stop produces ".. Lesson".
+    // Trim the accumulator, not just the value: the reason
+    // ends in a full stop of its own, and appending ". Lesson"
+    // to it produced "no global state.. Lesson:".
+    fn tidy(text: &mut String) {
+        while text.ends_with('.') || text.ends_with(' ') {
+            text.pop();
+        }
+    }
+    let mut append = |label: &str, value: &Option<String>| {
+        if let Some(v) = value {
+            let v = v.trim().trim_end_matches(['.', ' ']);
+            if !v.is_empty() {
+                tidy(&mut text);
+                text.push_str(&format!(". {label}: {v}"));
+            }
+        }
+    };
+    append("What worked instead", &warning.breakthrough);
+    append("Lesson", &warning.lesson);
+    // How firmly to put it, scaled by what it actually cost to
+    // learn. Claiming an approach is settled when it was barely
+    // tried is how the whole graveyard gets discounted, so the
+    // language tracks effort_score rather than being uniform.
+    tidy(&mut text);
+    text.push_str(match warning.effort_score {
+        Some(4..=i64::MAX) => {
+            ". Abandoned after significant effort: treat this as \
+                 settled unless you cannot find another way forward"
+        }
+        Some(3) => {
+            ". Abandoned after several attempts: revisit only with \
+                 a specific reason"
+        }
+        Some(_) => ". Tried and set aside: may be worth another look",
+        None => "",
+    });
+    // Stated once it means something, and never silently
+    // suppressed: an old dead end may no longer be one, and the
+    // agent is better placed to judge that than a decay curve
+    // is. Below a day it says nothing useful, so it says
+    // nothing. created_at is written on every memory, so
+    // without this guard every fresh warning would carry
+    // "abandoned 0 days ago".
+    if let Some(days) = age_days
+        .map(|age| age.round() as i64)
+        .filter(|days| *days >= 1)
+    {
+        let unit = if days == 1 { "day" } else { "days" };
+        text.push_str(&format!(". Abandoned {days} {unit} ago"));
+    }
+
+    text
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -399,68 +465,12 @@ impl Engine {
             let warning_recency = warning_age_days
                 .map_or(1.0, |age| decay(age, self.config.recency_decay_days))
                 .max(WARNING_FLOOR);
+            // Built before the struct literal, which moves warning's fields.
+            let content = warning_text(&warning, warning_age_days);
             results.push(RecallResult {
                 key: warning.memory_key,
                 namespace: "episodic".into(),
-                content: {
-                    let mut text = format!(
-                        "Abandoned approach: {} — {}",
-                        warning.abandoned_name, warning.reason
-                    );
-                    // Trailing punctuation is stripped before joining, or a
-                    // breakthrough that ends in a full stop produces ".. Lesson".
-                    // Trim the accumulator, not just the value: the reason
-                    // ends in a full stop of its own, and appending ". Lesson"
-                    // to it produced "no global state.. Lesson:".
-                    fn tidy(text: &mut String) {
-                        while text.ends_with('.') || text.ends_with(' ') {
-                            text.pop();
-                        }
-                    }
-                    let mut append = |label: &str, value: &Option<String>| {
-                        if let Some(v) = value {
-                            let v = v.trim().trim_end_matches(['.', ' ']);
-                            if !v.is_empty() {
-                                tidy(&mut text);
-                                text.push_str(&format!(". {label}: {v}"));
-                            }
-                        }
-                    };
-                    append("What worked instead", &warning.breakthrough);
-                    append("Lesson", &warning.lesson);
-                    // How firmly to put it, scaled by what it actually cost to
-                    // learn. Claiming an approach is settled when it was barely
-                    // tried is how the whole graveyard gets discounted, so the
-                    // language tracks effort_score rather than being uniform.
-                    tidy(&mut text);
-                    text.push_str(match warning.effort_score {
-                        Some(4..=i64::MAX) => {
-                            ". Abandoned after significant effort: treat this as \
-                             settled unless you cannot find another way forward"
-                        }
-                        Some(3) => {
-                            ". Abandoned after several attempts: revisit only with \
-                             a specific reason"
-                        }
-                        Some(_) => ". Tried and set aside: may be worth another look",
-                        None => "",
-                    });
-                    // Stated once it means something, and never silently
-                    // suppressed: an old dead end may no longer be one, and the
-                    // agent is better placed to judge that than a decay curve
-                    // is. Below a day it says nothing useful, so it says
-                    // nothing. created_at is written on every memory, so
-                    // without this guard every fresh warning would carry
-                    // "abandoned 0 days ago".
-                    if let Some(days) = warning_age_days
-                        .map(|age| age.round() as i64)
-                        .filter(|days| *days >= 1)
-                    {
-                        let unit = if days == 1 { "day" } else { "days" };
-                        text.push_str(&format!(". Abandoned {days} {unit} ago"));
-                    }
-                    text
-                },
+                content,
                 score: 1.0,
                 // Warnings decay with age so a recent dead end outranks a stale
                 // one, but never below WARNING_FLOOR: a graveyard that goes quiet

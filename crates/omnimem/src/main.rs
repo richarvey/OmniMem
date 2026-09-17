@@ -11,6 +11,8 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
+mod hook;
+
 use omnimem_app::{data_dir, load_embedder, open_engine, run_services};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_rss::{Ingester, RssConfig};
@@ -78,6 +80,12 @@ enum Command {
         #[arg(long)]
         smoke_test: bool,
     },
+    /// Answer a Claude Code PreToolUse hook: read the tool call on stdin and,
+    /// if it proposes an approach this project already abandoned, deny it and
+    /// explain what worked instead. Prints nothing when the call is fine, and
+    /// stays quiet on any error, so work is never blocked by a sick store.
+    /// See docs/claude-code-hook.md for the settings.json entry.
+    Hook,
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
     /// ingested, without summarising or storing anything.
@@ -97,6 +105,7 @@ fn main() -> Result<()> {
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
+                | Command::Hook
         )
     ) {
         "warn"
@@ -118,6 +127,7 @@ fn main() -> Result<()> {
         Command::Serve => serve(&db_path),
         Command::Import { file, no_embed } => import(&db_path, &file, no_embed),
         Command::Export { file } => export(&db_path, &file),
+        Command::Hook => hook::run(&db_path),
         Command::Stats => stats(&db_path),
         Command::Search {
             query,

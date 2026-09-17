@@ -209,10 +209,7 @@ impl Engine {
             for approach in approaches {
                 let name = approach.get("name").and_then(Value::as_str).unwrap_or("");
                 if !name.is_empty() {
-                    info!(
-                        topic = name,
-                        effort_score, "recorded abandoned approach"
-                    );
+                    info!(topic = name, effort_score, "recorded abandoned approach");
                     suppressed.push(name.to_owned());
                 }
             }
@@ -406,6 +403,25 @@ impl Engine {
             breakthroughs.into_iter().take(3).map(|e| e.1).collect(),
         );
         Ok(compact(m))
+    }
+
+    /// The assembled warnings for a proposal, ready to show to an agent.
+    ///
+    /// Deliberately free of embedding: the graveyard is a keyword scan, and a
+    /// PreToolUse hook runs on every tool call, where loading the model would
+    /// add about a second each time. `warn_if_abandoned` returns the fields;
+    /// this returns the sentence, including what worked instead.
+    pub fn abandoned_warnings(&self, query: &str) -> Result<Vec<String>> {
+        let now = crate::pyfmt::now_secs();
+        Ok(self
+            .abandoned_matches(query)?
+            .into_iter()
+            .take(crate::recall::MAX_ABANDONED_WARNINGS)
+            .map(|w| {
+                let age = w.created_at.map(|at| ((now - at) / 86_400.0).max(0.0));
+                crate::recall::warning_text(&w, age)
+            })
+            .collect())
     }
 
     pub fn warn_if_abandoned(&self, query: &str) -> Result<Value> {
