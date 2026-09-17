@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 use tracing::info;
 
 use crate::error::invalid;
-use crate::lifecycle::{SUPPRESSED_KEY, validate_term};
+use crate::lifecycle::validate_term;
 use crate::pyfmt::{compact, now_str, py_float, py_json, round_to, take_chars};
 use crate::recall::compute_experience_weight;
 use crate::tools::{
@@ -189,15 +189,29 @@ impl Engine {
             && outcome == "abandoned"
             && let Some(approaches) = &abandoned
         {
-            // Names were validated above: trimmed, at least three characters,
-            // so a suppression can only ever match a real term.
+            // Recorded, deliberately NOT added to SUPPRESSED_KEY.
+            //
+            // Suppression and abandonment are different intents that used to
+            // share one mechanism. `suppress_topic` means "stop showing me
+            // this", where hiding is the point. Recording a dead end means
+            // "warn me if I consider this again", where hiding is backwards:
+            // the memory holds both the reason it failed and what worked
+            // instead, and suppressing the name hid the memory that mentions
+            // it. A later session then asked which crate to use, recalled
+            // nothing, and recommended the abandoned one. Recording the dead
+            // end was what caused it to be repeated.
+            //
+            // The warning path is unaffected and does the real work:
+            // `abandoned_matches` still surfaces an `abandoned_warning` first
+            // on recall, and `warn_if_abandoned` still reports it. Only the
+            // hiding is gone. `suppress_topic` is untouched for the cases that
+            // genuinely want a topic to stop surfacing.
             for approach in approaches {
                 let name = approach.get("name").and_then(Value::as_str).unwrap_or("");
                 if !name.is_empty() {
-                    self.store.set_add(SUPPRESSED_KEY, &[name.to_lowercase()])?;
                     info!(
                         topic = name,
-                        effort_score, "auto-suppressed abandoned approach"
+                        effort_score, "recorded abandoned approach"
                     );
                     suppressed.push(name.to_owned());
                 }

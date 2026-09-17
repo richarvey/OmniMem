@@ -122,10 +122,20 @@ pub struct RecallResult {
 }
 
 /// Effort multiplies success; it never amplifies an abandoned outcome.
+///
+/// An abandoned outcome is **neutral**, not penalised. It used to weigh 0.1,
+/// which multiplied into `adjusted_score` and buried the record: a memory that
+/// scored 0.60 on raw similarity ranked at 0.06, below almost anything else,
+/// so the one thing that could stop a later session repeating the dead end was
+/// the hardest thing to retrieve. The graveyard only has value if you are told
+/// about it, and the memory carries both the reason and what worked instead.
+///
+/// Effort still never amplifies a failure: the early return below skips the
+/// multiplier, so a hard abandonment cannot outrank a success.
 pub fn compute_experience_weight(effort_score: i64, outcome: &str) -> f64 {
     let base = match outcome {
         "pivoted" => 0.7,
-        "abandoned" => 0.1,
+        "abandoned" => 1.0,
         _ => 1.0,
     };
     let multiplier = match effort_score {
@@ -640,7 +650,10 @@ mod tests {
     #[test]
     fn experience_weights() {
         assert_eq!(compute_experience_weight(3, "succeeded"), 1.25);
-        assert_eq!(compute_experience_weight(5, "abandoned"), 0.1);
+        // Neutral, not buried: effort is ignored for abandonment, but the
+        // record still ranks on its own similarity.
+        assert_eq!(compute_experience_weight(5, "abandoned"), 1.0);
+        assert_eq!(compute_experience_weight(1, "abandoned"), 1.0);
         assert!((compute_experience_weight(2, "pivoted") - 0.77).abs() < 1e-9);
         assert_eq!(compute_experience_weight(9, "whatever"), 1.0);
     }

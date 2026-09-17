@@ -103,7 +103,7 @@ fn approach(name: &str) -> Map<String, Value> {
 }
 
 #[test]
-fn record_experience_validates_and_auto_suppresses() {
+fn record_experience_validates_and_records_without_suppressing() {
     let e = engine();
     put(
         &e,
@@ -142,11 +142,16 @@ fn record_experience_validates_and_auto_suppresses() {
             Some("pick boring queues"),
         )
         .unwrap();
+    // The abandonment is still reported back to the caller.
     assert_eq!(result["auto_suppressed"], json!(["Celery"]));
-    assert_eq!(result["experience_weight"], json!(0.1));
-    assert_eq!(
-        e.store().set_members("topics:suppressed").unwrap(),
-        vec!["celery".to_owned()]
+    // Neutral, not buried. It used to be 0.1, which multiplied into
+    // adjusted_score and put the memory below almost anything else.
+    assert_eq!(result["experience_weight"], json!(1.0));
+    // The point of the fix: recording a dead end must not hide the memory that
+    // explains it. suppress_topic remains the only writer of this set.
+    assert!(
+        e.store().set_members("topics:suppressed").unwrap().is_empty(),
+        "recording an abandonment must not suppress the topic"
     );
 
     let experience = e.get_experience("mem:episodic:01A").unwrap();
