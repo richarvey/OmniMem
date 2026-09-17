@@ -350,10 +350,41 @@ fn abandoned_warnings_come_first_and_skip_the_floor() {
         .recall("should we use alpine", 5, None, None, None, None)
         .unwrap();
     assert_eq!(out[0]["result_type"], "abandoned_warning");
+    // No breakthrough and no lesson, and it was written moments ago, so no
+    // age clause either. created_at is always present, so the age is omitted
+    // by being under a day rather than by being absent. The warning must read
+    // exactly as it always did.
     assert_eq!(
         out[0]["content"],
         "Abandoned approach: Alpine — no musl wheels"
     );
+}
+
+#[test]
+fn an_abandoned_warning_carries_the_way_out() {
+    let e = engine();
+    put(
+        &e,
+        "mem:episodic:kestrel",
+        "tried a process-wide limiter",
+        &[
+            (
+                "abandoned_approaches",
+                r#"[{"name": "kestrel-rs", "type": "library", "reason": "global governor"}]"#,
+            ),
+            ("breakthrough", "pellham: one limiter per partition"),
+            ("lesson", "limiters assuming one runtime do not fit shards"),
+        ],
+    );
+    let out = e
+        .recall("kestrel-rs", 5, None, None, None, None)
+        .unwrap();
+    assert_eq!(out[0]["result_type"], "abandoned_warning");
+    let content = out[0]["content"].as_str().unwrap();
+    // A warning that says only "not that" leaves the agent to re-derive the
+    // answer, which is the work the graveyard exists to save.
+    assert!(content.contains("What worked instead: pellham"), "{content}");
+    assert!(content.contains("Lesson: limiters assuming"), "{content}");
 }
 
 #[test]

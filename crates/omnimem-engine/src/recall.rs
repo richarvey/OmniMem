@@ -49,6 +49,42 @@ pub(crate) fn mentions(haystack: &str, needle: &str) -> bool {
     })
 }
 
+/// Warnings never decay below this, however old. A dead end that goes quiet
+/// with age is how a later session walks straight back into it.
+const WARNING_FLOOR: f64 = 0.6;
+
+/// Weight the steady decline reaches at `cliff` days, where the original
+/// steeper rule takes over. The two pieces meet here, so the curve is
+/// continuous and simply gets steeper.
+const DECAY_AT_CLIFF: f64 = 0.9;
+/// The original post-cliff rate, unchanged: 0.05 per thirty days.
+const DECAY_POST_RATE: f64 = 0.05;
+/// Old memories fade; they never become unreachable.
+const DECAY_FLOOR: f64 = 0.3;
+
+/// Recency weight: a steady, slow decline to `cliff` days, then the original
+/// cliff.
+///
+/// The previous rule was flat until `cliff` and only then stepped down, so a
+/// memory written yesterday and one written on the eighty-ninth day scored
+/// identically. Now the first stretch declines gently (0.033 per thirty days,
+/// reaching 0.9 at the cliff) and the original rule continues from there at
+/// its own steeper 0.05 per thirty days.
+///
+/// Everything past the cliff therefore sits 0.1 below the old values. The
+/// alternative was a discontinuity where weight jumped back up to 1.0 at the
+/// cliff before falling, which would be perverse.
+fn decay(age_days: f64, cliff: f64) -> f64 {
+    if cliff <= 0.0 || age_days <= 0.0 {
+        return 1.0;
+    }
+    if age_days <= cliff {
+        return 1.0 - (1.0 - DECAY_AT_CLIFF) * (age_days / cliff);
+    }
+    let excess = (age_days - cliff) / 30.0;
+    (DECAY_AT_CLIFF - DECAY_POST_RATE * excess).max(DECAY_FLOOR)
+}
+
 /// Runs of separators collapsed to one space, so that `tollgate-rs`,
 /// `tollgate rs` and `tollgate_rs` compare equal.
 ///
@@ -88,6 +124,13 @@ pub(crate) struct AbandonedEntry {
     pub reason: String,
     pub effort_score: Option<i64>,
     pub project: Option<String>,
+    /// What worked instead. A warning that says only "not that" leaves the
+    /// agent to go and find the answer, which is the re-derivation the
+    /// graveyard exists to save.
+    pub breakthrough: Option<String>,
+    pub lesson: Option<String>,
+    /// When it was abandoned, so age can be ranked on and stated.
+    pub created_at: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -249,7 +292,14 @@ impl Engine {
         let rows = self.store.list_memories(
             Namespace::Episodic,
             &filter,
-            &["abandoned_approaches", "effort_score", "project"],
+            &[
+                "abandoned_approaches",
+                "effort_score",
+                "project",
+                "breakthrough",
+                "lesson",
+                "created_at",
+            ],
         )?;
         let mut entries = Vec::new();
         for (key, row) in &rows {
@@ -283,6 +333,9 @@ impl Engine {
                         .to_owned(),
                     effort_score: effort,
                     project: row.get("project").cloned(),
+                    breakthrough: row.get("breakthrough").cloned().filter(|v| !v.is_empty()),
+                    lesson: row.get("lesson").cloned().filter(|v| !v.is_empty()),
+                    created_at: row.get("created_at").and_then(|v| v.parse::<f64>().ok()),
                 });
             }
         }
@@ -334,20 +387,53 @@ impl Engine {
         };
 
         let mut results: Vec<RecallResult> = Vec::new();
+        let now = now_secs();
         for warning in self
             .abandoned_matches(query)?
             .into_iter()
             .take(MAX_ABANDONED_WARNINGS)
         {
+            let warning_age_days = warning
+                .created_at
+                .map(|at| ((now - at) / 86_400.0).max(0.0));
+            let warning_recency = warning_age_days
+                .map_or(1.0, |age| decay(age, self.config.recency_decay_days))
+                .max(WARNING_FLOOR);
             results.push(RecallResult {
                 key: warning.memory_key,
                 namespace: "episodic".into(),
-                content: format!(
-                    "Abandoned approach: {} — {}",
-                    warning.abandoned_name, warning.reason
-                ),
+                content: {
+                    let mut text = format!(
+                        "Abandoned approach: {} — {}",
+                        warning.abandoned_name, warning.reason
+                    );
+                    if let Some(worked) = &warning.breakthrough {
+                        text.push_str(&format!(". What worked instead: {worked}"));
+                    }
+                    if let Some(lesson) = &warning.lesson {
+                        text.push_str(&format!(". Lesson: {lesson}"));
+                    }
+                    // Stated once it means something, and never silently
+                    // suppressed: an old dead end may no longer be one, and the
+                    // agent is better placed to judge that than a decay curve
+                    // is. Below a day it says nothing useful, so it says
+                    // nothing. created_at is written on every memory, so
+                    // without this guard every fresh warning would carry
+                    // "abandoned 0 days ago".
+                    if let Some(days) = warning_age_days
+                        .map(|age| age.round() as i64)
+                        .filter(|days| *days >= 1)
+                    {
+                        let unit = if days == 1 { "day" } else { "days" };
+                        text.push_str(&format!(". Abandoned {days} {unit} ago"));
+                    }
+                    text
+                },
                 score: 1.0,
-                adjusted_score: 1.0,
+                // Warnings decay with age so a recent dead end outranks a stale
+                // one, but never below WARNING_FLOOR: a graveyard that goes quiet
+                // is how you walk back into the hole.
+                adjusted_score: warning_recency,
                 state: "active".into(),
                 project: warning.project,
                 source_url: None,
@@ -563,12 +649,7 @@ impl Engine {
                 let surface = number(doc, "surface_score", 1.0);
                 let created_at = number(doc, "created_at", scope.now);
                 let age_days = (scope.now - created_at) / 86_400.0;
-                let recency = if age_days > self.config.recency_decay_days {
-                    let excess = (age_days - self.config.recency_decay_days) / 30.0;
-                    (1.0 - 0.05 * excess).max(0.3)
-                } else {
-                    1.0
-                };
+                let recency = decay(age_days, self.config.recency_decay_days);
                 let exp_weight = number(doc, "experience_weight", 1.0);
                 let event_date = doc
                     .get("event_date")
@@ -659,6 +740,33 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recency_prefers_recent_memories_from_day_one() {
+        let cliff = 90.0;
+        // The point of the change: under the old rule both of these returned
+        // 1.0, because decay was flat until the ninetieth day and only then
+        // stepped down. A memory from yesterday must outrank one from three
+        // months ago.
+        assert!(decay(1.0, cliff) > decay(89.0, cliff));
+        assert!(decay(89.0, cliff) > decay(365.0, cliff));
+        // Steady and slow to the cliff, then the original rule from there.
+        assert!((decay(cliff, cliff) - DECAY_AT_CLIFF).abs() < 1e-9);
+        assert!((decay(45.0, cliff) - 0.95).abs() < 1e-9);
+        // Continuous at the join: no jump in either direction.
+        let just_before = decay(cliff - 0.001, cliff);
+        let just_after = decay(cliff + 0.001, cliff);
+        assert!((just_before - just_after).abs() < 1e-4);
+        // And steeper after it than before it.
+        let before_rate = decay(30.0, cliff) - decay(60.0, cliff);
+        let after_rate = decay(120.0, cliff) - decay(150.0, cliff);
+        assert!(after_rate > before_rate);
+        // Fresh is unweighted, and nothing old becomes unreachable.
+        assert_eq!(decay(0.0, cliff), 1.0);
+        assert_eq!(decay(36_500.0, cliff), DECAY_FLOOR);
+        // A disabled knob must not divide by zero.
+        assert_eq!(decay(10.0, 0.0), 1.0);
+    }
 
     #[test]
     fn experience_weights() {
