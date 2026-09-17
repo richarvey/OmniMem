@@ -370,7 +370,7 @@ fn an_abandoned_warning_carries_the_way_out() {
         &[
             (
                 "abandoned_approaches",
-                r#"[{"name": "kestrel-rs", "type": "library", "reason": "global governor"}]"#,
+                r#"[{"name": "kestrel-rs", "type": "library", "reason": "global governor."}]"#,
             ),
             ("breakthrough", "pellham: one limiter per partition"),
             ("lesson", "limiters assuming one runtime do not fit shards"),
@@ -385,6 +385,8 @@ fn an_abandoned_warning_carries_the_way_out() {
     // answer, which is the work the graveyard exists to save.
     assert!(content.contains("What worked instead: pellham"), "{content}");
     assert!(content.contains("Lesson: limiters assuming"), "{content}");
+    // The reason carries its own full stop; joining clauses must not double it.
+    assert!(!content.contains(".."), "{content}");
 }
 
 #[test]

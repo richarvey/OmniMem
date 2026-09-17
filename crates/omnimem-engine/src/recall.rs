@@ -407,12 +407,44 @@ impl Engine {
                         "Abandoned approach: {} — {}",
                         warning.abandoned_name, warning.reason
                     );
-                    if let Some(worked) = &warning.breakthrough {
-                        text.push_str(&format!(". What worked instead: {worked}"));
+                    // Trailing punctuation is stripped before joining, or a
+                    // breakthrough that ends in a full stop produces ".. Lesson".
+                    // Trim the accumulator, not just the value: the reason
+                    // ends in a full stop of its own, and appending ". Lesson"
+                    // to it produced "no global state.. Lesson:".
+                    fn tidy(text: &mut String) {
+                        while text.ends_with('.') || text.ends_with(' ') {
+                            text.pop();
+                        }
                     }
-                    if let Some(lesson) = &warning.lesson {
-                        text.push_str(&format!(". Lesson: {lesson}"));
-                    }
+                    let mut append = |label: &str, value: &Option<String>| {
+                        if let Some(v) = value {
+                            let v = v.trim().trim_end_matches(['.', ' ']);
+                            if !v.is_empty() {
+                                tidy(&mut text);
+                                text.push_str(&format!(". {label}: {v}"));
+                            }
+                        }
+                    };
+                    append("What worked instead", &warning.breakthrough);
+                    append("Lesson", &warning.lesson);
+                    // How firmly to put it, scaled by what it actually cost to
+                    // learn. Claiming an approach is settled when it was barely
+                    // tried is how the whole graveyard gets discounted, so the
+                    // language tracks effort_score rather than being uniform.
+                    tidy(&mut text);
+                    text.push_str(match warning.effort_score {
+                        Some(4..=i64::MAX) => {
+                            ". Abandoned after significant effort: treat this as \
+                             settled unless you cannot find another way forward"
+                        }
+                        Some(3) => {
+                            ". Abandoned after several attempts: revisit only with \
+                             a specific reason"
+                        }
+                        Some(_) => ". Tried and set aside: may be worth another look",
+                        None => "",
+                    });
                     // Stated once it means something, and never silently
                     // suppressed: an old dead end may no longer be one, and the
                     // agent is better placed to judge that than a decay curve
