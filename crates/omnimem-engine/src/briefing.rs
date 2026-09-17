@@ -195,6 +195,33 @@ impl Engine {
     }
 
     pub fn briefing(&self, project: Option<&str>, include_knowledge: bool) -> Result<Value> {
+        self.briefing_inner(project, include_knowledge, true)
+    }
+
+    /// The briefing a session-start hook can safely run: the same aggregate,
+    /// read-only.
+    ///
+    /// `briefing()` has side effects by design. It counts calls and every
+    /// `auto_maintenance_interval` of them runs dedup and a contradiction
+    /// scan, and the skill sections can propose drafts. Both write, and both
+    /// embed, which in a hook means a stalled session start and a second
+    /// process writing to a store the server owns. A hook fires on every
+    /// session, including ones that are about to be abandoned, so it has no
+    /// business advancing a maintenance schedule.
+    pub fn session_briefing(
+        &self,
+        project: Option<&str>,
+        include_knowledge: bool,
+    ) -> Result<Value> {
+        self.briefing_inner(project, include_knowledge, false)
+    }
+
+    fn briefing_inner(
+        &self,
+        project: Option<&str>,
+        include_knowledge: bool,
+        side_effects: bool,
+    ) -> Result<Value> {
         let project = project.filter(|p| !p.is_empty());
         // The name becomes part of the `meta:maintenance:` key below, so it
         // must be a project name and not an arbitrary key fragment.
@@ -256,6 +283,7 @@ impl Engine {
         }
 
         if let Some(p) = project
+            && side_effects
             && self.config.auto_maintenance_interval > 0
         {
             let meta_key = format!("meta:maintenance:{p}");
@@ -284,6 +312,7 @@ impl Engine {
             }
         }
         if let Some(p) = project
+            && side_effects
             && let Err(e) = self.briefing_skill_sections(p, &mut result)
         {
             error!(project = p, error = %e, "skill briefing sections failed");

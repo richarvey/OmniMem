@@ -3270,6 +3270,7 @@ dependencies = [
  "omnimem-mcp",
  "omnimem-rss",
  "omnimem-store",
+ "regex",
  "serde_json",
  "tokio",
  "tokio-util",

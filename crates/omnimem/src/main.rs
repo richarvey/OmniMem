@@ -85,7 +85,19 @@ enum Command {
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
     /// See docs/claude-code-hook.md for the settings.json entry.
-    Hook,
+    ///
+    /// With `session-start`, instead prints what this project already knows as
+    /// the session's opening context: where the work stands, and what has been
+    /// tried and abandoned.
+    Hook {
+        /// Which hook is calling. Defaults to the PreToolUse guard.
+        #[arg(value_enum, default_value = "pre-tool-use")]
+        event: hook::Event,
+        /// Project to brief on. Defaults to OMNIMEM_PROJECT, then the
+        /// directory name.
+        #[arg(long)]
+        project: Option<String>,
+    },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
     /// ingested, without summarising or storing anything.
@@ -105,7 +117,7 @@ fn main() -> Result<()> {
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
-                | Command::Hook
+                | Command::Hook { .. }
         )
     ) {
         "warn"
@@ -127,7 +139,7 @@ fn main() -> Result<()> {
         Command::Serve => serve(&db_path),
         Command::Import { file, no_embed } => import(&db_path, &file, no_embed),
         Command::Export { file } => export(&db_path, &file),
-        Command::Hook => hook::run(&db_path),
+        Command::Hook { event, project } => hook::run(&db_path, event, project.as_deref()),
         Command::Stats => stats(&db_path),
         Command::Search {
             query,
