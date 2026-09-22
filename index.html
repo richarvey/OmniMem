@@ -126,6 +126,64 @@ a.omm-int-tile:hover::after,a.omm-int-tile:focus-visible::after{opacity:1}
 .omm-int-btn:hover{border-color:rgb(99,189,133);background:rgb(26,30,36)}
 @media (max-width:860px){.omm-int{grid-template-columns:1fr;gap:34px}.omm-int-copy{text-align:center}.omm-int-h2{font-size:27px}}
 
+/* Feature sheet: a bento of unequal tiles, in the spirit of a product sheet.
+   Colour is rationed on purpose: three washes carry the eye, the rest stay
+   neutral so the big numbers and the hero do the work. */
+.omm-bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,.9vw,12px)}
+.omm-b{position:relative;display:flex;flex-direction:column;overflow:hidden;padding:clamp(18px,1.7vw,24px);border:1px solid rgb(32,36,43);border-radius:clamp(14px,1.5vw,20px);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0) 46%),rgb(17,19,24);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.omm-b>*{position:relative;z-index:1}
+.omm-b-wash{position:absolute;inset:0;z-index:0;pointer-events:none}
+.omm-b-eyebrow{font-family:"Ubuntu Mono",monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:rgb(134,140,150);margin-bottom:12px}
+.omm-b h3{font-family:Ubuntu,sans-serif;font-size:clamp(15px,1.35vw,17.5px);font-weight:600;letter-spacing:-.012em;line-height:1.25;margin:0 0 9px;color:rgb(242,244,246)}
+.omm-b p{font-size:13.5px;line-height:1.62;color:rgb(150,156,165);margin:0}
+.omm-b p+p{margin-top:10px}
+.omm-b code{font-family:"Ubuntu Mono",monospace;font-size:.88em;color:rgb(201,205,211)}
+.omm-b strong{color:rgb(201,205,211);font-weight:600}
+/* The stat tiles: the number is the headline, the words underneath explain it. */
+.omm-b-stat{justify-content:flex-end}
+.omm-b-num{font-family:Ubuntu,sans-serif;font-weight:700;font-size:clamp(44px,5vw,68px);line-height:.92;letter-spacing:-.04em;color:rgb(242,244,246)}
+.omm-b-num small{font-size:.52em;font-weight:700;letter-spacing:-.02em;margin-left:.02em;color:rgb(201,205,211)}
+.omm-b-cap{font-family:Ubuntu,sans-serif;font-size:clamp(14px,1.2vw,16px);font-weight:600;color:rgb(231,233,236);margin:12px 0 5px}
+/* The hero, sunk into a lit well the way a product shot sits on its pedestal. */
+.omm-b-hero{padding:clamp(14px,1.3vw,18px)}
+.omm-b-well{flex:1;display:flex;align-items:center;justify-content:center;padding:clamp(12px,1.1vw,16px);border-radius:clamp(10px,1.1vw,14px);background:radial-gradient(90% 74% at 50% 0%,rgba(255,255,255,.07),rgba(255,255,255,.012));box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 -26px 46px rgba(0,0,0,.42)}
+.omm-b-well img{display:block;width:100%;height:100%;object-fit:cover;object-position:left top;border-radius:8px;border:1px solid rgb(38,42,49);box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.omm-b-well{position:relative}
+/* The shot is cropped to fill the tile, so the right edge fades rather than
+   slicing a sentence in half: the content reads as continuing, not truncated. */
+.omm-b-well::after{content:"";position:absolute;inset:clamp(12px,1.1vw,16px);border-radius:8px;pointer-events:none;background:linear-gradient(90deg,transparent 62%,rgba(17,19,24,.92) 99%)}
+.omm-b-hero .omm-b-eyebrow{margin:0 0 10px;padding:0 4px}
+.omm-b-hero figcaption{font-family:"Ubuntu Mono",monospace;font-size:12px;line-height:1.5;color:rgb(134,140,150);margin:12px 4px 2px}
+/* Namespace chips. */
+.omm-b-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.omm-b-chip{font-family:"Ubuntu Mono",monospace;font-size:11.5px;color:rgb(201,205,211);background:rgb(22,25,31);border:1px solid rgb(38,42,49);border-radius:100px;padding:5px 11px}
+.omm-b-formula{font-family:"Ubuntu Mono",monospace;font-size:clamp(12.5px,1.15vw,14px);line-height:1.7;color:rgb(231,233,236);background:rgb(11,12,14);border:1px solid rgb(32,36,43);border-radius:10px;padding:13px 15px;margin-top:14px;overflow-x:auto}
+.omm-span-3{grid-column:span 3}.omm-span-4{grid-column:span 4}.omm-span-5{grid-column:span 5}.omm-row-2{grid-row:span 2}
+@media (max-width:1000px){
+  .omm-bento{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .omm-span-3,.omm-span-4{grid-column:span 1}.omm-span-5,.omm-b-hero,.omm-b-lead{grid-column:span 2}.omm-row-2{grid-row:auto}
+  /* Once the row is auto-sized there is no definite height for the shot to
+     fill, so the well carries the aspect instead and the image covers it. */
+  .omm-b-well{aspect-ratio:2.1/1}
+}
+/* Below 620px the tiles fold to their titles: the full sheet is a long scroll
+   on a phone. Built by script, so with JavaScript off nothing is hidden. */
+.omm-b-toggle{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;margin:0;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.omm-b-toggle:focus-visible{outline:2px solid rgb(99,189,133);outline-offset:5px;border-radius:5px}
+.omm-b-chev{flex:0 0 auto;width:15px;height:15px;color:rgb(134,140,150);transition:transform .2s ease}
+.omm-b[data-open="false"] .omm-b-chev{transform:rotate(-90deg)}
+.omm-b[data-open="false"] .omm-b-body{display:none}
+.omm-b[data-open="false"] h3{margin-bottom:0}
+@media (prefers-reduced-motion:reduce){.omm-b-chev{transition:none}}
+@media (max-width:620px){
+  .omm-bento{grid-template-columns:1fr}
+  .omm-span-3,.omm-span-4,.omm-span-5,.omm-b-hero,.omm-b-lead{grid-column:span 1}
+  .omm-b-num{font-size:46px}
+  /* At this width a crop shows only the terminal's empty margin, so the well
+     takes the shot's own ratio and the whole thing is visible. */
+  .omm-b-well{aspect-ratio:2.63/1}
+}
+
   .omm-header-links{flex:1 1 0%;min-width:0;display:flex;gap:2px;align-items:center;justify-content:center}
   .omm-nav-link{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#969ca5;padding:7px 10px;border-radius:6px;white-space:nowrap;transition:color .15s,background-color .15s}
   .omm-nav-link:hover{color:#e7e9ec;background:#16191e}
@@ -573,52 +631,81 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
       <p style="font-size: 16.5px; line-height: 1.7; color: rgb(150, 156, 165); margin: 0px;">OmniMem models how memory actually works. Things fade over time, they sometimes contradict each other, and the hard-won stuff earns its place.</p>
     </div>
 
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgb(27, 30, 36); border: 1px solid rgb(27, 30, 36); border-radius: 12px; overflow: hidden;">
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(215, 106, 85); margin-bottom: 12px;">01 · graveyard</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">The Graveyard</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">Every dead end gets logged: what you tried, why it failed, and how much time you burned on it. Your agent checks the graveyard before it suggests a library or pattern, so you don't go down the same rabbit hole twice.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(214, 164, 74); margin-bottom: 12px;">02 · scoring</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Experience scoring</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">Something that took four attempts and a weird platform workaround to crack? That's gold. The harder it was, the more prominently it surfaces next time.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(99, 189, 133); margin-bottom: 12px;">03 · integrity</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Contradiction detection</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">If a new memory disagrees with something you've already stored, OmniMem catches it. There's a quick check on every write, and if you want a proper look, Claude can dig deeper on demand.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(99, 189, 133); margin-bottom: 12px;">04 · dedup</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Semantic deduplication</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">New memories get compared against what's there. Too similar? You get a heads-up instead of a duplicate. Run <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.86em; color: rgb(201, 205, 211);">find_duplicates</code> to clean up in bulk.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(111, 156, 235); margin-bottom: 12px;">05 · namespaces</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Four namespaces</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;"><strong style="color: rgb(201, 205, 211); font-weight: 600;">Episodic</strong> for decisions and bugs. <strong style="color: rgb(201, 205, 211); font-weight: 600;">Project</strong> for stack and state. <strong style="color: rgb(201, 205, 211); font-weight: 600;">Knowledge</strong> for RSS articles and extracted facts. <strong style="color: rgb(201, 205, 211); font-weight: 600;">Preferences</strong> for how you like to work. All searched together, with compiled skills alongside.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(111, 156, 235); margin-bottom: 12px;">06 · briefing</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">One-call briefing</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">One <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.86em; color: rgb(201, 205, 211);">briefing()</code> and your agent gets project context, experience stats, stale memories, new articles, and contradictions. No three-step warm-up.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(199, 140, 224); margin-bottom: 12px;">07 · dashboard</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Web UI dashboard</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">Browse, search, and manage your memories from an htmx web interface. RSS feeds, project contexts, backups and memory details, all without touching the command line.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(199, 140, 224); margin-bottom: 12px;">08 · telemetry</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Telemetry &amp; metrics</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">Every recall tracks which memories get used. Recall counts and last-accessed per memory, plus a Prometheus <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.86em; color: rgb(201, 205, 211);">/metrics</code> endpoint for Grafana.</p>
-      </div>
-      <div style="background: rgb(16, 18, 22); padding: 26px 24px;">
-        <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(214, 164, 74); margin-bottom: 12px;">09 · maintenance</div>
-        <h3 style="font-family: Ubuntu, sans-serif; font-size: 17px; font-weight: 500; margin: 0px 0px 10px; color: rgb(242, 244, 246);">Auto-maintenance</h3>
-        <p style="font-size: 14px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">Every few briefings, OmniMem quietly scans for duplicates and runs a heuristic contradiction check in the background. Stale duplicates get archived and conflicts get flagged, no babysitting required.</p>
-      </div>
+    <div class="omm-bento">
+
+      <article class="omm-b omm-b-lead omm-span-4 omm-row-2">
+        <span class="omm-b-wash" aria-hidden="true" style="background:radial-gradient(118% 82% at 16% 0%,rgba(215,106,85,.17),transparent 62%)"></span>
+        <div class="omm-b-eyebrow" style="color:rgb(215,106,85)">The graveyard</div>
+        <h3>Every dead end, kept on purpose</h3>
+        <p>What you tried, why it failed, and how much time it burned. Your agent checks the graveyard before it reaches for a library or a pattern, so the same rabbit hole only costs you once.</p>
+        <p>A warning comes back with the way out attached: what was abandoned, and what worked instead.</p>
+        <div class="omm-b-formula" style="margin-top:auto"><span style="color:rgb(134,140,150)">warn_if_abandoned(</span><span style="color:rgb(99,189,133)">"global limiter"</span><span style="color:rgb(134,140,150)">)</span><br><span style="color:rgb(215,106,85)">&#10007; abandoned</span> <span style="color:rgb(134,140,150)">&middot; effort 4 &middot; 6 tries</span><br><span style="color:rgb(150,156,165)">&#8594; use one limiter per shard instead</span></div>
+      </article>
+
+      <figure class="omm-b omm-b-hero omm-span-5 omm-row-2" style="margin:0">
+        <div class="omm-b-eyebrow" style="color:rgb(99,189,133)">recall()</div>
+        <div class="omm-b-well"><img src="omnimem-recall.png" alt="A recall query returning ranked memories in the terminal" width="2852" height="1086" loading="lazy" decoding="async"></div>
+        <figcaption>One call. Ranked by similarity, lifecycle, age and what it cost you to learn.</figcaption>
+      </figure>
+
+      <article class="omm-b omm-b-stat omm-span-3">
+        <div class="omm-b-num">48</div>
+        <div class="omm-b-cap">MCP tools</div>
+        <p>Remember, recall, audit, compile. One server, every client that speaks MCP.</p>
+      </article>
+
+      <article class="omm-b omm-b-stat omm-span-3">
+        <span class="omm-b-wash" aria-hidden="true" style="background:radial-gradient(120% 90% at 82% 8%,rgba(214,164,74,.16),transparent 64%)"></span>
+        <div class="omm-b-num">1.8<small>&times;</small></div>
+        <div class="omm-b-cap">Battle-hardened</div>
+        <p>Four attempts and a weird workaround? That is gold. The harder it was, the higher it surfaces.</p>
+      </article>
+
+      <article class="omm-b omm-span-5">
+        <span class="omm-b-wash" aria-hidden="true" style="background:radial-gradient(110% 86% at 12% 0%,rgba(111,156,235,.14),transparent 60%)"></span>
+        <div class="omm-b-eyebrow" style="color:rgb(111,156,235)">Four namespaces</div>
+        <h3>Searched together, never muddled</h3>
+        <p>Decisions and bugs, stack and state, articles and extracted facts, and how you like to work. Compiled skills sit alongside them.</p>
+        <div class="omm-b-chips"><span class="omm-b-chip">episodic</span><span class="omm-b-chip">project</span><span class="omm-b-chip">knowledge</span><span class="omm-b-chip">preference</span></div>
+      </article>
+
+      <article class="omm-b omm-span-4">
+        <div class="omm-b-eyebrow" style="color:rgb(199,140,224)">One-call briefing</div>
+        <h3>No three-step warm-up</h3>
+        <p>One <code>briefing()</code> hands over project context, experience stats, stale memories, new articles and contradictions.</p>
+        <div class="omm-b-formula">score = <span style="color:rgb(99,189,133)">similarity</span> &times; <span style="color:rgb(214,164,74)">surface</span> &times; <span style="color:rgb(111,156,235)">recency</span> &times; <span style="color:rgb(199,140,224)">experience</span></div>
+      </article>
+
+      <article class="omm-b omm-span-3">
+        <div class="omm-b-eyebrow" style="color:rgb(99,189,133)">Integrity</div>
+        <h3>Contradiction detection</h3>
+        <p>If a new memory disagrees with one you already have, OmniMem catches it on write, and Claude can dig deeper on demand.</p>
+      </article>
+
+      <article class="omm-b omm-span-3">
+        <div class="omm-b-eyebrow">Deduplication</div>
+        <h3>Semantic, not string</h3>
+        <p>Too close to something stored? You get a heads-up, not a duplicate. <code>find_duplicates</code> cleans up in bulk.</p>
+      </article>
+
+      <article class="omm-b omm-span-3">
+        <div class="omm-b-eyebrow">Dashboard</div>
+        <h3>A web UI for all of it</h3>
+        <p>Browse, search and manage memories, feeds, project contexts and backups without touching the command line.</p>
+      </article>
+
+      <article class="omm-b omm-span-3">
+        <div class="omm-b-eyebrow">Telemetry</div>
+        <h3>Know what earns its keep</h3>
+        <p>Recall counts and last-accessed per memory, plus a Prometheus <code>/metrics</code> endpoint for Grafana.</p>
+      </article>
+
+      <article class="omm-b omm-span-3">
+        <div class="omm-b-eyebrow">Auto-maintenance</div>
+        <h3>Tidies itself</h3>
+        <p>Every few briefings it scans for duplicates and checks for conflicts in the background. No babysitting.</p>
+      </article>
+
     </div>
   </div></section><section id="lifecycle" data-screen-label="Lifecycle" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
@@ -936,6 +1023,72 @@ cp .env.example .env
 
 
 <script>
+(function(){
+  // On a phone the feature sheet is a very long scroll, so each tile folds to
+  // its title. Only tiles with a heading fold: the screenshot and the two
+  // number tiles are short and are the reason to stop scrolling in the first
+  // place. Built and torn down on the media query so the desktop grid is
+  // untouched, and never built at all without script, where hiding content
+  // behind a toggle nothing can open would lose it.
+  var mq = window.matchMedia('(max-width:620px)');
+  var tiles = Array.prototype.slice.call(document.querySelectorAll('#features .omm-b'))
+    .filter(function(t){ return t.querySelector('h3'); });
+  var CHEV = '<svg class="omm-b-chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var built = false;
+
+  function build(){
+    if (built) return;
+    tiles.forEach(function(tile, i){
+      var h3 = tile.querySelector('h3');
+      var body = document.createElement('div');
+      body.className = 'omm-b-body';
+      body.id = 'omm-fold-' + i;
+      var node = h3.nextSibling;
+      while (node) { var next = node.nextSibling; body.appendChild(node); node = next; }
+      tile.appendChild(body);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'omm-b-toggle';
+      btn.setAttribute('aria-controls', body.id);
+      btn.innerHTML = '<span>' + h3.innerHTML + '</span>' + CHEV;
+      h3.innerHTML = '';
+      h3.appendChild(btn);
+      // The first tile stays open, so the section does not read as empty.
+      setOpen(tile, btn, i === 0);
+      btn.addEventListener('click', function(){
+        setOpen(tile, btn, tile.getAttribute('data-open') === 'false');
+      });
+    });
+    built = true;
+  }
+
+  function setOpen(tile, btn, open){
+    tile.setAttribute('data-open', open ? 'true' : 'false');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function teardown(){
+    if (!built) return;
+    tiles.forEach(function(tile){
+      var btn = tile.querySelector('.omm-b-toggle');
+      var body = tile.querySelector('.omm-b-body');
+      if (btn) {
+        var h3 = btn.parentNode;
+        h3.innerHTML = btn.querySelector('span').innerHTML;
+      }
+      if (body) {
+        while (body.firstChild) tile.insertBefore(body.firstChild, body);
+        tile.removeChild(body);
+      }
+      tile.removeAttribute('data-open');
+    });
+    built = false;
+  }
+
+  function sync(){ mq.matches ? build() : teardown(); }
+  sync();
+  mq.addEventListener ? mq.addEventListener('change', sync) : mq.addListener(sync);
+})();
 document.querySelectorAll('[data-copy]').forEach(function(btn){
   btn.addEventListener('click', function(){
     var pre = btn.closest('div').parentElement.querySelector('pre');
