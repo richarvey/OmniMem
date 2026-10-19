@@ -1,0 +1,18 @@
+# cargo audit's settings, for scripts/security-check.sh and CI's security
+# scans. Every ignored advisory says why it can't reach OmniMem and when the
+# ignore goes.
+
+[advisories]
+ignore = [
+    # zip's ZipArchive::extract() and ZipStreamReader::extract() follow
+    # symlinks out of the destination and keep setuid bits (fixed in zip 9).
+    # OmniMem never calls extract(): skill bundles are read entry by entry,
+    # into memory, against each entry's declared size, with entry names
+    # allowlisted (crates/omnimem-engine/src/transfer.rs), and nothing is
+    # written to disk from an archive. Remove these with the move to zip 9,
+    # once its releases have settled (9.0.0 to 9.0.5 came out 9 to 17
+    # October 2026).
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+]

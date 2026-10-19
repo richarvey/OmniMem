@@ -58,7 +58,7 @@ Package: omnimem
 Version: $pkgver
 Architecture: $arch
 Maintainer: Ric Harvey <ric@squarecows.com>
-Depends: libc6 (>= 2.38), libgcc-s1
+Depends: libc6 (>= 2.38), libgcc-s1, ca-certificates
 Section: net
 Priority: optional
 Homepage: https://omnimem.org
@@ -84,6 +84,8 @@ License: MIT
 URL: https://omnimem.org
 AutoReqProv: no
 Requires: glibc >= 2.38
+# TLS (the model download, Claude, feeds) checks against the system's CAs.
+Requires: ca-certificates
 
 %description
 OmniMem's MCP server, run as the omnimem systemd service and configured by
@@ -119,8 +121,9 @@ EOF
         --define "__os_install_post %{nil}" \
         "$top/SPECS/omnimem.spec"
     cp "$top/RPMS/$rpmarch/omnimem-$pkgver-1.$rpmarch.rpm" /dist/
-    rpm -qp --dbpath "$top/db" --requires "/dist/omnimem-$pkgver-1.$rpmarch.rpm" |
-        grep -q 'glibc >= 2.38'
+    requires="$(rpm -qp --dbpath "$top/db" --requires "/dist/omnimem-$pkgver-1.$rpmarch.rpm")"
+    printf '%s\n' "$requires" | grep -q 'glibc >= 2.38'
+    printf '%s\n' "$requires" | grep -qx ca-certificates
     exit 0
 fi
 
@@ -187,9 +190,13 @@ in_container bash /work/scripts/linux-package.sh --packages
 deb="omnimem_${pkgver}_${arch}.deb"
 rpm="omnimem-$pkgver-1.$rpmarch.rpm"
 
-# The .deb's scripts, for real: installed, used and removed on Debian 13.
-docker run --rm --volume "$dist/$deb:/omnimem.deb:ro" debian:13-slim sh -euc '
-    dpkg -i /omnimem.deb >/dev/null
+# The .deb's scripts, for real: installed the way the docs say (apt, which
+# brings in ca-certificates, absent from a slim image), used and removed on
+# Debian 13.
+docker run --rm --volume "$dist/$deb:/tmp/omnimem.deb:ro" debian:13-slim sh -euc '
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /tmp/omnimem.deb >/dev/null
+    test -s /etc/ssl/certs/ca-certificates.crt
     id omnimem >/dev/null
     test "$(stat -c %a:%U /etc/omnimem/omnimem.env)" = 600:root
     test "$(stat -c %U /var/lib/omnimem)" = omnimem

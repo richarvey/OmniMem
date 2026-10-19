@@ -1,0 +1,62 @@
+name: Coverage and security
+
+# Beside the build rather than in it, so a slow coverage run or a fresh
+# advisory never holds up the packages: every push to a branch other than main
+# and every v7 pull request gets line coverage of the workspace's tests, a
+# RustSec audit of Cargo.lock and a secret scan of the history. A push to a
+# v7 branch also publishes the coverage badge the README shows.
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    name: Test coverage
+    runs-on: [linux, arm64]
+    timeout-minutes: 90
+    env:
+      # The AWS runner is behind DNS64; see build.yml.
+      NODE_OPTIONS: --dns-result-order=ipv4first
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Coverage
+        run: scripts/coverage.sh
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-coverage
+          path: dist/coverage/
+
+      - name: Publish the badge
+        # coverage-v7.svg on the badges branch, beside 6.x's own badge.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/v7.')
+        run: |
+          badges="$(mktemp -d)"
+          git fetch --quiet origin badges
+          git worktree add --quiet --detach "$badges" FETCH_HEAD
+          cp dist/coverage/coverage.svg "$badges/coverage-v7.svg"
+          git -C "$badges" add coverage-v7.svg
+          if ! git -C "$badges" diff --cached --quiet; then
+            git -C "$badges" -c user.name="Forgejo Actions" -c user.email="actions@squarecows.com" \
+              commit --quiet -m "Update the v7 coverage badge"
+            git -C "$badges" push --quiet origin HEAD:badges
+          fi
+          git worktree remove --force "$badges"
+
+  security:
+    name: Security scans
+    runs-on: [linux, amd64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans every commit, not just this one.
+          fetch-depth: 0
+
+      - name: RustSec audit and secret scan
+        run: scripts/security-check.sh

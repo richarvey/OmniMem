@@ -2,6 +2,8 @@
   <a href="https://omnimem.org"><img src="docs/images/omnimem-logo.png" alt="OmniMem" width="420"></a>
 </p>
 
+<p align="center"><a href="https://code.squarecows.com/ric/omnimem/actions?workflow=checks.yml"><img src="https://code.squarecows.com/ric/omnimem/raw/branch/badges/coverage-v7.svg" alt="Test coverage"></a></p>
+
 <p align="center"><sub><a href="https://omnimem.org">omnimem.org</a> · Developed on <a href="https://code.squarecows.com/ric/omnimem">Squarecows</a>, mirrored to <a href="https://github.com/richarvey/OmniMem">GitHub</a> · <a href="https://github.com/richarvey/OmniMem/issues">Issues on GitHub</a></sub></p>
 
 **Stop living the same session twice.**

@@ -1,0 +1,11 @@
+# Findings gitleaks reports that are known not to be secrets, by fingerprint
+# (commit:file:rule:line), so anything new is still caught. Checked by
+# scripts/security-check.sh; .gitleaks.toml holds the pattern allowlist.
+
+# The session-end hook's redaction test feeds redact() made-up credentials;
+# this one is jwt.io's example token with its signature cut short.
+6e1d5d802d6057223205e1b8c607fecd191e2263:crates/omnimem/src/hook.rs:jwt:673
+
+# A 6.x recall test: "valkey" contains "key", so the generic-api-key rule
+# read the query string after it as a key.
+1ff439d2374caefdd6645de6d46eb9c0883d9f1b:mcp_server/tests/test_memory_coverage2.py:generic-api-key:69

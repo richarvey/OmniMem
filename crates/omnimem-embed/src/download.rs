@@ -30,12 +30,17 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// file, checked between chunks.
 const BUDGET: Duration = Duration::from_mins(15);
 const CHUNK: usize = 64 * 1024;
+/// Redirects followed for one file: the hub's rename hops plus its CDN.
+const MAX_REDIRECTS: usize = 10;
 
 pub(crate) struct Downloader {
     endpoint: String,
     token: Option<String>,
     cache: PathBuf,
     client: reqwest::blocking::Client,
+    /// The same client without redirects, for files: `fetch` follows them
+    /// itself so it can tell the hub's answers from the CDN's.
+    direct: reqwest::blocking::Client,
     max_file_bytes: u64,
     budget: Duration,
 }
@@ -51,10 +56,17 @@ impl Downloader {
         token: Option<String>,
         cache: PathBuf,
     ) -> Result<Self, EmbedError> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(concat!("omnimem/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_mins(15))
+        let builder = || {
+            reqwest::blocking::Client::builder()
+                .user_agent(concat!("omnimem/", env!("CARGO_PKG_VERSION")))
+                .connect_timeout(Duration::from_secs(30))
+                .timeout(Duration::from_mins(15))
+        };
+        let client = builder()
+            .build()
+            .map_err(|e| EmbedError::Download(e.to_string()))?;
+        let direct = builder()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| EmbedError::Download(e.to_string()))?;
         Ok(Self {
@@ -62,6 +74,7 @@ impl Downloader {
             token,
             cache,
             client,
+            direct,
             max_file_bytes: MAX_FILE_BYTES,
             budget: BUDGET,
         })
@@ -92,6 +105,47 @@ impl Downloader {
         request
             .send()
             .map_err(|e| EmbedError::Download(format!("{url}: {e}")))
+    }
+
+    /// GET a file, following redirects by hand, with the sha256 the hub
+    /// names for it. Only the hub's own responses are believed: an LFS
+    /// file's sha256 is in the `x-linked-etag` of the hub's redirect, and
+    /// the CDN it redirects to sends an `etag` of its own, which for Xet
+    /// storage is 64 hex characters of content hash and not the sha256 of
+    /// the bytes. Following redirects automatically kept only the CDN's
+    /// headers, so every LFS download was refused. The token goes only to
+    /// the hub, as `huggingface_hub` does.
+    fn open_file(
+        &self,
+        url: &str,
+    ) -> Result<(reqwest::blocking::Response, Option<String>), EmbedError> {
+        let fail = |at: &dyn std::fmt::Display, e: &dyn std::fmt::Display| {
+            EmbedError::Download(format!("{at}: {e}"))
+        };
+        let hub = reqwest::Url::parse(&self.endpoint).map_err(|e| fail(&self.endpoint, &e))?;
+        let mut current = reqwest::Url::parse(url).map_err(|e| fail(&url, &e))?;
+        let mut expected = None;
+        for _ in 0..=MAX_REDIRECTS {
+            let on_hub = current.origin() == hub.origin();
+            let mut request = self.direct.get(current.clone());
+            if on_hub && let Some(token) = &self.token {
+                request = request.bearer_auth(token);
+            }
+            let response = request.send().map_err(|e| fail(&current, &e))?;
+            if on_hub && expected.is_none() {
+                expected = expected_sha256(response.headers());
+            }
+            if !response.status().is_redirection() {
+                return Ok((response, expected));
+            }
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| fail(&current, &"a redirect with no location"))?;
+            current = current.join(location).map_err(|e| fail(&current, &e))?;
+        }
+        Err(fail(&url, &format!("more than {MAX_REDIRECTS} redirects")))
     }
 
     /// The commit a revision names. A 40-character commit is used as given;
@@ -140,7 +194,7 @@ impl Downloader {
         }
 
         let url = format!("{}/{repo}/resolve/{commit}/{file}", self.endpoint);
-        let mut response = self.get(&url)?;
+        let (mut response, expected) = self.open_file(&url)?;
         let status = response.status();
         if status == reqwest::StatusCode::NOT_FOUND {
             let marker = base.join(".no_exist").join(commit).join(file);
@@ -153,7 +207,6 @@ impl Downloader {
         if !status.is_success() {
             return Err(EmbedError::Download(format!("{url}: HTTP {status}")));
         }
-        let expected = expected_sha256(response.headers());
         if expected.is_none() {
             debug!(
                 repo,
@@ -337,36 +390,57 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     const COMMIT: &str = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41";
 
     /// A tiny HTTP server answering fixed paths (path, status, extra header
     /// lines, body), counting requests.
     fn serve(routes: Vec<(String, u16, String, Vec<u8>)>) -> (String, Arc<AtomicUsize>) {
+        let (addr, hits, _) = serve_logged(routes);
+        (addr, hits)
+    }
+
+    /// `serve`, also logging each request as "<path> token" or "<path>" by
+    /// whether it carried an Authorization header. `{port}` in a route's
+    /// headers becomes the server's port, so a redirect can name the same
+    /// server under another host (`localhost`), as the hub names its CDN.
+    fn serve_logged(
+        routes: Vec<(String, u16, String, Vec<u8>)>,
+    ) -> (String, Arc<AtomicUsize>, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = format!("http://{}", listener.local_addr().unwrap());
+        let port = listener.local_addr().unwrap().port().to_string();
+        let addr = format!("http://127.0.0.1:{port}");
         let hits = Arc::new(AtomicUsize::new(0));
         let counter = hits.clone();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let requests = log.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { continue };
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut request_line = String::new();
                 reader.read_line(&mut request_line).unwrap();
+                let mut token = false;
                 loop {
                     let mut header = String::new();
                     if reader.read_line(&mut header).unwrap() == 0 || header == "\r\n" {
                         break;
                     }
+                    token |= header.to_ascii_lowercase().starts_with("authorization:");
                 }
                 counter.fetch_add(1, Ordering::SeqCst);
                 let path = request_line.split_whitespace().nth(1).unwrap_or("");
+                requests.lock().unwrap().push(if token {
+                    format!("{path} token")
+                } else {
+                    path.to_owned()
+                });
                 let (status, extra, body) =
                     routes.iter().find(|(p, _, _, _)| p == path).map_or_else(
                         || (404, String::new(), b"not found".to_vec()),
-                        |(_, s, h, b)| (*s, h.clone(), b.clone()),
+                        |(_, s, h, b)| (*s, h.replace("{port}", &port), b.clone()),
                     );
                 if path == "/drip" {
                     let _ = stream.write_all(b"HTTP/1.1 200 X\r\nConnection: close\r\n\r\n");
@@ -384,7 +458,7 @@ mod tests {
                 let _ = stream.write_all(&body);
             }
         });
-        (addr, hits)
+        (addr, hits, log)
     }
 
     fn plain(path: String, status: u16, body: Vec<u8>) -> (String, u16, String, Vec<u8>) {
@@ -536,6 +610,55 @@ mod tests {
             dl.fetch("o/m", COMMIT, "short.bin").unwrap(),
             Fetched::Present(_)
         ));
+    }
+
+    /// The hub answers an LFS file with a redirect naming its sha256 in
+    /// `x-linked-etag`; the CDN then sends the bytes with an etag of its own
+    /// (a Xet content hash, also 64 hex, not their sha256). Taking the
+    /// CDN's etag refused every LFS download, the model included.
+    #[test]
+    fn an_lfs_file_is_checked_against_the_hub_not_the_cdn() {
+        let good = format!("/o/m/resolve/{COMMIT}/model.onnx");
+        let bad = format!("/o/m/resolve/{COMMIT}/bad.onnx");
+        let cdn_etag = format!("ETag: \"{}\"\r\n", sha256_hex(b"xet content hash"));
+        let redirect = |sha: String, to: &str| {
+            format!("X-Linked-Etag: \"{sha}\"\r\nLocation: http://localhost:{{port}}/cdn/{to}\r\n")
+        };
+        let (endpoint, _, log) = serve_logged(vec![
+            (
+                good,
+                302,
+                redirect(sha256_hex(b"weights"), "good"),
+                Vec::new(),
+            ),
+            (bad, 302, redirect(sha256_hex(b"other"), "bad"), Vec::new()),
+            (
+                "/cdn/good".into(),
+                200,
+                cdn_etag.clone(),
+                b"weights".to_vec(),
+            ),
+            ("/cdn/bad".into(), 200, cdn_etag, b"weights".to_vec()),
+        ]);
+        let dl = Downloader::new(&endpoint, Some("hf_secret".into()), scratch()).unwrap();
+
+        let Fetched::Present(file) = dl.fetch("o/m", COMMIT, "model.onnx").unwrap() else {
+            panic!("expected the file")
+        };
+        assert_eq!(fs::read(&file).unwrap(), b"weights");
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                format!("/o/m/resolve/{COMMIT}/model.onnx token"),
+                "/cdn/good".to_owned()
+            ],
+            "the token goes to the hub and not to the CDN"
+        );
+
+        let Err(EmbedError::Download(message)) = dl.fetch("o/m", COMMIT, "bad.onnx") else {
+            panic!("a sha256 the hub didn't name must be refused")
+        };
+        assert!(message.contains("does not match"), "{message}");
     }
 
     #[test]

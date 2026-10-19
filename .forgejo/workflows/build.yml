@@ -2,9 +2,11 @@ name: Build
 
 # Every push and pull request on a branch other than main: format, clippy, the
 # tests and the desktop smoke test on Linux (amd64 and arm64) and macOS, then
-# the packages, uploaded as each job's artifact. Once every build has passed,
-# a push to a branch replaces that branch's rolling dev pre-release
-# (dev-<branch>) with all of them, and a v7 tag attaches them to its release.
+# the packages, uploaded as each job's artifact, and the server's Docker image,
+# built and tested on both Linux runners. Once every build has passed, a push
+# to a branch replaces that branch's rolling dev pre-release (dev-<branch>)
+# with all of them, and a v7 tag attaches them to its release and pushes the
+# image to Docker Hub.
 
 on:
   push:
@@ -44,6 +46,27 @@ jobs:
         # The desktop app on the GNOME runtime, built and smoke-tested in its
         # sandbox; the runtimes download once into the runner's cache.
         run: scripts/flatpak-package.sh
+
+      - name: Docker image
+        # The server .deb in a Debian 13 image, tested the way the Docker
+        # guide runs it. A v7 tag pushes this architecture's half
+        # (<version>-<arch>); Publish joins the two under <version>.
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v7.*)
+              printf '%s' "$DOCKERHUB_TOKEN" |
+                docker login --username "$DOCKERHUB_USERNAME" --password-stdin docker.io >/dev/null
+              scripts/docker-image.sh --push "docker.io/$DOCKERHUB_USERNAME/omnimem"
+              ;;
+            *) scripts/docker-image.sh ;;
+          esac
+
+      - name: Docker logout
+        if: always() && startsWith(github.ref, 'refs/tags/v7.')
+        run: docker logout docker.io >/dev/null 2>&1 || true
 
       - uses: actions/upload-artifact@v3
         with:
@@ -248,6 +271,7 @@ jobs:
         env:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_NOTARY_API_KEY != '' }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: |
           version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
           files="$(find dist -type f | sort)"
@@ -266,6 +290,12 @@ jobs:
             "Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_NUMBER")"
           case "$GITHUB_REF" in
             refs/tags/*)
+              notes="$(printf '%s\n\n%s' "$notes" \
+                "**Docker** (amd64 and arm64): \`docker pull $DOCKERHUB_USERNAME/omnimem:$version\`, the same server with its data in one \`/data\` volume; see the Docker guide." )"
+              ;;
+          esac
+          case "$GITHUB_REF" in
+            refs/tags/*)
               tag="${GITHUB_REF#refs/tags/}"
               case "$tag" in *-*) pre=--prerelease ;; *) pre="" ;; esac
               # shellcheck disable=SC2086
@@ -279,3 +309,18 @@ jobs:
                 "OmniMem $version dev build ($branch)" "$(printf '%s\n\n%s' "$intro" "$notes")" $files
               ;;
           esac
+
+      - name: Docker image
+        # Both architectures' halves, pushed by the Linux jobs, under one tag:
+        # <version>, and latest too for a release (never for a -dev or -rc).
+        if: startsWith(github.ref, 'refs/tags/v7.')
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          printf '%s' "$DOCKERHUB_TOKEN" |
+            docker login --username "$DOCKERHUB_USERNAME" --password-stdin docker.io >/dev/null
+          status=0
+          scripts/docker-image.sh --manifest "docker.io/$DOCKERHUB_USERNAME/omnimem" || status=$?
+          docker logout docker.io >/dev/null 2>&1 || true
+          exit "$status"

@@ -4,8 +4,7 @@ OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web
 
 The image is `richarvey/omnimem`, built for amd64 and arm64, and it runs `omnimem serve`: the MCP server, the RSS scheduler and the background enrichment worker, all in the one process. It's the headless build, so there's no settings window. You configure it with environment variables.
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
+Inside, it's the same `.deb` the Linux server packages ship, installed on Debian 13. Every v7 tag publishes `richarvey/omnimem:<version>`; `latest` only moves for a release, never for a `-dev` tag, so until 7.0.0 pin a dev version such as `7.0.3-dev`. Before each one is pushed, CI checks that it refuses to start without a token and, with one, serves MCP and reports healthy.
 
 ## Quick start
 
@@ -26,6 +25,8 @@ A few things are going on there:
 - **`/data`** holds everything that matters: the SQLite database, `feeds.yml`, and the `backups` folder, which all live beside the database.
 - **`HF_HOME=/data/hf-cache`** keeps the embedding model on the volume. The first start downloads it from Hugging Face; after that it's read from the cache and nothing touches the network.
 - **`MCP_HOST=0.0.0.0`** is needed inside a container, because the port has to be reachable from outside it. OmniMem refuses to listen beyond localhost without authentication, which is why the token is there. Take it out and the container exits with an error telling you so.
+- The image already sets `OMNIMEM_DB`, `HF_HOME` and `MCP_HOST` to those values, so they're spelt out here only so you can see them. The token is the one thing it can't choose for you.
+- It runs as uid 1000, like the 6.x images. A named volume sorts out ownership itself; if you bind mount a folder instead, `chown 1000:1000` it first.
 - **`-p 127.0.0.1:8765:8765`** publishes the port on the host's loopback only. Drop the `127.0.0.1:` part if other machines should reach it directly.
 
 Grab the token you generated, you'll need it for your clients:
@@ -40,7 +41,7 @@ Check it's up:
 curl http://127.0.0.1:8765/healthz
 ```
 
-That should answer `{"status": "ok"}`, no token needed.
+That should answer `{"status": "ok"}`, no token needed. The image checks the same thing itself, so `docker ps` shows the container as healthy once the model has loaded, and Compose can wait on `condition: service_healthy`.
 
 ## With Compose
 
@@ -123,6 +124,17 @@ image: richarvey/omnimem:7.0.0
 ```
 
 Releases are listed on the [Forgejo releases page](https://code.squarecows.com/ric/omnimem/releases).
+
+## Building the image yourself
+
+From a checkout, with Docker:
+
+```bash
+scripts/linux-package.sh    # the server .deb for this machine's architecture
+scripts/docker-image.sh     # omnimem-server:<version>-<arch>, built and tested
+```
+
+That's what CI runs on each Linux runner. `packaging/docker/Dockerfile` is the whole recipe.
 
 ## Updating
 
