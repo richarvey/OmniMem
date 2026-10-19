@@ -134,7 +134,11 @@ fn main() -> Result<()> {
     let Some(command) = command else {
         return run_default(db);
     };
-    let db_path = db.unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
+    // Cloned: the desktop arm wants the unresolved option, since its default
+    // is the per-platform data folder rather than ./data.
+    let db_path = db
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
     match command {
         Command::Serve => serve(&db_path),
         Command::Import { file, no_embed } => import(&db_path, &file, no_embed),

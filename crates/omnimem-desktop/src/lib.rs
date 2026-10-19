@@ -557,7 +557,11 @@ pub fn run(options: DesktopOptions) -> Result<()> {
     }));
 
     let login = start_at_login();
-    let panel = Panel::new();
+    let panel = if options.smoke_test {
+        Panel::with_smoke_routes()
+    } else {
+        Panel::new()
+    };
     panel.set_feeds_path(feeds_path(&options.db));
     panel.set_settings_path(options.data_dir.join(SETTINGS_FILE));
     if let Some(keychain) = keychain {
