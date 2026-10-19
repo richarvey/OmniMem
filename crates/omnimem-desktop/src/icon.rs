@@ -1,6 +1,6 @@
-//! The icons, drawn in code: the tray and window icon, an orange ring on
-//! navy; and on macOS the `<o>` from the logo's wordmark, in the menu bar and
-//! as the app icon.
+//! The icons, drawn in code, all from the `<o>` in the logo's wordmark: the
+//! macOS menu bar icon, the square tray icon everywhere else, and the app
+//! icon, which is also the window's.
 
 /// The logo's green, from the chevrons around "omnimem".
 const GREEN: [u8; 3] = [0x63, 0xBD, 0x85];
@@ -16,45 +16,76 @@ const LIGHT: [u8; 3] = [0xE5, 0xE7, 0xEB];
 const NAVY_TOP: [u8; 3] = [0x1F, 0x2B, 0x3A];
 const NAVY_BOTTOM: [u8; 3] = [0x12, 0x1B, 0x24];
 
-// The `<o>` geometry, as fractions of the mark's height.
-const STROKE: f32 = 0.13;
-const CHEVRON_HALF: f32 = 0.30;
-const CHEVRON_DEPTH: f32 = 0.20;
-const RING: f32 = 0.27;
-const DOT: f32 = 0.10;
-const GAP: f32 = 0.06;
-const MARGIN: f32 = 0.02;
+/// The `<o>`'s proportions, as fractions of its height.
+#[derive(Clone, Copy)]
+struct Shape {
+    stroke: f32,
+    chevron_half: f32,
+    chevron_depth: f32,
+    ring: f32,
+    dot: f32,
+    gap: f32,
+    margin: f32,
+}
+
+/// The `<o>` as the menu bar and the app icon draw it.
+const WIDE: Shape = Shape {
+    stroke: 0.13,
+    chevron_half: 0.30,
+    chevron_depth: 0.20,
+    ring: 0.27,
+    dot: 0.10,
+    gap: 0.06,
+    margin: 0.02,
+};
+
+/// A tighter `<o>` for trays that fit every icon into a square (GNOME's
+/// AppIndicator extension, KDE, Windows), so it keeps most of the height
+/// there rather than shrinking to two thirds of it.
+const SQUARE: Shape = Shape {
+    stroke: 0.14,
+    chevron_half: 0.27,
+    chevron_depth: 0.12,
+    ring: 0.25,
+    dot: 0.09,
+    gap: 0.04,
+    margin: 0.01,
+};
+
+impl Shape {
+    /// The mark's width for a height of one.
+    fn units(self) -> f32 {
+        let half = self.stroke / 2.0;
+        2.0 * (self.margin + half + self.chevron_depth + half + self.gap + half + self.ring)
+    }
+}
 
 /// The `<o>` laid out `height` pixels tall with its box's top left corner at
 /// `origin`.
 struct Mark {
+    shape: Shape,
     strokes: Vec<((f32, f32), (f32, f32))>,
     centre: (f32, f32),
     height: f32,
 }
 
 impl Mark {
-    /// The mark's width for a height of one.
-    fn units() -> f32 {
-        let half = STROKE / 2.0;
-        2.0 * (MARGIN + half + CHEVRON_DEPTH + half + GAP + half + RING)
-    }
-
-    fn new(height: f32, origin: (f32, f32)) -> Self {
-        let half = STROKE / 2.0;
-        let left_tip = MARGIN + half;
-        let left_arms = left_tip + CHEVRON_DEPTH;
-        let ring_x = left_arms + half + GAP + half + RING;
-        let right_arms = ring_x + RING + half + GAP + half;
-        let right_tip = right_arms + CHEVRON_DEPTH;
+    fn new(shape: Shape, height: f32, origin: (f32, f32)) -> Self {
+        let half = shape.stroke / 2.0;
+        let left_tip = shape.margin + half;
+        let left_arms = left_tip + shape.chevron_depth;
+        let ring_x = left_arms + half + shape.gap + half + shape.ring;
+        let right_arms = ring_x + shape.ring + half + shape.gap + half;
+        let right_tip = right_arms + shape.chevron_depth;
         let place = |(x, y): (f32, f32)| (origin.0 + x * height, origin.1 + y * height);
         let chevron = |tip: f32, arms: f32| {
             [
-                ((arms, 0.5 - CHEVRON_HALF), (tip, 0.5)),
-                ((tip, 0.5), (arms, 0.5 + CHEVRON_HALF)),
+                ((arms, 0.5 - shape.chevron_half), (tip, 0.5)),
+                ((tip, 0.5), (arms, 0.5 + shape.chevron_half)),
             ]
         };
         Self {
+            shape,
             strokes: chevron(left_tip, left_arms)
                 .into_iter()
                 .chain(chevron(right_tip, right_arms))
@@ -69,16 +100,30 @@ impl Mark {
     /// dot) and the ring cover. The shapes never touch, so at most one of
     /// them covers any pixel.
     fn coverage(&self, p: (f32, f32)) -> (f32, f32) {
-        let half = STROKE / 2.0 * self.height;
+        let half = self.shape.stroke / 2.0 * self.height;
         let chevrons = self
             .strokes
             .iter()
             .map(|&(a, b)| coverage(segment_distance(p, a, b) - half))
             .fold(0.0, f32::max);
         let from_centre = ((p.0 - self.centre.0).powi(2) + (p.1 - self.centre.1).powi(2)).sqrt();
-        let ring = coverage((from_centre - RING * self.height).abs() - half);
-        let dot = coverage(from_centre - DOT * self.height);
+        let ring = coverage((from_centre - self.shape.ring * self.height).abs() - half);
+        let dot = coverage(from_centre - self.shape.dot * self.height);
         (chevrons.max(dot), ring)
+    }
+
+    /// RGBA pixels of the mark alone, green with a grey ring, on a
+    /// transparent `width` by `height` canvas.
+    fn pixels(&self, width: u32, height: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let (green, ring) = self.coverage((x as f32 + 0.5, y as f32 + 0.5));
+                pixels.extend_from_slice(if green >= ring { &GREEN } else { &GREY });
+                pixels.push((green.max(ring) * 255.0).round() as u8);
+            }
+        }
+        pixels
     }
 }
 
@@ -87,18 +132,19 @@ impl Mark {
 /// middle. macOS draws it 18 points tall, so 36 is sharp on a Retina screen.
 pub fn menu_bar(height: u32) -> (Vec<u8>, u32) {
     let h = height as f32;
-    let width = (Mark::units() * h).ceil() as u32;
+    let width = (WIDE.units() * h).ceil() as u32;
     // Centre the drawing in the whole pixels it was rounded up to.
-    let mark = Mark::new(h, ((width as f32 - Mark::units() * h) / 2.0, 0.0));
-    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
-    for y in 0..height {
-        for x in 0..width {
-            let (green, ring) = mark.coverage((x as f32 + 0.5, y as f32 + 0.5));
-            pixels.extend_from_slice(if green >= ring { &GREEN } else { &GREY });
-            pixels.push((green.max(ring) * 255.0).round() as u8);
-        }
-    }
-    (pixels, width)
+    let mark = Mark::new(WIDE, h, ((width as f32 - WIDE.units() * h) / 2.0, 0.0));
+    (mark.pixels(width, height), width)
+}
+
+/// RGBA pixels for the tray icon on Linux and Windows, `size` pixels square:
+/// the compact `<o>` across its width, centred, in the menu bar's colours,
+/// which read on a light panel or GNOME's dark top bar.
+pub fn tray(size: u32) -> Vec<u8> {
+    let side = size as f32;
+    let height = side / SQUARE.units();
+    Mark::new(SQUARE, height, (0.0, (side - height) / 2.0)).pixels(size, size)
 }
 
 /// RGBA pixels for the macOS app icon, `size` pixels square: the `<o>` with
@@ -111,9 +157,10 @@ pub fn app_icon(size: u32) -> Vec<u8> {
     let (shadow_drop, shadow_blur) = (10.0 * s, 16.0 * s);
     let mark_height = 400.0 * s;
     let mark = Mark::new(
+        WIDE,
         mark_height,
         (
-            centre - Mark::units() * mark_height / 2.0,
+            centre - WIDE.units() * mark_height / 2.0,
             centre - mark_height / 2.0,
         ),
     );
@@ -179,42 +226,25 @@ fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
     ((p.0 - a.0 - t * abx).powi(2) + (p.1 - a.1 - t * aby).powi(2)).sqrt()
 }
 
-/// RGBA pixels for a `size` by `size` icon.
-pub fn rgba(size: u32) -> Vec<u8> {
-    let (navy, orange) = ([27u8, 34, 51], [255u8, 142, 1]);
-    let centre = (size as f32 - 1.0) / 2.0;
-    let outer = size as f32 / 2.0;
-    let (ring_out, ring_in) = (outer * 0.72, outer * 0.44);
-    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
-    for y in 0..size {
-        for x in 0..size {
-            let d = ((x as f32 - centre).powi(2) + (y as f32 - centre).powi(2)).sqrt();
-            // Coverage of the disc edge, and of the ring inside it.
-            let disc = (outer - d).clamp(0.0, 1.0);
-            let ring = ((ring_out - d).clamp(0.0, 1.0)) * ((d - ring_in).clamp(0.0, 1.0));
-            let colour: Vec<u8> = navy
-                .iter()
-                .zip(orange)
-                .map(|(n, o)| (f32::from(*n) * (1.0 - ring) + f32::from(o) * ring).round() as u8)
-                .collect();
-            pixels.extend_from_slice(&colour);
-            pixels.push((disc * 255.0).round() as u8);
-        }
-    }
-    pixels
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn icons_are_square_rgba_with_transparent_corners() {
-        let icon = rgba(32);
-        assert_eq!(icon.len(), 32 * 32 * 4);
-        assert_eq!(icon[3], 0, "the corner is transparent");
-        let centre = (16 * 32 + 16) * 4;
-        assert_eq!(icon[centre + 3], 255, "the middle is opaque");
+    fn the_tray_icon_is_the_compact_mark_across_a_square() {
+        let icon = tray(64);
+        assert_eq!(icon.len(), 64 * 64 * 4);
+        let at = |x: usize, y: usize| &icon[(y * 64 + x) * 4..(y * 64 + x) * 4 + 4];
+        assert_eq!(at(0, 0)[3], 0, "the corner is transparent");
+        assert_eq!(at(32, 32), [GREEN[0], GREEN[1], GREEN[2], 255], "the dot");
+        assert_eq!(at(1, 32)[..3], GREEN, "the left chevron reaches the edge");
+        assert_eq!(at(62, 32)[..3], GREEN, "and the right one");
+        // The ring's top, a quarter of the mark's height above the centre.
+        let ring_top = (32.0 - SQUARE.ring * 64.0 / SQUARE.units()) as usize;
+        assert_eq!(at(32, ring_top)[..3], GREY, "the ring");
+        // The square shape keeps far more of the height than the wide one.
+        assert!(64.0 / SQUARE.units() > 0.75 * 64.0);
+        assert!(64.0 / WIDE.units() < 0.70 * 64.0);
     }
 
     #[test]

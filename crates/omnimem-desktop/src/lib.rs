@@ -137,6 +137,38 @@ struct App {
     started: Instant,
 }
 
+/// Whether anything will show the tray icon. On Linux that takes a
+/// StatusNotifierItem host on the session bus, which the panel or an
+/// extension runs; the icon is created without one, just never seen.
+#[cfg(target_os = "linux")]
+fn tray_host_running() -> bool {
+    use gtk::gio;
+    use gtk::glib::ToVariant;
+    let Ok(bus) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else {
+        return false;
+    };
+    bus.call_sync(
+        Some("org.freedesktop.DBus"),
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "NameHasOwner",
+        Some(&("org.kde.StatusNotifierWatcher",).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        2000,
+        gio::Cancellable::NONE,
+    )
+    .ok()
+    .and_then(|reply| reply.get::<(bool,)>())
+    .is_some_and(|(owned,)| owned)
+}
+
+/// macOS and Windows always have somewhere to put the icon.
+#[cfg(not(target_os = "linux"))]
+fn tray_host_running() -> bool {
+    true
+}
+
 fn start_at_login() -> Option<AutoLaunch> {
     let exe = std::env::current_exe().ok()?;
     AutoLaunchBuilder::new()
@@ -178,7 +210,7 @@ fn is_openable(url: &str) -> bool {
 impl App {
     fn create_tray(&mut self) -> Result<()> {
         // The macOS menu bar gets the wide `<o>`, 18 points tall at 2x;
-        // trays elsewhere take the square icon.
+        // trays elsewhere fit icons into a square, so they get the compact one.
         #[cfg(target_os = "macos")]
         let icon = {
             let height = 36;
@@ -186,7 +218,7 @@ impl App {
             tray_icon::Icon::from_rgba(pixels, width, height)
         };
         #[cfg(not(target_os = "macos"))]
-        let icon = tray_icon::Icon::from_rgba(icon::rgba(ICON_SIZE), ICON_SIZE, ICON_SIZE);
+        let icon = tray_icon::Icon::from_rgba(icon::tray(ICON_SIZE), ICON_SIZE, ICON_SIZE);
         let icon = icon.map_err(|e| anyhow!("tray icon: {e}"))?;
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(self.menu.menu.clone()))
@@ -234,7 +266,7 @@ impl App {
             window.set_focus();
             return Ok(());
         }
-        let icon = tao::window::Icon::from_rgba(icon::rgba(ICON_SIZE), ICON_SIZE, ICON_SIZE)
+        let icon = tao::window::Icon::from_rgba(icon::app_icon(ICON_SIZE), ICON_SIZE, ICON_SIZE)
             .map_err(|e| anyhow!("window icon: {e}"))?;
         let window = WindowBuilder::new()
             .with_title("OmniMem")
@@ -473,15 +505,25 @@ impl App {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + POLL);
         match event {
             Event::NewEvents(StartCause::Init) => {
-                if let Err(e) = self.create_tray() {
+                let created = self.create_tray();
+                if let Err(e) = &created {
                     if self.options.smoke_test {
                         error!(error = %format!("{e:#}"), "smoke test: no tray icon");
                         *control_flow = ControlFlow::ExitWithCode(1);
                         return;
                     }
-                    // A desktop without a tray (GNOME without the AppIndicator
-                    // extension): show the window so the app is visibly running.
                     warn!(error = %format!("{e:#}"), "no tray icon, opening the settings window instead");
+                }
+                // On Linux the icon is "created" even when nothing will show
+                // it: stock GNOME has no tray without the AppIndicator
+                // extension. Then the window is the app's only face, and it
+                // says what to install.
+                let tray_shows = created.is_ok() && tray_host_running();
+                if !self.options.smoke_test && !tray_shows {
+                    if created.is_ok() {
+                        warn!("nothing here shows tray icons, opening the settings window instead");
+                    }
+                    self.panel.set_notice(model::NO_TRAY.to_owned());
                     let _ = self.open_window(target);
                 }
                 if self.options.smoke_test {

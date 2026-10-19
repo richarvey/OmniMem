@@ -288,3 +288,17 @@ async fn token_overhead_measures_and_resets() {
     );
     assert!(engine.store().hash_get_all(metrics).unwrap().is_none());
 }
+
+#[tokio::test]
+async fn the_apps_notice_tops_every_page() {
+    let (panel, _engine) = setup();
+    assert!(!text(&get(&panel, "/").await).contains("flash-warning"));
+    panel.set_notice("No tray icon here: install the AppIndicator extension".to_owned());
+    for path in ["/", "/memories", "/configuration"] {
+        let page = text(&get(&panel, path).await);
+        assert!(
+            page.contains("No tray icon here: install the AppIndicator extension"),
+            "{path}: {page}"
+        );
+    }
+}

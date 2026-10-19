@@ -1,5 +1,7 @@
 //! The template environment: the web UI's Jinja2 templates on minijinja.
 
+use std::sync::{Arc, RwLock};
+
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use minijinja::{AutoEscape, Environment, Value};
@@ -45,7 +47,7 @@ fn markupsafe_escape(text: &str, out: &mut String) {
     }
 }
 
-pub(crate) fn environment() -> Environment<'static> {
+pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'static> {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| AutoEscape::Html);
     env.set_formatter(|out, state, value| match value.as_str() {
@@ -62,6 +64,14 @@ pub(crate) fn environment() -> Environment<'static> {
     // For a value going into a query string, before HTML escaping.
     env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
     env.add_global("version", env!("CARGO_PKG_VERSION"));
+    // Read at render time, so a note set after start-up reaches every page.
+    env.add_function("panel_notice", move || {
+        notice
+            .read()
+            .ok()
+            .and_then(|n| n.clone())
+            .unwrap_or_default()
+    });
     for (name, source) in TEMPLATES {
         env.add_template(name, source)
             .unwrap_or_else(|e| panic!("template {name} doesn't parse: {e:#}"));
@@ -110,7 +120,7 @@ mod tests {
 
     #[test]
     fn escaping_matches_markupsafe() {
-        let mut env = environment();
+        let mut env = environment(Arc::default());
         env.add_template("t", "{{ v }}").unwrap();
         let rendered = env
             .get_template("t")
@@ -122,7 +132,7 @@ mod tests {
 
     #[test]
     fn every_template_parses() {
-        let env = environment();
+        let env = environment(Arc::default());
         assert!(env.get_template("base.html").is_ok());
         assert!(
             env.get_template("partials/token_overhead_content.html")
@@ -133,7 +143,7 @@ mod tests {
 
     #[test]
     fn query_values_are_percent_encoded_by_the_filter() {
-        let mut env = environment();
+        let mut env = environment(Arc::default());
         env.add_template("t", "?project={{ v | urlquote }}")
             .unwrap();
         let rendered = env
@@ -192,7 +202,7 @@ mod tests {
 
     #[test]
     fn the_base_template_sets_the_content_security_policy() {
-        let env = environment();
+        let env = environment(Arc::default());
         let html = env
             .get_template("base.html")
             .unwrap()

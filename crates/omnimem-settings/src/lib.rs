@@ -84,6 +84,8 @@ pub(crate) struct Shared {
     static_overhead: RwLock<StaticOverhead>,
     settings_path: RwLock<Option<PathBuf>>,
     secret_store: RwLock<Option<Arc<dyn SecretStore>>>,
+    /// A note from the app for every page (no tray icon, say).
+    notice: Arc<RwLock<Option<String>>>,
     templates: Environment<'static>,
     caches: Mutex<Caches>,
 }
@@ -173,6 +175,7 @@ impl Panel {
     }
 
     fn build(smoke_routes: bool) -> Self {
+        let notice = Arc::new(RwLock::new(None));
         let state = PanelState(Arc::new(Shared {
             engine: RwLock::new(None),
             failure: RwLock::new(None),
@@ -181,7 +184,8 @@ impl Panel {
             static_overhead: RwLock::new(StaticOverhead::default()),
             settings_path: RwLock::new(None),
             secret_store: RwLock::new(None),
-            templates: render::environment(),
+            notice: notice.clone(),
+            templates: render::environment(notice),
             caches: Mutex::new(Caches::default()),
         }));
         let router = Router::new()
@@ -332,6 +336,14 @@ impl Panel {
     pub fn set_secret_store(&self, store: Arc<dyn SecretStore>) {
         if let Ok(mut slot) = self.state.0.secret_store.write() {
             *slot = Some(store);
+        }
+    }
+
+    /// A note shown at the top of every page until the app goes, such as
+    /// what to install when the desktop has nowhere to put the tray icon.
+    pub fn set_notice(&self, message: String) {
+        if let Ok(mut slot) = self.state.0.notice.write() {
+            *slot = Some(message);
         }
     }
 

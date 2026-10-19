@@ -35,6 +35,13 @@ pub fn is_panel_url(url: &str) -> bool {
         })
 }
 
+/// What the window says when nothing on the desktop shows tray icons.
+pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
+    menu has nowhere to go. On GNOME, install the \"AppIndicator and \
+    KStatusNotifierItem Support\" extension (gnome-shell-extension-appindicator) and \
+    restart OmniMem. Until then this window is OmniMem: closing it leaves OmniMem \
+    running, and opening OmniMem again brings it back.";
+
 /// A client's menu item, its text and whether it can be clicked, from what
 /// the client's settings hold (`None` until the services are running),
 /// whether a change is under way, whether this run made one (so the client

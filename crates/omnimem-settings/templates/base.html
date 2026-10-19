@@ -53,6 +53,8 @@
     </nav>
     <main class="content" id="main">
       <div id="flash-area">
+        {% set notice = panel_notice() %}
+        {% if notice %}<div class="flash flash-warning" role="status">{{ notice }}</div>{% endif %}
         {% block flash %}{% endblock %}
       </div>
       {% block content %}{% endblock %}
