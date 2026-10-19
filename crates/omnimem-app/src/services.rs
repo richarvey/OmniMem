@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use omnimem_embed::{EmbedConfig, Embedder};
@@ -169,23 +170,73 @@ fn serve_until_shutdown(
         let listener = TcpListener::bind(&addr)
             .await
             .with_context(|| format!("could not bind {addr}"))?;
-        let memories = engine
-            .store()
-            .count_all_records()
-            .map_or(0, |counts| counts.values().sum());
-        report(ServiceState::Running {
-            mcp_url: local_mcp_url(listener.local_addr()?),
-            memories,
-        });
-        omnimem_mcp::serve(engine, config, Some(listener), shutdown)
-            .await
-            .map_err(anyhow::Error::from)
+        let mcp_url = local_mcp_url(listener.local_addr()?);
+        let count: Counter = {
+            let engine = engine.clone();
+            Arc::new(move || count_memories(&engine))
+        };
+        let serving = async {
+            omnimem_mcp::serve(engine, config, Some(listener), shutdown)
+                .await
+                .map_err(anyhow::Error::from)
+        };
+        serve_and_recount(serving, count, RECOUNT_EVERY, &mcp_url, report).await
     });
     stop.store(true, Ordering::Relaxed);
     if worker.join().is_err() {
         error!("the enrichment worker panicked");
     }
     served
+}
+
+/// How often the running services count the memories again.
+const RECOUNT_EVERY: Duration = Duration::from_secs(5);
+
+/// Counts the memories; blocking, so it runs off the async workers.
+type Counter = Arc<dyn Fn() -> usize + Send + Sync>;
+
+/// Reports `Running` with the memory count, then drives `serving` to the end,
+/// counting again every `every` and reporting whenever the number moves:
+/// agents, RSS, imports and restores all change it, and the tray shows it.
+async fn serve_and_recount(
+    serving: impl Future<Output = Result<()>>,
+    count: Counter,
+    every: Duration,
+    mcp_url: &str,
+    report: &dyn Fn(ServiceState),
+) -> Result<()> {
+    let running = |memories| ServiceState::Running {
+        mcp_url: mcp_url.to_owned(),
+        memories,
+    };
+    let recount =
+        |count: Counter| async move { tokio::task::spawn_blocking(move || count()).await.ok() };
+    let mut memories = recount(count.clone()).await.unwrap_or(0);
+    report(running(memories));
+    tokio::pin!(serving);
+    let mut ticks = tokio::time::interval(every);
+    ticks.tick().await;
+    loop {
+        tokio::select! {
+            served = &mut serving => return served,
+            _ = ticks.tick() => {
+                if let Some(now) = recount(count.clone()).await
+                    && now != memories
+                {
+                    memories = now;
+                    report(running(memories));
+                }
+            }
+        }
+    }
+}
+
+/// Every memory in the store, across namespaces; 0 if the store can't say.
+fn count_memories(engine: &Engine) -> usize {
+    engine
+        .store()
+        .count_all_records()
+        .map_or(0, |counts| counts.values().sum())
 }
 
 /// Ctrl-C, or SIGTERM from a container runtime or systemd.
@@ -227,6 +278,47 @@ mod tests {
             local_mcp_url("[::]:8765".parse().unwrap()),
             "http://127.0.0.1:8765/mcp"
         );
+    }
+
+    #[tokio::test]
+    async fn the_memory_count_is_reported_again_when_it_moves_and_only_then() {
+        use std::sync::atomic::AtomicUsize;
+
+        let url = "http://127.0.0.1:8765/mcp";
+        let running = |memories| ServiceState::Running {
+            mcp_url: url.to_owned(),
+            memories,
+        };
+        let memories = Arc::new(AtomicUsize::new(3));
+        let count: Counter = {
+            let memories = memories.clone();
+            Arc::new(move || memories.load(Ordering::SeqCst))
+        };
+        let reports = std::sync::Mutex::new(Vec::new());
+        let report = |state: ServiceState| reports.lock().unwrap().push(state);
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let serving = async {
+            let _ = stopped.await;
+            Ok(())
+        };
+        // A few recounts with nothing new, then an import lands.
+        let import = async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            memories.store(6360, Ordering::SeqCst);
+            for _ in 0..500 {
+                if reports.lock().unwrap().len() > 1 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let _ = stop.send(());
+        };
+        let (served, ()) = tokio::join!(
+            serve_and_recount(serving, count, Duration::from_millis(5), url, &report),
+            import
+        );
+        served.unwrap();
+        assert_eq!(*reports.lock().unwrap(), [running(3), running(6360)]);
     }
 
     #[test]
