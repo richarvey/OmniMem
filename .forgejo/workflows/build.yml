@@ -24,6 +24,11 @@ jobs:
     # Both labels, since the Mac carries arm64 too.
     runs-on: [linux, "${{ matrix.arch }}"]
     timeout-minutes: 180
+    env:
+      # The AWS runner is behind DNS64, so code.squarecows.com (IPv4 only)
+      # also resolves to a NAT64 address that times out. git falls back to
+      # IPv4 by itself; the runner's Node 18, running upload-artifact, doesn't.
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - uses: actions/checkout@v4
 
@@ -200,8 +205,10 @@ jobs:
     # deletes another job's files from a release it is replacing.
     needs: [linux, macos]
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
-    runs-on: [linux, arm64]
+    runs-on: [linux, amd64]
     timeout-minutes: 20
+    env:
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - uses: actions/checkout@v4
 
