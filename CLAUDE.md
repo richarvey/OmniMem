@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory for AI agents, served over MCP. Memories live in five namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state, work-type domains), knowledge (RSS articles and extracted facts), preferences (prescriptive rules pulled from conversation) and compiled skills (SKILL.md documents distilled from experience, written only through a propose-and-accept gate). Every memory carries a `licence` (own, open, restricted, unknown) and a `provenance` (retrieved, concluded, asserted).
 
-**Version**: 7.0.0-dev, on branch `v7.0.x`. OmniMem 7 is a Rust rewrite of the 6.x Python stack (Valkey, FastMCP server, Starlette web UI, RSS worker) as **one binary**: SQLite with exact in-memory vector search, the MCP server, the enrichment worker and RSS scheduler in one process, and a desktop app whose settings panel replaces the web UI. The 6.x Python lives on the `v6.x` branches only.
+**Version**: 7.0.1-dev, on branch `v7.0.x`. OmniMem 7 is a Rust rewrite of the 6.x Python stack (Valkey, FastMCP server, Starlette web UI, RSS worker) as **one binary**: SQLite with exact in-memory vector search, the MCP server, the enrichment worker and RSS scheduler in one process, and a desktop app whose settings panel replaces the web UI. The 6.x Python lives on the `v6.x` branches only.
 
 **Stack**: Rust (edition 2024, see `rust-version` in `Cargo.toml`), rusqlite (bundled SQLite), ONNX Runtime via `ort` plus `tokenizers` running all-MiniLM-L6-v2 (384-dim), rmcp over streamable HTTP on axum, minijinja for the panel, tao + wry + tray-icon for the desktop app, reqwest (rustls) for the Anthropic API and feeds, feed-rs, keyring.
 
