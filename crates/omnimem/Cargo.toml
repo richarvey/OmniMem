@@ -28,6 +28,10 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+# A windowed Windows build borrows the terminal's console for its commands.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [features]
 # The tray or menu bar app and its settings window. Needs GTK and WebKitGTK
 # to build on Linux; installers enable it, the headless builds leave it off.

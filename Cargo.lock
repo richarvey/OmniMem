@@ -3276,6 +3276,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3314,6 +3315,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "auto-launch",
+ "gtk",
  "keyring",
  "omnimem-app",
  "omnimem-core",

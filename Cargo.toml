@@ -106,6 +106,9 @@ open = "5.4"
 # keychain: Keychain on macOS, Credential Manager on Windows, Secret Service
 # over pure-Rust D-Bus elsewhere.
 keyring = "4.2"
+# Linux only: asking the session bus whether anything will show the tray
+# icon. The same gtk tao and tray-icon already build on.
+gtk = "0.18"
 # Writes the macOS app icon's iconset (the desktop crate's app-icon example);
 # already in the tree through the tray and window icon crates.
 png = "0.18"
