@@ -290,6 +290,9 @@ fn server_error(e: &dyn std::fmt::Display) -> Response {
 /// The OAuth core reads and writes SQLite, so each call to it runs off the
 /// async workers, as the `/mcp` token check does. A worker that panics is
 /// answered as any other server failure.
+// The error is the response to send, returned straight away by every caller,
+// so boxing it would buy nothing.
+#[allow(clippy::result_large_err)]
 async fn off_runtime<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, Response> {

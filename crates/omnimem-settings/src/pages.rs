@@ -14,6 +14,9 @@ use crate::render::{failure, page};
 /// workers: the panel shares its runtime with the webview, so a directory
 /// scan or a YAML parse on a worker would stall every other page. A worker
 /// that stops becomes the error page.
+// The error is the page to send, which every caller returns straight away,
+// so boxing it would buy nothing. The same goes for `blocking`.
+#[allow(clippy::result_large_err)]
 pub(crate) async fn off_runtime<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, Response> {
@@ -24,6 +27,7 @@ pub(crate) async fn off_runtime<T: Send + 'static>(
 
 /// Run store and engine work off the async workers. An error becomes the
 /// error page.
+#[allow(clippy::result_large_err)]
 pub(crate) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> omnimem_engine::Result<T> + Send + 'static,
 ) -> Result<T, Response> {

@@ -39,7 +39,8 @@ set is a real answer.";
 
 pub const RECALL_DETAIL: &str = r"Fetch full content for specific memory keys. Use after recall_index() to expand only the entries you need.";
 
-pub const DEPRIORITISE: &str = r"Reduce a memory's visibility without deleting. Accepts a key or natural language query.";
+pub const DEPRIORITISE: &str =
+    r"Reduce a memory's visibility without deleting. Accepts a key or natural language query.";
 
 pub const ARCHIVE: &str = r"Archive a memory — excluded from recall but still stored.";
 
@@ -47,7 +48,8 @@ pub const REINSTATE: &str = r"Reinstate a deprioritised/archived memory to activ
 
 pub const RETAG: &str = r"Replace or adjust the tags on a memory without re-embedding it.";
 
-pub const FORGET: &str = r"Permanently delete a memory. Requires confirm=True; returns preview otherwise.";
+pub const FORGET: &str =
+    r"Permanently delete a memory. Requires confirm=True; returns preview otherwise.";
 
 pub const SUPPRESS_TOPIC: &str = r"Suppress a topic — matching memories filtered from recall.";
 
@@ -96,9 +98,11 @@ pub const GET_EXPERIENCE: &str = r"Return experience data for a memory key.";
 
 pub const EXPERIENCE_SUMMARY: &str = r"Aggregate experience stats: effort, outcomes, graveyard of abandoned approaches, breakthroughs.";
 
-pub const WARN_IF_ABANDONED: &str = r"Check if an approach was previously abandoned. Call before suggesting libraries or tools.";
+pub const WARN_IF_ABANDONED: &str =
+    r"Check if an approach was previously abandoned. Call before suggesting libraries or tools.";
 
-pub const SET_PROJECT_CONTEXT: &str = r"Create or update a project's context (description, stack, goals, state).";
+pub const SET_PROJECT_CONTEXT: &str =
+    r"Create or update a project's context (description, stack, goals, state).";
 
 pub const GET_PROJECT_CONTEXT: &str = r"Retrieve full context for a project by name.";
 
@@ -114,7 +118,8 @@ pub const COMPILE_PROJECT_DOMAINS: &str = r"Suggest work-type domains for a proj
     Suggestions are merged with any domains the project already declares —
     this never removes one.";
 
-pub const UPDATE_PROJECT_STATE: &str = r"Update a project's current state and notes without re-embedding.";
+pub const UPDATE_PROJECT_STATE: &str =
+    r"Update a project's current state and notes without re-embedding.";
 
 pub const DELETE_PROJECT: &str = r"Bulk delete every memory belonging to a project. Requires confirm=True; returns a preview otherwise.
 

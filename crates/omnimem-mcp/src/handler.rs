@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use omnimem_engine::{DomainFilter, Engine, EngineError};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    CacheScope, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
+    Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
     ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::schemars::JsonSchema;
