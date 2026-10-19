@@ -111,6 +111,7 @@ The installed app is the same binary as the server, started in desktop mode. The
   - status line: memory count (the address is behind Copy MCP URL)
   - **Settings…**: opens the settings window
   - **Copy MCP URL**: for pasting into a client's config
+  - **Add to Claude Desktop** / **Add to Claude Code**: added 2026-10-19 (`crates/omnimem-desktop/src/clients.rs`); they read the client's settings, never add OmniMem twice, and offer to switch an `omnimem` entry that points at another server
   - **Start at login** (checkbox)
   - **Quit**
 - **Settings window** (`wry` in a `tao` window): the panel's pages come from the process through a custom protocol (`omnimem://`) and changes go back over IPC, so there is no loopback server, no session and no login page, and nothing outside the window can reach them. One window at a time; closing it leaves OmniMem running in the tray. Windows uses WebView2 (present on Windows 10 and 11, bootstrapped by the MSI where missing), macOS uses WKWebView, Linux uses WebKitGTK

@@ -4,6 +4,8 @@
 use omnimem_app::ServiceState;
 use serde_json::Value;
 
+use crate::clients::{Client, Presence, host_of};
+
 /// The scheme the settings panel is served on. Nothing is served over a
 /// network: the webview asks the process for each page.
 pub const SCHEME: &str = "omnimem";
@@ -31,6 +33,48 @@ pub fn is_panel_url(url: &str) -> bool {
             url.strip_prefix(origin.as_str())
                 .is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
         })
+}
+
+/// A client's menu item, its text and whether it can be clicked, from what
+/// the client's settings hold (`None` until the services are running),
+/// whether a change is under way, whether this run made one (so the client
+/// needs a restart) and the last change's error.
+pub fn client_item(
+    client: Client,
+    presence: Option<&Presence>,
+    busy: bool,
+    changed: bool,
+    error: Option<&str>,
+) -> (String, bool) {
+    let name = client.name();
+    if busy {
+        return (format!("Adding OmniMem to {name}…"), false);
+    }
+    let (text, enabled) = match presence {
+        None => (format!("Add to {name}"), false),
+        Some(Presence::NotInstalled) => (format!("{name} not found"), false),
+        Some(Presence::Unreadable(_)) => (format!("{name}: settings unreadable"), false),
+        Some(Presence::Absent) => (format!("Add to {name}"), true),
+        Some(Presence::Here) if changed => (format!("✓ In {name} (restart it to connect)"), false),
+        Some(Presence::Here) => (format!("✓ In {name}"), false),
+        Some(Presence::Elsewhere { target, .. }) => (
+            format!("Switch {name} here (now {})", host_of(target)),
+            true,
+        ),
+    };
+    match error {
+        Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
+        _ => (text, enabled),
+    }
+}
+
+/// At most `max` characters of `text`, with an ellipsis if any were cut.
+fn clip(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let cut: String = text.chars().take(max).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// True for the smoke test's own pages (`/_panel/…`), where its check
@@ -144,6 +188,54 @@ mod tests {
         );
         assert!(!is_panel_url("omnimem://localhost.evil.example/"));
         assert!(!is_panel_url("about:srcdoc"));
+    }
+
+    #[test]
+    fn client_items_say_where_omnimem_stands() {
+        let item = |presence: Option<Presence>| {
+            client_item(Client::Desktop, presence.as_ref(), false, false, None)
+        };
+        assert_eq!(item(None), ("Add to Claude Desktop".into(), false));
+        assert_eq!(
+            item(Some(Presence::NotInstalled)),
+            ("Claude Desktop not found".into(), false)
+        );
+        assert_eq!(
+            item(Some(Presence::Absent)),
+            ("Add to Claude Desktop".into(), true)
+        );
+        assert_eq!(
+            item(Some(Presence::Here)),
+            ("✓ In Claude Desktop".into(), false)
+        );
+        assert_eq!(
+            item(Some(Presence::Elsewhere {
+                name: "omnimem".into(),
+                target: "https://cloudai.example.net/mcp".into()
+            })),
+            (
+                "Switch Claude Desktop here (now cloudai.example.net)".into(),
+                true
+            )
+        );
+        assert_eq!(
+            client_item(Client::Code, Some(&Presence::Here), false, true, None),
+            ("✓ In Claude Code (restart it to connect)".into(), false)
+        );
+        assert_eq!(
+            client_item(Client::Code, Some(&Presence::Absent), true, false, None),
+            ("Adding OmniMem to Claude Code…".into(), false)
+        );
+        let long = "x".repeat(80);
+        let (failed, enabled) = client_item(
+            Client::Code,
+            Some(&Presence::Absent),
+            false,
+            false,
+            Some(&long),
+        );
+        assert!(enabled, "a failed add can be tried again");
+        assert!(failed.starts_with("Add to Claude Code (failed: xxx") && failed.ends_with("…)"));
     }
 
     #[test]

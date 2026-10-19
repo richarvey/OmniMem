@@ -26,6 +26,7 @@ Start OmniMem and the icon appears. The first start downloads the embedding mode
 - the status line: whether it is running, and how many memories it holds
 - **Settings…**: the settings window
 - **Copy MCP URL**: for pasting into your agent's config
+- **Add to Claude Desktop** and **Add to Claude Code**: sets either up for you, checking first so it's never added twice, and offering to switch an `omnimem` entry that points at another server (a 6.x install) to this one
 - **Start at login**
 - **Quit OmniMem**
 

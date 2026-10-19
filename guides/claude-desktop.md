@@ -41,6 +41,10 @@ If the file doesn't exist yet, create it containing `{}` and restart Claude Desk
 
 ## Setup
 
+Running the OmniMem desktop app? Click its tray or menu bar icon and choose **Add to Claude Desktop**, then restart Claude Desktop, and skip the rest of this section. It adds the entry below to your config, keeping a copy of the file as it was (`claude_desktop_config.json.omnimem-backup`). It checks first, so OmniMem is never added twice, and if your config already has an `omnimem` server pointing somewhere else (a 6.x install) the item offers to switch that entry here instead.
+
+To do it by hand:
+
 **1. Grab the MCP URL.** In the OmniMem desktop app, click the tray or menu bar icon and choose **Copy MCP URL**. On a local install it's `http://127.0.0.1:8765/mcp`.
 
 **2. Add OmniMem to your Claude Desktop config:**
@@ -51,6 +55,7 @@ If the file doesn't exist yet, create it containing `{}` and restart Claude Desk
     "omnimem": {
       "command": "npx",
       "args": [
+        "-y",
         "mcp-remote",
         "http://127.0.0.1:8765/mcp"
       ]
@@ -71,6 +76,7 @@ If you've set an access token (`MCP_AUTH_TOKEN`, or **Access token** on the Omni
     "omnimem": {
       "command": "npx",
       "args": [
+        "-y",
         "mcp-remote",
         "http://127.0.0.1:8765/mcp",
         "--header",
@@ -101,6 +107,7 @@ If OmniMem runs on another machine, point the bridge at that URL:
     "omnimem": {
       "command": "npx",
       "args": [
+        "-y",
         "mcp-remote",
         "https://omnimem.yourdomain.com/mcp",
         "--header",

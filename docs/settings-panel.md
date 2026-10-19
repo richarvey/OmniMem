@@ -14,6 +14,7 @@ The desktop app (the Windows MSI, the macOS DMG or the Flatpak) puts an icon in 
 - a status line with the memory count
 - **Settings…**, which opens the window
 - **Copy MCP URL**, for pasting into a client's config
+- **Add to Claude Desktop** and **Add to Claude Code**, which check the client's settings and add OmniMem, or switch an `omnimem` entry pointing elsewhere to this server, but never add it twice
 - **Start at login**
 - **Quit OmniMem**
 

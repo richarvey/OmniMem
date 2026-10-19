@@ -12,7 +12,7 @@ The quickest route is the CLI:
 claude mcp add --transport http omnimem http://127.0.0.1:8765/mcp --scope user
 ```
 
-Running the desktop app? Click the OmniMem icon in your tray or menu bar and pick **Copy MCP URL**, then paste that in instead of typing it.
+Running the desktop app? Click the OmniMem icon in your tray or menu bar and pick **Add to Claude Code**, which runs that command for you. It reads your settings first, so it never adds OmniMem twice, and if you already have an `omnimem` server pointing somewhere else (a 6.x install) it offers to switch it here instead. **Copy MCP URL** gives you the address if you'd rather type the command yourself. Either way, restart any running Claude Code session to pick it up.
 
 If you'd rather edit the JSON yourself, add OmniMem to `~/.claude.json`:
 

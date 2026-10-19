@@ -7,6 +7,7 @@
 //! `omnimem-settings` through the `omnimem://` scheme, answered on a small
 //! tokio runtime, so nothing about the panel is reachable over a network.
 
+mod clients;
 pub mod icon;
 mod model;
 
@@ -17,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
+use clients::{Client, Presence};
 use omnimem_app::{
     Instance, ServiceState, acquire, feeds_path, request_show, run_services, take_show_request,
 };
@@ -48,18 +50,24 @@ enum AppEvent {
     Page(String),
     PageLoaded(String),
     ServicesExited,
+    /// A change to a client's settings finished.
+    ClientDone(Client, Result<(), String>),
 }
 
 const ICON_SIZE: u32 = 64;
 const POLL: Duration = Duration::from_millis(500);
 const SMOKE_DEADLINE: Duration = Duration::from_secs(60);
 const QUIT_DEADLINE: Duration = Duration::from_secs(15);
+/// How often the clients' settings are read again, for edits made elsewhere.
+const CLIENT_RECHECK: Duration = Duration::from_secs(30);
 
 struct TrayMenu {
     menu: Menu,
     status: MenuItem,
     settings: MenuItem,
     copy_url: MenuItem,
+    desktop: MenuItem,
+    code: MenuItem,
     start_at_login: CheckMenuItem,
     quit: MenuItem,
 }
@@ -72,6 +80,8 @@ impl TrayMenu {
             status: MenuItem::new(model::status_line(&ServiceState::Starting), false, None),
             settings: MenuItem::new("Settings…", true, None),
             copy_url: MenuItem::new("Copy MCP URL", false, None),
+            desktop: client_menu_item(Client::Desktop),
+            code: client_menu_item(Client::Code),
             start_at_login: CheckMenuItem::new("Start at login", login.is_some(), enabled, None),
             quit: MenuItem::new("Quit OmniMem", true, None),
         };
@@ -81,6 +91,8 @@ impl TrayMenu {
                 &PredefinedMenuItem::separator(),
                 &this.settings,
                 &this.copy_url,
+                &this.desktop,
+                &this.code,
                 &this.start_at_login,
                 &PredefinedMenuItem::separator(),
                 &this.quit,
@@ -88,6 +100,21 @@ impl TrayMenu {
             .context("building the tray menu")?;
         Ok(this)
     }
+}
+
+/// A client's item as it starts, before the services have a URL.
+fn client_menu_item(client: Client) -> MenuItem {
+    let (text, enabled) = model::client_item(client, None, false, false, None);
+    MenuItem::new(text, enabled, None)
+}
+
+/// Where OmniMem stands in one client, for its menu item.
+#[derive(Default)]
+struct ClientSlot {
+    presence: Option<Presence>,
+    busy: bool,
+    changed: bool,
+    error: Option<String>,
 }
 
 struct App {
@@ -104,6 +131,9 @@ struct App {
     quit_requested: Option<Instant>,
     clipboard: Option<arboard::Clipboard>,
     login: Option<AutoLaunch>,
+    desktop: ClientSlot,
+    code: ClientSlot,
+    clients_checked: Option<Instant>,
     started: Instant,
 }
 
@@ -291,7 +321,102 @@ impl App {
         self.menu
             .copy_url
             .set_enabled(model::mcp_url(&state).is_some());
+        let url_changed = model::mcp_url(&state) != model::mcp_url(&self.state);
         self.state = state;
+        if url_changed {
+            self.check_clients();
+        }
+    }
+
+    /// Read both clients' settings again, against the current MCP URL, and
+    /// relabel their menu items. Without a URL there's nothing to add.
+    fn check_clients(&mut self) {
+        self.clients_checked = Some(Instant::now());
+        let url = model::mcp_url(&self.state).map(str::to_owned);
+        self.desktop.presence = url
+            .as_deref()
+            .map(|url| clients::desktop_presence(clients::desktop_config_path().as_deref(), url));
+        self.code.presence = url.as_deref().map(|url| {
+            clients::code_presence(
+                clients::find_claude().as_deref(),
+                clients::code_config_path().as_deref(),
+                url,
+            )
+        });
+        self.relabel(Client::Desktop);
+        self.relabel(Client::Code);
+    }
+
+    fn slot(&mut self, client: Client) -> &mut ClientSlot {
+        match client {
+            Client::Desktop => &mut self.desktop,
+            Client::Code => &mut self.code,
+        }
+    }
+
+    fn relabel(&self, client: Client) {
+        let (slot, item) = match client {
+            Client::Desktop => (&self.desktop, &self.menu.desktop),
+            Client::Code => (&self.code, &self.menu.code),
+        };
+        let (text, enabled) = model::client_item(
+            client,
+            slot.presence.as_ref(),
+            slot.busy,
+            slot.changed,
+            slot.error.as_deref(),
+        );
+        item.set_text(text);
+        item.set_enabled(enabled);
+    }
+
+    /// Add OmniMem to a client, or switch its `omnimem` entry here, on a
+    /// thread of its own: Claude Code's command takes a second or two.
+    fn change_client(&mut self, client: Client) {
+        let Some(url) = model::mcp_url(&self.state).map(str::to_owned) else {
+            return;
+        };
+        let slot = self.slot(client);
+        let replacing = match (&slot.presence, slot.busy) {
+            (Some(Presence::Absent), false) => None,
+            (Some(Presence::Elsewhere { name, .. }), false) => Some(name.clone()),
+            _ => return,
+        };
+        slot.busy = true;
+        slot.error = None;
+        self.relabel(client);
+        // The token the services check, if one is set, so the client can get in.
+        let token = omnimem_core::env::var("MCP_AUTH_TOKEN").filter(|t| !t.is_empty());
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let result = match client {
+                Client::Desktop => clients::desktop_config_path()
+                    .ok_or_else(|| "Claude Desktop doesn't run here".to_owned())
+                    .and_then(|path| clients::write_desktop(&path, &url, token.as_deref())),
+                Client::Code => clients::find_claude()
+                    .ok_or_else(|| "the claude command wasn't found".to_owned())
+                    .and_then(|cli| {
+                        clients::write_code(&cli, replacing.as_deref(), &url, token.as_deref())
+                    }),
+            };
+            let _ = proxy.send_event(AppEvent::ClientDone(client, result));
+        });
+    }
+
+    fn client_done(&mut self, client: Client, result: Result<(), String>) {
+        let slot = self.slot(client);
+        slot.busy = false;
+        match result {
+            Ok(()) => {
+                info!(client = client.name(), "OmniMem added");
+                slot.changed = true;
+            }
+            Err(e) => {
+                warn!(client = client.name(), error = %e, "could not add OmniMem");
+                slot.error = Some(e);
+            }
+        }
+        self.check_clients();
     }
 
     fn copy_mcp_url(&mut self) {
@@ -386,8 +511,18 @@ impl App {
                     warn!("the services did not stop in time, exiting anyway");
                     *control_flow = ControlFlow::Exit;
                 }
+                // Picks up an entry added or removed by hand, or by the client.
+                if self
+                    .clients_checked
+                    .is_some_and(|at| at.elapsed() >= CLIENT_RECHECK)
+                {
+                    self.check_clients();
+                }
             }
             Event::UserEvent(AppEvent::State(state)) => self.set_state(state),
+            Event::UserEvent(AppEvent::ClientDone(client, result)) => {
+                self.client_done(client, result);
+            }
             Event::UserEvent(AppEvent::ServicesExited) => {
                 self.services_running = false;
                 if self.quit_requested.is_some() {
@@ -402,6 +537,10 @@ impl App {
                     }
                 } else if id == self.menu.copy_url.id() {
                     self.copy_mcp_url();
+                } else if id == self.menu.desktop.id() {
+                    self.change_client(Client::Desktop);
+                } else if id == self.menu.code.id() {
+                    self.change_client(Client::Code);
                 } else if id == self.menu.start_at_login.id() {
                     self.toggle_start_at_login();
                 } else if id == self.menu.quit.id() {
@@ -598,6 +737,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         quit_requested: None,
         clipboard: None,
         login,
+        desktop: ClientSlot::default(),
+        code: ClientSlot::default(),
+        clients_checked: None,
         started: Instant::now(),
     };
     event_loop.run(move |event, target, control_flow| {
