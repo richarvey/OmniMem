@@ -148,8 +148,17 @@ fn is_openable(url: &str) -> bool {
 
 impl App {
     fn create_tray(&mut self) -> Result<()> {
-        let icon = tray_icon::Icon::from_rgba(icon::rgba(ICON_SIZE), ICON_SIZE, ICON_SIZE)
-            .map_err(|e| anyhow!("tray icon: {e}"))?;
+        // The macOS menu bar gets the wide `<o>`, 18 points tall at 2x;
+        // trays elsewhere take the square icon.
+        #[cfg(target_os = "macos")]
+        let icon = {
+            let height = 36;
+            let (pixels, width) = icon::menu_bar(height);
+            tray_icon::Icon::from_rgba(pixels, width, height)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let icon = tray_icon::Icon::from_rgba(icon::rgba(ICON_SIZE), ICON_SIZE, ICON_SIZE);
+        let icon = icon.map_err(|e| anyhow!("tray icon: {e}"))?;
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(self.menu.menu.clone()))
             .with_tooltip("OmniMem")
