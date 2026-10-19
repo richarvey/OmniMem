@@ -13,4 +13,4 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 
 - Self-hosted via Docker Compose (four containers: Valkey with vector search, MCP server, RSS worker, web dashboard)
 - Python 3.12, FastMCP, sentence-transformers embeddings, Prometheus /metrics
-- No SaaS, no telemetry to third parties, MIT licensed
+- Self-hosted and MIT licensed, with a managed cloud version coming soon; no telemetry to third parties
