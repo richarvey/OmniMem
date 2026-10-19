@@ -29,7 +29,27 @@ jobs:
           fi
           sw_vers
           xcode-select -p
-          node --version || echo "::warning::No node on PATH, which actions/checkout and upload-artifact need."
+
+      - name: Node for the JavaScript actions
+        # actions/checkout and upload-artifact run on node, which isn't on the
+        # runner's PATH. A pinned build is fetched once into the job's cache.
+        run: |
+          if command -v node >/dev/null; then node --version; exit 0; fi
+          version=v24.22.0
+          dir="$HOME/.cache/omnimem-ci/node-$version"
+          if [ ! -x "$dir/bin/node" ]; then
+            tmp="$(mktemp -d)"
+            name="node-$version-darwin-arm64.tar.gz"
+            curl -sSfL -o "$tmp/$name" "https://nodejs.org/dist/$version/$name"
+            curl -sSfL "https://nodejs.org/dist/$version/SHASUMS256.txt" \
+              | grep " $name\$" > "$tmp/SHASUMS256.txt"
+            (cd "$tmp" && shasum -a 256 -c SHASUMS256.txt)
+            mkdir -p "$dir"
+            tar -xzf "$tmp/$name" -C "$dir" --strip-components 1
+            rm -rf "$tmp"
+          fi
+          "$dir/bin/node" --version
+          echo "$dir/bin" >> "$GITHUB_PATH"
 
       - uses: actions/checkout@v4
 
