@@ -58,7 +58,7 @@ scripts/desktop-check.sh     # desktop crate: clippy, tests and a smoke test und
 scripts/macos-package.sh     # on a Mac: OmniMem.app in a DMG plus a binary tarball, in dist/macos
 ```
 
-- CI: `.forgejo/workflows/macos.yml` runs format, clippy (with and without `desktop`), tests and the packaging on the `macos` runner for `v7.*` pushes, pull requests and tags. Nothing builds the `desktop` feature on Linux in CI yet, so run `scripts/desktop-check.sh` after touching the desktop or settings crates
+- CI, on `v7.*` pushes and pull requests: `.forgejo/workflows/linux.yml` runs `scripts/desktop-check.sh --workspace` (format, clippy, tests, then the desktop checks and smoke test) on both Linux runners, amd64 and arm64; `.forgejo/workflows/macos.yml` runs the same checks plus the packaging and smoke test on the `macos` runner, and on `v7.*` tags too. Both use the Rust version in `ci/desktop/Dockerfile`, so moving the toolchain is that one line
 
 - The dev host runs out of memory on parallel builds: set `CARGO_BUILD_JOBS=2` and run the desktop check on its own, never alongside another cargo job
 - SQLite runs in memory in tests; there are no store fakes, so a fake can't diverge from the real thing

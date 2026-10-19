@@ -1,0 +1,29 @@
+name: Linux
+
+# Format, clippy and the tests for the whole workspace, then the desktop app's
+# clippy, tests, build and smoke test under Xvfb, on both Linux runners. It all
+# runs in the ci/desktop container through scripts/desktop-check.sh, so the
+# runners need Docker and nothing else, and a local run checks the same thing.
+
+on:
+  push:
+    branches: ["v7.*"]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Check (Linux ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # Both labels, since the Mac carries arm64 too.
+    runs-on: [linux, "${{ matrix.arch }}"]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Workspace and desktop checks
+        run: scripts/desktop-check.sh --workspace

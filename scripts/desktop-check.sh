@@ -8,6 +8,9 @@
 # page over the omnimem:// protocol, and exits 0 once the page has answered
 # over IPC.
 #
+# With --workspace it first runs format, clippy and the tests for the whole
+# workspace in the same container, which is what the Linux CI workflow runs.
+#
 # Build output and the cargo cache live in $OMNIMEM_DESKTOP_CACHE
 # (default ~/.cache/omnimem-desktop), outside the repository, and the
 # container runs as the calling user so nothing it writes is owned by root.
@@ -16,6 +19,27 @@ set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 cache="${OMNIMEM_DESKTOP_CACHE:-$HOME/.cache/omnimem-desktop}"
 image="omnimem-desktop-build"
+
+checks='
+    cargo clippy --locked -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
+    cargo test --locked -p omnimem-desktop
+    cargo build --locked -p omnimem --features desktop
+    dbus-run-session -- xvfb-run --auto-servernum /cache/target/debug/omnimem desktop --smoke-test
+'
+case "${1:-}" in
+    "") ;;
+    --workspace)
+        checks='
+    cargo fmt --all --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+'"$checks"
+        ;;
+    *)
+        echo "usage: $0 [--workspace]" >&2
+        exit 2
+        ;;
+esac
 
 mkdir -p "$cache/target" "$cache/home" "$cache/cargo" "$HOME/.cargo/registry"
 
@@ -39,9 +63,4 @@ docker run --rm \
     --volume "$cache/group:/etc/group:ro" \
     --workdir /work \
     "$image" \
-    bash -euo pipefail -c '
-        cargo clippy -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
-        cargo test -p omnimem-desktop
-        cargo build -p omnimem --features desktop
-        dbus-run-session -- xvfb-run --auto-servernum /cache/target/debug/omnimem desktop --smoke-test
-    '
+    bash -euo pipefail -c "$checks"

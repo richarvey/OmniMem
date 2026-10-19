@@ -65,15 +65,22 @@ jobs:
       - name: Rust toolchain
         # A rustup of the runner's own, so the Rust the Mac's user installed is
         # never used or changed. The target directory persists between runs.
+        # The version is the Linux container's (ci/desktop/Dockerfile), so a
+        # new clippy can't fail one platform and pass the other.
         run: |
           export RUSTUP_HOME="$HOME/.cache/omnimem-ci/rustup" CARGO_HOME="$HOME/.cache/omnimem-ci/cargo"
+          toolchain="$(sed -n 's/^FROM rust:\([0-9.]*\)-.*/\1/p' ci/desktop/Dockerfile)"
+          if [ -z "$toolchain" ]; then
+            echo "::error::No rust:<version> image in ci/desktop/Dockerfile."
+            exit 1
+          fi
           if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
               | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
           fi
-          "$CARGO_HOME/bin/rustup" toolchain install stable --profile minimal \
+          "$CARGO_HOME/bin/rustup" toolchain install "$toolchain" --profile minimal \
             --component clippy,rustfmt --target aarch64-apple-darwin
-          "$CARGO_HOME/bin/rustup" default stable
+          "$CARGO_HOME/bin/rustup" default "$toolchain"
           {
             echo "RUSTUP_HOME=$RUSTUP_HOME"
             echo "CARGO_HOME=$CARGO_HOME"

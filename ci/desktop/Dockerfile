@@ -3,7 +3,8 @@
 # window link against, plus Xvfb and a D-Bus session for headless checks.
 # Used by scripts/desktop-check.sh so none of this is installed on the host.
 # Pinned to the toolchain the host builds with, so a newer clippy can't fail
-# a check here that passes there. Move it when the workspace moves.
+# a check here that passes there. Move it when the workspace moves: the macOS
+# workflow reads its toolchain from this line too.
 FROM rust:1.96-trixie
 
 RUN apt-get update \
