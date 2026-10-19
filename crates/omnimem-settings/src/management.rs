@@ -1,7 +1,7 @@
 //! Duplicates, contradictions and topic suppressions
 //! (`web_ui/routes/duplicates.py`, `contradictions.py` and `suppressions.py`).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use axum::Form;
 use axum::extract::{Query, State};
@@ -125,7 +125,8 @@ fn contradiction_pairs(engine: &Engine) -> omnimem_engine::Result<Vec<Value>> {
     let store = engine.store();
     let keys = store.scan_prefix("mem:episodic:")?;
     let rows = store.get_fields_multi(&keys, &["content", "contradictions"])?;
-    let mut seen: BTreeSet<[String; 2]> = BTreeSet::new();
+    // Each pair, by its sorted keys, to where it sits in `raw_pairs`.
+    let mut seen: BTreeMap<[String; 2], usize> = BTreeMap::new();
     let mut others: BTreeSet<String> = BTreeSet::new();
     let mut raw_pairs: Vec<(String, String, Map<String, Value>)> = Vec::new();
     for (key, row) in keys.iter().zip(rows) {
@@ -148,9 +149,22 @@ fn contradiction_pairs(engine: &Engine) -> omnimem_engine::Result<Vec<Value>> {
                 .to_owned();
             let mut pair = [key.clone(), other.clone()];
             pair.sort();
-            if !seen.insert(pair) {
+            if let Some(&at) = seen.get(&pair) {
+                // The other side's record of a pair already listed. Only one
+                // side may carry the explanation (a 6.x import, a link made
+                // from one side), and which side comes first is down to key
+                // order, so take what the first sighting lacked.
+                let listed = &mut raw_pairs[at].2;
+                for field in ["explanation", "similarity"] {
+                    if is_blank(listed.get(field))
+                        && let Some(value) = entry.get(field).filter(|v| !is_blank(Some(v)))
+                    {
+                        listed.insert(field.to_owned(), value.clone());
+                    }
+                }
                 continue;
             }
+            seen.insert(pair, raw_pairs.len());
             if !other.is_empty() {
                 others.insert(other);
             }
@@ -200,6 +214,11 @@ fn contradiction_pairs(engine: &Engine) -> omnimem_engine::Result<Vec<Value>> {
             })
         })
         .collect())
+}
+
+/// Missing, null or an empty string.
+fn is_blank(value: Option<&Value>) -> bool {
+    value.is_none_or(|v| v.is_null() || v.as_str() == Some(""))
 }
 
 pub(crate) async fn contradictions(State(state): State<PanelState>) -> Response {

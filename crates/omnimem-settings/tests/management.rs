@@ -153,6 +153,45 @@ async fn contradictions_list_each_pair_once() {
 }
 
 #[tokio::test]
+async fn a_pair_shows_its_explanation_whichever_side_recorded_it() {
+    // Two memories made in the same millisecond can sort either way, so the
+    // side holding the explanation may be met first or second: both orders.
+    for explained_first in [true, false] {
+        let (panel, engine) = setup();
+        let a = remember(&engine, "Deploy on Fridays", "omnimem");
+        let b = remember(&engine, "Never deploy on a Friday", "omnimem");
+        let (mut first, mut second) = if a < b { (a, b) } else { (b, a) };
+        if !explained_first {
+            std::mem::swap(&mut first, &mut second);
+        }
+        engine
+            .store()
+            .set_field(
+                &first,
+                "contradictions",
+                &format!(r#"[{{"key": "{second}", "explanation": "Opposite advice", "similarity": 0.77}}]"#),
+            )
+            .unwrap();
+        engine
+            .store()
+            .set_field(
+                &second,
+                "contradictions",
+                &format!(r#"[{{"key": "{first}"}}]"#),
+            )
+            .unwrap();
+
+        let page = text(&get(&panel, "/contradictions").await);
+        assert!(page.contains("1 contradiction pair"), "{page}");
+        assert!(
+            page.contains("Opposite advice"),
+            "explanation on the {} side lost: {page}",
+            if explained_first { "first" } else { "second" }
+        );
+    }
+}
+
+#[tokio::test]
 async fn topics_are_suppressed_and_released() {
     let (panel, engine) = setup();
     assert!(
