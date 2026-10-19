@@ -133,7 +133,7 @@ Headless mode (`omnimem serve`, or a build without the `desktop` feature) has no
 
 | Linux, headless | `omnimem_<version>_amd64.deb` / `_arm64.deb`, `omnimem-<version>.x86_64.rpm` / `.aarch64.rpm`, `omnimem-<version>-linux-<arch>.tar.gz` | `sqcows` | The same binary built without the `desktop` feature: no GUI libraries at all, so it installs on a minimal server or a desktop without GNOME. `cargo deb` and `cargo generate-rpm` package it with a systemd unit (`omnimem.service`, running `omnimem serve` as a dedicated `omnimem` system user), `/etc/omnimem/omnimem.env` for configuration, and `/var/lib/omnimem` for the database, backups and model cache. The tarball carries the binary, the unit file and an `install.sh` for other distributions. ONNX Runtime is linked in, so the only runtime dependency is glibc |
 
-The Docker image (`richarvey/omnimem`, headless, amd64 and arm64) is the server `.deb` installed on Debian 13, built natively on each Linux runner by `scripts/docker-image.sh` and joined into one multi-arch tag with `docker manifest`, replacing the three 6.x images.
+The Docker image (`richarvey/omnimem`, headless, amd64 and arm64) is the server `.deb` installed on Debian 13, built natively on each Linux runner by `scripts/docker-image.sh` and joined into one multi-arch tag with `docker buildx imagetools create`, replacing the three 6.x images.
 
 ### CI
 

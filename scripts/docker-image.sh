@@ -35,10 +35,13 @@ if [ "${1:-}" = --manifest ]; then
     tags=("$version")
     # A dev or release-candidate version never moves latest.
     case "$version" in *-*) ;; *) tags+=(latest) ;; esac
+    # Not docker manifest create, which refuses a source that is itself an
+    # index: a runner on Docker's containerd image store pushes each half as
+    # one (the image plus its provenance attestation), the classic store as a
+    # plain manifest. imagetools takes either, on the registry, pulling nothing.
     for tag in "${tags[@]}"; do
-        docker manifest create --amend "$target:$tag" \
+        docker buildx imagetools create --progress plain --tag "$target:$tag" \
             "$target:$version-amd64" "$target:$version-arm64" >/dev/null
-        docker manifest push --purge "$target:$tag" >/dev/null
         echo "Pushed $target:$tag (amd64 and arm64)"
     done
     exit 0
