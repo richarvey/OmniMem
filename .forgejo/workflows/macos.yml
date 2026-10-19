@@ -140,9 +140,8 @@ jobs:
         run: scripts/macos-package.sh
 
       - name: Desktop smoke test
-        # Opens the menu bar icon and settings window, so it needs the runner
-        # to be in a logged-in session; informational until that's known.
-        continue-on-error: true
+        # Opens the menu bar icon and settings window, which works because the
+        # runner lives in a logged-in session on the Mac.
         timeout-minutes: 3
         run: |
           mkdir -p "$RUNNER_TEMP/smoke"
