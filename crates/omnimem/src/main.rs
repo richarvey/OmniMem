@@ -4,6 +4,11 @@
 //! and inspect the store. `serve` also runs the enrichment
 //! worker and the RSS scheduler; `rss` runs one ingestion cycle by hand.
 
+// With the desktop app built in, Windows starts it as a windowed program, so
+// launching it from the Start menu doesn't open a console behind it. Commands
+// run from a terminal borrow that terminal's console instead (see main).
+#![cfg_attr(all(windows, feature = "desktop"), windows_subsystem = "windows")]
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -108,6 +113,8 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    #[cfg(all(windows, feature = "desktop"))]
+    attach_parent_console();
     let Cli { db, command } = Cli::parse();
     let default_level = if matches!(
         command,
@@ -159,6 +166,18 @@ fn main() -> Result<()> {
         Command::Rss { dry_run } => rss(&db_path, dry_run),
         #[cfg(feature = "desktop")]
         Command::Desktop { smoke_test } => desktop(db, smoke_test),
+    }
+}
+
+/// A windowed build has no console of its own: when it was started from a
+/// terminal, print to the terminal's. Started from the Start menu there is
+/// no parent console, and this quietly does nothing.
+#[cfg(all(windows, feature = "desktop"))]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    // SAFETY: no pointers; it only fails when there is no console to attach to.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
     }
 }
 

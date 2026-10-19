@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OmniMem's Windows installer, built by wixl (msitools) in
+  scripts/windows-package.sh from the cross-built omnimem.exe.
+
+  A per-user install, so no administrator is needed: the app goes to
+  %LOCALAPPDATA%\Programs\OmniMem with a Start menu shortcut, and the app
+  itself offers Start at login from its tray menu. OmniMem's memories live in
+  %APPDATA%\squarecows\OmniMem and an uninstall leaves them alone.
+
+  The UpgradeCode never changes: it's how a newer MSI finds the one it
+  replaces. Version is the dotted part of the Cargo version (7.0.2 for
+  7.0.2-dev), so successive dev builds replace each other too.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="OmniMem"
+           Language="1033"
+           Version="$(var.Version)"
+           Manufacturer="SquareCows Ltd"
+           UpgradeCode="764FAB64-8294-4A8B-ADAF-CBCFF98A35F7">
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perUser"
+             Description="OmniMem $(var.FullVersion)"
+             Comments="Self-hosted semantic memory for AI agents" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer OmniMem is already installed." />
+    <Media Id="1" Cabinet="omnimem.cab" EmbedCab="yes" />
+
+    <Icon Id="OmniMemIcon" SourceFile="$(var.Icon)" />
+    <Property Id="ARPPRODUCTICON" Value="OmniMemIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://omnimem.org" />
+
+    <!-- ONNX Runtime's C++ code needs the Visual C++ runtime (VCRUNTIME140,
+         MSVCP140). Most machines have it; when one doesn't, say so here
+         rather than install an app that can't start. -->
+    <Property Id="VCRUNTIME_X64">
+      <RegistrySearch Id="VCRuntimeX64" Root="HKLM"
+                      Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+                      Name="Installed" Type="raw" Win64="yes" />
+    </Property>
+    <Condition Message="OmniMem needs the Microsoft Visual C++ Redistributable (x64). Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this installer again.">Installed OR VCRUNTIME_X64</Condition>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="ProgramsDir" Name="Programs">
+          <Directory Id="INSTALLDIR" Name="OmniMem">
+            <Component Id="OmniMemApp" Guid="CEADB9CD-BA65-4DF5-8AAC-0F6F379E37E7">
+              <File Id="OmniMemExe" Name="omnimem.exe" Source="$(var.Exe)" />
+              <!-- ONNX Runtime loads it at start; Windows' own copy can be too old. -->
+              <File Id="DirectMLDll" Name="DirectML.dll" Source="$(var.DirectML)" />
+              <RegistryValue Root="HKCU" Key="Software\SquareCows\OmniMem"
+                             Name="InstallDir" Type="string" Value="[INSTALLDIR]"
+                             KeyPath="yes" />
+              <RemoveFolder Id="RemoveInstallDir" On="uninstall" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="StartMenu" Guid="A5DB768A-D109-48D8-913B-3FFD2BB296CB">
+          <Shortcut Id="OmniMemShortcut"
+                    Name="OmniMem"
+                    Description="Self-hosted semantic memory for AI agents"
+                    Target="[INSTALLDIR]omnimem.exe"
+                    WorkingDirectory="INSTALLDIR"
+                    Icon="OmniMemIcon" />
+          <RegistryValue Root="HKCU" Key="Software\SquareCows\OmniMem"
+                         Name="StartMenuShortcut" Type="integer" Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature Id="OmniMem" Title="OmniMem" Level="1">
+      <ComponentRef Id="OmniMemApp" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+  </Product>
+</Wix>
