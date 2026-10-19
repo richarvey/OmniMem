@@ -17,9 +17,9 @@ Both run exactly the same memory engine.
 
 | Platform | Download | Notes |
 |---|---|---|
-| Windows 10 and 11 | `OmniMem-<version>-x64.msi` or `OmniMem-<version>-arm64.msi` | Installs per user with a Start menu entry. Unsigned for now, so SmartScreen will ask if you're sure |
+| Windows 10 and 11 | `OmniMem-<version>-x64.msi` | Installs for you alone (no administrator) with a Start menu entry. Unsigned for now, so SmartScreen asks first: **More info**, then **Run anyway**. Windows on Arm runs it through x64 emulation |
 | macOS | `OmniMem-<version>-arm64.dmg` | Apple silicon, macOS 13.4 or later (there's no Intel build). Drag it to Applications; it lives in the menu bar with no Dock icon |
-| Linux | The `com.squarecows.OmniMem` Flatpak | x86_64 and aarch64. On GNOME you'll want the AppIndicator extension to see the tray icon (without it, the settings window opens instead) |
+| Linux | `omnimem-desktop-<version>-linux-<arch>.tar.gz` (a Flatpak is planned) | amd64 and arm64, glibc 2.38 or newer, with GTK 3, WebKitGTK 4.1 and libayatana-appindicator3 installed. On GNOME you'll want the AppIndicator extension to see the tray icon: without it the settings window opens instead and tells you so |
 
 Start OmniMem and the icon appears. The first start downloads the embedding model (about 90 MB, once) and the menu says **Starting** until it's ready. After that the menu shows:
 
@@ -50,22 +50,27 @@ The database (`omnimem.db`), `feeds.yml`, `backups/` and `omnimem.env` (your sav
 
 ### Debian, Ubuntu, Fedora and friends
 
-Grab the package for your architecture and install it:
+You need glibc 2.38 or newer: Debian 13, Ubuntu 24.04, Fedora 39 or later. (The ONNX Runtime library OmniMem embeds with sets that floor.) Grab the package for your architecture from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it:
 
 ```bash
 sudo apt install ./omnimem_<version>_amd64.deb        # or _arm64.deb
-sudo dnf install ./omnimem-<version>.x86_64.rpm       # or .aarch64.rpm
+sudo dnf install ./omnimem-<version>-1.x86_64.rpm     # or .aarch64.rpm
 ```
 
-For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`, which carries the binary, the unit file and an install script.
+Development versions are spelt with a tilde in the package names (`omnimem_7.0.2~dev_amd64.deb`), so a release always counts as newer.
 
-The packages install a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user. Settings go in `/etc/omnimem/omnimem.env` and data in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
+For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
+
+Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
 
 ```bash
-sudoedit /etc/omnimem/omnimem.env      # see configuration.md; .env.example in the repo is a good start
-sudo systemctl enable --now omnimem
+sudoedit /etc/omnimem/omnimem.env      # every setting is in there, commented; configuration.md has the rest
+sudo systemctl restart omnimem
 curl http://127.0.0.1:8765/healthz     # {"status": "ok"}
+journalctl -u omnimem -f               # its log
 ```
+
+Removing the package stops the service but leaves `/var/lib/omnimem` alone: your memories aren't the package's to delete.
 
 ### Docker
 

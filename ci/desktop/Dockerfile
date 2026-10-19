@@ -18,6 +18,7 @@ RUN apt-get update \
         dbus \
         dbus-x11 \
         at-spi2-core \
+        rpm \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rustup component add clippy rustfmt
