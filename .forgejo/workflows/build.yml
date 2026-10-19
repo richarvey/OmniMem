@@ -1,0 +1,702 @@
+name: Build
+
+# Every push and pull request on a branch other than main: format, clippy, the
+# tests and the desktop smoke test on Linux (amd64 and arm64) and macOS, then
+# the packages, uploaded as each job's artifact. Once every build has passed,
+# a push to a branch replaces that branch's rolling dev pre-release
+# (dev-<branch>) with all of them, and a v7 tag attaches them to its release.
+
+on:
+  push:
+    branches-ignore: [main]
+    tags: ["v7.*"]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # Both labels, since the Mac carries arm64 too.
+    runs-on: [linux, "${{ matrix.arch }}"]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Workspace and desktop checks
+        # In the ci/desktop container, so the runners need Docker and nothing
+        # else, and a local run checks the same thing.
+        run: scripts/desktop-check.sh --workspace
+
+      - name: Package
+        run: scripts/linux-package.sh
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-linux-${{ matrix.arch }}
+          path: dist/linux/
+
+  macos:
+    name: macOS arm64
+    # Only the Mac runner carries this label, and it has to run the job on the
+    # host: a container there would be Linux.
+    runs-on: macos
+    timeout-minutes: 60
+    steps:
+      - name: Check the runner
+        run: |
+          if [ "$(uname -s)" != Darwin ]; then
+            echo "::error::This job needs the Mac itself but ran on $(uname -sm). Register the runner's label as macos:host."
+            exit 1
+          fi
+          sw_vers
+          xcode-select -p
+
+      - name: Node for the JavaScript actions
+        # actions/checkout and upload-artifact run on node, which isn't on the
+        # runner's PATH. A pinned build is fetched once into the job's cache.
+        run: |
+          if command -v node >/dev/null; then node --version; exit 0; fi
+          version=v24.22.0
+          dir="$HOME/.cache/omnimem-ci/node-$version"
+          if [ ! -x "$dir/bin/node" ]; then
+            tmp="$(mktemp -d)"
+            name="node-$version-darwin-arm64.tar.gz"
+            curl -sSfL -o "$tmp/$name" "https://nodejs.org/dist/$version/$name"
+            curl -sSfL "https://nodejs.org/dist/$version/SHASUMS256.txt" \
+              | grep " $name\$" > "$tmp/SHASUMS256.txt"
+            (cd "$tmp" && shasum -a 256 -c SHASUMS256.txt)
+            mkdir -p "$dir"
+            tar -xzf "$tmp/$name" -C "$dir" --strip-components 1
+            rm -rf "$tmp"
+          fi
+          "$dir/bin/node" --version
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "v$version" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} doesn't match the Cargo.toml version $version."
+            exit 1
+          fi
+
+      - name: Rust toolchain
+        # A rustup of the runner's own, so the Rust the Mac's user installed is
+        # never used or changed. The target directory persists between runs.
+        # The version is the Linux container's (ci/desktop/Dockerfile), so a
+        # new clippy can't fail one platform and pass the other.
+        run: |
+          export RUSTUP_HOME="$HOME/.cache/omnimem-ci/rustup" CARGO_HOME="$HOME/.cache/omnimem-ci/cargo"
+          toolchain="$(sed -n 's/^FROM rust:\([0-9.]*\)-.*/\1/p' ci/desktop/Dockerfile)"
+          if [ -z "$toolchain" ]; then
+            echo "::error::No rust:<version> image in ci/desktop/Dockerfile."
+            exit 1
+          fi
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+          fi
+          "$CARGO_HOME/bin/rustup" toolchain install "$toolchain" --profile minimal \
+            --component clippy,rustfmt --target aarch64-apple-darwin
+          "$CARGO_HOME/bin/rustup" default "$toolchain"
+          {
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "CARGO_TARGET_DIR=$HOME/.cache/omnimem-ci/target"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
+
+      - name: Test
+        run: |
+          cargo test --locked
+          cargo test --locked -p omnimem-desktop
+
+      - name: Signing keychain
+        # Skipped until the signing secrets exist; the package is then ad-hoc
+        # signed. MACOS_CERTIFICATE is a base64 Developer ID Application .p12,
+        # MACOS_NOTARY_API_KEY a base64 App Store Connect API key (.p8).
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No MACOS_CERTIFICATE secret, so the package will be ad-hoc signed."
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP:?}/omnimem-signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application identity."
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$MACOS_NOTARY_API_KEY" ]; then
+            echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+            echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package
+        env:
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: scripts/macos-package.sh
+
+      - name: Desktop smoke test
+        # Opens the menu bar icon and settings window, which works because the
+        # runner lives in a logged-in session on the Mac.
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          MCP_PORT=18765 "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/omnimem" \
+            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${MACOS_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MACOS_SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${RUNNER_TEMP:-/nonexistent}/notary.p8"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-macos-arm64
+          path: dist/macos/
+
+  release:
+    name: Publish
+    # Only once every build has passed, and only from one job, so nothing
+    # deletes another job's files from a release it is replacing.
+    needs: [linux, macos]
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: [linux, arm64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Release
+        # A v7 tag attaches the packages to its release. A push to any other
+        # branch replaces that branch's rolling pre-release, dev-<branch>, so
+        # the newest build is always on the releases page.
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_NOTARY_API_KEY != '' }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          files="$(find dist -type f | sort)"
+          if [ "$NOTARISED" = true ]; then
+            gatekeeper="Signed and notarised."
+          else
+            gatekeeper="Not notarised yet: the first time you open it, macOS refuses, and System Settings > Privacy & Security has an **Open Anyway** button."
+          fi
+          notes="$(printf '%s\n\n%s\n\n%s\n\n%s' \
+            "**macOS** (Apple silicon, macOS 13.4 or later): \`OmniMem-$version-arm64.dmg\` is the menu bar app. $gatekeeper \`omnimem-$version-macos-arm64.tar.gz\` is the bare binary." \
+            "**Linux** (amd64 and arm64): \`omnimem-$version-linux-<arch>.tar.gz\` is the headless server, name: Build
+
+# Every push and pull request on a branch other than main: format, clippy, the
+# tests and the desktop smoke test on Linux (amd64 and arm64) and macOS, then
+# the packages, uploaded as each job's artifact. Once every build has passed,
+# a push to a branch replaces that branch's rolling dev pre-release
+# (dev-<branch>) with all of them, and a v7 tag attaches them to its release.
+
+on:
+  push:
+    branches-ignore: [main]
+    tags: ["v7.*"]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # Both labels, since the Mac carries arm64 too.
+    runs-on: [linux, "${{ matrix.arch }}"]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Workspace and desktop checks
+        # In the ci/desktop container, so the runners need Docker and nothing
+        # else, and a local run checks the same thing.
+        run: scripts/desktop-check.sh --workspace
+
+      - name: Package
+        run: scripts/linux-package.sh
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-linux-${{ matrix.arch }}
+          path: dist/linux/
+
+  macos:
+    name: macOS arm64
+    # Only the Mac runner carries this label, and it has to run the job on the
+    # host: a container there would be Linux.
+    runs-on: macos
+    timeout-minutes: 60
+    steps:
+      - name: Check the runner
+        run: |
+          if [ "$(uname -s)" != Darwin ]; then
+            echo "::error::This job needs the Mac itself but ran on $(uname -sm). Register the runner's label as macos:host."
+            exit 1
+          fi
+          sw_vers
+          xcode-select -p
+
+      - name: Node for the JavaScript actions
+        # actions/checkout and upload-artifact run on node, which isn't on the
+        # runner's PATH. A pinned build is fetched once into the job's cache.
+        run: |
+          if command -v node >/dev/null; then node --version; exit 0; fi
+          version=v24.22.0
+          dir="$HOME/.cache/omnimem-ci/node-$version"
+          if [ ! -x "$dir/bin/node" ]; then
+            tmp="$(mktemp -d)"
+            name="node-$version-darwin-arm64.tar.gz"
+            curl -sSfL -o "$tmp/$name" "https://nodejs.org/dist/$version/$name"
+            curl -sSfL "https://nodejs.org/dist/$version/SHASUMS256.txt" \
+              | grep " $name\$" > "$tmp/SHASUMS256.txt"
+            (cd "$tmp" && shasum -a 256 -c SHASUMS256.txt)
+            mkdir -p "$dir"
+            tar -xzf "$tmp/$name" -C "$dir" --strip-components 1
+            rm -rf "$tmp"
+          fi
+          "$dir/bin/node" --version
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "v$version" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} doesn't match the Cargo.toml version $version."
+            exit 1
+          fi
+
+      - name: Rust toolchain
+        # A rustup of the runner's own, so the Rust the Mac's user installed is
+        # never used or changed. The target directory persists between runs.
+        # The version is the Linux container's (ci/desktop/Dockerfile), so a
+        # new clippy can't fail one platform and pass the other.
+        run: |
+          export RUSTUP_HOME="$HOME/.cache/omnimem-ci/rustup" CARGO_HOME="$HOME/.cache/omnimem-ci/cargo"
+          toolchain="$(sed -n 's/^FROM rust:\([0-9.]*\)-.*/\1/p' ci/desktop/Dockerfile)"
+          if [ -z "$toolchain" ]; then
+            echo "::error::No rust:<version> image in ci/desktop/Dockerfile."
+            exit 1
+          fi
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+          fi
+          "$CARGO_HOME/bin/rustup" toolchain install "$toolchain" --profile minimal \
+            --component clippy,rustfmt --target aarch64-apple-darwin
+          "$CARGO_HOME/bin/rustup" default "$toolchain"
+          {
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "CARGO_TARGET_DIR=$HOME/.cache/omnimem-ci/target"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
+
+      - name: Test
+        run: |
+          cargo test --locked
+          cargo test --locked -p omnimem-desktop
+
+      - name: Signing keychain
+        # Skipped until the signing secrets exist; the package is then ad-hoc
+        # signed. MACOS_CERTIFICATE is a base64 Developer ID Application .p12,
+        # MACOS_NOTARY_API_KEY a base64 App Store Connect API key (.p8).
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No MACOS_CERTIFICATE secret, so the package will be ad-hoc signed."
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP:?}/omnimem-signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application identity."
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$MACOS_NOTARY_API_KEY" ]; then
+            echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+            echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package
+        env:
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: scripts/macos-package.sh
+
+      - name: Desktop smoke test
+        # Opens the menu bar icon and settings window, which works because the
+        # runner lives in a logged-in session on the Mac.
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          MCP_PORT=18765 "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/omnimem" \
+            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${MACOS_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MACOS_SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${RUNNER_TEMP:-/nonexistent}/notary.p8"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-macos-arm64
+          path: dist/macos/
+
+  release:
+    name: Publish
+    # Only once every build has passed, and only from one job, so nothing
+    # deletes another job's files from a release it is replacing.
+    needs: [linux, macos]
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: [linux, arm64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Release
+        # A v7 tag attaches the packages to its release. A push to any other
+        # branch replaces that branch's rolling pre-release, dev-<branch>, so
+        # the newest build is always on the releases page.
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_NOTARY_API_KEY != '' }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          files="$(find dist -type f | sort)"
+          if [ "$NOTARISED" = true ]; then
+            gatekeeper="Signed and notarised."
+          else
+            gatekeeper="Not notarised yet: the first time you open it, macOS refuses, and System Settings > Privacy & Security has an **Open Anyway** button."
+          fi
+          notes="$(printf '%s\n\n%s\n\n%s\n\n%s' \
+            "**macOS** (Apple silicon, macOS 13.4 or later): \`OmniMem-$version-arm64.dmg\` is the menu bar app. $gatekeeper \`omnimem-$version-macos-arm64.tar.gz\` is the bare binary." \
+            "**Linux** (amd64 and arm64): \`omnimem-$version-linux-<arch>.tar.gz\` omnimem servename: Build
+
+# Every push and pull request on a branch other than main: format, clippy, the
+# tests and the desktop smoke test on Linux (amd64 and arm64) and macOS, then
+# the packages, uploaded as each job's artifact. Once every build has passed,
+# a push to a branch replaces that branch's rolling dev pre-release
+# (dev-<branch>) with all of them, and a v7 tag attaches them to its release.
+
+on:
+  push:
+    branches-ignore: [main]
+    tags: ["v7.*"]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # Both labels, since the Mac carries arm64 too.
+    runs-on: [linux, "${{ matrix.arch }}"]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Workspace and desktop checks
+        # In the ci/desktop container, so the runners need Docker and nothing
+        # else, and a local run checks the same thing.
+        run: scripts/desktop-check.sh --workspace
+
+      - name: Package
+        run: scripts/linux-package.sh
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-linux-${{ matrix.arch }}
+          path: dist/linux/
+
+  macos:
+    name: macOS arm64
+    # Only the Mac runner carries this label, and it has to run the job on the
+    # host: a container there would be Linux.
+    runs-on: macos
+    timeout-minutes: 60
+    steps:
+      - name: Check the runner
+        run: |
+          if [ "$(uname -s)" != Darwin ]; then
+            echo "::error::This job needs the Mac itself but ran on $(uname -sm). Register the runner's label as macos:host."
+            exit 1
+          fi
+          sw_vers
+          xcode-select -p
+
+      - name: Node for the JavaScript actions
+        # actions/checkout and upload-artifact run on node, which isn't on the
+        # runner's PATH. A pinned build is fetched once into the job's cache.
+        run: |
+          if command -v node >/dev/null; then node --version; exit 0; fi
+          version=v24.22.0
+          dir="$HOME/.cache/omnimem-ci/node-$version"
+          if [ ! -x "$dir/bin/node" ]; then
+            tmp="$(mktemp -d)"
+            name="node-$version-darwin-arm64.tar.gz"
+            curl -sSfL -o "$tmp/$name" "https://nodejs.org/dist/$version/$name"
+            curl -sSfL "https://nodejs.org/dist/$version/SHASUMS256.txt" \
+              | grep " $name\$" > "$tmp/SHASUMS256.txt"
+            (cd "$tmp" && shasum -a 256 -c SHASUMS256.txt)
+            mkdir -p "$dir"
+            tar -xzf "$tmp/$name" -C "$dir" --strip-components 1
+            rm -rf "$tmp"
+          fi
+          "$dir/bin/node" --version
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "v$version" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} doesn't match the Cargo.toml version $version."
+            exit 1
+          fi
+
+      - name: Rust toolchain
+        # A rustup of the runner's own, so the Rust the Mac's user installed is
+        # never used or changed. The target directory persists between runs.
+        # The version is the Linux container's (ci/desktop/Dockerfile), so a
+        # new clippy can't fail one platform and pass the other.
+        run: |
+          export RUSTUP_HOME="$HOME/.cache/omnimem-ci/rustup" CARGO_HOME="$HOME/.cache/omnimem-ci/cargo"
+          toolchain="$(sed -n 's/^FROM rust:\([0-9.]*\)-.*/\1/p' ci/desktop/Dockerfile)"
+          if [ -z "$toolchain" ]; then
+            echo "::error::No rust:<version> image in ci/desktop/Dockerfile."
+            exit 1
+          fi
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+          fi
+          "$CARGO_HOME/bin/rustup" toolchain install "$toolchain" --profile minimal \
+            --component clippy,rustfmt --target aarch64-apple-darwin
+          "$CARGO_HOME/bin/rustup" default "$toolchain"
+          {
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "CARGO_TARGET_DIR=$HOME/.cache/omnimem-ci/target"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
+
+      - name: Test
+        run: |
+          cargo test --locked
+          cargo test --locked -p omnimem-desktop
+
+      - name: Signing keychain
+        # Skipped until the signing secrets exist; the package is then ad-hoc
+        # signed. MACOS_CERTIFICATE is a base64 Developer ID Application .p12,
+        # MACOS_NOTARY_API_KEY a base64 App Store Connect API key (.p8).
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No MACOS_CERTIFICATE secret, so the package will be ad-hoc signed."
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP:?}/omnimem-signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application identity."
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$MACOS_NOTARY_API_KEY" ]; then
+            echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+            echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package
+        env:
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: scripts/macos-package.sh
+
+      - name: Desktop smoke test
+        # Opens the menu bar icon and settings window, which works because the
+        # runner lives in a logged-in session on the Mac.
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          MCP_PORT=18765 "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/omnimem" \
+            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${MACOS_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MACOS_SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${RUNNER_TEMP:-/nonexistent}/notary.p8"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-macos-arm64
+          path: dist/macos/
+
+  release:
+    name: Publish
+    # Only once every build has passed, and only from one job, so nothing
+    # deletes another job's files from a release it is replacing.
+    needs: [linux, macos]
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: [linux, arm64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Release
+        # A v7 tag attaches the packages to its release. A push to any other
+        # branch replaces that branch's rolling pre-release, dev-<branch>, so
+        # the newest build is always on the releases page.
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTARISED: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_NOTARY_API_KEY != '' }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          files="$(find dist -type f | sort)"
+          if [ "$NOTARISED" = true ]; then
+            gatekeeper="Signed and notarised."
+          else
+            gatekeeper="Not notarised yet: the first time you open it, macOS refuses, and System Settings > Privacy & Security has an **Open Anyway** button."
+          fi
+          notes="$(printf '%s\n\n%s\n\n%s\n\n%s' \
+            "**macOS** (Apple silicon, macOS 13.4 or later): \`OmniMem-$version-arm64.dmg\` is the menu bar app. $gatekeeper \`omnimem-$version-macos-arm64.tar.gz\` is the bare binary." \
+            "**Linux** (amd64 and arm64): \`omnimem-$version-linux-<arch>.tar.gz\` , for glibc 2.38 or newer (Debian 13, Ubuntu 24.04, Fedora 39 and later) and nothing else. \`omnimem-desktop-$version-linux-<arch>.tar.gz\` is the tray app, which needs GTK 3, WebKitGTK 4.1 (2.40 or newer) and libayatana-appindicator3." \
+            "Every file has a \`.sha256\` beside it." \
+            "Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_NUMBER")"
+          case "$GITHUB_REF" in
+            refs/tags/*)
+              tag="${GITHUB_REF#refs/tags/}"
+              case "$tag" in *-*) pre=--prerelease ;; *) pre="" ;; esac
+              # shellcheck disable=SC2086
+              scripts/forgejo-release.sh $pre "$tag" "OmniMem ${tag#v}" "$notes" $files
+              ;;
+            refs/heads/*)
+              branch="${GITHUB_REF#refs/heads/}"
+              intro="The latest build of \`$branch\`, at ${GITHUB_SHA:0:7}. Every push to the branch replaces it, so it's a development build, not a release."
+              # shellcheck disable=SC2086
+              scripts/forgejo-release.sh --replace --prerelease "dev-${branch//\//-}" \
+                "OmniMem $version dev build ($branch)" "$(printf '%s\n\n%s' "$intro" "$notes")" $files
+              ;;
+          esac

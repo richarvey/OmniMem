@@ -143,7 +143,9 @@ if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
 fi
 
 cp "$repo/LICENSE" "$work/LICENSE"
-tar -czf "$tarball" -C "$work" omnimem LICENSE
+# Without these, macOS's tar adds ._omnimem and ._LICENSE files and the
+# files' extended attributes, which every other tar shows as clutter.
+COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -czf "$tarball" -C "$work" omnimem LICENSE
 
 cd "$dist"
 for file in "$(basename "$dmg")" "$(basename "$tarball")"; do
