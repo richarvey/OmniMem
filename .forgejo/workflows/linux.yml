@@ -7,7 +7,7 @@ name: Linux
 
 on:
   push:
-    branches: ["v7.*"]
+    branches-ignore: [main]
   pull_request:
     branches: ["v7.*"]
   workflow_dispatch:

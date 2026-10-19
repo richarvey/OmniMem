@@ -90,6 +90,8 @@ Deliberately gone: Valkey, the web UI and `/metrics` over HTTP, SSE transport, `
 - **GNOME shows no tray icon without the AppIndicator extension**; the app opens its window instead
 - **No Intel Mac build**: `ort`'s `download-binaries` has no ONNX Runtime for `x86_64-apple-darwin`, so the DMG is arm64 only. Its static library is built for macOS 13.4, which is the app's minimum. A Homebrew Rust has only its host target, so cross-target builds need rustup's toolchain first in PATH
 - **All three Forgejo runners carry the `sqcows` label** (Linux amd64, Linux arm64 and the Mac), so `runs-on: sqcows` can land on any of them. Use `macos` or `linux` when the platform matters
+- **Release builds keep proc macros unstripped** (`[profile.release.build-override] strip = false`): with Rust 1.96 on macOS, `strip = "symbols"` reaching proc-macro dylibs fails the build with E0463 "can't find crate for `zerofrom_derive`" (or `tokio_macros`, whichever comes first). Debug builds never strip, which is why clippy and the tests pass regardless
+- **Every push to a branch other than `main` replaces that branch's `dev-<branch>` pre-release** with the macOS build (`scripts/forgejo-release.sh --replace`). Version tags (`v7.*`, checked against `Cargo.toml`) attach to their own release instead. When Linux packages land, only one workflow should do the `--replace`, or each will delete the other's files
 - **Clippy's `result_large_err` fires on `Result<T, Response>`** (axum's response is at least 128 bytes). Where the error is the response every caller returns at once, it's allowed per function with the reason
 - **Numbers rendered where 6.x output is compared** are formatted to match Python (`str(float)` and friends), not Rust's defaults
 
