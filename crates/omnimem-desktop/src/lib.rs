@@ -7,7 +7,7 @@
 //! `omnimem-settings` through the `omnimem://` scheme, answered on a small
 //! tokio runtime, so nothing about the panel is reachable over a network.
 
-mod icon;
+pub mod icon;
 mod model;
 
 use std::collections::BTreeMap;

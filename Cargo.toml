@@ -106,6 +106,9 @@ open = "5.4"
 # keychain: Keychain on macOS, Credential Manager on Windows, Secret Service
 # over pure-Rust D-Bus elsewhere.
 keyring = "4.2"
+# Writes the macOS app icon's iconset (the desktop crate's app-icon example);
+# already in the tree through the tray and window icon crates.
+png = "0.18"
 
 # The settings panel: templates rendered in-process, and axum routes called
 # without a socket.

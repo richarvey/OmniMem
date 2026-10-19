@@ -53,8 +53,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 app="$work/OmniMem.app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/omnimem"
+# The app icon is drawn by the same code as the menu bar icon; the example
+# writes it at every size iconutil wants.
+cargo run --manifest-path "$repo/Cargo.toml" --release --locked --quiet \
+    -p omnimem-desktop --example app-icon --target "$target" -- "$work/OmniMem.iconset"
+iconutil --convert icns --output "$app/Contents/Resources/OmniMem.icns" "$work/OmniMem.iconset"
 # LSUIElement keeps the Dock icon from flashing up before the app sets its
 # accessory activation policy.
 cat > "$app/Contents/Info.plist" <<EOF
@@ -68,6 +73,8 @@ cat > "$app/Contents/Info.plist" <<EOF
     <string>OmniMem</string>
     <key>CFBundleExecutable</key>
     <string>omnimem</string>
+    <key>CFBundleIconFile</key>
+    <string>OmniMem</string>
     <key>CFBundleIdentifier</key>
     <string>com.squarecows.OmniMem</string>
     <key>CFBundleInfoDictionaryVersion</key>

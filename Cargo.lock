@@ -3320,6 +3320,7 @@ dependencies = [
  "omnimem-engine",
  "omnimem-settings",
  "open",
+ "png",
  "serde_json",
  "tao",
  "tokio",

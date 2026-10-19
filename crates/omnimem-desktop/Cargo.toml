@@ -26,3 +26,6 @@ tokio-util.workspace = true
 tracing.workspace = true
 tray-icon.workspace = true
 wry.workspace = true
+
+[dev-dependencies]
+png.workspace = true
