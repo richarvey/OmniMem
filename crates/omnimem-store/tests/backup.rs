@@ -150,6 +150,49 @@ fn a_legacy_backup_imports_migrates_and_embeds() {
     assert!(hits[0].similarity() > 0.999);
 }
 
+/// A 6.x store can hold a memory no search returns, even for its own
+/// content: the hash is there, but its vector is missing or stale (found on
+/// a `mem:project:` ULID memory, the kind `remember(namespace="project")`
+/// writes). Import never takes a vector from the file, it embeds the
+/// content, so such a memory recalls normally once it's here.
+#[test]
+fn an_imported_memory_is_found_by_its_own_content_whatever_vector_it_had() {
+    let store = Store::open_in_memory().unwrap();
+    let key = "mem:project:01KMRTDCHH64ZNSKKZTGHEWQ05".to_owned();
+    let content = "omnimem desktop app ships a tray icon and a settings window";
+    let backup = BackupFile::from_value(json!({
+        "metadata": {"exported_at": "2026-10-19T00:00:00Z", "total_keys": 2, "version": "6.7.1"},
+        "data": {
+            (key.clone()): {"content": content, "project": "omnimem", "state": "active", "updated_at": "100.0", "vector": "AAAA"},
+            "mem:project:01KMRTDCHH64ZNSKKZTGHEWQ06": {"content": "an unrelated note about feeds", "project": "omnimem", "state": "active", "updated_at": "100.0"}
+        }
+    }))
+    .unwrap();
+    let report = store
+        .restore_backup(&backup, Some(&Fake), &mut |_, _| {})
+        .unwrap();
+    assert_eq!(report.embedded, 2);
+
+    assert!(!store.get(&key).unwrap().unwrap().contains_key("vector"));
+    assert_eq!(
+        store
+            .get_vectors_multi(std::slice::from_ref(&key))
+            .remove(0),
+        Some(fake_vector(content))
+    );
+    let hits = store
+        .search(
+            Namespace::Project,
+            &fake_vector(content),
+            5,
+            &SearchFilter::default(),
+            None,
+        )
+        .unwrap();
+    assert_eq!(hits[0].key, key);
+    assert!(hits[0].similarity() > 0.999);
+}
+
 #[test]
 fn newer_records_in_the_store_win() {
     let store = Store::open_in_memory().unwrap();

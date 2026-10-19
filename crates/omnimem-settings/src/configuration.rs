@@ -241,7 +241,8 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Expand recall queries",
                 Kind::Flag,
                 "off",
-                "Rephrase every recall query with Claude unless the call says otherwise.",
+                "Rephrase every recall query with Claude unless the call says otherwise. Needs \
+                 the Anthropic API key: without one, recall searches the original query alone.",
             ),
             setting(
                 "RECALL_EXPAND_COUNT",

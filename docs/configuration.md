@@ -67,7 +67,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `INGEST_MODE` | `full` | `full` stores a memory as written, then extracts atomic facts in the background (facts go to the knowledge namespace, preferences to the preference namespace). `raw` just stores it. Falls back to raw with no key |
 | `ENRICHMENT_BATCH_MODE` | off | Send a whole `remember_document()` to one extraction call instead of one per chunk. Faster for big documents, with a bigger prompt |
 | `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model for fact extraction |
-| `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise |
+| `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise. Needs `ANTHROPIC_API_KEY`: without it recall searches the original query alone, and the log says so once |
 | `RECALL_EXPAND_COUNT` | `3` | Variants per expanded query, 1 to 10 |
 | `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Model for query expansion |
 
@@ -77,8 +77,8 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 |---|---|---|
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results. A ceiling, not a target |
 | `RECALL_MIN_SCORE` | `0.15` | Relevance floor on raw similarity. Anything below it is left out, so a short or empty result is a real answer. Abandoned-approach warnings and reinstate candidates are exempt. `0` keeps everything |
-| `RECALL_WEAK_SCORE` | `0.35` | Results above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
-| `RECENCY_DECAY_DAYS` | `90` | Where the gentle decay ends and the steeper one begins. Recency declines from day one, reaching 0.9 here, then 5% per 30 days down to a 0.3 floor |
+| `RECALL_WEAK_SCORE` | `0.35` | Results whose raw similarity is above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
+| `RECENCY_DECAY_DAYS` | `90` | Where the gentle decay ends and the steeper one begins. Recency declines from day one, reaching 0.9 here, then 5% per 30 days down to a 0.3 floor. 6.x stayed at 1.0 until here, so past it the multiplier is 0.1 lower than it was. The floor and weak band read raw similarity, so they don't move with it |
 | `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity at which two memories are checked for contradicting each other |

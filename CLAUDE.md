@@ -4,7 +4,7 @@
 
 Self-hosted semantic memory for AI agents, served over MCP. Memories live in five namespaces: episodic (decisions, bugs, patterns), project context (stack, goals, state, work-type domains), knowledge (RSS articles and extracted facts), preferences (prescriptive rules pulled from conversation) and compiled skills (SKILL.md documents distilled from experience, written only through a propose-and-accept gate). Every memory carries a `licence` (own, open, restricted, unknown) and a `provenance` (retrieved, concluded, asserted).
 
-**Version**: 7.0.2-dev, on branch `v7.0.x`. OmniMem 7 is a Rust rewrite of the 6.x Python stack (Valkey, FastMCP server, Starlette web UI, RSS worker) as **one binary**: SQLite with exact in-memory vector search, the MCP server, the enrichment worker and RSS scheduler in one process, and a desktop app whose settings panel replaces the web UI. The 6.x Python lives on the `v6.x` branches only.
+**Version**: 7.0.3-dev, on branch `v7.0.x`. OmniMem 7 is a Rust rewrite of the 6.x Python stack (Valkey, FastMCP server, Starlette web UI, RSS worker) as **one binary**: SQLite with exact in-memory vector search, the MCP server, the enrichment worker and RSS scheduler in one process, and a desktop app whose settings panel replaces the web UI. The 6.x Python lives on the `v6.x` branches only.
 
 **Stack**: Rust (edition 2024, see `rust-version` in `Cargo.toml`), rusqlite (bundled SQLite), ONNX Runtime via `ort` plus `tokenizers` running all-MiniLM-L6-v2 (384-dim), rmcp over streamable HTTP on axum, minijinja for the panel, tao + wry + tray-icon for the desktop app, reqwest (rustls) for the Anthropic API and feeds, feed-rs, keyring.
 
@@ -72,7 +72,9 @@ scripts/flatpak-package.sh   # anywhere with Docker: the tray app as a Flatpak b
 
 ## Compatibility contract with 6.x
 
-Kept exactly: the 48 tool names, parameters, defaults, descriptions and result JSON (including `_compact()` dropping empty values); vectors; recall scoring (floor, weak band, recency, experience weight, temporal boost, reinstate 0.6, fact collapse, ordering); rendered skill bodies byte for byte; backup JSON, skill bundle zips (format v2, reads v1) and `feeds.yml`; every 6.x environment variable except the Valkey, web UI and PyTorch ones.
+Kept exactly: the 48 tool names, parameters, defaults and result JSON (including `_compact()` dropping empty values); vectors; recall scoring (floor, weak band, experience weight for every outcome but abandoned, temporal boost, reinstate 0.6, fact collapse, ordering); rendered skill bodies byte for byte; backup JSON, skill bundle zips (format v2, reads v1) and `feeds.yml`; every 6.x environment variable except the Valkey, web UI and PyTorch ones.
+
+Deliberately different (each in the CHANGELOG): tool descriptions trimmed of their `Args:` blocks; recency declines from day one to 0.9 at `RECENCY_DECAY_DAYS`, so past it the multiplier is 0.1 below 6.x (the floor and weak band read raw similarity, so they don't move with it); an abandoned outcome weighs 1.0, not 0.1; abandonment no longer auto-suppresses; project-namespace hits carry `tags`, which 6.x's project return fields never listed; query expansion without `ANTHROPIC_API_KEY` logs once instead of nothing. A 6.x import embeds every memory from its text, never trusting a stored vector, which is why a memory 6.x's KNN had lost (a missing or stale vector on the hash) recalls normally here.
 
 Deliberately gone: Valkey, the web UI and `/metrics` over HTTP, SSE transport, `EMBEDDING_BACKEND=torch`. Over HTTP the binary serves `/mcp`, the OAuth routes and `/healthz`, nothing else.
 

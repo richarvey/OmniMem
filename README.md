@@ -164,7 +164,7 @@ OmniMem 6 was a Docker Compose stack: Valkey, a Python MCP server, a web UI and 
 1. Take a backup on 6.x with `dump_to_file()`.
 2. Import it with `omnimem import <file>`, or restore it from the settings window's Backups page. Every memory gets re-embedded (roughly 8 ms each).
 
-The tools, the vectors and your compiled skills behave as they did, so nothing needs retuning. Recall scoring has three deliberate changes since 6.x: recency declines from day one rather than staying flat for 90 days, an abandoned outcome no longer scores 0.1, and recording an abandonment no longer suppresses anything. Your agents just need their URL changing from `/sse` to `/mcp`. The [quick start](docs/quick-start.md) has the details, and 6.x itself carries on in the `v6.7.x` branch.
+The tools, the vectors and your compiled skills behave as they did, so nothing needs retuning. Recall scoring has three deliberate changes since 6.x: recency declines from day one rather than staying flat for 90 days (older memories rank a little lower; nothing extra is dropped), an abandoned outcome no longer scores 0.1, and recording an abandonment no longer suppresses anything. Your agents just need their URL changing from `/sse` to `/mcp`. The [quick start](docs/quick-start.md) has the details, and 6.x itself carries on in the `v6.7.x` branch.
 
 ---
 

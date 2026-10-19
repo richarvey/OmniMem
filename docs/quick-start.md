@@ -60,7 +60,7 @@ sudo apt install ./omnimem_<version>_amd64.deb        # or _arm64.deb
 sudo dnf install ./omnimem-<version>-1.x86_64.rpm     # or .aarch64.rpm
 ```
 
-Development versions are spelt with a tilde in the package names (`omnimem_7.0.2~dev_amd64.deb`), so a release always counts as newer.
+Development versions are spelt with a tilde in the package names (`omnimem_7.0.3~dev_amd64.deb`), so a release always counts as newer.
 
 For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
 
@@ -147,7 +147,7 @@ Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the 
 
 ## Coming from 6.x
 
-Your memories come with you, and they behave the same. The vectors and the compiled skill bodies are identical to 6.x, so nothing needs retuning. Recall scoring has three deliberate changes: recency declines from day one, an abandoned outcome scores 1.0 rather than 0.1, and abandonment no longer auto-suppresses approach names.
+Your memories come with you, and they behave the same. The vectors and the compiled skill bodies are identical to 6.x, so nothing needs retuning. Recall scoring has three deliberate changes: recency declines from day one (so a memory older than 90 days ranks a little lower than it did, though the relevance floor reads raw similarity and drops nothing extra), an abandoned outcome scores 1.0 rather than 0.1, and abandonment no longer auto-suppresses approach names.
 
 1. On 6.x, take a backup: ask your agent to call `dump_to_file()`, or use the Backups page in the old web UI. You get a JSON file.
 2. Stop 6.x, or at least make sure it isn't on port 8765.
@@ -155,7 +155,7 @@ Your memories come with you, and they behave the same. The vectors and the compi
    - **Desktop app**: open **Settings… → Backups**, upload the file and restore it.
    - **Command line**: `omnimem import omnimem_backup.json` (add `--db` if you aren't using the default location).
 
-Backups don't carry vectors, so every memory is embedded again on the way in. That's roughly 8 ms a memory, so a few thousand take well under a minute.
+Backups don't carry vectors, so every memory is embedded again on the way in. That's roughly 8 ms a memory, so a few thousand take well under a minute. It also brings back any memory 6.x had stopped finding because its stored vector had gone missing or stale.
 
 A few things from 6.x are gone on purpose: Valkey, the Compose stack, the web UI on port 8080, `/metrics`, and the SSE transport. The [configuration page](configuration.md#gone-since-6x) lists the settings that went with them.
 

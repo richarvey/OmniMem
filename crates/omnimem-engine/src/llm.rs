@@ -44,6 +44,9 @@ const CONTRADICTION_MODEL: &str = "claude-haiku-4-5-20251001";
 
 const EXPANSION_CACHE_TTL: Duration = Duration::from_secs(86_400);
 
+/// Whether this process has said that expansion can't run without a key.
+static EXPANSION_UNAVAILABLE_SAID: AtomicBool = AtomicBool::new(false);
+
 /// How often the worker looks at an empty queue.
 const WORKER_POLL: Duration = Duration::from_secs(1);
 
@@ -229,6 +232,15 @@ impl Engine {
             return cached.iter().filter(|v| py_truthy(v)).map(py_str).collect();
         }
         let Some(llm) = &self.llm else {
+            // 6.x skipped expansion without a word, so `expand_queries=true`
+            // looked like expansion changing nothing rather than never
+            // running. Said once per process, not on every recall.
+            if !EXPANSION_UNAVAILABLE_SAID.swap(true, Ordering::Relaxed) {
+                warn!(
+                    "query expansion was asked for but ANTHROPIC_API_KEY isn't set, so recall \
+                     searches the original query alone"
+                );
+            }
             return Vec::new();
         };
         let prompt = format!(

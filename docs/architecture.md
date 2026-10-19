@@ -109,7 +109,7 @@ score = similarity x surface_score x recency x experience_weight x date_boost
 ```
 
 - **Surface score** comes from the lifecycle state: active 1.0, deprioritised 0.2 (`DEPRIORITISED_WEIGHT`), archived 0.
-- **Recency** declines steadily from the day a memory is written, reaching 0.9 at `RECENCY_DECAY_DAYS` (90), after which it loses 5% per 30 days and bottoms out at 0.3. Yesterday's memory outranks an identical one from three months ago, and an abandoned-approach warning never falls below 0.6 however old it is.
+- **Recency** declines steadily from the day a memory is written, reaching 0.9 at `RECENCY_DECAY_DAYS` (90), after which it loses 5% per 30 days and bottoms out at 0.3. Yesterday's memory outranks an identical one from three months ago, and an abandoned-approach warning never falls below 0.6 however old it is. 6.x stayed at 1.0 for the first 90 days, so past them the multiplier is 0.1 lower than it was; the floor and weak band below read raw similarity, so that reorders results without dropping or flagging any.
 - **Experience weight** rewards hard-won lessons, up to 1.8x for effort 5. [Features in depth](features.md#experience-scoring) has the table.
 - **Date boost** (up to 1.5x) applies when the query mentions a date and the memory has an `event_date` close to it.
 
@@ -127,7 +127,7 @@ A deprioritised memory whose reinstate hints match the query comes back as a rei
 
 ## Compared with 6.x
 
-What stays the same: the 48 tool names, parameters and defaults, the JSON they return, the vectors, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones. Two things changed on purpose: the tool descriptions were trimmed (the `Args:` blocks duplicated the schema; the full guidance moved to `docs/agent-guide.md`), and recall scoring differs in recency, the abandoned weight and auto-suppression, all covered above.
+What stays the same: the 48 tool names, parameters and defaults, the JSON they return, the vectors, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones. Three things changed on purpose: the tool descriptions were trimmed (the `Args:` blocks duplicated the schema; the full guidance moved to `docs/agent-guide.md`), recall scoring differs in recency, the abandoned weight and auto-suppression, all covered above, and project-namespace results carry their `tags`, which 6.x's project index never returned.
 
 What's gone: Valkey, the Compose stack, the web UI and `/metrics` over HTTP, the SSE transport (streamable HTTP only) and the PyTorch backend.
 
