@@ -5,16 +5,22 @@ on:
 
 jobs:
   probe:
-    name: Probe sqcows runner
-    runs-on: sqcows
+    name: Probe the ${{ matrix.arch }} Linux runner
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: [linux, "${{ matrix.arch }}"]
     steps:
-      - uses: actions/checkout@v4
-
       - name: Environment probe
         run: |
-          echo "uname: $(uname -a)"
-          echo "node: $(node --version 2>&1 || echo 'not found')"
-          echo "python3: $(python3 --version 2>&1 || echo 'not found')"
-          /usr/bin/docker version --format 'docker: {{.Server.Version}}' || echo "/usr/bin/docker failed"
-          /usr/bin/docker buildx version || echo "buildx missing"
-          df -h / | tail -1
+          uname -a
+          id
+          grep PRETTY_NAME /etc/os-release
+          echo "cpus: $(nproc)"
+          free -h | head -2
+          df -h / "$HOME" | awk 'NR==1 || !seen[$0]++'
+          for tool in docker git node cargo rustup; do
+            printf '%s: %s\n' "$tool" "$(command -v "$tool" || echo 'not found')"
+          done
+          docker version --format 'docker: {{.Server.Version}}' || echo "docker failed"
+          du -sh "$HOME/.cache" 2>/dev/null || true
