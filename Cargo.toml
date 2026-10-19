@@ -120,6 +120,12 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 
+# Proc macros and build scripts never ship, so they stay unstripped: with
+# Rust 1.96 on macOS a stripped proc macro can't be loaded by the crates that
+# use it, and the release build fails with E0463 "can't find crate".
+[profile.release.build-override]
+strip = false
+
 [profile.dev]
 opt-level = 0
 debug = 1
