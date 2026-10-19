@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.squarecows.OmniMem</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>OmniMem</name>
+  <summary>Self-hosted semantic memory for AI agents</summary>
+  <developer id="com.squarecows">
+    <name>SquareCows Ltd</name>
+  </developer>
+  <description>
+    <p>
+      OmniMem gives Claude and other MCP clients a memory that lasts between
+      sessions and projects: decisions, fixes, dead ends and the knowledge from
+      the feeds you read, searched by meaning and kept on your own machine.
+    </p>
+    <p>
+      It runs in the tray, serving MCP at http://127.0.0.1:8765/mcp, with a
+      settings window for memories, projects, skills, feeds and backups.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.squarecows.OmniMem.desktop</launchable>
+  <url type="homepage">https://omnimem.org</url>
+  <url type="vcs-browser">https://code.squarecows.com/ric/omnimem</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="7.0.2" date="2026-10-19" />
+  </releases>
+</component>

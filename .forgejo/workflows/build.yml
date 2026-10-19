@@ -40,6 +40,11 @@ jobs:
       - name: Package
         run: scripts/linux-package.sh
 
+      - name: Flatpak
+        # The desktop app on the GNOME runtime, built and smoke-tested in its
+        # sandbox; the runtimes download once into the runner's cache.
+        run: scripts/flatpak-package.sh
+
       - uses: actions/upload-artifact@v3
         with:
           name: omnimem-linux-${{ matrix.arch }}
@@ -256,7 +261,7 @@ jobs:
             "**macOS** (Apple silicon, macOS 13.4 or later): \`OmniMem-$version-arm64.dmg\` is the menu bar app. $gatekeeper \`omnimem-$version-macos-arm64.tar.gz\` is the bare binary." \
             "**Windows** (x64, Windows 10 and 11): \`OmniMem-$version-x64.msi\` installs the tray app for you alone, no administrator needed, with a Start menu entry. It uses the WebView2 runtime Windows 10 and 11 already have. It isn't signed yet, so SmartScreen asks first: **More info**, then **Run anyway**." \
             "**Linux servers** (amd64 and arm64, glibc 2.38 or newer: Debian 13, Ubuntu 24.04, Fedora 39 and later): \`omnimem_${pkgver}_<arch>.deb\` and \`omnimem-${pkgver}-1.<x86_64|aarch64>.rpm\` install the headless server as the \`omnimem\` systemd service, configured in \`/etc/omnimem/omnimem.env\`, with its data in \`/var/lib/omnimem\`. \`omnimem-$version-linux-<arch>.tar.gz\` is the same server for any other distribution: unpack it and run \`sudo ./install.sh\`." \
-            "**Linux desktops**: \`omnimem-desktop-$version-linux-<arch>.tar.gz\` is the tray app, which also needs GTK 3, WebKitGTK 4.1 (2.40 or newer) and libayatana-appindicator3. On GNOME the tray needs the AppIndicator extension; without it the app opens its window and says so." \
+            "**Linux desktops**: \`omnimem-desktop-$version-linux-<arch>.flatpak\` is the tray app as a Flatpak, which brings everything it needs: \`flatpak install --user\` the file, and Flatpak fetches the GNOME runtime from Flathub. \`omnimem-desktop-$version-linux-<arch>.tar.gz\` is the same app as a bare binary, which needs GTK 3, WebKitGTK 4.1 (2.40 or newer) and libayatana-appindicator3 installed. On GNOME the tray needs the AppIndicator extension; without it the app opens its window and says so." \
             "Every file has a \`.sha256\` beside it." \
             "Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_NUMBER")"
           case "$GITHUB_REF" in

@@ -46,9 +46,9 @@ The embedding model (all-MiniLM-L6-v2 on ONNX Runtime) runs locally. Nothing lea
 
 | Where | What you get |
 |---|---|
-| Windows | `OmniMem-<version>-x64.msi` or `-arm64.msi`, a tray app |
-| macOS | `OmniMem-<version>.dmg`, a universal menu bar app |
-| Linux desktop | The `com.squarecows.OmniMem` Flatpak, a tray app |
+| Windows | `OmniMem-<version>-x64.msi`, a tray app |
+| macOS | `OmniMem-<version>-arm64.dmg`, a menu bar app for Apple silicon |
+| Linux desktop | `omnimem-desktop-<version>-linux-<arch>.flatpak`, a tray app (or a tarball without Flatpak) |
 | Linux server | `.deb`, `.rpm` or a tarball, with an `omnimem.service` systemd unit |
 | Containers | The `richarvey/omnimem` image, amd64 and arm64 |
 

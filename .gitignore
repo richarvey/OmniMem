@@ -18,3 +18,4 @@ target/
 *.db
 *.db-wal
 *.db-shm
+packaging/flatpak/shared-modules/

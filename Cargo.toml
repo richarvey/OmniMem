@@ -98,7 +98,10 @@ tao = "0.37"
 # linux-body: WebKitGTK 2.40+ hands POST bodies to the custom scheme, which
 # the panel's forms need; without it every POST arrives empty.
 wry = { version = "0.57", features = ["linux-body"] }
-tray-icon = "0.25"
+# Without muda-libxdo: libxdo only fakes key presses for the predefined Copy,
+# Paste and Select All menu items, which the tray menu doesn't use, and it
+# isn't in the GNOME runtime the Flatpak builds on.
+tray-icon = { version = "0.25", default-features = false, features = ["libappindicator"] }
 arboard = "3.6"
 auto-launch = "0.6"
 open = "5.4"

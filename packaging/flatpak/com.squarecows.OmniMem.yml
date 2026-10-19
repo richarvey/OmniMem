@@ -1,0 +1,75 @@
+# OmniMem's desktop app as a Flatpak, built by scripts/flatpak-package.sh,
+# which fetches Flathub's shared-modules beside this file first.
+#
+# The build has network access, for the crates and ort's prebuilt ONNX
+# Runtime, so this makes a bundle to install directly; Flathub would want
+# everything vendored. It also reads and writes /cache/flatpak-cargo, the
+# script's cargo cache, so a rebuild only compiles what changed.
+app-id: com.squarecows.OmniMem
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: omnimem
+finish-args:
+  - --share=ipc
+  # The MCP server, feeds, the model download and the Claude API.
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  # WebKitGTK's GPU rendering for the settings window.
+  - --device=dri
+  # The tray icon: the desktop's StatusNotifierItem host, and the
+  # org.kde.StatusNotifierItem-* name libayatana registers under.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.*
+  # Secrets go to the desktop's keyring (the Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # Exports and backups are saved to Downloads.
+  - --filesystem=xdg-download
+  # Start at login: the menu's entry in ~/.config/autostart, which runs the
+  # app through `flatpak run`.
+  - --filesystem=xdg-config/autostart:create
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: omnimem
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+        - --filesystem=/cache/flatpak-cargo
+      env:
+        CARGO_HOME: /cache/flatpak-cargo/home
+        CARGO_TARGET_DIR: /cache/flatpak-cargo/target
+        XDG_CACHE_HOME: /cache/flatpak-cargo/xdg
+    build-commands:
+      - cargo build --release --locked -p omnimem --features desktop
+      - cargo build --release --locked -p omnimem-desktop --example app-icon
+      - install -Dm755 "$CARGO_TARGET_DIR/release/omnimem" /app/bin/omnimem
+      - '"$CARGO_TARGET_DIR/release/examples/app-icon" icons'
+      - |
+        for size in 16 32 128 256 512; do
+          install -Dm644 "icons/icon_${size}x${size}.png" \
+            "/app/share/icons/hicolor/${size}x${size}/apps/com.squarecows.OmniMem.png"
+        done
+      - install -Dm644 -t /app/share/applications packaging/flatpak/com.squarecows.OmniMem.desktop
+      - install -Dm644 -t /app/share/metainfo packaging/flatpak/com.squarecows.OmniMem.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..
+        # Build output and, in a working copy that once held 6.x, the
+        # Python leftovers git ignores; a CI checkout has none of them.
+        skip:
+          - .git
+          - target
+          - target-headless
+          - dist
+          - data
+          - packaging/flatpak/shared-modules
+          - .venv
+          - mcp_server
+          - web_ui
+          - rss_worker

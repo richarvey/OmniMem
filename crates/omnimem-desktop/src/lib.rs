@@ -135,6 +135,7 @@ struct App {
     code: ClientSlot,
     clients_checked: Option<Instant>,
     started: Instant,
+    in_flatpak: bool,
 }
 
 /// Whether anything will show the tray icon. On Linux that takes a
@@ -171,10 +172,12 @@ fn tray_host_running() -> bool {
 
 fn start_at_login() -> Option<AutoLaunch> {
     let exe = std::env::current_exe().ok()?;
+    let flatpak_id = std::env::var("FLATPAK_ID").ok();
+    let (program, args) = model::login_command(flatpak_id.as_deref(), exe.to_str()?);
     AutoLaunchBuilder::new()
         .set_app_name("OmniMem")
-        .set_app_path(exe.to_str()?)
-        .set_args(&["desktop"])
+        .set_app_path(&program)
+        .set_args(&args)
         .build()
         .map_err(|e| warn!(error = %e, "start at login is unavailable"))
         .ok()
@@ -220,12 +223,21 @@ impl App {
         #[cfg(not(target_os = "macos"))]
         let icon = tray_icon::Icon::from_rgba(icon::tray(ICON_SIZE), ICON_SIZE, ICON_SIZE);
         let icon = icon.map_err(|e| anyhow!("tray icon: {e}"))?;
-        let tray = TrayIconBuilder::new()
+        #[allow(unused_mut)]
+        let mut builder = TrayIconBuilder::new()
             .with_menu(Box::new(self.menu.menu.clone()))
             .with_tooltip("OmniMem")
-            .with_icon(icon)
-            .build()
-            .context("creating the tray icon")?;
+            .with_icon(icon);
+        // On Linux the icon goes to the tray as a file. Inside a Flatpak the
+        // tray, outside the sandbox, can only read $XDG_RUNTIME_DIR/app/<id>.
+        #[cfg(target_os = "linux")]
+        if let Some(dir) = model::flatpak_icon_dir(
+            std::env::var_os("FLATPAK_ID"),
+            std::env::var_os("XDG_RUNTIME_DIR"),
+        ) {
+            builder = builder.with_temp_dir_path(dir);
+        }
+        let tray = builder.build().context("creating the tray icon")?;
         self.tray = Some(tray);
         Ok(())
     }
@@ -391,13 +403,17 @@ impl App {
             Client::Desktop => (&self.desktop, &self.menu.desktop),
             Client::Code => (&self.code, &self.menu.code),
         };
-        let (text, enabled) = model::client_item(
-            client,
-            slot.presence.as_ref(),
-            slot.busy,
-            slot.changed,
-            slot.error.as_deref(),
-        );
+        let (text, enabled) = if self.in_flatpak && client == Client::Code {
+            (model::CODE_IN_FLATPAK.to_owned(), false)
+        } else {
+            model::client_item(
+                client,
+                slot.presence.as_ref(),
+                slot.busy,
+                slot.changed,
+                slot.error.as_deref(),
+            )
+        };
         item.set_text(text);
         item.set_enabled(enabled);
     }
@@ -783,6 +799,7 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         code: ClientSlot::default(),
         clients_checked: None,
         started: Instant::now(),
+        in_flatpak: std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()),
     };
     event_loop.run(move |event, target, control_flow| {
         // Held until the process exits.

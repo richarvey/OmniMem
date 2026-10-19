@@ -35,6 +35,37 @@ pub fn is_panel_url(url: &str) -> bool {
         })
 }
 
+/// Where the tray icon's file goes inside a Flatpak: the one part of the
+/// runtime folder the sandbox shares with the desktop. `None` outside one.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn flatpak_icon_dir(
+    flatpak_id: Option<std::ffi::OsString>,
+    runtime_dir: Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    let (id, runtime) = (flatpak_id?, runtime_dir?);
+    (!id.is_empty() && !runtime.is_empty())
+        .then(|| std::path::PathBuf::from(runtime).join("app").join(id))
+}
+
+/// What starts the app at login, as a program and its arguments. Inside a
+/// Flatpak the autostart entry is run from outside the sandbox, where
+/// `/app/bin` doesn't exist, so it goes through `flatpak run`.
+pub fn login_command(flatpak_id: Option<&str>, exe: &str) -> (String, Vec<String>) {
+    match flatpak_id.filter(|id| !id.is_empty()) {
+        Some(id) => (
+            "flatpak".to_owned(),
+            ["run", "--command=omnimem", id, "desktop"]
+                .map(str::to_owned)
+                .to_vec(),
+        ),
+        None => (exe.to_owned(), vec!["desktop".to_owned()]),
+    }
+}
+
+/// The Claude Code item inside a Flatpak, which can neither see nor run a
+/// `claude` installed outside the sandbox.
+pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpak)";
+
 /// What the window says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
@@ -243,6 +274,44 @@ mod tests {
         );
         assert!(enabled, "a failed add can be tried again");
         assert!(failed.starts_with("Add to Claude Code (failed: xxx") && failed.ends_with("…)"));
+    }
+
+    #[test]
+    fn a_flatpak_puts_the_tray_icon_where_the_desktop_can_read_it() {
+        let os = |s: &str| Some(std::ffi::OsString::from(s));
+        assert_eq!(
+            flatpak_icon_dir(os("com.squarecows.OmniMem"), os("/run/user/1000")),
+            Some(std::path::PathBuf::from(
+                "/run/user/1000/app/com.squarecows.OmniMem"
+            ))
+        );
+        assert_eq!(flatpak_icon_dir(None, os("/run/user/1000")), None);
+        assert_eq!(flatpak_icon_dir(os(""), os("/run/user/1000")), None);
+        assert_eq!(flatpak_icon_dir(os("com.squarecows.OmniMem"), None), None);
+    }
+
+    #[test]
+    fn a_flatpak_starts_at_login_through_flatpak_run() {
+        assert_eq!(
+            login_command(Some("com.squarecows.OmniMem"), "/app/bin/omnimem"),
+            (
+                "flatpak".to_owned(),
+                [
+                    "run",
+                    "--command=omnimem",
+                    "com.squarecows.OmniMem",
+                    "desktop"
+                ]
+                .map(str::to_owned)
+                .to_vec()
+            )
+        );
+        for outside in [None, Some("")] {
+            assert_eq!(
+                login_command(outside, "/usr/bin/omnimem"),
+                ("/usr/bin/omnimem".to_owned(), vec!["desktop".to_owned()])
+            );
+        }
     }
 
     #[test]

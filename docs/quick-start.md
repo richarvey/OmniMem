@@ -19,7 +19,10 @@ Both run exactly the same memory engine.
 |---|---|---|
 | Windows 10 and 11 | `OmniMem-<version>-x64.msi` | Installs for you alone (no administrator) with a Start menu entry. Unsigned for now, so SmartScreen asks first: **More info**, then **Run anyway**. Windows on Arm runs it through x64 emulation |
 | macOS | `OmniMem-<version>-arm64.dmg` | Apple silicon, macOS 13.4 or later (there's no Intel build). Drag it to Applications; it lives in the menu bar with no Dock icon |
-| Linux | `omnimem-desktop-<version>-linux-<arch>.tar.gz` (a Flatpak is planned) | amd64 and arm64, glibc 2.38 or newer, with GTK 3, WebKitGTK 4.1 and libayatana-appindicator3 installed. On GNOME you'll want the AppIndicator extension to see the tray icon: without it the settings window opens instead and tells you so |
+| Linux | `omnimem-desktop-<version>-linux-<arch>.flatpak` | amd64 and arm64. `flatpak install --user omnimem-desktop-<version>-linux-<arch>.flatpak` installs it and fetches the GNOME runtime from Flathub, then it's in your applications as OmniMem (or run `flatpak run com.squarecows.OmniMem`). Its data lives in `~/.var/app/com.squarecows.OmniMem`. The sandbox can't see Claude Code, so instead of the menu's Add to Claude Code, run the `claude mcp add` line in [Connect your agent](#connect-your-agent) |
+| Linux, without Flatpak | `omnimem-desktop-<version>-linux-<arch>.tar.gz` | The same app as a bare binary: amd64 and arm64, glibc 2.38 or newer, with GTK 3, WebKitGTK 4.1 and libayatana-appindicator3 installed |
+
+On GNOME you'll want the AppIndicator extension to see the tray icon, Flatpak or not: without it the settings window opens instead and tells you so.
 
 Start OmniMem and the icon appears. The first start downloads the embedding model (about 90 MB, once) and the menu says **Starting** until it's ready. After that the menu shows:
 
@@ -122,7 +125,7 @@ On a Mac the app lives in the menu bar, uses WKWebView for the settings window a
 On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
 
 ```bash
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 ```
 
 The first start downloads the embedding model into your Hugging Face cache (`~/.cache/huggingface/hub` unless `HF_HOME` says otherwise). If you already ran 6.7, it's probably there.
