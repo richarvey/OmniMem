@@ -104,7 +104,6 @@ struct App {
     quit_requested: Option<Instant>,
     clipboard: Option<arboard::Clipboard>,
     login: Option<AutoLaunch>,
-    smoke_sent: bool,
     started: Instant,
 }
 
@@ -413,15 +412,17 @@ impl App {
                 if self.options.smoke_test {
                     info!(url, "smoke test: page loaded");
                 }
+                // Every ordinary page load runs the check, not just the first:
+                // the starting page reloads itself every two seconds, which
+                // can cut a check short on a slow machine. The /_panel/ pages
+                // are the check's own redirect and landing.
                 if self.options.smoke_test
-                    && !self.smoke_sent
+                    && !model::is_smoke_page(&url)
                     && let Some((_, webview)) = &self.window
+                    && let Err(e) = webview.evaluate_script(model::SMOKE_SCRIPT)
                 {
-                    self.smoke_sent = true;
-                    if let Err(e) = webview.evaluate_script(model::SMOKE_SCRIPT) {
-                        error!(error = %e, "smoke test: could not run the check");
-                        *control_flow = ControlFlow::ExitWithCode(1);
-                    }
+                    error!(error = %e, "smoke test: could not run the check");
+                    *control_flow = ControlFlow::ExitWithCode(1);
                 }
             }
             Event::UserEvent(AppEvent::Page(body)) => {
@@ -597,7 +598,6 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         quit_requested: None,
         clipboard: None,
         login,
-        smoke_sent: false,
         started: Instant::now(),
     };
     event_loop.run(move |event, target, control_flow| {

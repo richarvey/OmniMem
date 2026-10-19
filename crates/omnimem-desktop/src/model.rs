@@ -33,6 +33,12 @@ pub fn is_panel_url(url: &str) -> bool {
         })
 }
 
+/// True for the smoke test's own pages (`/_panel/…`), where its check
+/// mustn't start again.
+pub fn is_smoke_page(url: &str) -> bool {
+    url.contains("/_panel/")
+}
+
 /// The tray's status line.
 pub fn status_line(state: &ServiceState) -> String {
     match state {
@@ -138,6 +144,16 @@ mod tests {
         );
         assert!(!is_panel_url("omnimem://localhost.evil.example/"));
         assert!(!is_panel_url("about:srcdoc"));
+    }
+
+    #[test]
+    fn the_smoke_check_restarts_on_every_page_but_its_own() {
+        assert!(!is_smoke_page("omnimem://localhost/"));
+        assert!(!is_smoke_page("http://omnimem.localhost/memories"));
+        assert!(is_smoke_page("omnimem://localhost/_panel/redirect"));
+        assert!(is_smoke_page(
+            "omnimem://localhost/_panel/landed?echo=panel-post-ok"
+        ));
     }
 
     #[test]
