@@ -44,6 +44,16 @@ docker run --rm \
     omnimem-windows-build \
     bash -euo pipefail -c '
         target=x86_64-pc-windows-msvc
+        # xwin lays the SDK out in lower case, with aliases for most of the
+        # casings Windows code asks for but not the two ONNX Runtime does, and
+        # on Linux the lookup is case sensitive (on a Mac it isn'"'"'t, which
+        # hides this). So: set the SDK up, then add those two aliases.
+        cargo xwin env --target "$target" >/dev/null
+        um="$XWIN_CACHE_DIR/xwin/sdk/lib/um/x86_64"
+        for lib in DirectML PathCch; do
+            lower="$(printf %s "$lib" | tr "[:upper:]" "[:lower:]").lib"
+            [ -e "$um/$lib.lib" ] || ln -s "$lower" "$um/$lib.lib"
+        done
         cargo xwin build --release --locked -p omnimem --features desktop --target "$target"
         release="$CARGO_TARGET_DIR/$target/release"
         exe="$release/omnimem.exe"
