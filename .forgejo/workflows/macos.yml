@@ -1,0 +1,164 @@
+name: macOS
+
+# Tests and packages the desktop app on the Mac runner. Every push and pull
+# request on a v7 branch uploads the DMG and the binary tarball as the run's
+# artifact; a v7 tag also attaches them to its release, creating the release
+# if there isn't one yet.
+
+on:
+  push:
+    branches: ["v7.*"]
+    tags: ["v7.*"]
+  pull_request:
+    branches: ["v7.*"]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    name: Test and package (macOS arm64)
+    # Only the Mac runner carries this label, and it has to run the job on the
+    # host: a container there would be Linux.
+    runs-on: macos
+    timeout-minutes: 60
+    steps:
+      - name: Check the runner
+        run: |
+          if [ "$(uname -s)" != Darwin ]; then
+            echo "::error::This job needs the Mac itself but ran on $(uname -sm). Register the runner's label as macos:host."
+            exit 1
+          fi
+          sw_vers
+          xcode-select -p
+          node --version || echo "::warning::No node on PATH, which actions/checkout and upload-artifact need."
+
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "v$version" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} doesn't match the Cargo.toml version $version."
+            exit 1
+          fi
+
+      - name: Rust toolchain
+        # A rustup of the runner's own, so the Rust the Mac's user installed is
+        # never used or changed. The target directory persists between runs.
+        run: |
+          export RUSTUP_HOME="$HOME/.cache/omnimem-ci/rustup" CARGO_HOME="$HOME/.cache/omnimem-ci/cargo"
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+          fi
+          "$CARGO_HOME/bin/rustup" toolchain install stable --profile minimal \
+            --component clippy,rustfmt --target aarch64-apple-darwin
+          "$CARGO_HOME/bin/rustup" default stable
+          {
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "CARGO_TARGET_DIR=$HOME/.cache/omnimem-ci/target"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked -p omnimem-desktop -p omnimem --features omnimem/desktop --all-targets -- -D warnings
+
+      - name: Test
+        run: |
+          cargo test --locked
+          cargo test --locked -p omnimem-desktop
+
+      - name: Signing keychain
+        # Skipped until the signing secrets exist; the package is then ad-hoc
+        # signed. MACOS_CERTIFICATE is a base64 Developer ID Application .p12,
+        # MACOS_NOTARY_API_KEY a base64 App Store Connect API key (.p8).
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "No MACOS_CERTIFICATE secret, so the package will be ad-hoc signed."
+            exit 0
+          fi
+          keychain="${RUNNER_TEMP:?}/omnimem-signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE holds no Developer ID Application identity."
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$MACOS_NOTARY_API_KEY" ]; then
+            echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+            echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package
+        env:
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: scripts/macos-package.sh
+
+      - name: Desktop smoke test
+        # Opens the menu bar icon and settings window, so it needs the runner
+        # to be in a logged-in session; informational until that's known.
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          MCP_PORT=18765 "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/omnimem" \
+            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${MACOS_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MACOS_SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${RUNNER_TEMP:-/nonexistent}/notary.p8"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: omnimem-macos-arm64
+          path: dist/macos/
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          api="$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY/releases"
+          auth="Authorization: token $TOKEN"
+          if ! curl -sSf -H "$auth" "$api/tags/$tag" -o "$RUNNER_TEMP/release.json"; then
+            case "$tag" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+            curl -sSf -H "$auth" -H "Content-Type: application/json" \
+              -d "{\"tag_name\": \"$tag\", \"name\": \"OmniMem ${tag#v}\", \"prerelease\": $prerelease}" \
+              "$api" -o "$RUNNER_TEMP/release.json"
+          fi
+          id="$(plutil -extract id raw -o - "$RUNNER_TEMP/release.json")"
+          for file in dist/macos/*; do
+            curl -sSf -H "$auth" -F "attachment=@$file" \
+              "$api/$id/assets?name=$(basename "$file")" >/dev/null
+            echo "Attached $(basename "$file") to $tag"
+          done

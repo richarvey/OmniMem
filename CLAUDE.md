@@ -55,7 +55,10 @@ cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 cargo test
 scripts/desktop-check.sh     # desktop crate: clippy, tests and a smoke test under Xvfb, in ci/desktop
+scripts/macos-package.sh     # on a Mac: OmniMem.app in a DMG plus a binary tarball, in dist/macos
 ```
+
+- CI: `.forgejo/workflows/macos.yml` runs format, clippy (with and without `desktop`), tests and the packaging on the `macos` runner for `v7.*` pushes, pull requests and tags. Nothing builds the `desktop` feature on Linux in CI yet, so run `scripts/desktop-check.sh` after touching the desktop or settings crates
 
 - The dev host runs out of memory on parallel builds: set `CARGO_BUILD_JOBS=2` and run the desktop check on its own, never alongside another cargo job
 - SQLite runs in memory in tests; there are no store fakes, so a fake can't diverge from the real thing
@@ -85,6 +88,9 @@ Deliberately gone: Valkey, the web UI and `/metrics` over HTTP, SSE transport, `
 - **Webview downloads are unreliable** (WebKitGTK saves silently, macOS won't report), so the panel writes exports and backups into the Downloads folder itself and says where
 - **The panel is never bound to a socket**: `Panel::handle` runs axum routes in-process for the window's `omnimem://` handler. Don't add HTTP routes for it
 - **GNOME shows no tray icon without the AppIndicator extension**; the app opens its window instead
+- **No Intel Mac build**: `ort`'s `download-binaries` has no ONNX Runtime for `x86_64-apple-darwin`, so the DMG is arm64 only. Its static library is built for macOS 13.4, which is the app's minimum. A Homebrew Rust has only its host target, so cross-target builds need rustup's toolchain first in PATH
+- **All three Forgejo runners carry the `sqcows` label** (Linux amd64, Linux arm64 and the Mac), so `runs-on: sqcows` can land on any of them. Use `macos` or `linux` when the platform matters
+- **Clippy's `result_large_err` fires on `Result<T, Response>`** (axum's response is at least 128 bytes). Where the error is the response every caller returns at once, it's allowed per function with the reason
 - **Numbers rendered where 6.x output is compared** are formatted to match Python (`str(float)` and friends), not Rust's defaults
 
 ## Validation constraints

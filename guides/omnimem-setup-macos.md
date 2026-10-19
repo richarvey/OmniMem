@@ -2,13 +2,13 @@
 
 On a Mac, OmniMem is a menu bar app. You drag it into Applications, open it, and it sits up there next to the clock running your memory server. No Docker Desktop, no terminal, no `.env` file to get wrong.
 
-The DMG is a universal build, so it runs natively on Apple Silicon and Intel.
+The DMG is for Apple silicon Macs. There's no Intel build: the ONNX Runtime library OmniMem's embeddings run on has no prebuilt Intel macOS version, so an Intel Mac would need it compiled from source.
 
 ---
 
 ## What you need
 
-- **macOS 13 (Ventura) or later**
+- **An Apple silicon Mac on macOS 13.4 (Ventura) or later**
 - Somewhere around a few hundred MB of free RAM for the embedding model. Any Mac from the last several years is fine
 - An Anthropic API key if you want the Claude-powered extras (optional)
 
@@ -17,9 +17,9 @@ The DMG is a universal build, so it runs natively on Apple Silicon and Intel.
 ## Step 1: Install the app
 
 > [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
+> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)), or take the DMG from the latest run of the [macOS workflow](https://code.squarecows.com/ric/omnimem/actions?workflow=macos.yml). Those development builds aren't notarised, so the first time you open one macOS refuses: go to **System Settings > Privacy & Security** and click **Open Anyway**.
 
-1. Download `OmniMem-<version>.dmg` from the [releases page](https://code.squarecows.com/ric/omnimem/releases)
+1. Download `OmniMem-<version>-arm64.dmg` from the [releases page](https://code.squarecows.com/ric/omnimem/releases)
 2. Open it and drag **OmniMem** into **Applications**
 3. Open OmniMem from Applications
 

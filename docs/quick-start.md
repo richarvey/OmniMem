@@ -18,7 +18,7 @@ Both run exactly the same memory engine.
 | Platform | Download | Notes |
 |---|---|---|
 | Windows 10 and 11 | `OmniMem-<version>-x64.msi` or `OmniMem-<version>-arm64.msi` | Installs per user with a Start menu entry. Unsigned for now, so SmartScreen will ask if you're sure |
-| macOS | `OmniMem-<version>.dmg` | One universal app for Apple Silicon and Intel. Drag it to Applications; it lives in the menu bar with no Dock icon |
+| macOS | `OmniMem-<version>-arm64.dmg` | Apple silicon, macOS 13.4 or later (there's no Intel build). Drag it to Applications; it lives in the menu bar with no Dock icon |
 | Linux | The `com.squarecows.OmniMem` Flatpak | x86_64 and aarch64. On GNOME you'll want the AppIndicator extension to see the tray icon (without it, the settings window opens instead) |
 
 Start OmniMem and the icon appears. The first start downloads the embedding model (about 90 MB, once) and the menu says **Starting** until it's ready. After that the menu shows:
@@ -111,7 +111,7 @@ cargo build --release -p omnimem --features desktop
 ./target/release/omnimem            # no command runs the desktop app
 ```
 
-On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. Until 7.0.0 ships, that build has had far less exercise than the Linux one, so if it misbehaves, an issue with the error text is welcome.
+On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. Until 7.0.0 ships, that build has had far less exercise than the Linux one, so if it misbehaves, an issue with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
 
 On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
 
