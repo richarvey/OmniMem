@@ -15,5 +15,6 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 
 - OmniMem 7 is one Rust binary: the MCP server (streamable HTTP at /mcp, bearer token or OAuth 2.1), the RSS scheduler and the enrichment worker in one process, with a tray app whose settings window replaces the old web UI
 - 48 MCP tools; over HTTP it serves only /mcp, the OAuth routes and /healthz
+- An Anthropic API key is optional: it turns on Claude Haiku for fact extraction, query expansion, deeper contradiction checks and RSS summaries. Add it on the settings window's Configuration page (kept in the OS keychain) or as ANTHROPIC_API_KEY on a server. Embeddings stay local either way
 - Moving from 6.x: back up with dump_to_file() and import the file; every memory is re-embedded from its text
 - Self-hosted and MIT licensed, with a managed cloud version coming soon; no telemetry to third parties
