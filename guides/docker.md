@@ -4,7 +4,7 @@ OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web
 
 The image is `richarvey/omnimem`, built for amd64 and arm64, and it runs `omnimem serve`: the MCP server, the RSS scheduler and the background enrichment worker, all in the one process. It's the headless build, so there's no settings window. You configure it with environment variables.
 
-Inside, it's the same `.deb` the Linux server packages ship, installed on Debian 13. Every v7 tag publishes `richarvey/omnimem:<version>`; `latest` only moves for a release, never for a `-dev` tag, so until 7.0.0 pin a dev version such as `7.0.3-dev`. Before each one is pushed, CI checks that it refuses to start without a token and, with one, serves MCP and reports healthy.
+Inside, it's the same `.deb` the Linux server packages ship, installed on Debian 13. Every v7 tag publishes `richarvey/omnimem:<version>`; `latest` is the newest release and never moves for a `-dev` tag, so pin a version (`7.0.3`) when you want upgrades to be your decision. Before each one is pushed, CI checks that it refuses to start without a token and, with one, serves MCP and reports healthy.
 
 ## Quick start
 

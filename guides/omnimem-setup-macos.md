@@ -16,9 +16,6 @@ The DMG is for Apple silicon Macs. There's no Intel build: the ONNX Runtime libr
 
 ## Step 1: Install the app
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)), or take the DMG from the `dev-v7.0.x` pre-release on the [releases page](https://code.squarecows.com/ric/omnimem/releases), which every push to the branch replaces. Those development builds aren't notarised, so the first time you open one macOS refuses: go to **System Settings > Privacy & Security** and click **Open Anyway**.
-
 1. Download `OmniMem-<version>-arm64.dmg` from the [releases page](https://code.squarecows.com/ric/omnimem/releases)
 2. Open it and drag **OmniMem** into **Applications**
 3. Open OmniMem from Applications

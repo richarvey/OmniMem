@@ -25,8 +25,8 @@ claude> answer the settings form with a 303 redirect
 
 That warning came from memory, not luck. A mistake you've already paid for doesn't get to charge you twice.
 
-> [!IMPORTANT]
-> OmniMem 7 is in development builds, heading for 7.0.0. CI builds every package below on each push and publishes the installers on the [releases page](https://code.squarecows.com/ric/omnimem/releases): the rolling `dev-v7.0.x` pre-release follows the branch, and the `v7.0.x-dev` tags are fixed points, each also pushed as a Docker image. Or [build it from source](docs/quick-start.md#build-from-source).
+> [!NOTE]
+> 7.0.3 is the first release of OmniMem 7: one app in place of the four containers 6.x ran. The installers for every platform are on the [releases page](https://code.squarecows.com/ric/omnimem/releases/latest). Running 6.x? See [Coming from 6.x](#coming-from-6x): the 6.x Docker stack stays on the `v6.7.x` branch, and its one-line installer still works.
 
 ---
 

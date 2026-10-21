@@ -2,7 +2,9 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.0] - Unreleased
+## [7.0.3] - 2026-10-21
+
+The first release of OmniMem 7. 7.0.0-dev to 7.0.3-dev were development builds on the way here, so everything since 6.7 is in this one entry. The 6.x Docker stack carries on from the `v6.7.x` branch, and the old one-line installer on `main` now says 7 is out and then installs 6.7 from there as before.
 
 ### Security
 

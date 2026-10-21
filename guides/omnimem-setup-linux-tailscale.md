@@ -25,9 +25,6 @@ OmniMem is happy with that. It trusts the host and origin of `OAUTH_BASE_URL`, a
 
 ## Step 1: Install OmniMem
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
-
 Download the package for your machine from the [releases page](https://code.squarecows.com/ric/omnimem/releases). On Debian, Ubuntu or Raspberry Pi OS:
 
 ```bash

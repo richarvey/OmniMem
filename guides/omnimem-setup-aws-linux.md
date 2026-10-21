@@ -54,9 +54,6 @@ Create or pick an SSH key pair, launch, and note the public IP or DNS name.
 
 ## Step 2: Install OmniMem
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
-
 SSH in:
 
 ```bash

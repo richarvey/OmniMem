@@ -17,9 +17,6 @@ In 6.x this meant four containers and a vector database squeezed onto a Pi. Now 
 
 ## Step 1: Install the package
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](../docs/quick-start.md#build-from-source)).
-
 Download the arm64 `.deb` from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it:
 
 ```bash

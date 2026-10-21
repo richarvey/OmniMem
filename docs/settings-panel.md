@@ -4,9 +4,6 @@ In 6.x you managed OmniMem from a web dashboard on port 8080, with its own login
 
 That's deliberate. A dashboard on a port is something else on your machine (or your network) can reach, so it needs a login, sessions and a rate limit, and all of that is attack surface for a page only you should ever see. The settings window gets its pages straight from the OmniMem process through a custom `omnimem://` protocol and talks back over IPC. No socket, no session, no login.
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](quick-start.md#build-from-source)).
-
 ## Opening it
 
 The desktop app (the Windows MSI, the macOS DMG or the Flatpak) puts an icon in your tray or menu bar while it runs. Its menu has:

@@ -117,9 +117,6 @@ volumes:
 
 `MCP_HOST: 0.0.0.0` is needed inside a container so Traefik can reach it, and OAuth (or a token) is what lets that start.
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](quick-start.md#build-from-source)).
-
 ### Basic auth at the proxy
 
 You can still put basic auth in front, but only if every client can send it, and claude.ai can't. For a token-only setup it adds little over `MCP_AUTH_TOKEN` itself. If you use OAuth, leave the OAuth routes and `/mcp` without proxy auth or the sign-in can't work.

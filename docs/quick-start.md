@@ -12,9 +12,6 @@ Both run exactly the same memory engine.
 
 ## Install the desktop app
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](#build-from-source)).
-
 | Platform | Download | Notes |
 |---|---|---|
 | Windows 10 and 11 | `OmniMem-<version>-x64.msi` | Installs for you alone (no administrator) with a Start menu entry. Unsigned for now, so SmartScreen asks first: **More info**, then **Run anyway**. Windows on Arm runs it through x64 emulation |
@@ -48,9 +45,6 @@ The database (`omnimem.db`), `feeds.yml`, `backups/` and `omnimem.env` (your sav
 
 ## Install on a server
 
-> [!NOTE]
-> Coming with 7.0.0. Until the first release you can build from source (see [Build from source](#build-from-source)).
-
 ### Debian, Ubuntu, Fedora and friends
 
 You need glibc 2.38 or newer: Debian 13, Ubuntu 24.04, Fedora 39 or later. (The ONNX Runtime library OmniMem embeds with sets that floor.) Grab the package for your architecture from the [releases page](https://code.squarecows.com/ric/omnimem/releases) and install it:
@@ -60,7 +54,7 @@ sudo apt install ./omnimem_<version>_amd64.deb        # or _arm64.deb
 sudo dnf install ./omnimem-<version>-1.x86_64.rpm     # or .aarch64.rpm
 ```
 
-Development versions are spelt with a tilde in the package names (`omnimem_7.0.3~dev_amd64.deb`), so a release always counts as newer.
+Development builds are spelt with a tilde in the package names (`omnimem_7.0.4~dev_amd64.deb`), so the release they lead up to always counts as newer.
 
 For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
 
