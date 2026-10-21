@@ -611,8 +611,10 @@ impl App {
                 }
                 // Every ordinary page load runs the check, not just the first:
                 // the starting page reloads itself every two seconds, which
-                // can cut a check short on a slow machine. The /_panel/ pages
-                // are the check's own redirect and landing.
+                // can cut a check short on a slow machine (the check holds
+                // its failure back long enough for that reload to discard
+                // it). The /_panel/ pages are the check's own redirect and
+                // landing.
                 if self.options.smoke_test
                     && !model::is_smoke_page(&url)
                     && let Some((_, webview)) = &self.window

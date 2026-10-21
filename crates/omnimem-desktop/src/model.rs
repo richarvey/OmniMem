@@ -148,6 +148,12 @@ pub fn mcp_url(state: &ServiceState) -> Option<&str> {
 /// form lands on a page that reports everything over IPC, so a redirect the
 /// webview won't follow fails the test by never reporting. (A plain 303 is
 /// one: WebKitGTK ignores redirects from a custom scheme.)
+///
+/// A failure is reported three seconds late. The starting page reloads
+/// itself every two seconds, and a reload that lands mid-check fails its
+/// fetches with "Load failed"; the reload takes the pending report with it
+/// and the next page load runs the check again. A failure no reload explains
+/// still arrives.
 pub const SMOKE_SCRIPT: &str = r#"
 Promise.all([
   fetch('/_panel/echo', { method: 'POST', body: 'panel-post-ok' }).then(r => r.text()),
@@ -165,7 +171,7 @@ Promise.all([
   }
   document.body.appendChild(form);
   form.submit();
-}).catch(e => window.ipc.postMessage(JSON.stringify({ cmd: 'smoke', echo: 'error: ' + e, css: 0, title: document.title })));
+}).catch(e => setTimeout(() => window.ipc.postMessage(JSON.stringify({ cmd: 'smoke', echo: 'error: ' + e, css: 0, title: document.title })), 3000));
 "#;
 
 /// What the smoke script found, or why it failed.
