@@ -748,6 +748,14 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         .enable_all()
         .build()
         .context("starting the panel runtime")?;
+    let runtime = Arc::new(runtime);
+    // Never shut down. On Linux each panel request holds a WebKit request,
+    // which may only be released on the main thread; a shutdown as the app
+    // quits cancels requests still waiting (an update check on a slow
+    // network, say) and releases theirs on a worker thread after the window
+    // has gone, and WebKitGTK aborts. The process ending stops these threads,
+    // and the services have stopped by then (`quit`).
+    std::mem::forget(Arc::clone(&runtime));
 
     #[allow(unused_mut)]
     let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
@@ -788,7 +796,7 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         options,
         proxy,
         panel,
-        runtime: Arc::new(runtime),
+        runtime,
         tray: None,
         window: None,
         state: ServiceState::Starting,
