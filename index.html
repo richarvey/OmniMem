@@ -993,17 +993,16 @@ curl http://127.0.0.1:8765/healthz   <span style="color: rgb(134, 140, 150);"># 
       <div style="display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: start;">
         <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 26px; font-weight: 700; color: rgb(100, 107, 118); line-height: 1; padding-top: 4px;">03</div>
         <div>
-          <h3 style="font-family: Ubuntu, sans-serif; font-size: 18px; font-weight: 500; margin: 0px 0px 8px; color: rgb(242, 244, 246);">Coming from 6.x?</h3>
-          <p style="font-size: 15px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px 0px 14px; max-width: 640px;">Take a backup on 6.x with <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">dump_to_file()</code>, then restore it on the settings window's Backups page, or import it from a terminal. Every memory is embedded again from its text, so your recall and skills behave as they did.</p>
-          <div style="background: rgb(15, 17, 20); border: 1px solid rgb(38, 42, 49); border-radius: 9px; overflow: hidden; max-width: 720px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid rgb(27, 30, 36);">
-              <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(134, 140, 150);">bash</span>
-              <button type="button" data-copy="" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; color: rgb(150, 156, 165); background: transparent; border: 1px solid rgb(38, 42, 49); border-radius: 5px; padding: 3px 9px; cursor: pointer;">copy</button>
-            </div>
-            <pre style="margin: 0px; padding: 15px 16px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12.5px; line-height: 1.75; color: rgb(201, 205, 211); overflow-x: auto;">omnimem import memory_backup.json</pre>
-          </div>
+          <h3 style="font-family: Ubuntu, sans-serif; font-size: 18px; font-weight: 500; margin: 0px 0px 8px; color: rgb(242, 244, 246);">Add an Anthropic key <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; font-weight: 400; color: rgb(134, 140, 150); margin-left: 6px;">optional</span></h3>
+          <p style="font-size: 15px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px; max-width: 640px;">OmniMem works fine without one. With a key, Claude Haiku pulls the facts out of what your agent saves, rephrases recall queries so they find more, double-checks contradictions and summarises your RSS feeds. Paste it in the settings window's <strong style="color: rgb(201, 205, 211); font-weight: 600;">Configuration</strong> page, under Claude, and it takes effect at the next start. It's kept in your OS keychain. On a server, set <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">ANTHROPIC_API_KEY</code> in <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">omnimem.env</code>. Embeddings still run on your machine either way.</p>
         </div>
       </div>
+    </div>
+
+
+    <div style="display: flex; gap: 12px; align-items: flex-start; margin-top: 28px; max-width: 760px; border: 1px solid rgba(214, 164, 74, 0.35); background: rgba(214, 164, 74, 0.05); border-radius: 9px; padding: 13px 16px;">
+      <span aria-hidden="true" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; font-weight: 700; color: rgb(214, 164, 74); line-height: 1.6;">!</span>
+      <p style="font-size: 13.5px; line-height: 1.6; color: rgb(150, 156, 165); margin: 0px;"><strong style="color: rgb(214, 164, 74); font-weight: 600;">Coming from 6.x?</strong> Take a backup on 6.x with <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">dump_to_file()</code>, then restore it on the settings window's Backups page or run <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">omnimem import memory_backup.json</code>. Every memory is embedded again from its text, so recall and skills behave as they did.</p>
     </div>
 
     
