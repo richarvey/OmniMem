@@ -17,9 +17,11 @@
 # identity in the keychain, the app and binary are signed with the hardened
 # runtime, and with MACOS_NOTARY_KEY (an App Store Connect API key, .p8),
 # MACOS_NOTARY_KEY_ID and MACOS_NOTARY_ISSUER as well the DMG is notarised and
-# stapled. Without an identity everything is ad-hoc signed: it runs, but
-# Gatekeeper stops the first open of a downloaded copy until it's allowed
-# under System Settings > Privacy & Security.
+# stapled and the bare binary notarised. MACOS_SIGN_IDENTITY can be the
+# certificate's SHA-1, which CI uses, since a renewed certificate shares its
+# predecessor's name. Without an identity everything is ad-hoc signed: it
+# runs, but Gatekeeper stops the first open of a downloaded copy until it's
+# allowed under System Settings > Privacy & Security.
 #
 # Needs the Xcode command line tools and a Rust toolchain with the
 # aarch64-apple-darwin target.
@@ -130,15 +132,31 @@ for attempt in 1 2 3; do
     sleep 5
 done
 
+# Sends a file to Apple's notary service and fails, with Apple's log, unless
+# it's accepted: notarytool's own exit status doesn't say.
+notarise() {
+    local notary=(--key "$MACOS_NOTARY_KEY" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER")
+    local result status
+    result="$(xcrun notarytool submit "$1" --wait --output-format json "${notary[@]}")"
+    status="$(plutil -extract status raw -o - - <<<"$result")"
+    echo "Notarisation of $(basename "$1"): $status"
+    if [ "$status" != Accepted ]; then
+        xcrun notarytool log "$(plutil -extract id raw -o - - <<<"$result")" "${notary[@]}" >&2 || true
+        exit 1
+    fi
+}
+
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
     codesign --force --timestamp --sign "$MACOS_SIGN_IDENTITY" "$dmg"
     if [ -n "${MACOS_NOTARY_KEY:-}" ]; then
-        xcrun notarytool submit "$dmg" --wait \
-            --key "$MACOS_NOTARY_KEY" \
-            --key-id "$MACOS_NOTARY_KEY_ID" \
-            --issuer "$MACOS_NOTARY_ISSUER"
-        # Fails unless notarisation was accepted, so it doubles as the check.
+        notarise "$dmg"
         xcrun stapler staple "$dmg"
+        # What a downloaded copy meets, from the stapled ticket alone.
+        spctl --assess --type open --context context:primary-signature "$dmg"
+        # The bare binary can't carry a stapled ticket, so Gatekeeper looks it
+        # up online; it goes to Apple in a zip, which notarytool takes.
+        ditto -c -k "$cli" "$work/omnimem.zip"
+        notarise "$work/omnimem.zip"
     fi
 fi
 

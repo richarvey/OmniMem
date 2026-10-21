@@ -187,13 +187,24 @@ jobs:
             -s -k "$password" "$keychain" >/dev/null
           # shellcheck disable=SC2046
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # By SHA-1, not name: codesign refuses a name two identities on the
+          # search list share, as an old certificate and its renewal do.
           identity="$(security find-identity -v -p codesigning "$keychain" \
-            | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+            | awk '/"Developer ID Application: /{print $2; exit}')"
           if [ -z "$identity" ]; then
             echo "::error::MACOS_CERTIFICATE holds no Developer ID Application identity."
             exit 1
           fi
           echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          # Developer ID certificates last about 13 months now, so say so a
+          # month before this one stops signing.
+          certificate="$(security find-certificate -a -Z -p "$keychain" \
+            | awk -v h="$identity" '/^SHA-1 hash:/{keep=($3==h)} keep')"
+          expiry="$(printf '%s\n' "$certificate" | openssl x509 -noout -enddate | cut -d= -f2)"
+          echo "Signing with $identity, valid until $expiry"
+          if ! printf '%s\n' "$certificate" | openssl x509 -noout -checkend $((30 * 86400)) >/dev/null; then
+            echo "::warning::The Developer ID certificate expires $expiry: make a new one and replace MACOS_CERTIFICATE and MACOS_CERTIFICATE_PASSWORD."
+          fi
           if [ -n "$MACOS_NOTARY_API_KEY" ]; then
             echo "$MACOS_NOTARY_API_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
             echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
@@ -206,13 +217,20 @@ jobs:
         run: scripts/macos-package.sh
 
       - name: Desktop smoke test
-        # Opens the menu bar icon and settings window, which works because the
-        # runner lives in a logged-in session on the Mac.
+        # The app as shipped, from the DMG and signed (with the hardened
+        # runtime once there's a certificate), so signing can't break it
+        # unseen. Opens the menu bar icon and settings window, which works
+        # because the runner lives in a logged-in session on the Mac.
         timeout-minutes: 3
         run: |
           mkdir -p "$RUNNER_TEMP/smoke"
-          MCP_PORT=18765 "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/omnimem" \
-            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test
+          mount="$RUNNER_TEMP/smoke/dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" dist/macos/OmniMem-*-arm64.dmg >/dev/null
+          status=0
+          MCP_PORT=18765 "$mount/OmniMem.app/Contents/MacOS/omnimem" \
+            --db "$RUNNER_TEMP/smoke/omnimem.db" desktop --smoke-test || status=$?
+          hdiutil detach "$mount" >/dev/null || hdiutil detach -force "$mount" >/dev/null
+          exit "$status"
 
       - name: Remove the signing keychain
         if: always()
