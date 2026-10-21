@@ -1,16 +1,18 @@
 name: Coverage and security
 
 # Beside the build rather than in it, so a slow coverage run or a fresh
-# advisory never holds up the packages: every push to a branch other than main
-# and every v7 pull request gets line coverage of the workspace's tests, a
-# RustSec audit of Cargo.lock and a secret scan of the history. A push to a
-# v7 branch also publishes the coverage badge the README shows.
+# advisory never holds up the packages: every branch push, main included, and
+# every pull request into a v7 branch or main gets line coverage of the
+# workspace's tests, a RustSec audit of Cargo.lock and a secret scan of the
+# history. A push to a v7 branch also publishes the coverage badge the README
+# shows. (6.x's security.yml, a secret scan alone on main, is gone: this runs
+# on main as well, with the audit added.)
 
 on:
   push:
-    branches-ignore: [main]
+    branches: ["**"]
   pull_request:
-    branches: ["v7.*"]
+    branches: ["v7.*", main]
   workflow_dispatch:
 
 jobs:
