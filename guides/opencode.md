@@ -1,9 +1,6 @@
 # Connecting OmniMem to OpenCode
 
-OpenCode is an open-source, terminal-based AI coding agent. It supports MCP servers natively via SSE and Streamable HTTP transports.
-
-> [!WARNING]
-> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use URL `.../mcp` in the config below.
+OpenCode is an open source terminal coding agent. It supports remote MCP servers over Streamable HTTP, so it connects straight to OmniMem's `/mcp` endpoint.
 
 ## Quick setup
 
@@ -15,7 +12,7 @@ Create or edit `~/.config/opencode/opencode.json` for global access:
   "mcp": {
     "omnimem": {
       "type": "remote",
-      "url": "http://localhost:8765/sse",
+      "url": "http://127.0.0.1:8765/mcp",
       "oauth": false,
       "timeout": 15000
     }
@@ -23,11 +20,13 @@ Create or edit `~/.config/opencode/opencode.json` for global access:
 }
 ```
 
-Note: OpenCode uses `"mcp"` as the top-level key (not `"mcpServers"`) and `"type": "remote"` for network servers.
+OpenCode uses `"mcp"` as the top-level key (not `"mcpServers"`) and `"type": "remote"` for anything on a network.
 
-Setting `"oauth": false` is recommended to prevent OpenCode's auto OAuth negotiation from interfering with OmniMem's simple bearer token auth.
+On the desktop app, **Copy MCP URL** in the tray or menu bar menu gives you the address.
 
-If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add the token as a header:
+`"oauth": false` stops OpenCode trying to negotiate OAuth when it sees a 401. That's what you want with a plain access token. If you've switched on OmniMem's OAuth for a remote server and want OpenCode to sign in through the login page, leave it out and OpenCode will run the flow itself.
+
+If OmniMem has an access token set (`MCP_AUTH_TOKEN`, or **Access token** on the Configuration page), add it as a header:
 
 ```json
 {
@@ -35,7 +34,7 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
   "mcp": {
     "omnimem": {
       "type": "remote",
-      "url": "http://localhost:8765/sse",
+      "url": "http://127.0.0.1:8765/mcp",
       "headers": {
         "Authorization": "Bearer {env:OMNIMEM_TOKEN}"
       },
@@ -46,25 +45,27 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 }
 ```
 
-Set `OMNIMEM_TOKEN` in your shell environment. Note: OpenCode uses `{env:VAR_NAME}` syntax (single braces, not `${}`).
+Set `OMNIMEM_TOKEN` in your shell. OpenCode uses `{env:VAR_NAME}`, single braces and no dollar.
+
+Coming from 6.x, change `/sse` to `/mcp`.
 
 ## Config file locations
 
-OpenCode merges configs from all locations, with later sources overriding conflicting keys:
+OpenCode merges config from all of these, later ones winning on conflicts:
 
 | Priority | Location | Use when |
 |----------|----------|----------|
 | Lowest | `~/.config/opencode/opencode.json` | OmniMem should be available everywhere (recommended) |
-| Higher | `opencode.json` in project root | Only this project needs OmniMem |
-| Highest | `OPENCODE_CONFIG_CONTENT` env var | Inline JSON for CI/testing |
+| Higher | `opencode.json` in the project root | Only this project needs OmniMem |
+| Highest | `OPENCODE_CONFIG_CONTENT` environment variable | Inline JSON for CI or testing |
 
 ## Using OmniMem with OpenCode
 
-Once configured, OmniMem's tools are available to the LLM automatically. You can prompt OpenCode to use them:
+Once it's configured the tools are available to the model automatically:
 
 - "Call the OmniMem briefing tool for this project"
 - "Remember this decision in OmniMem"
-- "Check if we've tried this approach before"
+- "Check whether we've tried this approach before"
 
 ## Verifying the connection
 
@@ -72,18 +73,17 @@ Start an OpenCode session and ask:
 
 > Call the OmniMem health tool to check the connection
 
-You should see Valkey connection status, index counts, and embedding model status.
+You should get back the record and vector counts per namespace, whether the embedding model is loaded, and the uptime.
 
 ## Known quirks
 
-- **Silent tool registration failure**: There is an open bug where OpenCode shows a green "connected" status but silently fails to register any tools. If OmniMem tools do not appear, restart OpenCode and check terminal output for errors.
-- **OAuth auto-negotiation**: OpenCode auto-detects OAuth on remote connections by watching for 401 responses. For OmniMem's simple bearer token auth, set `"oauth": false` to prevent unexpected auth flows.
-- **Default timeout is 5 seconds**: OmniMem's embedding model may need longer on first call. Set `"timeout": 15000` (15 seconds) to avoid premature timeouts.
-- **Context window consumption**: Every MCP tool description is injected into the LLM context on each request. OmniMem's 30+ tools will consume a non-trivial number of tokens. Use `"enabled": false` to temporarily disable OmniMem for a session if needed.
-- **Transport detection order**: OpenCode tries SSE first, then falls back to Streamable HTTP. OmniMem defaults to SSE (`/sse`) in 3.10. To migrate to Streamable HTTP, set `MCP_TRANSPORT=http` and point at `/mcp`.
+- **Connected but no tools**: there's been a bug where OpenCode shows a green "connected" status but registers nothing. Restart OpenCode and check the terminal output.
+- **OAuth auto-negotiation**: OpenCode watches for 401 responses and starts OAuth. With a plain access token, keep `"oauth": false`.
+- **The 5 second default timeout**: the first call after OmniMem starts can take longer while the embedding model loads. `"timeout": 15000` gives it room.
+- **Context cost**: every tool description goes into the model's context on each request, and OmniMem has 48 tools. Set `"enabled": false` to switch OmniMem off for a session if you need the tokens back.
 
 ## Notes
 
-- If OmniMem is not responding, check that Docker containers are running: `docker compose ps`
-- OAuth tokens (if auto-negotiation triggers accidentally) are stored at `~/.local/share/opencode/mcp-auth.json`
-- Check the [OpenCode documentation](https://opencode.ai/docs/mcp-servers/) for the latest MCP configuration options
+- If OmniMem isn't answering, `curl http://127.0.0.1:8765/healthz` should return `{"status": "ok"}`, and the desktop app's tray status line says whether it's running
+- OAuth tokens OpenCode obtains are stored in `~/.local/share/opencode/mcp-auth.json`
+- Check the [OpenCode documentation](https://opencode.ai/docs/mcp-servers/) for the latest MCP options

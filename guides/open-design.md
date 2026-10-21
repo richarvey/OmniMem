@@ -1,58 +1,45 @@
 # Connecting OmniMem to Open Design
 
-[Open Design](https://opendesign.ai) is a desktop application that can talk to remote MCP servers over OAuth 2.1. You can connect it to OmniMem so its agent shares the same persistent memory, project context, and graveyard as your other tools.
+[Open Design](https://opendesign.ai) is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context and graveyard as the rest of your tools.
 
-Unlike claude.ai, Open Design is a **native/desktop client**, so it authorises as a *public* OAuth client: it uses PKCE with no client secret, and it registers a loopback redirect URI (`http://127.0.0.1:<port>/api/mcp/oauth/callback`) on an ephemeral port. It also runs a fresh dynamic client registration each time it connects.
-
-> [!IMPORTANT]
-> This needs **OmniMem 5.5.1 or newer**. Earlier versions stamped a `client_secret` onto every registered client, including public ones, which made the token exchange fail with `invalid_client` / "Client secret is required". See [Troubleshooting](#troubleshooting) if you hit that.
-
-> [!NOTE]
-> Requires OAuth 2.1 enabled and Streamable HTTP transport (`MCP_TRANSPORT=http`). Your OmniMem instance must be reachable over HTTPS from wherever Open Design runs.
+Unlike claude.ai, Open Design is a **native desktop client**, so it signs in as a *public* OAuth client. It uses PKCE with no client secret, registers a loopback redirect (`http://127.0.0.1:<port>/api/mcp/oauth/callback`) on a random port, and registers itself afresh every time it connects. OmniMem 7 handles all of that out of the box: public clients get no secret and prove themselves with PKCE alone.
 
 ## Prerequisites
 
-- **OmniMem 5.5.1+** running via Docker Compose with public HTTPS access (via reverse proxy or tunnel)
-- **`MCP_TRANSPORT=http`** set in your `.env` (Streamable HTTP is required)
-- **OAuth 2.1 enabled** in your `.env` (see below)
-- **Open Design** desktop app installed
+- **OmniMem 7** reachable over HTTPS from wherever Open Design runs, through a reverse proxy or a tunnel
+- **OAuth switched on** (below)
+- **Open Design** installed
 
-## Step 1: Configure OAuth in OmniMem
+## Step 1: Switch on OAuth
 
-Add the following to your `.env` file:
+On a headless install, put this in `/etc/omnimem/omnimem.env` (or pass it to the Docker image as environment variables):
 
 ```bash
-MCP_TRANSPORT=http
-
 OAUTH_ENABLED=true
 OAUTH_BASE_URL=https://mcp.yourdomain.com
 OAUTH_ADMIN_USER=admin
 OAUTH_ADMIN_PASSWORD=a-strong-password-here
 ```
 
-| Variable | Description |
+On the desktop app these live in the **OAuth** section of the Configuration page, with the password kept in your OS keychain.
+
+| Setting | What it's for |
 |----------|-------------|
-| `OAUTH_BASE_URL` | The externally-reachable HTTPS URL of your OmniMem instance. This is what Open Design connects to, and OmniMem allows this hostname and origin through its Host/Origin guard automatically |
-| `OAUTH_ADMIN_USER` | Username for the single admin account |
-| `OAUTH_ADMIN_PASSWORD` | Password for the admin account. Use something strong, this protects your entire memory store |
+| `OAUTH_BASE_URL` | The https address Open Design connects to. OmniMem trusts this host and origin automatically |
+| `OAUTH_ADMIN_USER` | The username the login page asks for |
+| `OAUTH_ADMIN_PASSWORD` | The password the login page asks for. Make it strong, it guards your whole memory store |
 
-Restart the MCP server to pick up the changes:
-
-```bash
-docker compose restart mcp_server
-```
-
-Verify the discovery endpoint responds:
+Restart OmniMem (`sudo systemctl restart omnimem` on a server) and check discovery answers:
 
 ```bash
 curl https://mcp.yourdomain.com/.well-known/oauth-authorization-server
 ```
 
-You should get JSON with `authorization_endpoint`, `token_endpoint`, and `registration_endpoint` fields. A `421` here means the hostname isn't allowlisted, see [Troubleshooting](#troubleshooting).
+You should get JSON with `authorization_endpoint`, `token_endpoint` and `registration_endpoint`. A `421` means the hostname isn't trusted, see [Troubleshooting](#troubleshooting).
 
-## Step 2: Expose OmniMem over HTTPS
+## Step 2: Put it behind HTTPS
 
-Open Design connects over HTTPS, so OmniMem needs a public TLS endpoint. A minimal Caddy config:
+A minimal Caddy config does it:
 
 ```
 mcp.yourdomain.com {
@@ -60,51 +47,34 @@ mcp.yourdomain.com {
 }
 ```
 
-Or Traefik labels:
+A Tailscale Funnel works too. See [the reverse proxy docs](../docs/reverse-proxy.md) for more.
 
-```yaml
-labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.omnimem.rule=Host(`mcp.yourdomain.com`)"
-  - "traefik.http.routers.omnimem.tls.certresolver=letsencrypt"
-  - "traefik.http.services.omnimem.loadbalancer.server.port=8765"
-```
-
-A Tailscale funnel works too. See `docs/reverse-proxy.md` for full examples.
-
-> [!NOTE]
-> Most reverse proxies and tunnels terminate TLS and forward to OmniMem over plain http. FastMCP 3.x guards the browser `Origin` header, and OmniMem trusts the `OAUTH_BASE_URL` origin automatically so this is handled for you. If you serve under an extra hostname, add it via `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`.
+Most proxies and tunnels terminate TLS and forward to OmniMem over plain http. That's fine: OmniMem accepts a browser origin that matches its own host whatever the scheme, so the login form isn't refused. If you serve under an extra hostname, add it with `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS`.
 
 ## Step 3: Add OmniMem in Open Design
 
-1. Open **Open Design** and go to its **Settings** (or **Integrations** / **MCP Servers** section, the exact label depends on your version)
-2. Choose to add a **remote MCP server** / **custom connector**
-3. Enter your OmniMem MCP URL, including the `/mcp` path:
+1. Open **Open Design** and go to its **Settings** (the MCP section's label depends on your version)
+2. Add a **remote MCP server** or **custom connector**
+3. Enter your OmniMem URL, including the `/mcp` path:
 
    ```
    https://mcp.yourdomain.com/mcp
    ```
-4. Confirm/connect
+4. Connect
 
-Open Design then handles the OAuth flow itself:
-- Discovers the endpoints via `/.well-known/oauth-authorization-server`
-- Registers itself as a public OAuth client (dynamic client registration, no secret)
-- Opens your browser to the OmniMem login page
-- Completes the PKCE token exchange and stores the tokens locally
+Open Design takes it from there: it discovers the endpoints, registers as a public client, opens the OmniMem login page in your browser, and finishes the PKCE token exchange.
 
 ## Step 4: Sign in
 
-When Open Design opens the OmniMem login page in your browser:
-
-1. Enter your `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD`
+1. Enter your admin username and password
 2. Click **Sign in**
-3. Your browser redirects back to Open Design's local callback (`http://127.0.0.1:<port>/...`) and the connection completes
+3. Your browser is sent back to Open Design's local callback and the connection completes
 
-OmniMem tools are now available to the Open Design agent.
+The OmniMem tools are now available to the Open Design agent.
 
 ## How it works
 
-Open Design uses the OAuth 2.1 authorisation code flow with PKCE, as a public client with **no client secret**:
+The OAuth 2.1 authorisation code flow with PKCE, as a public client with **no client secret**:
 
 ```
 Open Design                  OmniMem
@@ -118,7 +88,7 @@ Open Design                  OmniMem
    |  POST /register            |
    |  token_endpoint_auth_      |
    |  method: "none"            |
-   |--------------------------->|  Dynamic registration (public client, no secret)
+   |--------------------------->|  Registration (public client, no secret)
    |  <client_id>               |
    |<---------------------------|
    |                            |
@@ -130,17 +100,17 @@ Open Design                  OmniMem
    |  302 -> /oauth/login       |
    |<---------------------------|
    |                            |
-   |  [User signs in]           |
+   |  [You sign in]             |
    |  POST /oauth/login         |
-   |--------------------------->|  Verify credentials
+   |--------------------------->|  Check credentials
    |  302 -> 127.0.0.1:PORT?    |
    |         code=...           |
    |<---------------------------|
    |                            |
    |  POST /token               |
    |  code + code_verifier      |
-   |  (NO client_secret)        |
-   |--------------------------->|  Token exchange, PKCE verified
+   |  (no client_secret)        |
+   |--------------------------->|  Token exchange, PKCE checked
    |  <access_token, refresh>   |
    |<---------------------------|
    |                            |
@@ -151,21 +121,20 @@ Open Design                  OmniMem
    |<---------------------------|
 ```
 
-Because it is a public client, OmniMem does not issue or require a `client_secret`. The `code_verifier` (PKCE) is what proves the token request came from the same client that started the flow. Access tokens last 1 hour and refresh automatically using the refresh token (30 days by default, `OAUTH_REFRESH_MAX_DAYS`), with the same rotation grace window used for claude.ai.
+Because it's a public client, OmniMem neither issues nor asks for a `client_secret`. The `code_verifier` is what proves the token request came from whoever started the flow. Access tokens last an hour and refresh automatically; a refresh chain lasts 30 days by default (`OAUTH_REFRESH_MAX_DAYS`), with the same rotation grace window claude.ai relies on.
 
-## Using both OAuth and bearer tokens
+## OAuth and access tokens together
 
-OAuth runs alongside bearer token auth. If you also set `MCP_AUTH_TOKEN`, local clients (Claude Code, etc.) can keep using bearer tokens while Open Design uses OAuth. OmniMem's `MultiAuth` layer tries OAuth first, then the bearer verifier.
+If you also set `MCP_AUTH_TOKEN`, local clients like Claude Code keep using the access token while Open Design uses OAuth. `/mcp` accepts either.
 
 ## Troubleshooting
 
-| Problem | Solution |
+| Problem | Fix |
 |---------|----------|
-| `invalid_client` / "Client secret is required" at the token step (after signing in) | You're on OmniMem older than 5.5.1, which wrongly assigned a secret to public clients. Upgrade to 5.5.1+. If a broken registration is cached, it clears itself on the next connect since Open Design re-registers each time |
-| Discovery / everything returns `421 Misdirected Request` | FastMCP 3.x's Host guard doesn't allow your public hostname. OmniMem allows the `OAUTH_BASE_URL` host automatically, so confirm it's set correctly. For extra hostnames use `MCP_ALLOWED_HOSTS` |
-| `403 Forbidden Origin` when submitting the login form | The proxy terminates TLS and forwards over http, so the origin scheme mismatches. OmniMem trusts the `OAUTH_BASE_URL` origin automatically; if you serve under another origin add it via `MCP_ALLOWED_ORIGINS` |
-| Discovery endpoint returns 404 | Ensure `OAUTH_ENABLED=true` is set and the MCP server was restarted. Check `docker compose logs mcp_server` |
-| Login works but tools don't appear | Confirm `MCP_TRANSPORT=http`. Streamable HTTP is required, not SSE |
-| Browser redirect fails / "connection refused" at `127.0.0.1:<port>` | Open Design's local callback listener wasn't reachable. Make sure the app is still running and no firewall is blocking loopback, then retry the connection |
-| "Invalid or expired session" on the login page | The authorisation session timed out (5 minutes). Reconnect from Open Design to start a fresh flow |
-| "Too many failed attempts" on the login page | The per-IP login rate limit tripped (`OAUTH_LOGIN_MAX_ATTEMPTS` in `OAUTH_LOGIN_WINDOW_SECONDS`). Wait for the window to pass |
+| Every request gets `421 Misdirected Request` | Your public hostname isn't trusted. Check `OAUTH_BASE_URL` matches it, or add extra names to `MCP_ALLOWED_HOSTS` |
+| `403 Forbidden Origin` when submitting the login form | You're serving under an origin OmniMem doesn't know about. Add it to `MCP_ALLOWED_ORIGINS` |
+| Discovery returns 404 | OAuth isn't on. Set `OAUTH_ENABLED=true` and restart OmniMem |
+| OmniMem refuses to start after switching on OAuth | The base URL, username or password is missing, or the base URL isn't https. The error says which |
+| The browser can't reach `127.0.0.1:<port>` after signing in | Open Design's local callback listener wasn't there. Make sure the app is still running and nothing blocks loopback, then connect again |
+| "Invalid or expired session" on the login page | The sign-in took more than five minutes. Reconnect from Open Design |
+| "Too many failed attempts" on the login page | The login rate limit tripped (`OAUTH_LOGIN_MAX_ATTEMPTS` within `OAUTH_LOGIN_WINDOW_SECONDS`). Wait out the window |

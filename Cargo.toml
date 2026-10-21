@@ -1,0 +1,144 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# Everything but the GUI crate, which needs GTK and WebKitGTK to build on Linux:
+# `cargo build` and `cargo test` here skip it, scripts/desktop-check.sh builds it.
+default-members = [
+    "crates/omnimem",
+    "crates/omnimem-app",
+    "crates/omnimem-core",
+    "crates/omnimem-embed",
+    "crates/omnimem-engine",
+    "crates/omnimem-llm",
+    "crates/omnimem-mcp",
+    "crates/omnimem-rss",
+    "crates/omnimem-settings",
+    "crates/omnimem-store",
+]
+
+[workspace.package]
+version = "7.0.3"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+repository = "https://code.squarecows.com/ric/omnimem"
+authors = ["Ric Harvey <ric@squarecows.com>"]
+publish = false
+
+[workspace.dependencies]
+omnimem-core = { path = "crates/omnimem-core" }
+omnimem-embed = { path = "crates/omnimem-embed" }
+omnimem-store = { path = "crates/omnimem-store" }
+omnimem-engine = { path = "crates/omnimem-engine" }
+omnimem-app = { path = "crates/omnimem-app" }
+omnimem-desktop = { path = "crates/omnimem-desktop" }
+omnimem-llm = { path = "crates/omnimem-llm" }
+omnimem-rss = { path = "crates/omnimem-rss" }
+omnimem-settings = { path = "crates/omnimem-settings" }
+
+# Storage: SQLite compiled in, so the binary needs no system library.
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+# HTTP (model download now; Anthropic API and RSS later). rustls, not the
+# platform TLS stack, so every installer behaves the same.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
+
+# CLI
+clap = { version = "4.6", features = ["derive", "env"] }
+
+# MCP server
+omnimem-mcp = { path = "crates/omnimem-mcp" }
+rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
+axum = "0.8"
+tokio-util = "0.7"
+# OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.
+getrandom = "0.3"
+base64 = "0.22"
+url = "2.5"
+
+# Errors and logging
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialisation
+serde = { version = "1.0", features = ["derive"] }
+# preserve_order: tool results keep their fields in the order 6.x emitted them.
+serde_json = { version = "1.0", features = ["preserve_order"] }
+regex = "1.11"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# Runtime
+tokio = { version = "1.53", features = ["full"] }
+
+# Embeddings: ONNX Runtime plus the same Rust tokeniser the Python engine
+# wraps. fancy-regex instead of onig keeps the binary free of a C regex lib.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-24"] }
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
+
+# Identity and hashing (v7 schema)
+sha2 = "0.11"
+unicode-normalization = "0.1"
+ulid = "3.0"
+
+# Skills: unified diffs for proposals, zip bundles for transfer (deflate only).
+similar = "3.2"
+# Query expansion cache keys, derived as 6.x derived them.
+sha1 = "0.11"
+
+# RSS: feed parsing (RSS 0.9x/1.0/2.0, Atom, JSON Feed) and feeds.yml.
+feed-rs = "2.4"
+serde_yaml_ng = "0.10"
+
+# Desktop: per-platform data folders, and (omnimem-desktop only) the event
+# loop, settings webview, tray and menu, clipboard and start at login.
+directories = "6.0"
+tao = "0.37"
+# linux-body: WebKitGTK 2.40+ hands POST bodies to the custom scheme, which
+# the panel's forms need; without it every POST arrives empty.
+wry = { version = "0.57", features = ["linux-body"] }
+# Without muda-libxdo: libxdo only fakes key presses for the predefined Copy,
+# Paste and Select All menu items, which the tray menu doesn't use, and it
+# isn't in the GNOME runtime the Flatpak builds on.
+tray-icon = { version = "0.25", default-features = false, features = ["libappindicator"] }
+arboard = "3.6"
+auto-launch = "0.6"
+open = "5.4"
+# The desktop app's secrets (the Anthropic key, the MCP token) in the OS
+# keychain: Keychain on macOS, Credential Manager on Windows, Secret Service
+# over pure-Rust D-Bus elsewhere.
+keyring = "4.2"
+# Linux only: asking the session bus whether anything will show the tray
+# icon. The same gtk tao and tray-icon already build on.
+gtk = "0.18"
+# Writes the macOS app icon's iconset (the desktop crate's app-icon example);
+# already in the tree through the tray and window icon crates.
+png = "0.18"
+
+# The settings panel: templates rendered in-process, and axum routes called
+# without a socket.
+minijinja = { version = "2.24", features = ["preserve_order"] }
+minijinja-contrib = { version = "2.24", features = ["pycompat"] }
+tower = { version = "0.5", features = ["util"] }
+zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# Proc macros and build scripts never ship, so they stay unstripped: with
+# Rust 1.96 on macOS a stripped proc macro can't be loaded by the crates that
+# use it, and the release build fails with E0463 "can't find crate".
+[profile.release.build-override]
+strip = false
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+# The embedding maths is unusable unoptimised; keep tests quick.
+[profile.dev.package."*"]
+opt-level = 2

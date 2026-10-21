@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Starting — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Starting</h2>
+</header>
+{% if error %}
+<div class="flash flash-error">OmniMem stopped with an error: {{ error }}</div>
+{% else %}
+<p class="empty-state" data-reload-after="2000">OmniMem is opening its store and loading the embedding model. The first run downloads the model, which takes a minute or two. This page refreshes itself.</p>
+{% endif %}
+{% endblock %}

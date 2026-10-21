@@ -1,0 +1,280 @@
+{
+  "as_metadata": {
+    "body": "{\"issuer\":\"https://mcp.example.com/\",\"authorization_endpoint\":\"https://mcp.example.com/authorize\",\"token_endpoint\":\"https://mcp.example.com/token\",\"registration_endpoint\":\"https://mcp.example.com/register\",\"scopes_supported\":[\"omnimem\"],\"response_types_supported\":[\"code\"],\"grant_types_supported\":[\"authorization_code\",\"refresh_token\"],\"token_endpoint_auth_methods_supported\":[\"client_secret_post\",\"client_secret_basic\"],\"revocation_endpoint\":\"https://mcp.example.com/revoke\",\"revocation_endpoint_auth_methods_supported\":[\"client_secret_post\",\"client_secret_basic\"],\"code_challenge_methods_supported\":[\"S256\"]}",
+    "headers": {
+      "cache-control": "public, max-age=3600",
+      "content-type": "application/json"
+    },
+    "status": 200
+  },
+  "authorize": {
+    "body": "",
+    "headers": {
+      "cache-control": "no-store",
+      "location": "https://mcp.example.com/oauth/login?session=<id>"
+    },
+    "status": 302
+  },
+  "authorize_bad_redirect": {
+    "body": "{\"error\":\"invalid_request\",\"error_description\":\"Redirect URI 'https://evil.example/cb' not registered for client\",\"state\":\"st\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "authorize_bad_response_type": {
+    "body": "",
+    "headers": {
+      "cache-control": "no-store",
+      "location": "https://claude.ai/api/mcp/auth_callback?error=unsupported_response_type&error_description=response_type%3A+Input+should+be+%27code%27&state=st"
+    },
+    "status": 302
+  },
+  "authorize_bad_scope": {
+    "body": "",
+    "headers": {
+      "cache-control": "no-store",
+      "location": "https://claude.ai/api/mcp/auth_callback?error=invalid_scope&error_description=Client+was+not+registered+with+scope+admin&state=st"
+    },
+    "status": 302
+  },
+  "authorize_no_challenge": {
+    "body": "",
+    "headers": {
+      "cache-control": "no-store",
+      "location": "https://claude.ai/api/mcp/auth_callback?error=invalid_request&error_description=code_challenge%3A+Field+required&state=st"
+    },
+    "status": 302
+  },
+  "authorize_unknown_client": {
+    "body": "{\"error\":\"invalid_request\",\"error_description\":\"Client ID 'nope' not found\",\"state\":\"st\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "icon": {
+    "body": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#1e293b\"/><path d=\"M16 32 q0 -10 8 -10 q4 0 6 4 q2 -4 6 -4 q8 0 8 10 q0 10 -8 10 q-4 0 -6 -4 q-2 4 -6 4 q-8 0 -8 -10 z\" fill=\"none\" stroke=\"#6366f1\" stroke-width=\"3\" stroke-linejoin=\"round\"/><circle cx=\"32\" cy=\"32\" r=\"2.5\" fill=\"#6366f1\"/></svg>",
+    "headers": {
+      "cache-control": "public, max-age=86400",
+      "content-type": "image/svg+xml"
+    },
+    "status": 200
+  },
+  "login": {
+    "body": "",
+    "headers": {
+      "location": "https://claude.ai/api/mcp/auth_callback?code=<code>&state=st"
+    },
+    "status": 302
+  },
+  "login_get_status": 200,
+  "login_page_bad_session": {
+    "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>OmniMem \u2014 Sign in</title>\n  <style>\n    *, *::before, *::after { box-sizing: border-box; }\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;\n      background: #0f172a; color: #e2e8f0;\n      display: flex; align-items: center; justify-content: center;\n      min-height: 100vh; margin: 0;\n    }\n    .card {\n      background: #1e293b; border-radius: 12px; padding: 2rem;\n      width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,.4);\n    }\n    h1 { font-size: 1.4rem; margin: 0 0 .25rem; text-align: center; }\n    .sub { text-align: center; color: #94a3b8; font-size: .85rem; margin-bottom: 1.5rem; }\n    label { display: block; font-size: .85rem; margin-bottom: .25rem; color: #94a3b8; }\n    input {\n      width: 100%; padding: .6rem .75rem; border: 1px solid #334155;\n      border-radius: 6px; background: #0f172a; color: #e2e8f0;\n      font-size: .95rem; margin-bottom: 1rem;\n    }\n    input:focus { outline: none; border-color: #6366f1; }\n    button {\n      width: 100%; padding: .65rem; border: none; border-radius: 6px;\n      background: #6366f1; color: #fff; font-size: .95rem; font-weight: 600;\n      cursor: pointer;\n    }\n    button:hover { background: #4f46e5; }\n    .error {\n      background: #7f1d1d; color: #fca5a5; padding: .5rem .75rem;\n      border-radius: 6px; font-size: .85rem; margin-bottom: 1rem;\n      text-align: center;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"card\">\n    <h1>OmniMem</h1>\n    <p class=\"sub\">Sign in to authorise access</p>\n    <div class=\"error\">Invalid or expired session.</div>\n    <form method=\"post\" action=\"/oauth/login\">\n      <input type=\"hidden\" name=\"session\" value=\"\">\n      <label for=\"username\">Username</label>\n      <input id=\"username\" name=\"username\" type=\"text\" required autofocus>\n      <label for=\"password\">Password</label>\n      <input id=\"password\" name=\"password\" type=\"password\" required>\n      <button type=\"submit\">Sign in</button>\n    </form>\n  </div>\n</body>\n</html>\n",
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "status": 400
+  },
+  "mcp_bad_token": {
+    "body": "{\"error\": \"invalid_token\", \"error_description\": \"Authentication failed. The provided bearer token is invalid, expired, or no longer recognized by the server. To resolve: clear authentication tokens in your MCP client and reconnect. Your client should automatically re-register and obtain new tokens.\"}",
+    "headers": {
+      "content-type": "application/json",
+      "www-authenticate": "Bearer error=\"invalid_token\", error_description=\"Authentication failed. The provided bearer token is invalid, expired, or no longer recognized by the server. To resolve: clear authentication tokens in your MCP client and reconnect. Your client should automatically re-register and obtain new tokens.\", resource_metadata=\"https://mcp.example.com/.well-known/oauth-protected-resource/mcp\""
+    },
+    "status": 401
+  },
+  "mcp_basic": {
+    "body": "{\"error\": \"invalid_token\", \"error_description\": \"Authentication failed. The provided bearer token is invalid, expired, or no longer recognized by the server. To resolve: clear authentication tokens in your MCP client and reconnect. Your client should automatically re-register and obtain new tokens.\"}",
+    "headers": {
+      "content-type": "application/json",
+      "www-authenticate": "Bearer error=\"invalid_token\", error_description=\"Authentication failed. The provided bearer token is invalid, expired, or no longer recognized by the server. To resolve: clear authentication tokens in your MCP client and reconnect. Your client should automatically re-register and obtain new tokens.\", resource_metadata=\"https://mcp.example.com/.well-known/oauth-protected-resource/mcp\""
+    },
+    "status": 401
+  },
+  "mcp_no_auth": {
+    "body": "",
+    "headers": {
+      "www-authenticate": "Bearer resource_metadata=\"https://mcp.example.com/.well-known/oauth-protected-resource/mcp\""
+    },
+    "status": 401
+  },
+  "mcp_with_token_status": 200,
+  "metadata_with_origin": {
+    "body": "{\"issuer\":\"https://mcp.example.com/\",\"authorization_endpoint\":\"https://mcp.example.com/authorize\",\"token_endpoint\":\"https://mcp.example.com/token\",\"registration_endpoint\":\"https://mcp.example.com/register\",\"scopes_supported\":[\"omnimem\"],\"response_types_supported\":[\"code\"],\"grant_types_supported\":[\"authorization_code\",\"refresh_token\"],\"token_endpoint_auth_methods_supported\":[\"client_secret_post\",\"client_secret_basic\"],\"revocation_endpoint\":\"https://mcp.example.com/revoke\",\"revocation_endpoint_auth_methods_supported\":[\"client_secret_post\",\"client_secret_basic\"],\"code_challenge_methods_supported\":[\"S256\"]}",
+    "headers": {
+      "access-control-allow-origin": "*",
+      "cache-control": "public, max-age=3600",
+      "content-type": "application/json"
+    },
+    "status": 200
+  },
+  "openid": {
+    "body": "Not Found",
+    "headers": {
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "status": 404
+  },
+  "pr_metadata": {
+    "body": "{\"resource\":\"https://mcp.example.com/mcp\",\"authorization_servers\":[\"https://mcp.example.com/\"],\"scopes_supported\":[\"omnimem\"],\"bearer_methods_supported\":[\"header\"]}",
+    "headers": {
+      "cache-control": "public, max-age=3600",
+      "content-type": "application/json"
+    },
+    "status": 200
+  },
+  "pr_metadata_root": {
+    "body": "Not Found",
+    "headers": {
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "status": 404
+  },
+  "preflight_token": {
+    "body": "OK",
+    "headers": {
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, mcp-protocol-version",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-origin": "*",
+      "access-control-max-age": "600",
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "status": 200
+  },
+  "refresh_bad_scope": {
+    "body": "{\"error\":\"invalid_scope\",\"error_description\":\"cannot request scope `admin` not provided by refresh token\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 400
+  },
+  "refresh_replay_same_pair": true,
+  "refresh_status": 200,
+  "register": {
+    "body": "{\"response_types\":[\"code\"],\"scope\":\"omnimem\",\"client_name\":\"claudeai\",\"redirect_uris\":[\"https://claude.ai/api/mcp/auth_callback\"],\"token_endpoint_auth_method\":\"client_secret_post\",\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"application_type\":\"native\",\"client_id\":\"<uuid>\",\"client_secret\":\"<hex64>\",\"client_id_issued_at\":<now>,\"client_secret_expires_at\":0}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 201
+  },
+  "register_bad_scope": {
+    "body": "{\"error\":\"invalid_client_metadata\",\"error_description\":\"Requested scopes are not valid: admin\"}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "register_no_redirects": {
+    "body": "{\"error\":\"invalid_client_metadata\",\"error_description\":\"redirect_uris: Field required\"}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "register_pkjwt": {
+    "body": "{\"error\":\"invalid_client_metadata\",\"error_description\":\"token_endpoint_auth_method 'private_key_jwt' is not supported\"}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "register_public": {
+    "body": "{\"response_types\":[\"code\"],\"scope\":\"omnimem\",\"redirect_uris\":[\"http://localhost:3000/cb\"],\"token_endpoint_auth_method\":\"none\",\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"application_type\":\"native\",\"client_id\":\"<uuid>\",\"client_id_issued_at\":<now>}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 201
+  },
+  "revoke": {
+    "body": "",
+    "headers": {
+      "cache-control": "no-store",
+      "pragma": "no-cache"
+    },
+    "status": 200
+  },
+  "revoke_public_no_secret": {
+    "body": "{\"error\":\"invalid_request\",\"error_description\":\"client_secret: Field required\"}",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 400
+  },
+  "routes": [
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource/mcp",
+    "/authorize",
+    "/favicon.ico",
+    "/favicon.svg",
+    "/icon.svg",
+    "/mcp",
+    "/oauth/icon.svg",
+    "/oauth/login",
+    "/register",
+    "/revoke",
+    "/token"
+  ],
+  "token": {
+    "body": "{\"access_token\":\"<access>\",\"token_type\":\"Bearer\",\"expires_in\":3600,\"scope\":\"omnimem\",\"refresh_token\":\"<refresh>\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 200
+  },
+  "token_bad_grant": {
+    "body": "{\"error\":\"invalid_request\",\"error_description\":\": Input tag 'password' found using 'grant_type' does not match any of the expected tags: 'authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:jwt-bearer'\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 400
+  },
+  "token_bad_secret": {
+    "body": "{\"error\":\"invalid_client\",\"error_description\":\"Invalid client_secret\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 401
+  },
+  "token_bad_verifier": {
+    "body": "{\"error\":\"invalid_grant\",\"error_description\":\"incorrect code_verifier\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 401
+  },
+  "token_code_reuse": {
+    "body": "{\"error\":\"invalid_grant\",\"error_description\":\"authorization code does not exist\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 401
+  },
+  "token_missing_client": {
+    "body": "{\"error\":\"invalid_client\",\"error_description\":\"Missing client_id\"}",
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "pragma": "no-cache"
+    },
+    "status": 401
+  },
+  "versions": {
+    "fastmcp": "4.0.3",
+    "mcp": "2.1.1"
+  }
+}

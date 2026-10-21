@@ -1,0 +1,37 @@
+# OmniMem as a system service: `omnimem serve`, configured by
+# /etc/omnimem/omnimem.env, keeping its database, feeds.yml, backups and the
+# embedding model under /var/lib/omnimem.
+[Unit]
+Description=OmniMem, self-hosted semantic memory for AI agents
+Documentation=https://code.squarecows.com/ric/omnimem
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omnimem
+Group=omnimem
+WorkingDirectory=/var/lib/omnimem
+# Defaults; anything in the environment file wins over these.
+Environment=OMNIMEM_DB=/var/lib/omnimem/omnimem.db
+Environment=HF_HOME=/var/lib/omnimem/huggingface
+EnvironmentFile=/etc/omnimem/omnimem.env
+ExecStart=/usr/bin/omnimem serve
+Restart=on-failure
+RestartSec=5
+
+# It needs its own folder and the network, and nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/omnimem
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

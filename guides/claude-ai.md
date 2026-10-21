@@ -1,63 +1,56 @@
 # Connecting OmniMem to claude.ai
 
-claude.ai is Anthropic's web-based chat interface. It supports remote MCP servers via OAuth 2.1, meaning you can connect OmniMem directly from your browser without any local setup beyond a running OmniMem instance.
+claude.ai is Anthropic's web chat. It can use remote MCP servers that sign in with OAuth 2.1, which means your self-hosted memory can follow you into the browser. Same memories, same graveyard, no copying things between tools.
 
-> [!NOTE]
-> This requires OmniMem 4.0+ with OAuth 2.1 enabled and Streamable HTTP transport (`MCP_TRANSPORT=http`). Your OmniMem instance must be reachable from the public internet over HTTPS.
+The catch is that claude.ai connects from Anthropic's servers, not your laptop. So OmniMem needs a public HTTPS address and OAuth switched on.
 
 ## Prerequisites
 
-- **OmniMem running** via Docker Compose with public HTTPS access (via reverse proxy)
-- **`MCP_TRANSPORT=http`** set in your `.env` (Streamable HTTP is required for claude.ai)
-- **OAuth 2.1 enabled** in your `.env` (see below)
-- A **claude.ai** account (Pro, Team, or Enterprise plan with MCP support)
+- **OmniMem 7 running** somewhere reachable from the internet over HTTPS, through a reverse proxy or a tunnel such as Tailscale Funnel
+- **OAuth switched on** (below)
+- A **claude.ai** plan that supports custom connectors
 
-## Step 1: Configure OAuth in OmniMem
+If you haven't got a public address yet, the [Tailscale Funnel guide](omnimem-setup-linux-tailscale.md) is the easiest way I know to get one.
 
-Add the following to your `.env` file:
+## Step 1: Switch on OAuth
+
+On a headless install, put this in `/etc/omnimem/omnimem.env` (or pass it as environment variables to the Docker image):
 
 ```bash
-MCP_TRANSPORT=http
-
 OAUTH_ENABLED=true
 OAUTH_BASE_URL=https://mcp.yourdomain.com
 OAUTH_ADMIN_USER=admin
 OAUTH_ADMIN_PASSWORD=a-strong-password-here
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `OAUTH_BASE_URL` | The externally-reachable URL of your OmniMem instance. Must be HTTPS. This is what claude.ai will connect to |
-| `OAUTH_ADMIN_USER` | Username for the single admin account |
-| `OAUTH_ADMIN_PASSWORD` | Password for the admin account. Use something strong — this protects access to your entire memory store |
+On the desktop app, the same four settings live in the **OAuth** section of the settings window's Configuration page. The password goes into your OS keychain.
 
-Restart the MCP server to pick up the changes:
+| Setting | What it's for |
+|----------|-------------|
+| `OAUTH_ENABLED` | Turns the OAuth server on |
+| `OAUTH_BASE_URL` | The https address clients reach OmniMem at. Its host and origin are trusted automatically, so the Host and Origin checks let your proxy's traffic through |
+| `OAUTH_ADMIN_USER` | The username the login page asks for |
+| `OAUTH_ADMIN_PASSWORD` | The password the login page asks for. Make it a good one, it guards your entire memory store |
+
+Restart OmniMem to pick it up:
 
 ```bash
-docker compose restart mcp_server
+sudo systemctl restart omnimem
 ```
 
-Verify it's working by checking the OAuth discovery endpoint:
+If `OAUTH_ENABLED` is on but the base URL, username or password is missing, OmniMem refuses to start and says which one. (6.x used to shrug and run without OAuth, which was a lovely way to lose an evening.)
+
+Check the discovery document answers:
 
 ```bash
 curl https://mcp.yourdomain.com/.well-known/oauth-authorization-server
 ```
 
-You should see a JSON response with `authorization_endpoint`, `token_endpoint`, and `registration_endpoint` fields.
+You should get JSON with `authorization_endpoint`, `token_endpoint` and `registration_endpoint` in it.
 
-## Step 2: Expose OmniMem over HTTPS
+## Step 2: Put it behind HTTPS
 
-claude.ai connects to your server from the public internet, so OmniMem needs to be reachable over HTTPS. If you haven't already set up a reverse proxy, here's a minimal Traefik example:
-
-```yaml
-labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.omnimem.rule=Host(`mcp.yourdomain.com`)"
-  - "traefik.http.routers.omnimem.tls.certresolver=letsencrypt"
-  - "traefik.http.services.omnimem.loadbalancer.server.port=8765"
-```
-
-Or with Caddy:
+claude.ai needs TLS. With Caddy it's about as short as config gets:
 
 ```
 mcp.yourdomain.com {
@@ -65,35 +58,29 @@ mcp.yourdomain.com {
 }
 ```
 
-See `docs/reverse-proxy.md` for full examples including authentication middleware for the web UI.
+Everything OmniMem serves over HTTP is on that one port: `/mcp`, the OAuth routes and `/healthz`. There's no separate web UI to hide any more. See [the reverse proxy docs](../docs/reverse-proxy.md) for Traefik, nginx and friends.
 
 ## Step 3: Add OmniMem in claude.ai
 
-1. Go to [claude.ai](https://claude.ai) and open **Settings**
-2. Navigate to the **Integrations** or **MCP Servers** section
-3. Click **Add Integration** (or **Add MCP Server**)
-4. Enter your OmniMem URL: `https://mcp.yourdomain.com/mcp`
+1. Open [claude.ai](https://claude.ai) and go to **Settings**
+2. Find **Connectors** (the label has moved around over time)
+3. Add a custom connector
+4. Enter your OmniMem URL, including the path: `https://mcp.yourdomain.com/mcp`
 5. Click **Connect**
 
-claude.ai will automatically:
-- Discover the OAuth endpoints via `/.well-known/oauth-authorization-server`
-- Register itself as an OAuth client
-- Open a browser window for you to sign in
-- Exchange the authorisation code for access tokens
+claude.ai then does the OAuth dance on its own: it discovers the endpoints, registers itself as a client, and opens the OmniMem login page.
 
 ## Step 4: Sign in
 
-When claude.ai redirects you to the OmniMem login page:
-
-1. Enter your `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD`
+1. Enter your admin username and password
 2. Click **Sign in**
-3. You'll be redirected back to claude.ai with an active session
+3. You're sent back to claude.ai with the connector live
 
-That's it. OmniMem tools are now available in your claude.ai conversations.
+That's it. OmniMem's tools are now available in your conversations.
 
 ## How it works
 
-The connection uses the standard OAuth 2.1 authorisation code flow with PKCE:
+It's the standard OAuth 2.1 authorisation code flow with PKCE:
 
 ```
 claude.ai                    OmniMem
@@ -115,9 +102,9 @@ claude.ai                    OmniMem
    |  302 -> /oauth/login       |
    |<---------------------------|
    |                            |
-   |  [User signs in]           |
+   |  [You sign in]             |
    |  POST /oauth/login         |
-   |--------------------------->|  Verify credentials
+   |--------------------------->|  Check credentials
    |  302 -> callback?code=...  |
    |<---------------------------|
    |                            |
@@ -134,36 +121,35 @@ claude.ai                    OmniMem
    |<---------------------------|
 ```
 
-Access tokens expire after 1 hour. claude.ai automatically refreshes them using the refresh token (valid for 30 days by default, `OAUTH_REFRESH_MAX_DAYS`). Refresh tokens rotate on every use — each refresh issues a new pair — but the old token isn't invalidated the instant it rotates. It stays valid for a short grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s) during which replays return the same new pair. claude.ai holds several connections open and can refresh the same token from more than one at once; the grace window lets those concurrent refreshes all succeed instead of all-but-one failing and forcing you to sign in again.
+Access tokens last an hour and claude.ai refreshes them itself. A refresh chain lasts 30 days by default (`OAUTH_REFRESH_MAX_DAYS`, at most 90), then you sign in again.
 
-## Using both OAuth and bearer tokens
+Refresh tokens rotate every time they're used, but the old one doesn't die the instant it rotates. For a short grace window (`OAUTH_REFRESH_GRACE_SECONDS`, 120 seconds by default) it keeps working and hands back the same new pair. claude.ai holds several connections open and can refresh the same token from more than one at once; without the grace window all but one of those would fail and you'd be signing in every hour or two.
 
-OAuth does not interfere with bearer token auth. If you also have `MCP_AUTH_TOKEN` set in your `.env`, both methods work simultaneously:
+Clients, codes and tokens are kept in OmniMem's database, so restarting OmniMem doesn't sign claude.ai out. Codes and tokens are stored only as SHA-256 hashes, so a copy of the database has nothing in it a client could use.
 
-- **claude.ai** authenticates via OAuth
-- **Claude Code** (and other local clients) authenticates via bearer token in the `Authorization` header
-- Both are verified by OmniMem's `MultiAuth` layer, which tries the OAuth provider first, then falls back to the bearer token verifier
+## OAuth and access tokens together
 
-This means your local development setup continues working exactly as before.
+Switching on OAuth doesn't break your local setup. If `MCP_AUTH_TOKEN` is set too, `/mcp` accepts either:
 
-## Security considerations
+- **claude.ai** signs in with OAuth
+- **Claude Code** and other local clients keep sending the access token as a bearer header
 
-- **Use a strong password** for `OAUTH_ADMIN_PASSWORD`. This is the only account that can authorise access to your entire memory store
-- **HTTPS is mandatory**. OAuth tokens must never travel over plain HTTP. The MCP spec requires TLS for all authorisation endpoints
-- **Tokens are persisted in Valkey** (with AOF enabled) with TTLs matching their lifetimes. Restarting the MCP server no longer clears active sessions, so a `docker compose restart` won't log claude.ai out. If Valkey is unreachable at startup the provider falls back to in-memory storage, which *is* cleared on restart
-- **Token rotation** happens on every refresh, with a short reuse grace window (`OAUTH_REFRESH_GRACE_SECONDS`, default 120s, set `0` for strict single-use). Keeping the window small limits how long a leaked old token remains usable while still allowing claude.ai's concurrent refreshes to succeed
-- **The login form is rate-limited** per client IP (`OAUTH_LOGIN_MAX_ATTEMPTS` failures per `OAUTH_LOGIN_WINDOW_SECONDS`) to slow brute-force attempts on the admin password
-- **`OAUTH_BASE_URL` must match** the URL clients use to reach your server. If it does not match, redirects will fail
+## Security notes
+
+- **Use a strong admin password.** It's the only account, and it opens everything
+- **HTTPS isn't optional.** OAuth tokens must never travel over plain HTTP. OmniMem refuses an `OAUTH_BASE_URL` that isn't https, except for localhost
+- **The login form is rate limited** per client address: `OAUTH_LOGIN_MAX_ATTEMPTS` failures (10) within `OAUTH_LOGIN_WINDOW_SECONDS` (900) and that address is refused for a while. Behind a proxy every request comes from the proxy's address, so the limit is effectively shared
+- **Keep the grace window short.** A leaked old refresh token is only usable for that long. `0` gives you strict single-use rotation, at the cost of claude.ai signing you out now and then
+- **`OAUTH_BASE_URL` has to match** the address clients actually use, or the redirects go somewhere odd
 
 ## Troubleshooting
 
-| Problem | Solution |
+| Problem | Fix |
 |---------|----------|
-| "Invalid or expired session" on login page | The authorisation session timed out (5 minutes). Go back to claude.ai and reconnect |
-| Discovery endpoint returns 404 | Ensure `OAUTH_ENABLED=true` is set and the MCP server has been restarted. Check logs: `docker compose logs mcp_server` |
-| "OAUTH_BASE_URL is missing" in logs | Set `OAUTH_BASE_URL` to your externally-reachable HTTPS URL in `.env` |
-| Login works but tools don't appear | Check that `MCP_TRANSPORT=http` is set. claude.ai requires Streamable HTTP, not SSE |
-| "Connection refused" from claude.ai | Your server must be reachable from the public internet. Check your reverse proxy and firewall rules |
-| Tools stop working after a server restart | Tokens persist in Valkey (with AOF), so a restart should not log you out. If it does, Valkey likely fell back to in-memory storage — check `docker compose logs mcp_server` for "falling back to in-memory storage" and confirm Valkey is healthy |
-| Prompted to re-authenticate every hour or two | You're on a version before the refresh-token grace window, or `OAUTH_REFRESH_GRACE_SECONDS=0`. Concurrent refreshes from claude.ai were racing to `invalid_grant`. Upgrade to 5.3.0+ and leave the grace window at its default |
-| "Too many failed attempts" on the login page | The per-IP login rate limit tripped (`OAUTH_LOGIN_MAX_ATTEMPTS` in `OAUTH_LOGIN_WINDOW_SECONDS`). Wait for the window to pass, or raise the limit |
+| "Invalid or expired session" on the login page | The sign-in took longer than five minutes. Go back to claude.ai and connect again |
+| Discovery returns 404 | OAuth isn't on. Check `OAUTH_ENABLED=true` and restart OmniMem |
+| OmniMem won't start and says OAuth is misconfigured | Set the missing `OAUTH_BASE_URL`, `OAUTH_ADMIN_USER` or `OAUTH_ADMIN_PASSWORD`. The message names it |
+| Every request gets `421 Misdirected Request` | The Host header isn't one OmniMem trusts. Check `OAUTH_BASE_URL` matches your public hostname, or add extra names to `MCP_ALLOWED_HOSTS` |
+| The login form gets `403 Forbidden Origin` | The browser's origin isn't trusted. OmniMem accepts its own host whatever the scheme, so this usually means you're serving under a second hostname: add it to `MCP_ALLOWED_ORIGINS` |
+| "Connection refused" from claude.ai | Your server isn't reachable from the internet. Check the proxy or tunnel and the firewall |
+| "Too many failed attempts" on the login page | The rate limit tripped. Wait out the window, or raise `OAUTH_LOGIN_MAX_ATTEMPTS` |

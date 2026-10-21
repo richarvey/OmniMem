@@ -1,0 +1,56 @@
+# OmniMem's reading list. Copy it to feeds.yml beside the database (or point
+# FEEDS_CONFIG_PATH at it); the desktop app's Feeds page edits the same file.
+#
+# Each feed takes: url (required), name, topics, mode (summary|digest), and
+# project: the project label stamped on ingested articles so they can be
+# separated from conversation-sourced knowledge. Defaults to "RSS".
+#
+# licence declares the redistribution rights stamped on every article the
+# feed ingests: open (OGL, CC BY, public domain), restricted (paywalled, all
+# rights reserved, CC BY-NC/ND), or a recognised identifier such as ogl-3.0
+# or cc-by-4.0, which is kept as the article's licence_note. A feed that
+# declares nothing ingests as unknown and recall asks you to classify; with
+# RSS_REQUIRE_LICENCE=true such a feed is refused instead. An optional
+# licence_note overrides the identifier-derived note.
+#
+# A feed can also influence compiled skills with a skills mapping of skill
+# domain to influence score (1-10). When that skill is rebuilt, the feed's
+# latest articles land in its Feed watch section, and the score is how many
+# recent articles the feed contributes, 10 being the strongest. Feeds without
+# a skills mapping never touch a skill unless an article is promoted by hand.
+#
+#   - url: https://example.com/feed.xml
+#     name: Example Feed
+#     topics: [python]
+#     licence: cc-by-4.0
+#     skills:
+#       python: 8
+feeds:
+  # Rust & systems programming
+  - url: https://blog.rust-lang.org/feed.xml
+    name: Rust Official Blog
+    topics: [rust, systems, language]
+
+  - url: https://this-week-in-rust.org/rss.xml
+    name: This Week in Rust
+    topics: [rust, community, crates]
+
+  # Self-hosting & open source
+  - url: https://selfhosted.show/rss
+    name: Self-Hosted Show
+    topics: [selfhosted, homelab, docker]
+
+  # n8n / automation
+  - url: https://blog.n8n.io/rss/
+    name: n8n Blog
+    topics: [automation, workflow, n8n]
+
+  # AI / LLM
+  - url: https://www.anthropic.com/rss.xml
+    name: Anthropic Blog
+    topics: [ai, llm, claude]
+
+  # DevOps / infra
+  - url: https://www.docker.com/blog/feed/
+    name: Docker Blog
+    topics: [docker, containers, devops]

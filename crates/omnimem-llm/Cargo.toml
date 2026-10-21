@@ -1,0 +1,17 @@
+[package]
+name = "omnimem-llm"
+description = "Anthropic Messages API client for OmniMem's Claude Haiku features"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+omnimem-core.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

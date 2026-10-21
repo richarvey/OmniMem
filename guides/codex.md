@@ -1,30 +1,29 @@
 # Connecting OmniMem to OpenAI Codex CLI
 
-Codex CLI is OpenAI's open-source coding agent for the terminal. It uses TOML configuration and supports MCP servers via stdio and Streamable HTTP transports.
-
-> [!WARNING]
-> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. Codex only supports Streamable HTTP natively, so set `MCP_TRANSPORT=http` in your `.env` to use Codex with OmniMem.
+Codex CLI is OpenAI's open source coding agent for the terminal. It's configured in TOML and speaks Streamable HTTP natively, which is exactly what OmniMem 7 serves, so it's a two-line job.
 
 ## Quick setup
 
-Set `MCP_TRANSPORT=http` in your OmniMem `.env` file, then create or edit `~/.codex/config.toml`:
+Create or edit `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.omnimem]
-url = "http://localhost:8765/mcp"
+url = "http://127.0.0.1:8765/mcp"
 ```
 
-If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`):
+On the desktop app, **Copy MCP URL** in the tray or menu bar menu puts that address on your clipboard.
+
+If OmniMem has an access token set (`MCP_AUTH_TOKEN`, or **Access token** on the Configuration page):
 
 ```toml
 [mcp_servers.omnimem]
-url = "http://localhost:8765/mcp"
+url = "http://127.0.0.1:8765/mcp"
 bearer_token_env_var = "OMNIMEM_TOKEN"
 ```
 
-Set the token in your shell environment: `export OMNIMEM_TOKEN=your-token-here`
+Then set the token in your shell: `export OMNIMEM_TOKEN=your-token-here`
 
-Note: `bearer_token_env_var` takes the **name** of the env var, not the token itself.
+Note that `bearer_token_env_var` takes the **name** of the variable, not the token itself. I've tripped over that one.
 
 ## Config file locations
 
@@ -35,9 +34,9 @@ Note: `bearer_token_env_var` takes the **name** of the env var, not the token it
 
 ## Known quirks
 
-- **TOML section name**: The section must be `[mcp_servers]` with an underscore. Using `[mcp-servers]` or `[mcpservers]` causes Codex to silently ignore the entire block.
-- **Silent config failures**: TOML syntax errors are not reported -- Codex simply ignores the MCP configuration.
-- **Legacy SSE**: If you are running an older OmniMem version (pre-streamable-http), you can use the supergateway bridge: `args = ["-y", "supergateway", "--sse", "http://localhost:8765/sse"]` with `command = "npx"`. New installs do not need this.
+- **The section name matters**: it must be `[mcp_servers]` with an underscore. `[mcp-servers]` or `[mcpservers]` and Codex quietly ignores the whole block.
+- **Silent config failures**: a TOML syntax error isn't reported, Codex just carries on without the server. If the tools vanish, check your TOML first.
+- **Coming from 6.x**: the old supergateway bridge to `/sse` isn't needed any more. Point Codex straight at `/mcp`.
 
 ## Verifying the connection
 
@@ -45,9 +44,9 @@ Start a Codex session and ask:
 
 > Call the OmniMem health tool to check the connection
 
-You should see Valkey connection status, index counts, and embedding model status.
+You should get back the record and vector counts per namespace, whether the embedding model is loaded, and the uptime.
 
 ## Notes
 
-- Codex is open source and actively developed -- check the [Codex CLI repository](https://github.com/openai/codex) for the latest MCP configuration options
-- If OmniMem is not responding, check that Docker containers are running: `docker compose ps`
+- Codex moves quickly, so check the [Codex CLI repository](https://github.com/openai/codex) for the latest MCP options
+- If OmniMem isn't answering, `curl http://127.0.0.1:8765/healthz` should come back with `{"status": "ok"}`. On the desktop app the tray icon's status line tells you too

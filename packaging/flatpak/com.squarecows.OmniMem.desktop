@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OmniMem
+GenericName=Semantic memory for AI agents
+Comment=Self-hosted semantic memory for AI agents, served over MCP
+Exec=omnimem
+Icon=com.squarecows.OmniMem
+Terminal=false
+Categories=Development;Utility;
+Keywords=memory;MCP;Claude;AI;agent;
+StartupNotify=false

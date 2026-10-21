@@ -1,9 +1,6 @@
 # Connecting OmniMem to Cursor
 
-Cursor is an AI-powered code editor built on VS Code. It supports MCP servers via SSE and Streamable HTTP transports.
-
-> [!WARNING]
-> **SSE transport is deprecated.** OmniMem 3.10 defaults to SSE but will switch to Streamable HTTP in a future release. To migrate early, set `MCP_TRANSPORT=http` in your `.env` and use URL `.../mcp` in the config below.
+Cursor is the AI code editor built on VS Code. It supports Streamable HTTP MCP servers, so it connects straight to OmniMem's `/mcp` endpoint.
 
 ## Quick setup
 
@@ -13,19 +10,21 @@ Create or edit `~/.cursor/mcp.json` for global access:
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/sse"
+      "url": "http://127.0.0.1:8765/mcp"
     }
   }
 }
 ```
 
-If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add the token as a header:
+Using the desktop app? **Copy MCP URL** in the tray or menu bar menu gives you the address.
+
+If OmniMem has an access token set (`MCP_AUTH_TOKEN`, or **Access token** on the Configuration page), send it as a header:
 
 ```json
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/sse",
+      "url": "http://127.0.0.1:8765/mcp",
       "headers": {
         "Authorization": "Bearer your-token-here"
       }
@@ -34,13 +33,13 @@ If you have bearer token auth enabled (`MCP_AUTH_TOKEN` set in your `.env`), add
 }
 ```
 
-You can use environment variable interpolation to avoid hardcoding the token:
+Or keep the token out of the file with environment variable interpolation:
 
 ```json
 {
   "mcpServers": {
     "omnimem": {
-      "url": "http://localhost:8765/sse",
+      "url": "http://127.0.0.1:8765/mcp",
       "headers": {
         "Authorization": "Bearer ${env:OMNIMEM_TOKEN}"
       }
@@ -49,7 +48,9 @@ You can use environment variable interpolation to avoid hardcoding the token:
 }
 ```
 
-Note: Cursor uses `${env:VAR_NAME}` syntax (not `${VAR_NAME}`).
+Cursor uses `${env:VAR_NAME}`, not `${VAR_NAME}`.
+
+Coming from 6.x, just change `/sse` to `/mcp`.
 
 ## Global vs project config
 
@@ -58,44 +59,44 @@ Note: Cursor uses `${env:VAR_NAME}` syntax (not `${VAR_NAME}`).
 | `~/.cursor/mcp.json` | All projects | OmniMem should be available everywhere (recommended) |
 | `.cursor/mcp.json` (project root) | Single project | Only this project needs OmniMem |
 
-Project config takes precedence over global when the same server name exists in both. There is a known bug in some Cursor versions where the global config is silently ignored -- if tools do not appear, try the project-level config instead.
+Project config wins when the same server name is in both. Some Cursor versions have had a bug where the global file is silently ignored, so if the tools don't appear, try the project file.
 
 ## Enabling MCP tools
 
-MCP tools are only available in Cursor's **Agent mode** (not standard chat). After adding the config:
+MCP tools only show up in Cursor's **Agent mode**, not plain chat. After adding the config:
 
 1. Restart Cursor or reload the window
 2. Open **Settings** (Cmd/Ctrl + ,) and search for **MCP**
-3. Verify `omnimem` appears and is enabled
-4. Switch to Agent mode in the chat panel
+3. Check `omnimem` is listed and enabled
+4. Switch the chat panel to Agent mode
 
-By default, Cursor asks for approval before each MCP tool call. There is a separate "auto-run MCP tools" toggle in settings if you want to skip approval prompts.
+Cursor asks before each MCP tool call by default. There's a separate setting to auto-run MCP tools if the prompts drive you round the bend.
 
 ## Using OmniMem in Cursor
 
-Once connected, you can ask Cursor's agent to use OmniMem tools directly:
+Once it's connected, just ask:
 
 - "Call the OmniMem briefing tool for this project"
-- "Remember that we decided to use Valkey over Redis"
-- "Check if we've tried this approach before"
+- "Remember that we decided to use SQLite for the store"
+- "Check whether we've tried this approach before"
 
 ## Known quirks
 
-- **40-tool hard limit**: Cursor sends a maximum of 40 MCP tools to the LLM across all connected servers. OmniMem has 30+ tools, so if you have other MCP servers connected, some tools may be silently inaccessible.
-- **Agent mode only**: MCP tools do not appear in standard chat mode -- you must use Agent mode.
-- **Connection issues**: If you see "no tools available" despite the server showing as connected, try restarting Cursor. If problems persist, a reverse proxy on a standard port (80/443) may help.
-- **SSH remote development**: MCP does not work reliably over Remote-SSH. The MCP server runs locally but Cursor edits files remotely, creating a disconnect.
-- **CLI mode**: Cursor's CLI/headless mode (`cursor-agent`) has a known bug with some MCP transports. The GUI agent is more reliable.
+- **The tool limit**: Cursor has capped how many MCP tools it sends to the model (40 across all servers in the versions I've used). OmniMem has 48, so some won't reach the model even on its own. Switch off the ones you don't use in Cursor's MCP settings and keep `briefing`, `recall`, `remember`, `record_experience`, `log_abandoned` and `warn_if_abandoned`.
+- **Agent mode only**: no MCP tools in standard chat.
+- **"No tools available"** while the server shows as connected: restart Cursor.
+- **Remote-SSH**: MCP doesn't behave well over Remote-SSH, because the server config lives on one side and your files on the other.
+- **CLI mode**: `cursor-agent` has had MCP transport bugs. The GUI agent is more reliable.
 
 ## Verifying the connection
 
-In Cursor's Agent chat, ask:
+In Agent chat, ask:
 
 > Can you call the OmniMem health tool?
 
-If the server is connected, you will see Valkey connection status, index counts, and model status.
+You should get back the record and vector counts per namespace, whether the embedding model is loaded, and the uptime.
 
 ## Notes
 
-- If OmniMem is not responding, check that Docker containers are running: `docker compose ps`
-- OmniMem has 30+ tools which is under the 40-tool limit, but be mindful if adding other MCP servers
+- If OmniMem isn't answering, `curl http://127.0.0.1:8765/healthz` should return `{"status": "ok"}`. The desktop app's tray status line tells you the same thing
+- For a server on another machine, see [remote access](../docs/remote-access.md)

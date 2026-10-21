@@ -1,0 +1,23 @@
+[package]
+name = "omnimem-app"
+description = "What the OmniMem server and desktop app share: services, data folder, single instance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+directories.workspace = true
+omnimem-embed.workspace = true
+omnimem-engine.workspace = true
+omnimem-llm.workspace = true
+omnimem-mcp.workspace = true
+omnimem-rss.workspace = true
+omnimem-store.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true

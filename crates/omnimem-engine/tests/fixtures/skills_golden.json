@@ -1,0 +1,860 @@
+{
+ "pool": [
+  {
+   "key": "mem:episodic:01A",
+   "content": "moved queue",
+   "project": "alpha",
+   "tags": [
+    "python"
+   ],
+   "effort_score": 4,
+   "outcome": "succeeded",
+   "breakthrough": "Used RQ   instead\nof Celery",
+   "lesson": null,
+   "gotchas": "Watch the broker's visibility timeout",
+   "abandoned": [
+    {
+     "name": "Celery",
+     "type": "library",
+     "reason": "too heavy for one worker"
+    }
+   ],
+   "blessed": false,
+   "created_at": 10.0,
+   "updated_at": 20.0
+  },
+  {
+   "key": "mem:episodic:01B",
+   "content": "another",
+   "project": "beta",
+   "tags": [
+    "python"
+   ],
+   "effort_score": 2,
+   "outcome": "pivoted",
+   "breakthrough": "ignored because pivoted",
+   "lesson": "Prefer boring queues",
+   "gotchas": null,
+   "abandoned": [
+    {
+     "name": "celery",
+     "type": "library",
+     "reason": "same again"
+    },
+    {
+     "name": "",
+     "reason": "x"
+    },
+    {
+     "type": "tool"
+    }
+   ],
+   "blessed": false,
+   "created_at": 11.0,
+   "updated_at": 30.0
+  },
+  {
+   "key": "mem:episodic:01C",
+   "content": "A blessed note with no lesson fields   at all",
+   "project": null,
+   "tags": [],
+   "effort_score": null,
+   "outcome": null,
+   "breakthrough": null,
+   "lesson": null,
+   "gotchas": null,
+   "abandoned": [],
+   "blessed": true,
+   "created_at": 12.0,
+   "updated_at": 12.0
+  },
+  {
+   "key": "mem:episodic:01D",
+   "content": "blessed pivot",
+   "project": "alpha",
+   "tags": [],
+   "effort_score": null,
+   "outcome": "abandoned",
+   "breakthrough": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+   "lesson": null,
+   "gotchas": null,
+   "abandoned": [],
+   "blessed": true,
+   "created_at": 13.0,
+   "updated_at": 13.0
+  },
+  {
+   "key": "mem:episodic:01E",
+   "content": "",
+   "project": "gamma",
+   "tags": [],
+   "effort_score": null,
+   "outcome": "succeeded",
+   "breakthrough": null,
+   "lesson": null,
+   "gotchas": null,
+   "abandoned": [],
+   "blessed": false,
+   "created_at": 14.0,
+   "updated_at": 14.0
+  }
+ ],
+ "lessons": [
+  {
+   "kind": "do",
+   "text": "Used RQ instead of Celery",
+   "source_key": "mem:episodic:01A",
+   "source_updated_at": 20.0,
+   "blessed": false,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "watch",
+   "text": "Watch the broker's visibility timeout",
+   "source_key": "mem:episodic:01A",
+   "source_updated_at": 20.0,
+   "blessed": false,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "dont",
+   "text": "too heavy for one worker",
+   "source_key": "mem:episodic:01A",
+   "source_updated_at": 20.0,
+   "blessed": false,
+   "project": "alpha",
+   "name": "Celery",
+   "approach_type": "library",
+   "reason": "too heavy for one worker"
+  },
+  {
+   "kind": "dont",
+   "text": "same again",
+   "source_key": "mem:episodic:01B",
+   "source_updated_at": 30.0,
+   "blessed": false,
+   "project": "beta",
+   "name": "celery",
+   "approach_type": "library",
+   "reason": "same again"
+  },
+  {
+   "kind": "do",
+   "text": "A blessed note with no lesson fields at all",
+   "source_key": "mem:episodic:01C",
+   "source_updated_at": 12.0,
+   "blessed": true,
+   "project": null,
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "do",
+   "text": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB…",
+   "source_key": "mem:episodic:01D",
+   "source_updated_at": 13.0,
+   "blessed": true,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  }
+ ],
+ "lessons_no_graveyard": [
+  {
+   "kind": "do",
+   "text": "Used RQ instead of Celery",
+   "source_key": "mem:episodic:01A",
+   "source_updated_at": 20.0,
+   "blessed": false,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "watch",
+   "text": "Watch the broker's visibility timeout",
+   "source_key": "mem:episodic:01A",
+   "source_updated_at": 20.0,
+   "blessed": false,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "do",
+   "text": "A blessed note with no lesson fields at all",
+   "source_key": "mem:episodic:01C",
+   "source_updated_at": 12.0,
+   "blessed": true,
+   "project": null,
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  },
+  {
+   "kind": "do",
+   "text": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB…",
+   "source_key": "mem:episodic:01D",
+   "source_updated_at": 13.0,
+   "blessed": true,
+   "project": "alpha",
+   "name": null,
+   "approach_type": "",
+   "reason": ""
+  }
+ ],
+ "lesson_bearing": [
+  true,
+  true,
+  true,
+  true,
+  false
+ ],
+ "rules": [
+  {
+   "kind": "do",
+   "text": "Prefer boring queues",
+   "sources": [
+    "mem:episodic:01A",
+    "mem:episodic:01B"
+   ],
+   "reinforcement": 2,
+   "projects": [
+    "alpha",
+    "beta"
+   ]
+  },
+  {
+   "kind": "do",
+   "text": "A blessed note",
+   "sources": [
+    "mem:episodic:01C"
+   ],
+   "reinforcement": 1,
+   "blessed": true
+  },
+  {
+   "kind": "watch",
+   "text": "Watch the broker's visibility timeout?",
+   "sources": [
+    "mem:episodic:01A"
+   ],
+   "reinforcement": 1,
+   "blessed": true
+  },
+  {
+   "kind": "watch",
+   "text": "Three times over",
+   "sources": [
+    "mem:episodic:01A",
+    "mem:episodic:01B",
+    "mem:episodic:01D"
+   ],
+   "reinforcement": 3,
+   "blessed": true
+  },
+  {
+   "kind": "dont",
+   "text": "too heavy for one worker",
+   "sources": [
+    "mem:episodic:01A",
+    "mem:episodic:01B"
+   ],
+   "reinforcement": 2,
+   "name": "Celery",
+   "approach_type": "library",
+   "projects": [
+    "alpha",
+    "beta"
+   ]
+  },
+  {
+   "kind": "dont",
+   "text": "",
+   "sources": [
+    "mem:episodic:01E"
+   ],
+   "reinforcement": 1,
+   "blessed": true,
+   "name": "Kafka"
+  },
+  {
+   "kind": "ref",
+   "text": "Pin versions: a — dash “quoted”",
+   "sources": [
+    "mem:knowledge:01K"
+   ],
+   "reinforcement": 1,
+   "name": "Pinning",
+   "url": "https://example.com/pin"
+  },
+  {
+   "kind": "ref",
+   "text": "No url here!",
+   "sources": [
+    "mem:knowledge:01L"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "feed",
+   "text": "Release notes",
+   "sources": [
+    "mem:knowledge:01F"
+   ],
+   "reinforcement": 1,
+   "name": "Rel",
+   "url": "https://example.com/rel",
+   "feed": "python-news",
+   "influence": 7
+  },
+  {
+   "kind": "feed",
+   "text": "Second…",
+   "sources": [
+    "mem:knowledge:01G"
+   ],
+   "reinforcement": 1,
+   "feed": "other",
+   "influence": 2
+  }
+ ],
+ "renders": [
+  {
+   "name": "everything",
+   "rule_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "description": "How \"we\" work: colons — and ünïcode",
+   "min_reinforcement": 2,
+   "compiled_at": 1784416066.5745394,
+   "body": "---\nname: python-local\ndescription: \"How \\\"we\\\" work: colons \\u2014 and \\u00fcn\\u00efcode\"\ngenerated: true\nsource: omnimem\ndomain: python\ncompiled_at: 2026-07-18T23:07:46Z\ncontract_version: 1\nsource_manifest:\n  - mem:episodic:01A   # reinforced x2\n  - mem:episodic:01B   # reinforced x2\n  - mem:episodic:01C   # blessed\n  - mem:episodic:01D   # reinforced x3\n  - mem:episodic:01E   # graveyard: Kafka\n  - mem:knowledge:01K   # promoted reference\n  - mem:knowledge:01L   # promoted reference\n  - mem:knowledge:01F   # feed: python-news (influence 7/10)\n  - mem:knowledge:01G   # feed: other (influence 2/10)\n---\n\n> GENERATED. Stored in and served from OmniMem (Valkey), domain tag: python.\n> Do not edit by hand. To change the domain guidance, update the underlying\n> memories and recompile with omnimem:compile_skill. Hand edits are overwritten.\n\n## Operating contract  (fixed, applies to every OmniMem skill)\n\nWhile working under this skill, keep the data pool alive:\n\n- Check OmniMem preferences first and honour them.\n- Read relevant experience before acting (recall / get_experience), and\n  warn_if_abandoned before retrying anything that looks like a known dead end.\n- Record experience as you go (record_experience): effort, outcome, dead ends\n  (log_abandoned into the graveyard), and breakthroughs.\n- Remember durable new facts (remember).\n\nThis block is fixed boilerplate, identical across all skills, inserted from one\ntemplate and versioned by contract_version. It is not per-skill compiled content.\n\n## How I work  (compiled, domain-specific)\n\nDistilled procedure from 4 experience memories and 2 graveyard entries in domain `python`. Each rule cites its source memory; treat Don't entries as known dead ends and warn_if_abandoned before retrying one.\n\n## Do\n\n- Prefer boring queues. (reinforced x2) [mem:episodic:01B]\n- A blessed note. (blessed) [mem:episodic:01C]\n\n## Watch out\n\n- Watch the broker's visibility timeout? (blessed) [mem:episodic:01A]\n- Three times over. (reinforced x3) [mem:episodic:01D]\n\n## Don't (and why)\n\n- Avoid Celery (library). too heavy for one worker. Tried on alpha, beta, abandoned. (reinforced x2) [mem:episodic:01B]\n- Avoid Kafka. abandoned. (blessed) [mem:episodic:01E]\n\n## Reference  (promoted knowledge)\n\nCurated reference material promoted from the knowledge namespace (promote_knowledge). These are vetted pointers, not lived experience — check the cited article for the full text before treating one as procedure.\n\n- Pin versions: a — dash “quoted”. (https://example.com/pin) [mem:knowledge:01K]\n- No url here! [mem:knowledge:01L]\n\n## Feed watch  (influenced feeds)\n\nThe latest articles from RSS feeds tied to this domain, pulled in automatically at compile time and weighted by each feed's influence score (1-10 — the score is how many of its most recent articles a feed contributes). Unlike the Reference section these are unvetted: treat them as current signal, not procedure, and promote_knowledge() anything worth keeping before it ages out of the knowledge namespace.\n\n- Release notes. (via python-news, influence 7/10) (https://example.com/rel) [mem:knowledge:01F]\n- Second… (via other, influence 2/10) [mem:knowledge:01G]\n\n## Provenance\n\nCompiled from 4 experience memories (min 2 reinforcements) and 2 graveyard entries. Plus 2 promoted reference articles from the knowledge namespace. Plus 2 feed-watch articles from 2 influencing feeds (other, python-news). Full source manifest in frontmatter. Operating contract at contract_version 1.\n"
+  },
+  {
+   "name": "one_rule",
+   "rule_indices": [
+    0
+   ],
+   "description": "Short.",
+   "min_reinforcement": 1,
+   "compiled_at": 1784416066.5745394,
+   "body": "---\nname: python-local\ndescription: \"Short.\"\ngenerated: true\nsource: omnimem\ndomain: python\ncompiled_at: 2026-07-18T23:07:46Z\ncontract_version: 1\nsource_manifest:\n  - mem:episodic:01A   # reinforced x2\n  - mem:episodic:01B   # reinforced x2\n---\n\n> GENERATED. Stored in and served from OmniMem (Valkey), domain tag: python.\n> Do not edit by hand. To change the domain guidance, update the underlying\n> memories and recompile with omnimem:compile_skill. Hand edits are overwritten.\n\n## Operating contract  (fixed, applies to every OmniMem skill)\n\nWhile working under this skill, keep the data pool alive:\n\n- Check OmniMem preferences first and honour them.\n- Read relevant experience before acting (recall / get_experience), and\n  warn_if_abandoned before retrying anything that looks like a known dead end.\n- Record experience as you go (record_experience): effort, outcome, dead ends\n  (log_abandoned into the graveyard), and breakthroughs.\n- Remember durable new facts (remember).\n\nThis block is fixed boilerplate, identical across all skills, inserted from one\ntemplate and versioned by contract_version. It is not per-skill compiled content.\n\n## How I work  (compiled, domain-specific)\n\nDistilled procedure from 2 experience memories and 0 graveyard entries in domain `python`. Each rule cites its source memory; treat Don't entries as known dead ends and warn_if_abandoned before retrying one.\n\n## Do\n\n- Prefer boring queues. (reinforced x2) [mem:episodic:01B]\n\n## Provenance\n\nCompiled from 2 experience memories (min 1 reinforcement) and 0 graveyard entries. Full source manifest in frontmatter. Operating contract at contract_version 1.\n"
+  },
+  {
+   "name": "no_rules",
+   "rule_indices": [],
+   "description": "How local works in python: distilled do/don't procedure compiled from experience and graveyard memories. Load when: starting python work, reviewing or writing python code or content, or beginning a greenfield python project.",
+   "min_reinforcement": 2,
+   "compiled_at": 1784416066.5745394,
+   "body": "---\nname: python-local\ndescription: \"How local works in python: distilled do/don't procedure compiled from experience and graveyard memories. Load when: starting python work, reviewing or writing python code or content, or beginning a greenfield python project.\"\ngenerated: true\nsource: omnimem\ndomain: python\ncompiled_at: 2026-07-18T23:07:46Z\ncontract_version: 1\n---\n\n> GENERATED. Stored in and served from OmniMem (Valkey), domain tag: python.\n> Do not edit by hand. To change the domain guidance, update the underlying\n> memories and recompile with omnimem:compile_skill. Hand edits are overwritten.\n\n## Operating contract  (fixed, applies to every OmniMem skill)\n\nWhile working under this skill, keep the data pool alive:\n\n- Check OmniMem preferences first and honour them.\n- Read relevant experience before acting (recall / get_experience), and\n  warn_if_abandoned before retrying anything that looks like a known dead end.\n- Record experience as you go (record_experience): effort, outcome, dead ends\n  (log_abandoned into the graveyard), and breakthroughs.\n- Remember durable new facts (remember).\n\nThis block is fixed boilerplate, identical across all skills, inserted from one\ntemplate and versioned by contract_version. It is not per-skill compiled content.\n\n## How I work  (compiled, domain-specific)\n\nDistilled procedure from 0 experience memories and 0 graveyard entries in domain `python`. Each rule cites its source memory; treat Don't entries as known dead ends and warn_if_abandoned before retrying one.\n\n## Provenance\n\nCompiled from 0 experience memories (min 2 reinforcements) and 0 graveyard entries. Full source manifest in frontmatter. Operating contract at contract_version 1.\n"
+  },
+  {
+   "name": "feeds_only",
+   "rule_indices": [
+    8,
+    9
+   ],
+   "description": "Feeds",
+   "min_reinforcement": 3,
+   "compiled_at": 1784416066.5745394,
+   "body": "---\nname: python-local\ndescription: \"Feeds\"\ngenerated: true\nsource: omnimem\ndomain: python\ncompiled_at: 2026-07-18T23:07:46Z\ncontract_version: 1\nsource_manifest:\n  - mem:knowledge:01F   # feed: python-news (influence 7/10)\n  - mem:knowledge:01G   # feed: other (influence 2/10)\n---\n\n> GENERATED. Stored in and served from OmniMem (Valkey), domain tag: python.\n> Do not edit by hand. To change the domain guidance, update the underlying\n> memories and recompile with omnimem:compile_skill. Hand edits are overwritten.\n\n## Operating contract  (fixed, applies to every OmniMem skill)\n\nWhile working under this skill, keep the data pool alive:\n\n- Check OmniMem preferences first and honour them.\n- Read relevant experience before acting (recall / get_experience), and\n  warn_if_abandoned before retrying anything that looks like a known dead end.\n- Record experience as you go (record_experience): effort, outcome, dead ends\n  (log_abandoned into the graveyard), and breakthroughs.\n- Remember durable new facts (remember).\n\nThis block is fixed boilerplate, identical across all skills, inserted from one\ntemplate and versioned by contract_version. It is not per-skill compiled content.\n\n## How I work  (compiled, domain-specific)\n\nDistilled procedure from 0 experience memories and 0 graveyard entries in domain `python`. Each rule cites its source memory; treat Don't entries as known dead ends and warn_if_abandoned before retrying one.\n\n## Feed watch  (influenced feeds)\n\nThe latest articles from RSS feeds tied to this domain, pulled in automatically at compile time and weighted by each feed's influence score (1-10 — the score is how many of its most recent articles a feed contributes). Unlike the Reference section these are unvetted: treat them as current signal, not procedure, and promote_knowledge() anything worth keeping before it ages out of the knowledge namespace.\n\n- Release notes. (via python-news, influence 7/10) (https://example.com/rel) [mem:knowledge:01F]\n- Second… (via other, influence 2/10) [mem:knowledge:01G]\n\n## Provenance\n\nCompiled from 0 experience memories (min 3 reinforcements) and 0 graveyard entries. Plus 2 feed-watch articles from 2 influencing feeds (other, python-news). Full source manifest in frontmatter. Operating contract at contract_version 1.\n"
+  }
+ ],
+ "promoted": [
+  {
+   "key": "mem:knowledge:02",
+   "content": "Pinning deps matters",
+   "title": "pinning",
+   "source_url": "u2",
+   "skill_rules": []
+  },
+  {
+   "key": "mem:knowledge:01",
+   "content": "Body text",
+   "title": "Guide",
+   "source_url": "u1",
+   "skill_rules": [
+    {
+     "kind": "do",
+     "text": "pin"
+    },
+    {
+     "kind": "note",
+     "text": "neutral."
+    },
+    {
+     "kind": "dont",
+     "text": "float"
+    },
+    {
+     "kind": "watch",
+     "text": "drift"
+    }
+   ]
+  },
+  {
+   "key": "mem:knowledge:03",
+   "content": "",
+   "title": "",
+   "source_url": "",
+   "skill_rules": []
+  },
+  {
+   "key": "mem:knowledge:04",
+   "content": "",
+   "title": "Title only",
+   "source_url": "",
+   "skill_rules": []
+  }
+ ],
+ "reference_rules": [
+  {
+   "kind": "ref",
+   "text": "Do: pin",
+   "sources": [
+    "mem:knowledge:01"
+   ],
+   "reinforcement": 1,
+   "name": "Guide",
+   "url": "u1"
+  },
+  {
+   "kind": "ref",
+   "text": "neutral.",
+   "sources": [
+    "mem:knowledge:01"
+   ],
+   "reinforcement": 1,
+   "name": "Guide",
+   "url": "u1"
+  },
+  {
+   "kind": "ref",
+   "text": "Avoid: float",
+   "sources": [
+    "mem:knowledge:01"
+   ],
+   "reinforcement": 1,
+   "name": "Guide",
+   "url": "u1"
+  },
+  {
+   "kind": "ref",
+   "text": "Watch out: drift",
+   "sources": [
+    "mem:knowledge:01"
+   ],
+   "reinforcement": 1,
+   "name": "Guide",
+   "url": "u1"
+  },
+  {
+   "kind": "ref",
+   "text": "Pinning deps matters",
+   "sources": [
+    "mem:knowledge:02"
+   ],
+   "reinforcement": 1,
+   "name": "pinning",
+   "url": "u2"
+  },
+  {
+   "kind": "ref",
+   "text": "Title only",
+   "sources": [
+    "mem:knowledge:04"
+   ],
+   "reinforcement": 1,
+   "name": "Title only"
+  }
+ ],
+ "articles": [
+  {
+   "key": "mem:knowledge:05",
+   "content": "Summary here",
+   "title": "Headline",
+   "feed_name": "f",
+   "influence": 3,
+   "source_url": "u5"
+  },
+  {
+   "key": "mem:knowledge:06",
+   "content": "",
+   "title": "Only title",
+   "feed_name": "f",
+   "influence": 3,
+   "source_url": ""
+  },
+  {
+   "key": "mem:knowledge:07",
+   "content": "",
+   "title": "",
+   "feed_name": "g",
+   "influence": 1,
+   "source_url": ""
+  }
+ ],
+ "feed_rules": [
+  {
+   "kind": "feed",
+   "text": "Headline: Summary here",
+   "sources": [
+    "mem:knowledge:05"
+   ],
+   "reinforcement": 1,
+   "name": "Headline",
+   "url": "u5",
+   "feed": "f",
+   "influence": 3
+  },
+  {
+   "kind": "feed",
+   "text": "Only title",
+   "sources": [
+    "mem:knowledge:06"
+   ],
+   "reinforcement": 1,
+   "name": "Only title",
+   "feed": "f",
+   "influence": 3
+  }
+ ],
+ "old_manifest": [
+  {
+   "kind": "do",
+   "text": "a",
+   "sources": [
+    "k1"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "do",
+   "text": "same",
+   "sources": [
+    "k2"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "do",
+   "text": "grows",
+   "sources": [
+    "k3"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "dont",
+   "text": "slow",
+   "name": "Celery",
+   "sources": [
+    "k4"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "feed",
+   "text": "old headline",
+   "sources": [
+    "k5"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "ref",
+   "text": "kept by text",
+   "sources": [
+    "k6"
+   ],
+   "reinforcement": 1
+  }
+ ],
+ "new_manifest": [
+  {
+   "kind": "do",
+   "text": "b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b ",
+   "sources": [
+    "k1"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "do",
+   "text": "same",
+   "sources": [
+    "k2"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "do",
+   "text": "grows",
+   "sources": [
+    "k3",
+    "k9"
+   ],
+   "reinforcement": 2
+  },
+  {
+   "kind": "dont",
+   "text": "slower",
+   "name": "CELERY",
+   "sources": [
+    "k4"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "dont",
+   "text": "",
+   "name": "Kafka",
+   "sources": [
+    "k7"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "feed",
+   "text": "new headline",
+   "sources": [
+    "k8"
+   ],
+   "reinforcement": 1
+  },
+  {
+   "kind": "ref",
+   "text": "kept by text",
+   "sources": [
+    "k10"
+   ],
+   "reinforcement": 1
+  }
+ ],
+ "changes": [
+  {
+   "change": "rewritten",
+   "risk": "high",
+   "rule_kind": "do",
+   "rule": "b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b b…",
+   "was": "a"
+  },
+  {
+   "change": "rewritten",
+   "risk": "high",
+   "rule_kind": "dont",
+   "rule": "Avoid CELERY",
+   "was": "slow"
+  },
+  {
+   "change": "reinforced",
+   "risk": "low",
+   "rule_kind": "do",
+   "rule": "grows"
+  },
+  {
+   "change": "added",
+   "risk": "low",
+   "rule_kind": "dont",
+   "rule": "Avoid Kafka"
+  },
+  {
+   "change": "added",
+   "risk": "low",
+   "rule_kind": "feed",
+   "rule": "new headline"
+  },
+  {
+   "change": "removed",
+   "risk": "low",
+   "rule_kind": "feed",
+   "rule": "old headline"
+  },
+  {
+   "change": "reinforced",
+   "risk": "low",
+   "rule_kind": "ref",
+   "rule": "kept by text"
+  }
+ ],
+ "held_back_inputs": [
+  {
+   "kind": "do",
+   "text": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "sources": [
+    "k"
+   ],
+   "reinforcement": 1,
+   "blessed": false,
+   "name": null,
+   "approach_type": "",
+   "projects": [],
+   "url": "",
+   "feed": "",
+   "influence": 0
+  },
+  {
+   "kind": "dont",
+   "text": "r",
+   "sources": [
+    "k2"
+   ],
+   "reinforcement": 1,
+   "blessed": false,
+   "name": "Kafka",
+   "approach_type": "",
+   "projects": [],
+   "url": "",
+   "feed": "",
+   "influence": 0
+  },
+  {
+   "kind": "watch",
+   "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "sources": [
+    "k3"
+   ],
+   "reinforcement": 1,
+   "blessed": false,
+   "name": null,
+   "approach_type": "",
+   "projects": [],
+   "url": "",
+   "feed": "",
+   "influence": 0
+  }
+ ],
+ "held_back_preview": [
+  {
+   "kind": "do",
+   "rule": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+   "truncated": true,
+   "reinforcement": 1,
+   "sources": [
+    "k"
+   ]
+  },
+  {
+   "kind": "dont",
+   "rule": "Avoid Kafka",
+   "reinforcement": 1,
+   "sources": [
+    "k2"
+   ]
+  },
+  {
+   "kind": "watch",
+   "rule": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy…",
+   "truncated": true,
+   "reinforcement": 1,
+   "sources": [
+    "k3"
+   ]
+  }
+ ],
+ "pool_concentration": {
+  "projects": 3,
+  "top_project": "alpha",
+  "top_project_share": "2/5"
+ },
+ "single_project_pool": [
+  {
+   "key": "mem:episodic:01A",
+   "content": "moved queue",
+   "project": "alpha",
+   "tags": [
+    "python"
+   ],
+   "effort_score": 4,
+   "outcome": "succeeded",
+   "breakthrough": "Used RQ   instead\nof Celery",
+   "lesson": null,
+   "gotchas": "Watch the broker's visibility timeout",
+   "abandoned": [
+    {
+     "name": "Celery",
+     "type": "library",
+     "reason": "too heavy for one worker"
+    }
+   ],
+   "blessed": false,
+   "created_at": 10.0,
+   "updated_at": 20.0
+  },
+  {
+   "key": "mem:episodic:01B",
+   "content": "another",
+   "project": "alpha",
+   "tags": [
+    "python"
+   ],
+   "effort_score": 2,
+   "outcome": "pivoted",
+   "breakthrough": "ignored because pivoted",
+   "lesson": "Prefer boring queues",
+   "gotchas": null,
+   "abandoned": [
+    {
+     "name": "celery",
+     "type": "library",
+     "reason": "same again"
+    },
+    {
+     "name": "",
+     "reason": "x"
+    },
+    {
+     "type": "tool"
+    }
+   ],
+   "blessed": false,
+   "created_at": 11.0,
+   "updated_at": 30.0
+  }
+ ],
+ "insufficient_note_single": "No lesson recurs across enough memories to earn a rule. A single episode is a memory; a pattern earns a skill rule. All 1 candidates appear exactly once, so nothing was close to the gate. Every candidate comes from one project (alpha), so 'python' and that project's history are the same set of memories here. A narrower domain that spans real work in several projects is more likely to clear the gate than a broad one. Read the held_back text: candidates written as narrative of what happened can never become rules however often they recur, while a generalisable claim can. bless() the ones that already read as rules.",
+ "insufficient_note_mixed": "No lesson recurs across enough memories to earn a rule. A single episode is a memory; a pattern earns a skill rule. All 3 candidates appear exactly once, so nothing was close to the gate. Read the held_back text: candidates written as narrative of what happened can never become rules however often they recur, while a generalisable claim can. bless() the ones that already read as rules.",
+ "strip_volatile_input": "a\r\ncompiled_at: x b\ncompiled_at: y\n\nlast",
+ "strip_volatile": "a\nb\n\nlast",
+ "one_line": [
+  [
+   "  a\n\n b ",
+   400,
+   "a b"
+  ],
+  [
+   "abcdef ghij",
+   8,
+   "abcdef…"
+  ],
+  [
+   "xxxxxxxxxx",
+   10,
+   "xxxxxxxxxx"
+  ],
+  [
+   "été  été  été  ",
+   7,
+   "été ét…"
+  ]
+ ]
+}

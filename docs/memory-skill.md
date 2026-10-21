@@ -1,115 +1,117 @@
-# Skill Memory Specification (v6)
+# Skill Memory Specification
 
 **Key format**: `mem:skill:gen:{domain}-{user}`
-**Created by**: `compile_skill()` only — propose-and-accept gated, shared with the web UI via `memory/skill_compiler.py`
-**Index**: `idx:skill`
+**Created by**: `compile_skill()` only, behind the propose-and-accept gate. The settings panel's New Skill dialog runs the same gate.
 
-A compiled skill is a SKILL.md document distilled from a domain's episodic experience, graveyard entries, and promoted knowledge. The raw memories are the source of truth; the skill is build output, like a binary. A memory error is noise (ranked and diluted by recall); a skill error is policy (the agent obeys it) — which is why nothing writes to this namespace silently.
+A compiled skill is a SKILL.md document distilled from a domain's experience, graveyard entries, promoted knowledge and influencing feeds. The raw memories are the source of truth and the skill is build output, like a binary. It matters because the two fail differently: a bad memory is noise (recall ranks it and dilutes it), but a bad skill is policy (the agent does what it says). That's why nothing writes to this namespace without you seeing it first.
+
+Field formats follow the [storage model](memory-types.md#storage-model).
 
 ## Identity
 
-- **Domain**: normalised to lowercase kebab-case, 1-64 chars of `[a-z0-9._-]`. Aliases resolve first (`py` → `python`, `k8s` → `kubernetes`, etc. — see `DOMAIN_ALIASES` in `memory/skills.py`), and an embedding "did you mean" guard (`SKILL_DOMAIN_SUGGEST_THRESHOLD`, default 0.60) catches near-misses so lessons don't scatter across synonym domains.
-- **User**: from `OMNIMEM_USER` (default `local`), normalised the same way. Single-node in v6; org scoping is v7 territory.
-- The `gen:` segment namespaces compiler output so a generated skill and a hand-authored one can never collide by construction.
+- **Domain**: lowercased, whitespace turned into hyphens, then 1-64 characters of `[a-z0-9._-]`. Aliases resolve first (`py` → `python`, `k8s` → `kubernetes` and so on), and a "did you mean" guard based on embeddings (`SKILL_DOMAIN_SUGGEST_THRESHOLD`, default 0.60) catches near-misses so lessons don't scatter across synonyms.
+- **User**: `OMNIMEM_USER` (default `local`), normalised the same way. A value that isn't valid falls back to `local`.
+- The `gen:` segment keeps compiler output apart, so a generated skill and a hand-written one can never collide.
 
 ## Fields
 
-| Field | Format | Required | Description |
-|-------|--------|----------|-------------|
-| `name` | string | yes | `{domain}-{user}`, e.g. `python-local`. |
-| `description` | string | yes | The auto-load trigger cue. Human-owned and pinned: the compiler drafts it for a brand-new skill only; recompiles keep the stored text unless an explicit override is passed. |
-| `domain` | string | yes | Canonical domain. |
-| `user` | string | yes | Identity segment. |
-| `body` | string, max 100,000 chars | yes | The full rendered SKILL.md (structure below). Whole-document by design: deliberately **absent** from the search return whitelist, never chunked, fetched intact by ID via `get_skill()`. |
-| `generated` | `"true"` | yes | The compiler refuses to overwrite any record not flagged `generated: true`. |
-| `state` | lifecycle state | yes | `active` on write. |
-| `surface_score` | float string | yes | `"1.0"`. |
-| `contract_version` | int string | yes | Version of the fixed operating-contract block (currently 1). Bumping the contract text makes the next recompile propose the new block as a normal diff. |
-| `compiled_at` | unix seconds string | yes | When the accepted proposal was compiled (carried from the proposal, not the write time). |
-| `created_at` | unix seconds string | yes | First commit; preserved across recompiles. |
-| `updated_at` | unix seconds string | yes | Last commit. |
-| `tags` | JSON array | yes | `[domain]`. |
-| `source_manifest` | JSON array of key strings | yes | Every memory key cited by any rule, sorted. |
-| `rule_manifest` | JSON array | yes | The compiled rules as data, used by recompile diffs (`summarise_rule_changes`). Entry shape below. |
-| `recall_count` / `last_recalled` | int string / unix seconds string | no | Bumped by `get_skill()`; feeds telemetry, which substitutes name + description for the missing `content`. |
-| `vector` | 384-dim float32 blob | yes | Embeds **discovery metadata only**: `"{name}. {description} Domain: {domain}."` — never the body. `find_skills()` and briefing suggestions run relevance over the description because it is the load trigger. |
+| Field | Format | Description |
+|-------|--------|-------------|
+| `name` | string | `{domain}-{user}`, e.g. `python-local`. |
+| `description` | string | The cue that makes an agent load the skill. It's yours: the compiler drafts one for a brand-new skill, and recompiles keep the stored text unless you pass a new one. |
+| `domain` | string | Canonical domain. |
+| `user` | string | The user segment. |
+| `body` | string, max 100,000 characters | The whole rendered SKILL.md. Never chunked, never returned by search, fetched intact with `get_skill()`. |
+| `generated` | `"true"` | The compiler refuses to overwrite a record without it. |
+| `state` | lifecycle state | `active` when written. |
+| `surface_score` | float string | `"1.0"`. |
+| `contract_version` | int string | Version of the fixed operating contract (currently 1). Changing the contract text makes the next recompile propose the new block as an ordinary diff. |
+| `compiled_at` | unix seconds string | When the accepted proposal was compiled (taken from the proposal, not the write). |
+| `created_at` | unix seconds string | The first commit; kept across recompiles. |
+| `updated_at` | unix seconds string | The latest commit. |
+| `tags` | JSON array | `[domain]`. |
+| `source_manifest` | JSON array of keys | Every memory key any rule cites, sorted. |
+| `rule_manifest` | JSON array | The compiled rules as data, which recompile diffs compare against. Shape below. |
+| `recall_count` / `last_recalled` | int string / unix seconds string | Bumped by `get_skill()`. Telemetry shows the name and description in place of `content`. |
+
+The vector embeds **discovery metadata only**, `"{name}. {description} Domain: {domain}."`, never the body. `find_skills()` and the briefing's suggestions match on the description because that's what triggers a load. The store stamps the [v7 identity fields](memory-types.md#v7-identity-fields) on a skill too, apart from `content_hash`, since a skill has no `content`.
 
 ### `rule_manifest` entry shape
 
 ```json
 {
-  "kind": "do" | "watch" | "dont" | "ref",
-  "text": "rule wording (newest source's phrasing wins)",
+  "kind": "do | watch | dont | ref | feed",
+  "text": "the rule's wording (the newest source's phrasing wins)",
   "sources": ["mem:episodic:...", "..."],
   "reinforcement": 2,
-  "blessed": true,          // only when a blessed memory carried it past the gate
-  "name": "approach name",  // dont: the graveyard identity; ref: the article title
-  "url": "https://..."      // ref only: the article's source URL
+  "blessed": true,
+  "name": "approach name, article title or feed",
+  "url": "https://..."
 }
 ```
 
+`blessed` only appears when a blessed memory carried the rule past the gate; `name` and `url` only when the rule has them (a don't rule's approach name, a reference's title and link).
+
 ## Body structure
 
-`render_skill_md()` produces, in order: YAML frontmatter (name, JSON-quoted description, `generated: true`, `source: omnimem`, domain, compiled_at as ISO 8601, contract_version, and a `source_manifest` list with per-key annotations like `# reinforced x3`, `# graveyard: <name>`, `# blessed`, `# promoted reference`), the generated banner, the fixed operating contract, then `## Do`, `## Watch out`, `## Don't (and why)`, `## Reference (promoted knowledge)`, and `## Provenance`. Every rule bullet cites its primary source key.
+The body is, in order:
 
-Rendering is deterministic: the same source memories produce a byte-identical body except the `compiled_at` frontmatter line (`bodies_equivalent()` strips exactly that line). Don't introduce randomness, dict-order dependence, or extra timestamps, or every recompile will propose noise diffs.
+1. YAML frontmatter: name, the description as a JSON-quoted string, `generated: true`, `source: omnimem`, domain, `compiled_at` as ISO 8601, `contract_version`, and a `source_manifest` list with notes on each key (`# reinforced x3`, `# graveyard: <name>`, `# blessed`, `# promoted reference`)
+2. the generated-file banner
+3. `## Operating contract` (fixed, the same in every skill)
+4. `## How I work` and the compiled sections: `## Do`, `## Watch out`, `## Don't (and why)`, `## Reference  (promoted knowledge)`, `## Feed watch  (influenced feeds)`
+5. `## Provenance`
+
+Every rule bullet cites its main source key.
+
+Rendering is deterministic: the same source memories give a byte-identical body apart from the `compiled_at` line. That's what keeps recompiles quiet when nothing has changed, and it's checked against bodies the 6.x Python rendered for the same inputs, so a skill imported from 6.x recompiles without a spurious diff.
 
 ## The write gate
 
-Experience and graveyard writes flow freely; the gate sits only at compile-to-skill:
+Experience and graveyard writes flow freely. The gate only sits between compiling and committing:
 
-1. **`compile_skill(mode="propose")`** gathers the domain pool, extracts and clusters lessons, applies the reinforcement gate (`min_reinforcement`, default 2, clamped 1-10), appends promoted reference rules, renders the body, and stashes the draft in `meta:skill:proposal:{domain}-{user}` with TTL `SKILL_PROPOSAL_TTL_SECONDS` (default 86,400). The response carries the full draft (new skill) or a unified diff plus a risk-classified change list (recompile: added/reinforced are low risk, rewritten/removed are high).
-2. **`compile_skill(mode="write")`** commits the stashed body verbatim — no recompile at write time. It refuses when there is no live proposal, when the stored skill's body SHA changed since the proposal (`stale_proposal`), or when the existing record is not flagged `generated: true`. On success the proposal key is deleted. An optional `export_path` mirrors the body to a `.md` file under `SKILL_EXPORT_DIR` (path-traversal guarded).
+1. **`compile_skill(mode="propose")`** gathers the domain's pool, pulls out and clusters the lessons, applies the reinforcement gate (`min_reinforcement`, default 2, held between 1 and 10), adds promoted reference rules and feed watch rules, renders the body and stashes the draft in `meta:skill:proposal:{domain}-{user}`, which expires after `SKILL_PROPOSAL_TTL_SECONDS` (default 86,400). You get the full draft back for a new skill, or a unified diff and a list of changes rated by risk for a recompile (added and reinforced rules are low risk; rewritten and removed ones are high).
+2. **`compile_skill(mode="write")`** commits the stashed body exactly as proposed, with no recompile. It refuses when there's no live proposal, when the stored skill changed after the proposal was made (`stale_proposal`), or when the stored record isn't flagged `generated: true`. A successful commit deletes the proposal. `export_path` also writes the body to a `.md` file under `SKILL_EXPORT_DIR` (default `backups/skills` beside the database); the path has to be relative and can't climb out of that folder.
 
-### Proposal stash fields (`meta:skill:proposal:{domain}-{user}`)
+### Proposal fields (`meta:skill:proposal:{domain}-{user}`)
 
 | Field | Description |
 |-------|-------------|
-| `body` | The rendered draft, committed verbatim on write. |
-| `description` | Resolved description (override > stored > compiler draft). |
+| `body` | The rendered draft, committed as it is. |
+| `description` | The description to commit: the one you passed, else the stored one, else the compiler's draft. |
 | `domain`, `user` | Identity. |
-| `based_on` | SHA-256 of the stored body at propose time (`""` for a new skill) — the staleness check. |
+| `based_on` | SHA of the stored body at propose time (`""` for a new skill): the staleness check. |
 | `created_at` | Propose time; becomes the skill's `compiled_at`. |
-| `min_reinforcement` | Gate setting used. |
+| `min_reinforcement` | The gate setting used. |
 | `rule_manifest`, `source_manifest` | JSON, copied onto the skill at commit. |
+
+The briefing's automatic skill scan (every `SKILL_SCAN_INTERVAL_HOURS`, default 24) only ever creates proposals like these. It never commits one.
 
 ## Calling the tools
 
 ```python
-# Step 1: propose. Gathers the pool, renders the draft, stashes it, returns the
-# full body (new skill) or a unified diff with a risk-classified change list (recompile).
+# Step 1: propose.
 compile_skill(
-    domain="python",                # required; aliases resolve ('py' → 'python'),
-                                    # near-misses get a "did you mean" suggestion
+    domain="python",                # required; aliases resolve, near-misses get a suggestion
     mode="propose",                 # default
-    min_reinforcement=2,            # default; clamped 1-10 — distinct source memories
-                                    # a lesson needs to become a rule
-    include_graveyard=True,         # default; False drops the Don't section inputs
-    description="Python lessons learned on OmniMem",  # default None — drafted for a new
-)                                   # skill, kept from the stored skill on recompile
+    min_reinforcement=2,            # default; held between 1 and 10
+    include_graveyard=True,         # default; False leaves the Don't section's inputs out
+    description="Python lessons learned on OmniMem",  # default None
+)
 
-# Step 2: review the draft/diff with the human, then commit it verbatim.
-compile_skill(
-    domain="python",
-    mode="write",                   # refuses without a live proposal, on a stale
-                                    # proposal (body SHA changed since propose), or
-                                    # if the stored record isn't generated: true
-    export_path="python.md",        # default None; also mirrors the body to a file
-)                                   # under SKILL_EXPORT_DIR (traversal-guarded)
+# Step 2: review the draft or diff with the human, then commit it.
+compile_skill(domain="python", mode="write", export_path="python.md")  # export_path optional
 
-# Search skills by relevance — matches the discovery metadata (name, description,
-# domain), never the body.
+# Find skills by relevance: matches name, description and domain, never the body.
 find_skills(query_or_domain="asyncio event loops")
 
-# Fetch the whole SKILL.md body (bumps recall_count / last_recalled). Accepts the
-# full key, the name ('python-local'), or a bare domain ('python' — aliases resolve).
+# The whole SKILL.md. Accepts the key, the name ('python-local') or a bare domain.
 get_skill(skill_id="mem:skill:gen:python-local")
 
-# Feed the compiler: mark one strong episodic lesson skill-eligible…
+# Feed the compiler: one strong episodic lesson...
 bless(memory_key="mem:episodic:01KQ...")
 
-# …or vet a knowledge article into the Reference section (see memory-knowledge.md
-# for the full promote_knowledge() options, including per-rule extraction).
+# ...or a vetted article for the Reference section.
 promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python")
 ```
 
@@ -117,14 +119,16 @@ promote_knowledge(key="mem:knowledge:a1b2c3d4e5f60718", domain="python")
 
 | Input | Becomes | Gate |
 |-------|---------|------|
-| `breakthrough` on a succeeded episodic memory | Do rule | clusters at cosine ≥ `SKILL_CLUSTER_THRESHOLD` (0.80); needs `min_reinforcement` distinct source memories |
+| `lesson` (or `breakthrough`) on a succeeded episodic memory | Do rule | clusters at similarity `SKILL_CLUSTER_THRESHOLD` (0.80) or above; needs `min_reinforcement` distinct source memories |
 | `gotchas` | Watch out rule | same clustering and reinforcement gate |
 | `abandoned_approaches` entries | Don't rule | grouped by approach name; same reinforcement gate |
-| `bless()`-ed memory | any of the above (or its bare content as a Do) | bypasses the reinforcement threshold |
-| `promote_knowledge(key, domain=...)` article | Reference rule(s) | promotion is the vetting; bypasses and never counts toward reinforcement |
+| a `bless()`-ed memory | any of the above, or its bare content as a Do | skips the reinforcement gate |
+| `promote_knowledge(key, domain=...)` article | Reference rule(s) | promotion is the vetting; skips the gate, never counts towards it |
+| a feed with a `skills:` score for the domain | Feed watch rules from its latest articles | skips the gate, capped by `SKILL_FEED_MAX_ARTICLES` (default 25); never creates a skill on its own |
 
 ## Lifecycle notes
 
 - `skill` is a valid **search** namespace but not a valid `remember()` namespace.
-- The web UI's `/skills` pages allow create and delete, never edit. Creation runs the same `compile_skill_flow`; recompiles stay on the MCP flow, which carries the diff review. Deleting a skill leaves its source memories intact, so recompiling the domain can recreate it.
-- The briefing surfaces pending skill updates (source pools that changed since `compiled_at`) and `knowledge_watch()` matches (recent unpromoted articles semantically close to a skill's discovery vector, upgraded to `possible_contradiction` by the tier-1 negation heuristic).
+- The settings panel's Skills pages let you create, delete, export and import skills, never edit one. Creating runs the same gate; recompiles stay with `compile_skill()`, which gives you the diff review. Deleting a skill leaves its source memories alone, so recompiling the domain can bring it back.
+- Export bundles a skill with its source memories and influencing feeds into a checksummed zip; import is strictly additive and re-embeds everything locally. See [the skill compiler](skill-compiler.md).
+- The briefing flags skills whose sources changed since `compiled_at`, and runs a knowledge watch: recent unpromoted articles close to a skill's description, upgraded to `possible_contradiction` when they look like they disagree with a rule.
