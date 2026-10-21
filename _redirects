@@ -1,7 +1,7 @@
-# Cloudflare Pages redirects. The download buttons on the homepage point at
-# /download/<platform>, so their links never change; these lines send each one
-# to the current release's file. At a new release, change the version on all
-# four lines (the file names carry it, so Forgejo has no "latest" URL for them).
+# Cloudflare Pages redirects, kept so any old /download/<platform> link still
+# lands on a file. The homepage buttons link straight to the release files, since
+# omnimem.org is no longer served by Pages and these rules don't apply there. At a
+# new release, change the version here and on the four buttons in index.html.
 /download/macos          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.3/OmniMem-7.0.3-arm64.dmg                   302
 /download/windows        https://code.squarecows.com/ric/omnimem/releases/download/v7.0.3/OmniMem-7.0.3-x64.msi                     302
 /download/linux          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.3/omnimem-desktop-7.0.3-linux-amd64.flatpak 302
