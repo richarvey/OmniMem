@@ -10,11 +10,11 @@ The first release is 7.0.3, on the [releases page](https://code.squarecows.com/r
 
 ## Why rewrite it
 
-OmniMem's job is small: embed one memory, embed one query, search, rank. 6.x did that job well, but the machinery around it kept growing. Four images to pull and keep in step. A search index that lived beside the data and could drift from it, with phantom entries, silent index migration failures and tag-query quirks to work around. Each Python service loaded its own copy of the embedding model. And the only way to see your memories was a web UI on a port, which is one more thing listening on your machine. It was great for developing and testing the theories behind how memory and experience should live and work together, but I wanted to make this more accessible for everyone.
+OmniMem's job is small: embed one memory, embed one query, search, rank. 6.x did that job well, but the machinery around it kept growing. Four images to pull and keep in step. A search index that lived beside the data and could drift from it, with phantom entries, silent index migration failures and tag-query quirks to work around. Each Python service loaded its own copy of the embedding model. And the only way to see your memories was a web UI on a port, which is one more thing listening on your machine. That setup was great for developing and testing the theories behind how memory and experience should live and work together, but I wanted to make this more accessible for everyone.
 
 ## What 7 is
 
-**One process.** The MCP server, the memory engine, the embedding model, RSS ingestion and the database all live in one binary. One embedder serves every caller. Written in Rust so memory safe and super fast.
+**One process.** The MCP server, the memory engine, the embedding model, RSS ingestion and the database all live in one binary. One embedder serves every caller. It's written in Rust, so it's memory safe and super fast.
 
 **One file.** Memories live in SQLite. On start, every vector is loaded into one matrix per namespace and searched exactly, not approximately. At OmniMem's scale (tens of thousands of memories) a full scan takes a few milliseconds and gives the same answer every time. Filters are plain SQL, so there's no separate index left to drift from the data. A real 3,500-memory store comes to a 12.8 MB database.
 
@@ -28,10 +28,10 @@ There's an installer for each platform: a DMG for macOS (Apple silicon, 13.4 or 
 
 OmniMem lives in the tray, or the menu bar on a Mac. The menu shows whether it's running and how many memories it holds, and it does the setup for you:
 
-- **Add to Claude Code** and **Add to Claude Desktop** checks the client's settings first and never adds OmniMem twice. An old `omnimem` entry pointing at a 6.x install is offered as **Switch Claude Desktop here**, which repoints it rather than adding a second.
+- **Add to Claude Code** and **Add to Claude Desktop** check the client's settings first and never add OmniMem twice. An old `omnimem` entry pointing at a 6.x install is offered as **Switch Claude Desktop here**, which repoints it rather than adding a second.
 - **Copy MCP URL** covers every other agent with a bit of manual work.
 
-**Settings…** opens a window with every page the 6.x web UI had (the dashboard, memories, search, projects, experience and the graveyard, skills with export and import, duplicates, contradictions, telemetry, token overhead, feeds and backups) plus a configuration page for everything the server sets in its environment (such as the oAuth settings or the Anthropic API key). The window's pages come from the app itself over a custom URL scheme. Nothing about them is reachable over a network, from your machine or anyone else's.
+**Settings…** opens a window with every page the 6.x web UI had (the dashboard, memories, search, projects, experience and the graveyard, skills with export and import, duplicates, contradictions, telemetry, token overhead, feeds and backups) plus a configuration page for everything the server sets in its environment (such as the OAuth settings or the Anthropic API key). The window's pages come from the app itself over a custom URL scheme. Nothing about them is reachable over a network, from your machine or anyone else's.
 
 Secrets (your Anthropic key, the MCP access token, a Hugging Face token) go to the OS keychain: Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux. Once saved they're never shown again.
 
@@ -51,7 +51,7 @@ This is the part that matters most. A rewrite that ranks your memories different
 
 - **The vectors are the 6.7 vectors.** The Rust engine was checked against full reference vectors the Python engine wrote, covering accents, CJK, emoji, empty text, truncation past 256 tokens and mixed-length batches. Deduplication, contradiction and skill clustering thresholds don't move.
 - **Recall returns the same results.** A real production backup of 3,500 memories was imported, and all 32 query and namespace searches tested returned an identical ordered top 10 to the Python engine's search over the same data. Every field survives an export.
-- **Skills compile the same.** Skill rendering matches the Python compiler byte for byte. 
+- **Skills compile the same.** Skill rendering matches the Python compiler byte for byte.
 - **RSS reads the same articles.** On the project's own reading list, the Rust parser picks out exactly the 59 articles 6.x's feedparser does, with the same keys, titles, dates and text.
 
 Recall scoring has three deliberate changes, all in the [changelog](https://code.squarecows.com/ric/omnimem/src/branch/main/CHANGELOG.md):
@@ -93,7 +93,7 @@ A few things are gone on purpose: Valkey and every `VALKEY_*` setting, the Compo
 - **In the Flatpak, Add to Claude Code can't work**, because the sandbox can't see a `claude` installed outside it. The menu says so, and `claude mcp add` does the job.
 - **Stock GNOME doesn't show tray icons** without the AppIndicator extension. Where there's no tray, OmniMem opens its settings window instead and says which extension to install.
 
-## Get it Now
+## Get it now
 
 - [OmniMem 7.0.3 on the releases page](https://code.squarecows.com/ric/omnimem/releases/latest), with a `.sha256` beside every file
 - [Quick start](https://code.squarecows.com/ric/omnimem/src/branch/main/docs/quick-start.md)
