@@ -11,7 +11,8 @@ on:
 jobs:
   gitleaks:
     name: Secret Scan
-    runs-on: sqcows
+    # Linux only: the Mac carries sqcows too, and has no node for checkout.
+    runs-on: linux
     steps:
       - uses: actions/checkout@v4
         with:
