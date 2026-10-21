@@ -95,8 +95,6 @@ A few things are gone on purpose: Valkey and every `VALKEY_*` setting, the Compo
 - **In the Flatpak, Add to Claude Code can't work**, because the sandbox can't see a `claude` installed outside it. The menu says so, and `claude mcp add` does the job.
 - **Stock GNOME doesn't show tray icons** without the AppIndicator extension. Where there's no tray, OmniMem opens its settings window instead and says which extension to install.
 
-<!-- TODO: if you want headline numbers here, measure 6.7 against 7.0 on the same machine: resident memory, cold start and image size. The repo doesn't record them yet. -->
-
 ## Get it
 
 - [OmniMem 7.0.3 on the releases page](https://code.squarecows.com/ric/omnimem/releases/latest), with a `.sha256` beside every file
