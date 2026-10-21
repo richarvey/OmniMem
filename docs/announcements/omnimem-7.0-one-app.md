@@ -54,7 +54,7 @@ This is the part that matters most. A rewrite that ranks your memories different
 - **Skills compile the same.** Skill rendering matches the Python compiler byte for byte. 
 - **RSS reads the same articles.** On the project's own reading list, the Rust parser picks out exactly the 59 articles 6.x's feedparser does, with the same keys, titles, dates and text.
 
-Recall scoring has three deliberate changes, all in the [changelog](../../CHANGELOG.md):
+Recall scoring has three deliberate changes, all in the [changelog](https://code.squarecows.com/ric/omnimem/src/branch/main/CHANGELOG.md):
 
 1. **Recency declines from the day a memory is written**, reaching 0.9 at 90 days and then falling 5% every 30 days to a 0.3 floor. 6.x held it flat at 1.0 for 90 days, so yesterday's memory and one from three months ago scored alike. The relevance floor reads raw similarity, so nothing extra is dropped.
 2. **An abandoned outcome scores 1.0, not 0.1.** The old weight buried the write-up of a failure along with the approach, so the one memory explaining why something didn't work ranked below almost everything else.
@@ -64,13 +64,13 @@ Recall scoring has three deliberate changes, all in the [changelog](../../CHANGE
 
 One finding shaped this release more than any other. Across twenty runs with OmniMem attached and the answer already in the store, the agent made zero memory calls of its own. The memory was there. Nothing asked it.
 
-So 7.0 ships [Claude Code hooks](../claude-code-hook.md). `omnimem hook` puts the project's briefing into every session's opening context, read-only, in about 6 ms. Before a tool call that changes something, it checks the graveyard, and if the call proposes an approach this project already abandoned, it stops it and hands back what was abandoned, why, and what worked instead. It never guards a read, and it fails open on any error. At the end of a session it records what the session did, skips sessions that changed nothing and redacts credentials before writing.
+So 7.0 ships [Claude Code hooks](https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md). `omnimem hook` puts the project's briefing into every session's opening context, read-only, in about 6 ms. Before a tool call that changes something, it checks the graveyard, and if the call proposes an approach this project already abandoned, it stops it and hands back what was abandoned, why, and what worked instead. It never guards a read, and it fails open on any error. At the end of a session it records what the session did, skips sessions that changed nothing and redacts credentials before writing.
 
 Measured over ten pairs of runs on one task: every attempt at the abandoned approach was stopped before it ran, no run with the hooks reached a failing test suite (against 8 of 10 without them), and the runs cost 27% less.
 
 ## Hardened before release
 
-The whole Rust workspace was security reviewed before 7.0.0, with fixes in every crate. The headlines: the OAuth routes are size-capped, rate limited and strict about PKCE and redirect URIs; the settings panel carries no inline JavaScript and sends a Content Security Policy; skill bundles are read against their declared sizes, so a zip bomb is refused rather than inflated; RSS fetches refuse private and loopback addresses and re-check every redirect; and the model download verifies a sha256 from the hub. CI now runs `cargo audit` and gitleaks on every push. The full list is in the [changelog](../../CHANGELOG.md).
+The whole Rust workspace was security reviewed before 7.0.0, with fixes in every crate. The headlines: the OAuth routes are size-capped, rate limited and strict about PKCE and redirect URIs; the settings panel carries no inline JavaScript and sends a Content Security Policy; skill bundles are read against their declared sizes, so a zip bomb is refused rather than inflated; RSS fetches refuse private and loopback addresses and re-check every redirect; and the model download verifies a sha256 from the hub. CI now runs `cargo audit` and gitleaks on every push. The full list is in the [changelog](https://code.squarecows.com/ric/omnimem/src/branch/main/CHANGELOG.md).
 
 ## Coming from 6.x
 
@@ -84,7 +84,7 @@ Backups don't carry vectors, so every memory is embedded again from its text. Th
 
 If you aren't ready, the 6.x Docker stack carries on from the `v6.7.x` branch, and the old one-line installer still sets up 6.7.
 
-A few things are gone on purpose: Valkey and every `VALKEY_*` setting, the Compose stack, the web UI on port 8080, `/metrics` and the SSE transport. If an agent's config still says `"type": "sse"` or ends in `/sse`, point it at `http://127.0.0.1:8765/mcp` instead. The [configuration reference](../configuration.md#gone-since-6x) lists every setting that went.
+A few things are gone on purpose: Valkey and every `VALKEY_*` setting, the Compose stack, the web UI on port 8080, `/metrics` and the SSE transport. If an agent's config still says `"type": "sse"` or ends in `/sse`, point it at `http://127.0.0.1:8765/mcp` instead. The [configuration reference](https://code.squarecows.com/ric/omnimem/src/branch/main/docs/configuration.md#gone-since-6x) lists every setting that went.
 
 ## Rough edges
 
@@ -96,7 +96,7 @@ A few things are gone on purpose: Valkey and every `VALKEY_*` setting, the Compo
 ## Get it Now
 
 - [OmniMem 7.0.3 on the releases page](https://code.squarecows.com/ric/omnimem/releases/latest), with a `.sha256` beside every file
-- [Quick start](../quick-start.md)
+- [Quick start](https://code.squarecows.com/ric/omnimem/src/branch/main/docs/quick-start.md)
 - [omnimem.org](https://omnimem.org)
 
 OmniMem is open source, MIT licensed, and free. Issues and ideas are welcome on [GitHub](https://github.com/richarvey/OmniMem/issues).
