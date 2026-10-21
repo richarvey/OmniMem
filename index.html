@@ -1000,13 +1000,13 @@ curl http://127.0.0.1:8765/healthz   <span style="color: rgb(134, 140, 150);"># 
     </div>
 
 
-    <div style="display: flex; gap: 12px; align-items: flex-start; margin-top: 28px; max-width: 760px; border: 1px solid rgba(214, 164, 74, 0.35); background: rgba(214, 164, 74, 0.05); border-radius: 9px; padding: 13px 16px;">
-      <span aria-hidden="true" style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; font-weight: 700; color: rgb(214, 164, 74); line-height: 1.6;">!</span>
+    <div style="display: flex; gap: 12px; align-items: flex-start; margin-top: 40px; border: 1px solid rgba(214, 164, 74, 0.35); background: rgba(214, 164, 74, 0.05); border-radius: 12px; padding: 16px 28px;">
+      <svg viewBox="0 0 512 512" fill="rgb(214, 164, 74)" aria-hidden="true" style="flex: 0 0 auto; width: 16px; height: 16px; margin-top: 3px;"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M256 512a256 256 0 1 1 0-512 256 256 0 1 1 0 512zm0-384c-13.3 0-24 10.7-24 24l0 112c0 13.3 10.7 24 24 24s24-10.7 24-24l0-112c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"></path></svg>
       <p style="font-size: 13.5px; line-height: 1.6; color: rgb(150, 156, 165); margin: 0px;"><strong style="color: rgb(214, 164, 74); font-weight: 600;">Coming from 6.x?</strong> Take a backup on 6.x with <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">dump_to_file()</code>, then restore it on the settings window's Backups page or run <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">omnimem import memory_backup.json</code>. Every memory is embedded again from its text, so recall and skills behave as they did.</p>
     </div>
 
     
-    <div style="display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; margin-top: 40px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 12px; padding: 24px 28px;">
+    <div style="display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; margin-top: 16px; background: rgb(16, 18, 22); border: 1px solid rgb(38, 42, 49); border-radius: 12px; padding: 24px 28px;">
       <div>
         <div style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgb(99, 189, 133); margin-bottom: 8px;">Pro tip</div>
         <p style="font-size: 14.5px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px; max-width: 640px;">Agents mostly don't ask their memory anything, so for Claude Code there are <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">hooks</a>: <code style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 0.88em; color: rgb(201, 205, 211);">omnimem hook</code> puts the project's briefing in every session's opening context and stops a tool call that repeats a known dead end before it runs.</p>
