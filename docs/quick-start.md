@@ -114,7 +114,7 @@ cargo build --release -p omnimem --features desktop
 ./target/release/omnimem            # no command runs the desktop app
 ```
 
-On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. Until 7.0.0 ships, that build has had far less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
+On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. That build has had less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
 
 On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
 

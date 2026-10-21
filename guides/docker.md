@@ -17,7 +17,7 @@ docker run -d --name omnimem \
   -e HF_HOME=/data/hf-cache \
   -e MCP_HOST=0.0.0.0 \
   -e MCP_AUTH_TOKEN="$(openssl rand -hex 32)" \
-  richarvey/omnimem:7.0.0
+  richarvey/omnimem:7.0.3
 ```
 
 A few things are going on there:
@@ -50,7 +50,7 @@ If you'd rather keep it in a file:
 ```yaml
 services:
   omnimem:
-    image: richarvey/omnimem:7.0.0
+    image: richarvey/omnimem:7.0.3
     restart: unless-stopped
     ports:
       - "127.0.0.1:8765:8765"
@@ -120,7 +120,7 @@ OmniMem only serves `/mcp`, the OAuth routes and `/healthz`, so the whole thing 
 Pin a release tag rather than `latest`:
 
 ```yaml
-image: richarvey/omnimem:7.0.0
+image: richarvey/omnimem:7.0.3
 ```
 
 Releases are listed on the [Forgejo releases page](https://code.squarecows.com/ric/omnimem/releases).

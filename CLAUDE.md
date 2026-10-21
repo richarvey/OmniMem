@@ -136,6 +136,8 @@ Commit after each meaningful piece of work. The repo lives on Forgejo at `code.s
 
 **Branch policy**: version lines are developed and released from their own branch (`v7.0.x` here). Cut tags and releases on the version branch. Never merge a version branch into `main` unless Ric asks.
 
+**Releasing** (what CI doesn't do): set the version in `Cargo.toml` (`cargo update -w` for the lock), date the CHANGELOG section, add a `<release>` line to `packaging/flatpak/com.squarecows.OmniMem.metainfo.xml`, and pin the new version in `guides/docker.md`. Tag `v<version>` on the version branch once its build is green. After a full release, change the four lines of `_redirects` on the `pages` branch, which send omnimem.org's download buttons (`/download/macos`, `windows`, `linux`, `linux-arm64`) to the release's files, since Forgejo has no latest-download URL for file names that carry the version
+
 ## Writing style
 
 - British English (colour, summarised, centre)
