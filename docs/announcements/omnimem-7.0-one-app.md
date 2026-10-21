@@ -14,7 +14,7 @@ OmniMem's job is small: embed one memory, embed one query, search, rank. 6.x did
 
 ## What 7 is
 
-**One process.** The MCP server, the memory engine, the embedding model, RSS ingestion and the database all live in one binary. One embedder serves every caller. It's written in Rust, so it's memory safe and super fast.
+**One process.** The MCP server, the memory engine, the embedding model, RSS ingestion and the database all live in one binary. One embedder serves every caller. It's written in Rust, so it's memory safe and fast: a session's briefing arrives in about 6 ms.
 
 **One file.** Memories live in SQLite. On start, every vector is loaded into one matrix per namespace and searched exactly, not approximately. At OmniMem's scale (tens of thousands of memories) a full scan takes a few milliseconds and gives the same answer every time. Filters are plain SQL, so there's no separate index left to drift from the data. A real 3,500-memory store comes to a 12.8 MB database.
 
@@ -31,7 +31,7 @@ OmniMem lives in the tray, or the menu bar on a Mac. The menu shows whether it's
 - **Add to Claude Code** and **Add to Claude Desktop** check the client's settings first and never add OmniMem twice. An old `omnimem` entry pointing at a 6.x install is offered as **Switch Claude Desktop here**, which repoints it rather than adding a second.
 - **Copy MCP URL** covers every other agent with a bit of manual work.
 
-**Settings…** opens a window with every page the 6.x web UI had (the dashboard, memories, search, projects, experience and the graveyard, skills with export and import, duplicates, contradictions, telemetry, token overhead, feeds and backups) plus a configuration page for everything the server sets in its environment (such as the OAuth settings or the Anthropic API key). The window's pages come from the app itself over a custom URL scheme. Nothing about them is reachable over a network, from your machine or anyone else's.
+**Settings…** opens a window with every page the 6.x web UI had (the dashboard, memories, search, projects, experience and the graveyard, skills with export and import, duplicates, contradictions, telemetry, token overhead, feeds and backups) plus a configuration page for everything a headless install sets in its environment (such as the OAuth settings or the Anthropic API key). The window's pages come from the app itself over a custom URL scheme. Nothing about them is reachable over a network, from your machine or anyone else's.
 
 Secrets (your Anthropic key, the MCP access token, a Hugging Face token) go to the OS keychain: Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux. Once saved they're never shown again.
 
