@@ -140,10 +140,10 @@ fn main() -> Result<()> {
     // install-hooks needs none; every other command reads the settings file
     // of the install it works on, before anything reads a setting.
     #[cfg(feature = "desktop")]
-    let desktop = matches!(command, None | Some(Command::Desktop { .. }));
+    let runs_desktop = matches!(command, None | Some(Command::Desktop { .. }));
     #[cfg(not(feature = "desktop"))]
-    let desktop = command.is_none();
-    let settings = if desktop || matches!(command, Some(Command::InstallHooks { .. })) {
+    let runs_desktop = command.is_none();
+    let settings = if runs_desktop || matches!(command, Some(Command::InstallHooks { .. })) {
         SettingsFile::None
     } else {
         load_settings_file()?
