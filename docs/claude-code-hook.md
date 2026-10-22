@@ -25,8 +25,22 @@ the action.
 
 ## Setting it up
 
-In `~/.claude/settings.json` for every project, or `.claude/settings.json` in one
-project:
+```
+omnimem install-hooks             # every project: ~/.claude/settings.json
+omnimem install-hooks --project   # this project only: ./.claude/settings.json
+```
+
+It adds the three entries below and leaves everything else in the file as it
+was, keeping a copy of the old file beside it as `settings.json.omnimem-backup`.
+An event that already runs an `omnimem hook` is left alone, so running it again
+changes nothing. `--dry-run` shows what it would add. The hooks call `omnimem`
+when that's what your PATH finds, and the full path to the binary otherwise (the
+macOS app's is inside its bundle). Put `--db <file>` before `install-hooks` to
+point the hooks at another database. The Flatpak can't reach Claude Code's
+settings from its sandbox, so add them by hand there.
+
+By hand, in `~/.claude/settings.json` for every project, or `.claude/settings.json`
+in one project:
 
 ```json
 {

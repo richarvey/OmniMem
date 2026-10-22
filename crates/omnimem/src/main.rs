@@ -17,6 +17,7 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 mod hook;
+mod install_hooks;
 
 use omnimem_app::{data_dir, load_embedder, open_engine, run_services};
 use omnimem_core::env::{install_overlay, parse_settings};
@@ -109,6 +110,19 @@ enum Command {
         #[arg(long)]
         project: Option<String>,
     },
+    /// Add OmniMem's Claude Code hooks (session-start, the pre-tool-use guard
+    /// and session-end) to ~/.claude/settings.json, leaving alone any event
+    /// that already has one and everything else in the file. With --db, the
+    /// hooks use that database. See docs/claude-code-hook.md.
+    InstallHooks {
+        /// Write .claude/settings.json in the current folder instead, for
+        /// this project only.
+        #[arg(long)]
+        project: bool,
+        /// Show what would be added without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
     /// ingested, without summarising or storing anything.
@@ -122,14 +136,14 @@ fn main() -> Result<()> {
     #[cfg(all(windows, feature = "desktop"))]
     attach_parent_console();
     let Cli { db, command } = Cli::parse();
-    // The desktop app reads its own settings, keychain and all; every other
-    // command reads the settings file of the install it works on, before
-    // anything reads a setting.
+    // The desktop app reads its own settings, keychain and all, and
+    // install-hooks needs none; every other command reads the settings file
+    // of the install it works on, before anything reads a setting.
     #[cfg(feature = "desktop")]
     let desktop = matches!(command, None | Some(Command::Desktop { .. }));
     #[cfg(not(feature = "desktop"))]
     let desktop = command.is_none();
-    let settings = if desktop {
+    let settings = if desktop || matches!(command, Some(Command::InstallHooks { .. })) {
         SettingsFile::None
     } else {
         load_settings_file()?
@@ -143,6 +157,7 @@ fn main() -> Result<()> {
                 | Command::Search { .. }
                 | Command::Embed { .. }
                 | Command::Hook { .. }
+                | Command::InstallHooks { .. }
         )
     ) {
         "warn"
@@ -171,6 +186,9 @@ fn main() -> Result<()> {
     #[cfg(feature = "desktop")]
     if let Command::Desktop { smoke_test } = command {
         return desktop(db, smoke_test);
+    }
+    if let Command::InstallHooks { project, dry_run } = command {
+        return install_hooks::run(db.as_deref(), project, dry_run);
     }
     let db = resolve_db(db, &settings)?;
     match command {
@@ -216,6 +234,7 @@ fn main() -> Result<()> {
             )
         }
         Command::Embed { text } => embed(&text),
+        Command::InstallHooks { .. } => unreachable!("handled above"),
         Command::Rss { dry_run } => {
             db.must_exist(None)?;
             rss(&db.path, dry_run)

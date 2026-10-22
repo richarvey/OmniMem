@@ -131,13 +131,14 @@ The binary has a few other commands worth knowing:
 | Command | What it does |
 |---|---|
 | `omnimem serve` | Run the MCP server, the RSS scheduler and the enrichment worker |
-| `omnimem import <backup.json>` | Bring in a 6.x backup and embed it (`--no-embed` to skip embedding) |
+| `omnimem import <backup.json>` | Bring in a 6.x backup and embed it (`--no-embed` to skip embedding, `--create` if there's no database yet) |
 | `omnimem export <file>` | Write every memory to a backup in the same format |
 | `omnimem stats` | Records and vectors per namespace |
 | `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--json`) |
 | `omnimem rss` | Run one feed check now (`--dry-run` shows what it would ingest) |
 | `omnimem embed "<text>"` | Embed some text and print the start of the vector |
 | `omnimem hook [session-start\|session-end]` | Answer a Claude Code hook, so memory works without the agent choosing to use it. See [the hooks guide](claude-code-hook.md) |
+| `omnimem install-hooks` | Add those hooks to Claude Code's `~/.claude/settings.json`, or with `--project` to this project's `.claude/settings.json`. Events that already have one are left alone (`--dry-run` shows what it would add) |
 
 Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`). Without either, a command uses the same database as the install it's run on: the server package's on a Linux server, otherwise the desktop app's. Only `serve`, the desktop app and `import --create` will start a new database; the others stop and say where they looked.
 
