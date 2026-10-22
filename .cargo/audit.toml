@@ -15,4 +15,13 @@ ignore = [
     "RUSTSEC-2026-0367",
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
+    # glib 0.18's VariantStrIter passes an out-argument as &p rather than
+    # &mut p, so an optimised build can read a null pointer (fixed in glib
+    # 0.20). glib 0.18 comes in through gtk 0.18, which tao, wry, muda,
+    # tray-icon and webkit2gtk all still require, so 0.20 can't be reached.
+    # VariantStrIter is only built by Variant::array_iter_str(), which
+    # nothing in the tree calls: none of those crates, and the desktop's one
+    # D-Bus call reads its reply as a (bool,). Remove this when the tray and
+    # webview crates move past gtk 0.18.
+    "RUSTSEC-2024-0429",
 ]

@@ -2,6 +2,11 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.4] - 2026-10-22
+
+### Security
+- **glib's `VariantStrIter` advisory (RUSTSEC-2024-0429) is recorded as unreachable** in `.cargo/audit.toml`. Its fix is glib 0.20, but the desktop app's tray, menu and webview crates (tao, wry, muda, tray-icon, webkit2gtk) all still build on gtk 0.18, which holds glib at 0.18.5. The unsound iterator is only created by `Variant::array_iter_str()`, which nothing in OmniMem or its dependencies calls; the desktop app's one D-Bus call reads its reply as a `(bool,)`. The ignore goes when those crates move past gtk 0.18. The headless server doesn't link glib at all
+
 ## [7.0.3] - 2026-10-21
 
 The first release of OmniMem 7. 7.0.0-dev to 7.0.3-dev were development builds on the way here, so everything since 6.7 is in this one entry. The 6.x Docker stack carries on from the `v6.7.x` branch, and the old one-line installer on `main` now says 7 is out and then installs 6.7 from there as before.
