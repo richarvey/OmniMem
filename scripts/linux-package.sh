@@ -99,7 +99,7 @@ cp -a $pack/server/. %{buildroot}/
 /usr/bin/omnimem
 /usr/lib/systemd/system/omnimem.service
 %dir /etc/omnimem
-%config(noreplace) %attr(0600, root, root) /etc/omnimem/omnimem.env
+%config(noreplace) %attr(0640, root, root) /etc/omnimem/omnimem.env
 /usr/share/doc/omnimem/copyright
 
 %post
@@ -182,7 +182,7 @@ mkdir -p "$server/usr/bin" "$server/usr/lib/systemd/system" "$server/etc/omnimem
     "$server/usr/share/doc/omnimem"
 install -m 0755 "$headless" "$server/usr/bin/omnimem"
 install -m 0644 "$repo/packaging/linux/omnimem.service" "$server/usr/lib/systemd/system/"
-install -m 0600 "$repo/packaging/linux/omnimem.env" "$server/etc/omnimem/"
+install -m 0640 "$repo/packaging/linux/omnimem.env" "$server/etc/omnimem/"
 install -m 0644 "$repo/LICENSE" "$server/usr/share/doc/omnimem/copyright"
 rm -f "$dist"/omnimem_*.deb "$dist"/omnimem-*.rpm
 extra=()
@@ -198,9 +198,12 @@ docker run --rm --volume "$dist/$deb:/tmp/omnimem.deb:ro" debian:13-slim sh -euc
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /tmp/omnimem.deb >/dev/null
     test -s /etc/ssl/certs/ca-certificates.crt
     id omnimem >/dev/null
-    test "$(stat -c %a:%U /etc/omnimem/omnimem.env)" = 600:root
+    test "$(stat -c %a:%U:%G /etc/omnimem/omnimem.env)" = 640:root:omnimem
     test "$(stat -c %U /var/lib/omnimem)" = omnimem
     su -s /bin/sh omnimem -c "omnimem --help" >/dev/null
+    # Commands read the settings file and find the service'"'"'s database
+    # through it, refusing to start an empty one anywhere else.
+    su -s /bin/sh omnimem -c "omnimem stats" 2>&1 | grep -q "/var/lib/omnimem/omnimem.db (from OMNIMEM_DB in /etc/omnimem/omnimem.env)"
     dpkg -r omnimem >/dev/null
     test ! -e /usr/bin/omnimem
     test -d /var/lib/omnimem

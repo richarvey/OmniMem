@@ -57,8 +57,12 @@ project:
 }
 ```
 
-Set `OMNIMEM_DB` in the environment Claude Code runs in, or pass
-`--db /path/to/omnimem.db` before the subcommand. The hooks read the store
+The hooks use the same database as the install on the machine: the desktop
+app's, or the server package's on a Linux server (which Claude Code then has
+to run as a user able to read and write). To use another, set `OMNIMEM_DB` in
+the environment Claude Code runs in, or pass `--db /path/to/omnimem.db` before
+the subcommand. A hook that finds no database says so in the hook log and lets
+the work carry on. The hooks read the store
 directly rather than going through the server, so they work whether or not
 `omnimem serve` is running. SQLite is in WAL mode, so this is safe alongside a
 running server.

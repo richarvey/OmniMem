@@ -14,11 +14,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 mod hook;
 
 use omnimem_app::{data_dir, load_embedder, open_engine, run_services};
+use omnimem_core::env::{install_overlay, parse_settings};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_rss::{Ingester, RssConfig};
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
@@ -31,8 +32,9 @@ use tokio_util::sync::CancellationToken;
     about = "Self-hosted semantic memory for AI agents"
 )]
 struct Cli {
-    /// SQLite database file. Defaults to data/omnimem.db, or for the desktop
-    /// app to the per-user data folder.
+    /// SQLite database file. Defaults to OMNIMEM_DB from the settings file,
+    /// then on Linux to /var/lib/omnimem/omnimem.db where the server package
+    /// is installed, then to omnimem.db in the desktop app's data folder.
     #[arg(long, env = "OMNIMEM_DB", global = true)]
     db: Option<PathBuf>,
 
@@ -51,6 +53,10 @@ enum Command {
         /// Skip embedding. Memories aren't searchable until embedded.
         #[arg(long)]
         no_embed: bool,
+        /// Start a new database if there isn't one yet. Without it, import
+        /// only adds to a database that already exists.
+        #[arg(long)]
+        create: bool,
     },
     /// Write every memory and log to a backup file in the 6.x format.
     Export { file: PathBuf },
@@ -116,6 +122,18 @@ fn main() -> Result<()> {
     #[cfg(all(windows, feature = "desktop"))]
     attach_parent_console();
     let Cli { db, command } = Cli::parse();
+    // The desktop app reads its own settings, keychain and all; every other
+    // command reads the settings file of the install it works on, before
+    // anything reads a setting.
+    #[cfg(feature = "desktop")]
+    let desktop = matches!(command, None | Some(Command::Desktop { .. }));
+    #[cfg(not(feature = "desktop"))]
+    let desktop = command.is_none();
+    let settings = if desktop {
+        SettingsFile::None
+    } else {
+        load_settings_file()?
+    };
     let default_level = if matches!(
         command,
         Some(
@@ -131,27 +149,59 @@ fn main() -> Result<()> {
     } else {
         "info"
     };
-    let filter = tracing_subscriber::EnvFilter::try_from_env("OMNIMEM_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
+    let filter = omnimem_core::env::var("OMNIMEM_LOG")
+        .and_then(|level| tracing_subscriber::EnvFilter::try_new(level).ok())
+        .unwrap_or_else(|| tracing_subscriber::EnvFilter::new(default_level));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .init();
 
+    if let SettingsFile::Unreadable(path, error) = &settings {
+        tracing::warn!(
+            "can't read {} ({error}), so its settings don't apply to this command. \
+             Run it as a user that can, such as the service's: sudo -u omnimem omnimem ...",
+            path.display()
+        );
+    }
+
     let Some(command) = command else {
         return run_default(db);
     };
-    // Cloned: the desktop arm wants the unresolved option, since its default
-    // is the per-platform data folder rather than ./data.
-    let db_path = db
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("data/omnimem.db"));
+    #[cfg(feature = "desktop")]
+    if let Command::Desktop { smoke_test } = command {
+        return desktop(db, smoke_test);
+    }
+    let db = resolve_db(db, &settings)?;
     match command {
-        Command::Serve => serve(&db_path),
-        Command::Import { file, no_embed } => import(&db_path, &file, no_embed),
-        Command::Export { file } => export(&db_path, &file),
-        Command::Hook { event, project } => hook::run(&db_path, event, project.as_deref()),
-        Command::Stats => stats(&db_path),
+        Command::Serve => serve(&db.path),
+        Command::Import {
+            file,
+            no_embed,
+            create,
+        } => {
+            if !create {
+                db.must_exist(Some("pass --create to start a new one there"))?;
+            }
+            import(&db, &file, no_embed)
+        }
+        Command::Export { file } => {
+            db.must_exist(None)?;
+            export(&db, &file)
+        }
+        Command::Hook { event, project } => {
+            // A hook never fails the tool call or session it answers: say why
+            // in the hook log and let the work carry on.
+            if let Err(error) = db.must_exist(None) {
+                eprintln!("omnimem hook: {error:#}");
+                return Ok(());
+            }
+            hook::run(&db.path, event, project.as_deref())
+        }
+        Command::Stats => {
+            db.must_exist(None)?;
+            stats(&db.path)
+        }
         Command::Search {
             query,
             namespace,
@@ -159,13 +209,135 @@ fn main() -> Result<()> {
             project,
             all_states,
             json,
-        } => search(
-            &db_path, &query, &namespace, top_k, project, all_states, json,
-        ),
+        } => {
+            db.must_exist(None)?;
+            search(
+                &db.path, &query, &namespace, top_k, project, all_states, json,
+            )
+        }
         Command::Embed { text } => embed(&text),
-        Command::Rss { dry_run } => rss(&db_path, dry_run),
+        Command::Rss { dry_run } => {
+            db.must_exist(None)?;
+            rss(&db.path, dry_run)
+        }
         #[cfg(feature = "desktop")]
-        Command::Desktop { smoke_test } => desktop(db, smoke_test),
+        Command::Desktop { .. } => unreachable!("handled above"),
+    }
+}
+
+/// The server package's settings file and database. The service is pointed
+/// at the settings file explicitly; other commands look for it, so that run
+/// on a server they work on the server's store with the server's settings.
+#[cfg(target_os = "linux")]
+const SERVER_SETTINGS: &str = "/etc/omnimem/omnimem.env";
+#[cfg(target_os = "linux")]
+const SERVER_DATA: &str = "/var/lib/omnimem";
+
+/// What `load_settings_file` found.
+enum SettingsFile {
+    None,
+    Loaded(PathBuf),
+    /// There, but not readable by whoever ran the command.
+    Unreadable(PathBuf, std::io::Error),
+}
+
+/// Install the settings file as the overlay `omnimem_core::env` reads: the
+/// file `OMNIMEM_ENV_FILE` names, else the server package's, else the desktop
+/// app's `omnimem.env`. An environment variable still wins over the file.
+///
+/// The server reads its file this way rather than through systemd's
+/// `EnvironmentFile`, which would hand it `8765 # the default` for a line
+/// with a trailing comment.
+fn load_settings_file() -> Result<SettingsFile> {
+    if let Some(path) = std::env::var_os("OMNIMEM_ENV_FILE").filter(|p| !p.is_empty()) {
+        let path = PathBuf::from(path);
+        // Named explicitly, as the service does: a file that can't be read
+        // is an error, not something to start without.
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading OMNIMEM_ENV_FILE ({})", path.display()))?;
+        install_overlay(parse_settings(&text));
+        return Ok(SettingsFile::Loaded(path));
+    }
+    let mut candidates = Vec::new();
+    #[cfg(target_os = "linux")]
+    candidates.push(PathBuf::from(SERVER_SETTINGS));
+    if let Ok(dir) = omnimem_app::default_data_dir() {
+        candidates.push(dir.join("omnimem.env"));
+    }
+    for path in candidates {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                install_overlay(parse_settings(&text));
+                return Ok(SettingsFile::Loaded(path));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Ok(SettingsFile::Unreadable(path, e)),
+        }
+    }
+    Ok(SettingsFile::None)
+}
+
+/// The database a command works on, and how it was chosen, for messages.
+struct Database {
+    path: PathBuf,
+    chosen_by: String,
+}
+
+/// `--db` or `OMNIMEM_DB`, then `OMNIMEM_DB` from the settings file, then the
+/// server package's database where that is installed, then the desktop app's.
+/// Never a path relative to wherever the command happens to run.
+fn resolve_db(flag: Option<PathBuf>, settings: &SettingsFile) -> Result<Database> {
+    if let Some(path) = flag.filter(|p| !p.as_os_str().is_empty()) {
+        return Ok(Database {
+            path,
+            chosen_by: "--db or OMNIMEM_DB".into(),
+        });
+    }
+    if let Some(path) = omnimem_core::env::var("OMNIMEM_DB").filter(|p| !p.trim().is_empty()) {
+        let file = match settings {
+            SettingsFile::Loaded(file) => file.display().to_string(),
+            _ => "the settings file".into(),
+        };
+        return Ok(Database {
+            path: PathBuf::from(path.trim()),
+            chosen_by: format!("OMNIMEM_DB in {file}"),
+        });
+    }
+    #[cfg(target_os = "linux")]
+    if Path::new(SERVER_DATA).is_dir() {
+        return Ok(Database {
+            path: Path::new(SERVER_DATA).join("omnimem.db"),
+            chosen_by: "the server package's default".into(),
+        });
+    }
+    Ok(Database {
+        path: omnimem_app::default_data_dir()?.join("omnimem.db"),
+        chosen_by: "the desktop app's data folder".into(),
+    })
+}
+
+impl Database {
+    /// Commands that work on an existing store refuse to start a new, empty
+    /// one somewhere unexpected; `create_hint` says how to ask for one.
+    fn must_exist(&self, create_hint: Option<&str>) -> Result<()> {
+        let path = self.path.display();
+        let chosen_by = &self.chosen_by;
+        match self.path.try_exists() {
+            Ok(true) => Ok(()),
+            Ok(false) => {
+                let create = create_hint
+                    .map(|hint| format!(", or {hint}"))
+                    .unwrap_or_default();
+                bail!(
+                    "there's no OmniMem database at {path} (from {chosen_by}). \
+                     Point at yours with --db <file> or OMNIMEM_DB{create}"
+                )
+            }
+            Err(e) => bail!(
+                "can't reach the database at {path} (from {chosen_by}): {e}. \
+                 Run this as a user that can, such as the service's: sudo -u omnimem omnimem ..."
+            ),
+        }
     }
 }
 
@@ -225,10 +397,15 @@ fn rss(db: &Path, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn import(db: &Path, file: &Path, no_embed: bool) -> Result<()> {
+fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     let started = Instant::now();
+    eprintln!(
+        "importing into {} (from {})",
+        db.path.display(),
+        db.chosen_by
+    );
     let backup = read_backup(file).with_context(|| format!("reading {}", file.display()))?;
-    let store = Store::open(db).with_context(|| format!("opening {}", db.display()))?;
+    let store = Store::open(&db.path).with_context(|| format!("opening {}", db.path.display()))?;
     let embedder = if no_embed {
         None
     } else {
@@ -255,14 +432,19 @@ fn import(db: &Path, file: &Path, no_embed: bool) -> Result<()> {
     eprintln!(
         "imported {} into {} in {:.1}s",
         file.display(),
-        db.display(),
+        db.path.display(),
         started.elapsed().as_secs_f64()
     );
     Ok(())
 }
 
-fn export(db: &Path, file: &Path) -> Result<()> {
-    let store = Store::open(db)?;
+fn export(db: &Database, file: &Path) -> Result<()> {
+    eprintln!(
+        "exporting from {} (from {})",
+        db.path.display(),
+        db.chosen_by
+    );
+    let store = Store::open(&db.path)?;
     let dump = store.dump()?;
     write_backup(file, &dump)?;
     eprintln!("wrote {} keys to {}", dump.data.len(), file.display());

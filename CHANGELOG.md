@@ -4,6 +4,14 @@ Format: [version] - date - description
 
 ## [7.0.4] - 2026-10-22
 
+### Fixed
+- **A comment after a setting no longer stops the server starting.** `MCP_PORT=8765  # the default` in `/etc/omnimem/omnimem.env` reached OmniMem as `8765  # the default`, because systemd's `EnvironmentFile` keeps a trailing comment as part of the value. OmniMem now reads its settings file itself (`OMNIMEM_ENV_FILE`, which the service unit sets), with `#` after whitespace starting a comment as in a shell; quote a value that itself holds ` #`. The desktop app's `omnimem.env` is read the same way
+- **Commands work on the install's database, not a new one in the current folder** ([#1](https://github.com/richarvey/OmniMem/issues/1)). With no `--db` or `OMNIMEM_DB`, `import`, `export`, `stats`, `search`, `rss`, `hook` and `serve` used `data/omnimem.db` under wherever they were run, creating it if need be, so `omnimem import backup.json` from `~/Downloads` filled a new database the running server never saw. They now read the same settings file as the install (`/etc/omnimem/omnimem.env` on a Linux server, else the desktop app's `omnimem.env`) and use its `OMNIMEM_DB`, else `/var/lib/omnimem/omnimem.db` where the server package is installed, else the desktop app's database. Only `serve`, the desktop app and the new `import --create` start a database that isn't there; the others stop and say where they looked and why. `import` and `export` say which database they're using
+
+### Changed
+- **`/etc/omnimem/omnimem.env` lists every setting**, the unused ones commented out with their defaults, and so does `.env.example`. A test keeps both in step with `docs/configuration.md`
+- **The settings file is readable by the `omnimem` group** (`root:omnimem`, `0640`), since the service now reads it as the `omnimem` user, and so can commands run as it: `sudo -u omnimem omnimem stats`. `OMNIMEM_DB` and `HF_HOME` move from the service unit into the file; upgrading adds them to a file kept from an earlier version that lacks them
+
 ### Security
 - **glib's `VariantStrIter` advisory (RUSTSEC-2024-0429) is recorded as unreachable** in `.cargo/audit.toml`. Its fix is glib 0.20, but the desktop app's tray, menu and webview crates (tao, wry, muda, tray-icon, webkit2gtk) all still build on gtk 0.18, which holds glib at 0.18.5. The unsound iterator is only created by `Variant::array_iter_str()`, which nothing in OmniMem or its dependencies calls; the desktop app's one D-Bus call reads its reply as a `(bool,)`. The ignore goes when those crates move past gtk 0.18. The headless server doesn't link glib at all
 

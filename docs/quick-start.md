@@ -58,14 +58,16 @@ Development builds are spelt with a tilde in the package names (`omnimem_7.0.4~d
 
 For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
 
-Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
+Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root and the `omnimem` group only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
 
 ```bash
-sudoedit /etc/omnimem/omnimem.env      # every setting is in there, commented; configuration.md has the rest
+sudoedit /etc/omnimem/omnimem.env      # every setting is in there, unused ones commented out; configuration.md explains them
 sudo systemctl restart omnimem
 curl http://127.0.0.1:8765/healthz     # {"status": "ok"}
 journalctl -u omnimem -f               # its log
 ```
+
+Run the other commands as the service's user, so they read the same settings and the same database: `sudo -u omnimem omnimem stats`.
 
 Removing the package stops the service but leaves `/var/lib/omnimem` alone: your memories aren't the package's to delete.
 
@@ -105,7 +107,7 @@ cargo build --release -p omnimem
 ./target/release/omnimem serve
 ```
 
-With no `OMNIMEM_DB` set, `serve` keeps its database at `data/omnimem.db` under whichever folder you ran it from, with `feeds.yml` and `backups/` beside it.
+With no `OMNIMEM_DB` set, `serve` keeps its database in the same data folder the desktop app uses (below), with `feeds.yml` and `backups/` beside it, wherever you run it from.
 
 **The desktop app** needs the `desktop` feature. On macOS and Windows that's all:
 
@@ -137,7 +139,7 @@ The binary has a few other commands worth knowing:
 | `omnimem embed "<text>"` | Embed some text and print the start of the vector |
 | `omnimem hook [session-start\|session-end]` | Answer a Claude Code hook, so memory works without the agent choosing to use it. See [the hooks guide](claude-code-hook.md) |
 
-Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`).
+Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`). Without either, a command uses the same database as the install it's run on: the server package's on a Linux server, otherwise the desktop app's. Only `serve`, the desktop app and `import --create` will start a new database; the others stop and say where they looked.
 
 ## Coming from 6.x
 
@@ -147,7 +149,7 @@ Your memories come with you, and they behave the same. The vectors and the compi
 2. Stop 6.x, or at least make sure it isn't on port 8765.
 3. Bring the backup into 7.0, one of two ways:
    - **Desktop app**: open **Settings… → Backups**, upload the file and restore it.
-   - **Command line**: `omnimem import omnimem_backup.json` (add `--db` if you aren't using the default location).
+   - **Command line**: `omnimem import omnimem_backup.json`, run as `sudo -u omnimem omnimem import omnimem_backup.json` on a server. It says which database it's importing into. If you haven't run OmniMem yet there isn't one, so add `--create`.
 
 Backups don't carry vectors, so every memory is embedded again on the way in. That's roughly 8 ms a memory, so a few thousand take well under a minute. It also brings back any memory 6.x had stopped finding because its stored vector had gone missing or stale.
 

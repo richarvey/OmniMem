@@ -44,7 +44,7 @@ docs/, guides/       User documentation
 ## Running locally
 
 ```bash
-cargo run -p omnimem -- serve                   # MCP at http://127.0.0.1:8765/mcp, data in ./data/omnimem.db
+cargo run -p omnimem -- serve                   # MCP at http://127.0.0.1:8765/mcp, data in the desktop app's data folder, or /var/lib/omnimem where the server package is installed: add --db data/omnimem.db to keep it local
 cargo run -p omnimem -- import backup.json      # a 6.x dump_to_file backup, re-embedded
 OMNIMEM_DB=/tmp/x.db cargo run -p omnimem -- stats
 ```
