@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 mod hook;
 mod install_hooks;
 
-use omnimem_app::{data_dir, load_embedder, open_engine, run_services};
+use omnimem_app::{data_dir, feeds_path, load_embedder, open_engine, run_services};
 use omnimem_core::env::{install_overlay, parse_settings};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_rss::{Ingester, RssConfig};
@@ -48,7 +48,9 @@ enum Command {
     /// Run the MCP server (streamable HTTP at /mcp). Configured by the 6.x
     /// environment variables: MCP_HOST, MCP_PORT, MCP_AUTH_TOKEN and friends.
     Serve,
-    /// Import a 6.x backup (dump_to_file JSON), then re-embed every memory.
+    /// Import a backup (dump_to_file JSON, 6.x's or 7's), then re-embed every
+    /// memory. RSS feeds in the file are added to the reading list, leaving
+    /// any feed it already has as it is.
     Import {
         file: PathBuf,
         /// Skip embedding. Memories aren't searchable until embedded.
@@ -60,7 +62,12 @@ enum Command {
         create: bool,
     },
     /// Write every memory and log to a backup file in the 6.x format.
-    Export { file: PathBuf },
+    Export {
+        file: PathBuf,
+        /// Put the RSS reading list (feeds.yml) in the backup too.
+        #[arg(long)]
+        feeds: bool,
+    },
     /// Record and vector counts per namespace.
     Stats,
     /// Nearest memories to a query by raw similarity. Recall scoring
@@ -203,9 +210,9 @@ fn main() -> Result<()> {
             }
             import(&db, &file, no_embed)
         }
-        Command::Export { file } => {
+        Command::Export { file, feeds } => {
             db.must_exist(None)?;
-            export(&db, &file)
+            export(&db, &file, feeds)
         }
         Command::Hook { event, project } => {
             // A hook never fails the tool call or session it answers: say why
@@ -448,6 +455,9 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     }
     omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
     println!("{}", serde_json::to_string_pretty(&report)?);
+    if let Some(feeds) = &backup.feeds {
+        import_feeds(&feeds_path(&db.path), feeds)?;
+    }
     eprintln!(
         "imported {} into {} in {:.1}s",
         file.display(),
@@ -457,14 +467,46 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     Ok(())
 }
 
-fn export(db: &Database, file: &Path) -> Result<()> {
+/// Add a backup's feeds to the reading list. The running server notices the
+/// changed file and its next RSS cycle mirrors the list for the skill
+/// compiler, so nothing else needs telling.
+fn import_feeds(path: &Path, feeds: &[serde_json::Value]) -> Result<()> {
+    use omnimem_engine::feeds_file;
+    let existing = feeds_file::load(path).map_err(|e| anyhow!(e))?;
+    let (merged, report) = feeds_file::merge(&existing, feeds);
+    if report.added > 0 {
+        feeds_file::save(path, &merged).map_err(|e| anyhow!(e))?;
+    }
+    eprintln!(
+        "RSS feeds: {} in the backup, {} added to {}, {} already listed, {} invalid",
+        report.in_backup,
+        report.added,
+        path.display(),
+        report.already_present,
+        report.invalid
+    );
+    Ok(())
+}
+
+fn export(db: &Database, file: &Path, include_feeds: bool) -> Result<()> {
     eprintln!(
         "exporting from {} (from {})",
         db.path.display(),
         db.chosen_by
     );
     let store = Store::open(&db.path)?;
-    let dump = store.dump()?;
+    let mut dump = store.dump()?;
+    if include_feeds {
+        let path = feeds_path(&db.path);
+        let feeds = omnimem_engine::feeds_file::load(&path).map_err(|e| anyhow!(e))?;
+        let plural = if feeds.len() == 1 { "" } else { "s" };
+        eprintln!(
+            "including {} RSS feed{plural} from {}",
+            feeds.len(),
+            path.display()
+        );
+        dump.feeds = Some(feeds.into_iter().map(serde_json::Value::Object).collect());
+    }
     write_backup(file, &dump)?;
     eprintln!("wrote {} keys to {}", dump.data.len(), file.display());
     Ok(())

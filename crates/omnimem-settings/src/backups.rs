@@ -10,6 +10,7 @@ use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 
+use axum::Form;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -110,15 +111,21 @@ pub(crate) async fn list(
     )
 }
 
-pub(crate) async fn create(State(state): State<PanelState>) -> Response {
+/// POST `/backups/create`: a backup of every memory, and of the RSS reading
+/// list too when the form's `feeds` box is ticked.
+pub(crate) async fn create(
+    State(state): State<PanelState>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
+    let include_feeds = form.contains_key("feeds");
     let result = blocking(move || {
         std::fs::create_dir_all(&engine.config().backup_dir).map_err(|e| {
             omnimem_engine::EngineError::Io(format!("creating the backup folder: {e}"))
         })?;
-        engine.dump_to_file(None)
+        engine.dump_to_file_with_feeds(None, include_feeds)
     })
     .await;
     match result {
@@ -129,14 +136,21 @@ pub(crate) async fn create(State(state): State<PanelState>) -> Response {
                 result["message"].as_str().unwrap_or("")
             ),
         ),
-        Ok(result) => with_message(
-            false,
-            &format!(
-                "Backup created: {} ({} keys)",
-                result["filename"].as_str().unwrap_or(""),
-                result["total_keys"]
-            ),
-        ),
+        Ok(result) => {
+            let feeds = match result["feeds"].as_u64() {
+                Some(1) => " and 1 feed".to_owned(),
+                Some(n) => format!(" and {n} feeds"),
+                None => String::new(),
+            };
+            with_message(
+                false,
+                &format!(
+                    "Backup created: {} ({} keys{feeds})",
+                    result["filename"].as_str().unwrap_or(""),
+                    result["total_keys"]
+                ),
+            )
+        }
         Err(failure) => failure,
     }
 }
@@ -265,6 +279,7 @@ pub(crate) async fn preview(
                     "filename": filename,
                     "total_keys": result["total_keys_in_backup"],
                     "metadata": result["metadata"],
+                    "feeds": result.get("feeds_in_backup").cloned().unwrap_or(Value::Null),
                 }),
             },
         ),
@@ -287,10 +302,27 @@ pub(crate) async fn restore(
     match blocking(move || engine.restore_from_file(&name, false)).await {
         Ok(result) if result["status"] == "restored" => {
             info!(file = filename, restored = %result["restored_keys"], "restored a backup");
+            let feeds = &result["feeds"];
+            let feeds = match feeds["status"].as_str() {
+                None => String::new(),
+                Some("restored") => format!(
+                    ". RSS feeds: {} added, {} already listed{}",
+                    feeds["added"],
+                    feeds["already_present"],
+                    match feeds["invalid"].as_u64() {
+                        Some(0) | None => String::new(),
+                        Some(n) => format!(", {n} invalid and skipped"),
+                    }
+                ),
+                Some(_) => format!(
+                    ". RSS feeds not restored: {}",
+                    feeds["message"].as_str().unwrap_or("unknown error")
+                ),
+            };
             with_message(
                 false,
                 &format!(
-                    "Restored {} keys from {filename} (skipped {})",
+                    "Restored {} keys from {filename} (skipped {}){feeds}",
                     result["restored_keys"], result["skipped_keys"]
                 ),
             )

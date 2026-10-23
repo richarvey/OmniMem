@@ -1036,7 +1036,19 @@ impl Engine {
         Ok(self.config.backup_dir.join(filename))
     }
 
+    /// `dump_to_file` as the MCP tool runs it: memories only, the 6.x shape.
     pub fn dump_to_file(&self, filename: Option<&str>) -> Result<Value> {
+        self.dump_to_file_with_feeds(filename, false)
+    }
+
+    /// A backup, carrying the reading list too when `include_feeds` is set
+    /// and the engine knows where `feeds.yml` is. A reading list that can't
+    /// be read fails the backup rather than quietly leaving it out.
+    pub fn dump_to_file_with_feeds(
+        &self,
+        filename: Option<&str>,
+        include_feeds: bool,
+    ) -> Result<Value> {
         let filename = filename.map_or_else(
             || {
                 format!(
@@ -1050,17 +1062,30 @@ impl Engine {
             Ok(p) => p,
             Err(message) => return Ok(json!({"status": "error", "message": message})),
         };
-        let dump = self.store.dump()?;
+        let mut dump = self.store.dump()?;
+        if include_feeds && let Some(feeds_path) = &self.config.feeds_path {
+            match crate::feeds_file::load(feeds_path) {
+                Ok(feeds) => dump.feeds = Some(feeds.into_iter().map(Value::Object).collect()),
+                Err(problem) => {
+                    warn!(error = %problem, "could not read the reading list for a backup");
+                    return Ok(json!({"status": "error", "message": problem}));
+                }
+            }
+        }
         if let Err(e) = omnimem_store::write_backup(&path, &dump) {
             warn!(error = %e, "failed to write backup file");
             return Ok(json!({"status": "error", "message": "Failed to write backup file"}));
         }
         info!(path = %path.display(), keys = dump.data.len(), "backup written");
-        Ok(json!({
+        let mut result = json!({
             "filename": filename,
             "path": path.display().to_string(),
             "total_keys": dump.data.len(),
-        }))
+        });
+        if let Some(feeds) = &dump.feeds {
+            result["feeds"] = json!(feeds.len());
+        }
+        Ok(result)
     }
 
     pub fn restore_from_file(&self, filename: &str, dry_run: bool) -> Result<Value> {
@@ -1091,9 +1116,16 @@ impl Engine {
         if value.get("data").is_some_and(|d| !d.is_object()) {
             return error("Invalid backup data format");
         }
+        if value
+            .get("feeds")
+            .is_some_and(|f| !f.is_array() && !f.is_null())
+        {
+            return error("Invalid backup feeds format");
+        }
         let backup = BackupFile::from_value(value).unwrap_or(BackupFile {
             metadata: Value::Null,
             data: Map::new(),
+            feeds: None,
         });
         if let Some(bad) = backup
             .data
@@ -1111,11 +1143,15 @@ impl Engine {
             } else {
                 backup.metadata.clone()
             };
-            return Ok(json!({
+            let mut result = json!({
                 "status": "dry_run",
                 "total_keys_in_backup": backup.data.len(),
                 "metadata": metadata,
-            }));
+            });
+            if let Some(feeds) = &backup.feeds {
+                result["feeds_in_backup"] = json!(feeds.len());
+            }
+            return Ok(result);
         }
         let report =
             match self
@@ -1133,13 +1169,52 @@ impl Engine {
         }
         self.invalidate_abandoned_cache();
         self.invalidate_domain_cache();
-        Ok(json!({
+        let mut result = json!({
             "status": "restored",
             "restored_keys": report.memories + report.other_records + report.sets,
             "skipped_keys": report.skipped_older + report.skipped_invalid + report.skipped_expired,
             "re_embedded": report.embedded,
             "filename": filename,
-        }))
+        });
+        // Only a backup that carries feeds adds anything here, so a 6.x
+        // backup's result is exactly what 6.x returned.
+        if let Some(feeds) = &backup.feeds {
+            result["feeds"] = self.restore_feeds(feeds);
+        }
+        Ok(result)
+    }
+
+    /// Merge a backup's feeds into the reading list (see
+    /// [`crate::feeds_file::merge`]) and mirror the list for the skill
+    /// compiler. The memories are already restored, so a problem here is
+    /// reported in the result rather than failing the restore.
+    fn restore_feeds(&self, feeds: &[Value]) -> Value {
+        let Some(path) = &self.config.feeds_path else {
+            return json!({"status": "skipped", "in_backup": feeds.len(),
+                "message": "This install has no reading list to restore feeds into"});
+        };
+        let existing = match crate::feeds_file::load(path) {
+            Ok(existing) => existing,
+            Err(problem) => {
+                warn!(error = %problem, "could not read the reading list to restore feeds");
+                return json!({"status": "error", "in_backup": feeds.len(), "message": problem});
+            }
+        };
+        let (merged, merge) = crate::feeds_file::merge(&existing, feeds);
+        if merge.added > 0 {
+            if let Err(problem) = crate::feeds_file::save(path, &merged) {
+                warn!(error = %problem, "could not write the restored feeds");
+                return json!({"status": "error", "in_backup": feeds.len(), "message": problem});
+            }
+            let values: Vec<Value> = merged.into_iter().map(Value::Object).collect();
+            if let Err(e) = self.sync_feed_influences(&values) {
+                warn!(error = %e, "could not mirror feed influence after a restore");
+            }
+            info!(added = merge.added, "restored feeds into the reading list");
+        }
+        let mut result = json!(merge);
+        result["status"] = json!("restored");
+        result
     }
 
     pub fn list_backups(&self) -> Result<Value> {

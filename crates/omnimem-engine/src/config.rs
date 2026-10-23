@@ -37,6 +37,10 @@ pub struct EngineConfig {
     pub domain_cache_ttl: Duration,
     /// `BACKUP_DIR`
     pub backup_dir: PathBuf,
+    /// The reading list (`FEEDS_CONFIG_PATH`, or `feeds.yml` beside the
+    /// database), which backups can carry and restores merge into. Set by
+    /// whoever opens the engine; without it backups hold memories only.
+    pub feeds_path: Option<PathBuf>,
     /// `RECALL_EXPAND_QUERIES`: the default for `expand_queries`.
     pub expand_queries: bool,
     /// `STALE_MEMORY_DAYS`: briefing lists active memories untouched this long.
@@ -91,6 +95,7 @@ impl Default for EngineConfig {
             enrichment_batch_mode: false,
             domain_cache_ttl: Duration::from_secs(60),
             backup_dir: PathBuf::from("backups"),
+            feeds_path: None,
             expand_queries: false,
             stale_memory_days: 30,
             auto_maintenance_interval: 10,
@@ -188,6 +193,7 @@ impl EngineConfig {
             skill_export_dir: text("SKILL_EXPORT_DIR")
                 .map_or_else(|| backup_dir.join("skills"), PathBuf::from),
             backup_dir,
+            feeds_path: None,
             expand_queries: flag("RECALL_EXPAND_QUERIES"),
             stale_memory_days: number("STALE_MEMORY_DAYS", d.stale_memory_days).max(0),
             auto_maintenance_interval: number(

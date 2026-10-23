@@ -786,6 +786,96 @@ fn backups_dump_list_and_restore() {
 }
 
 #[test]
+fn a_backup_can_carry_feeds_and_a_restore_adds_the_missing_ones() {
+    let dir = std::env::temp_dir().join(format!("omnimem-engine-feeds-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let feeds_yml = |name: &str| dir.join(name).join("feeds.yml");
+    let config = |name: &str| EngineConfig {
+        backup_dir: dir.join("backups"),
+        feeds_path: Some(feeds_yml(name)),
+        ..EngineConfig::default()
+    };
+    std::fs::create_dir_all(dir.join("source")).unwrap();
+    std::fs::write(
+        feeds_yml("source"),
+        "feeds:\n  - url: https://a.example/rss\n    name: A\n    skills: {rust: 3}\n  - url: https://b.example/rss\n    name: B\n",
+    )
+    .unwrap();
+    let source = engine_with(config("source"));
+    put(&source, "mem:episodic:b", "backed up memory", &[]);
+
+    let with = source
+        .dump_to_file_with_feeds(Some("with_feeds.json"), true)
+        .unwrap();
+    assert_eq!(with["feeds"], json!(2));
+    let without = source.dump_to_file(Some("without_feeds.json")).unwrap();
+    assert!(
+        without.get("feeds").is_none(),
+        "the MCP tool's backup is memories only"
+    );
+    let raw: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("backups/without_feeds.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        raw.get("feeds").is_none(),
+        "no feeds key at all without them"
+    );
+
+    // The target already lists B, with its own settings, and has never heard of A.
+    std::fs::create_dir_all(dir.join("target")).unwrap();
+    std::fs::write(
+        feeds_yml("target"),
+        "feeds:\n  - url: https://b.example/rss\n    name: My B\n    mode: digest\n",
+    )
+    .unwrap();
+    let target = engine_with(config("target"));
+    let dry = target.restore_from_file("with_feeds.json", true).unwrap();
+    assert_eq!(dry["feeds_in_backup"], json!(2));
+    assert_eq!(
+        std::fs::read_to_string(feeds_yml("target"))
+            .unwrap()
+            .matches("url:")
+            .count(),
+        1,
+        "a dry run changes nothing"
+    );
+
+    let restored = target.restore_from_file("with_feeds.json", false).unwrap();
+    assert_eq!(restored["status"], "restored");
+    assert_eq!(
+        restored["restored_keys"].as_u64().map(|n| n > 0),
+        Some(true)
+    );
+    assert_eq!(restored["feeds"]["added"], json!(1));
+    assert_eq!(restored["feeds"]["already_present"], json!(1));
+    let list = omnimem_engine::feeds_file::load(&feeds_yml("target")).unwrap();
+    let names: Vec<&str> = list.iter().filter_map(|f| f["name"].as_str()).collect();
+    assert_eq!(names, ["My B", "A"], "B kept as it was, A added at the end");
+    assert!(
+        target
+            .load_feed_influences()
+            .values()
+            .any(|f| f.url == "https://a.example/rss"),
+        "the restored feed's skill influence is mirrored"
+    );
+
+    // A backup without feeds restores memories and leaves the list alone.
+    let plain = target
+        .restore_from_file("without_feeds.json", false)
+        .unwrap();
+    assert_eq!(plain["status"], "restored");
+    assert!(plain.get("feeds").is_none(), "the 6.x result, unchanged");
+    assert_eq!(
+        omnimem_engine::feeds_file::load(&feeds_yml("target"))
+            .unwrap()
+            .len(),
+        2
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn health_and_version() {
     let e = engine();
     put(&e, "mem:preference:p", "british spelling", &[]);

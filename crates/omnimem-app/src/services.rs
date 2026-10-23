@@ -69,7 +69,8 @@ pub fn open_engine(db: &Path) -> Result<Engine> {
     store.run_migrations().context("running migrations")?;
     omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
     let embedder = Arc::new(load_embedder()?);
-    let config = EngineConfig::from_env(data_dir(db).join("backups"));
+    let mut config = EngineConfig::from_env(data_dir(db).join("backups"));
+    config.feeds_path = Some(feeds_path(db));
     let mut engine = Engine::new(store, embedder, config);
     if let Some(llm) = AnthropicConfig::from_env() {
         let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;

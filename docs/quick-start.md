@@ -131,8 +131,8 @@ The binary has a few other commands worth knowing:
 | Command | What it does |
 |---|---|
 | `omnimem serve` | Run the MCP server, the RSS scheduler and the enrichment worker |
-| `omnimem import <backup.json>` | Bring in a 6.x backup and embed it (`--no-embed` to skip embedding, `--create` if there's no database yet) |
-| `omnimem export <file>` | Write every memory to a backup in the same format |
+| `omnimem import <backup.json>` | Bring in a backup, 6.x's or 7's, and embed it (`--no-embed` to skip embedding, `--create` if there's no database yet). RSS feeds in it are added to the reading list where they're missing |
+| `omnimem export <file>` | Write every memory to a backup in the same format (`--feeds` to include the RSS reading list) |
 | `omnimem stats` | Records and vectors per namespace |
 | `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--json`) |
 | `omnimem rss` | Run one feed check now (`--dry-run` shows what it would ingest) |

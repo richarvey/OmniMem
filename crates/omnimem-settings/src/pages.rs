@@ -73,16 +73,7 @@ fn percent_encode(text: &str, keep: impl Fn(u8) -> bool) -> String {
     out
 }
 
-/// True for an `http:` or `https:` URL. Anything else a feed or an article
-/// names is shown as text rather than linked, and the desktop app only hands
-/// these schemes to the system browser.
-pub(crate) fn is_web_url(url: &str) -> bool {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return false;
-    };
-    let web = scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https");
-    web && !rest.is_empty() && !url.chars().any(char::is_control)
-}
+pub(crate) use omnimem_engine::feeds_file::is_web_url;
 
 /// Shown in place of any page that needs the engine before the services
 /// have opened it, or with the reason they stopped.

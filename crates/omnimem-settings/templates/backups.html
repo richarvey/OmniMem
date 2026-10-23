@@ -6,7 +6,10 @@
 <header class="page-header">
   <h2>Backups</h2>
   <div style="display:flex;gap:0.5rem;align-items:center">
-    <form method="POST" action="/backups/create" style="display:inline">
+    <form method="POST" action="/backups/create" style="display:inline-flex;align-items:center;gap:0.5rem">
+      <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.85rem;color:var(--text-dim)" title="Add the RSS reading list (feeds.yml) to the backup">
+        <input type="checkbox" name="feeds" value="1"> Include RSS feeds
+      </label>
       <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
     </form>
     <form method="POST" action="/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
@@ -50,6 +53,10 @@
       <div class="meta-value">{{ preview.metadata.version }}</div>
     </div>
     {% endif %}
+    <div class="meta-item">
+      <div class="meta-label">RSS Feeds</div>
+      <div class="meta-value">{% if preview.feeds is not none %}{{ preview.feeds }} (added if not already listed){% else %}Not in this backup{% endif %}</div>
+    </div>
     {% if preview.metadata.namespaces is defined %}
     <div class="meta-item">
       <div class="meta-label">Namespaces</div>

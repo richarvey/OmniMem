@@ -23,6 +23,7 @@ pub mod domains;
 mod error;
 mod experience;
 pub mod feeds;
+pub mod feeds_file;
 mod knowledge;
 mod lifecycle;
 mod lineage;
