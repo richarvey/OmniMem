@@ -4,6 +4,9 @@ Format: [version] - date - description
 
 ## [7.0.5] - Unreleased
 
+### Security
+- Dependencies: ctutils 0.4.5 (RUSTSEC-2026-0385, mask generation and `u128` comparisons that weren't constant-time) and tokio 1.54.1 (RUSTSEC-2026-0386, `AsyncFd::new` and related constructors violating I/O safety)
+
 ### Added
 - **Backups can carry the RSS reading list.** Tick **Include RSS feeds** beside **Create Backup** in the settings window, or run `omnimem export --feeds`, and the backup holds every feed in `feeds.yml` as a `feeds` list beside its memories. Restoring it (the Backups page, `omnimem import` or `restore_from_file`) adds the feeds the reading list doesn't have, matched by URL, and leaves the ones it already has exactly as they are, the way a restore never overwrites a newer memory. Restored feeds get the same checks as an uploaded `feeds.yml`, and the skill compiler's copy of their influence is refreshed. A backup without feeds, 6.x's included, restores as before and leaves the reading list alone. `dump_to_file` keeps 6.x's parameters, so its backups are memories only. The restore preview says how many feeds a backup holds, and the restore message how many were added
 
