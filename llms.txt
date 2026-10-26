@@ -2,7 +2,7 @@
 
 > OmniMem is self-hosted AI memory served over MCP (Model Context Protocol): it gives AI agents persistent semantic memory across sessions, projects, and machines. One app for macOS, Windows and Linux desktops, or one binary on a server. Open source, MIT licensed, free forever.
 
-OmniMem stores episodic memories, project context, knowledge articles, preferences, and compiled skills in a single SQLite file, with exact vector search in memory and local ONNX embeddings (all-MiniLM-L6-v2, no GPU, no API calls). It features a memory lifecycle (active → deprioritised → archived → deleted), an abandoned-approach graveyard, experience scoring, contradiction detection, semantic deduplication, a propose-and-accept skill compiler, RSS knowledge ingestion, and Claude Code hooks that brief every session and stop known dead ends before they run. It works with any MCP-capable agent: Claude Code, Claude Desktop, claude.ai, Codex, OpenCode, Kiro, GitHub Copilot, GitLab Duo, and Cursor.
+OmniMem stores episodic memories, project context, knowledge articles, preferences, and compiled skills in a single SQLite file, with exact vector search in memory and local ONNX embeddings (all-MiniLM-L6-v2, no GPU, no API calls). It features a memory lifecycle (active → deprioritised → archived → deleted), an abandoned-approach graveyard, experience scoring, contradiction detection, semantic deduplication, a propose-and-accept skill compiler, RSS knowledge ingestion, and Claude Code hooks that brief every session and stop known dead ends before they run. It works with any MCP-capable agent: Claude Code, Claude Desktop, claude.ai, Codex, OpenCode, Kiro, GitHub Copilot, GitLab Duo, Cursor, and Open Design.
 
 ## Docs
 
