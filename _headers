@@ -1,7 +1,0 @@
-# Cloudflare Pages response headers.
-
-# The contact card behind the business card's QR code: served as a vCard so
-# a phone offers to add the contact rather than showing the text.
-/ric.vcf
-  Content-Type: text/vcard; charset=utf-8
-  Content-Disposition: inline; filename="ric.vcf"
