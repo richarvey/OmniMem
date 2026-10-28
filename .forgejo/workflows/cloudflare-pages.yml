@@ -12,7 +12,8 @@ on:
 jobs:
   deploy:
     name: Publish static site
-    runs-on: sqcows
+    # Not `sqcows`: the Mac runner carries that label too, and has no Docker.
+    runs-on: [linux, amd64]
     steps:
       - uses: actions/checkout@v4
 
