@@ -2,18 +2,11 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.5] - Unreleased
-
-### Security
-- Dependencies: ctutils 0.4.5 (RUSTSEC-2026-0385, mask generation and `u128` comparisons that weren't constant-time) and tokio 1.54.1 (RUSTSEC-2026-0386, `AsyncFd::new` and related constructors violating I/O safety)
-
-### Added
-- **Backups can carry the RSS reading list.** Tick **Include RSS feeds** beside **Create Backup** in the settings window, or run `omnimem export --feeds`, and the backup holds every feed in `feeds.yml` as a `feeds` list beside its memories. Restoring it (the Backups page, `omnimem import` or `restore_from_file`) adds the feeds the reading list doesn't have, matched by URL, and leaves the ones it already has exactly as they are, the way a restore never overwrites a newer memory. Restored feeds get the same checks as an uploaded `feeds.yml`, and the skill compiler's copy of their influence is refreshed. A backup without feeds, 6.x's included, restores as before and leaves the reading list alone. `dump_to_file` keeps 6.x's parameters, so its backups are memories only. The restore preview says how many feeds a backup holds, and the restore message how many were added
-
-## [7.0.4] - 2026-10-22
+## [7.0.4] - 2026-10-28
 
 ### Added
 - **`omnimem install-hooks`** adds the Claude Code hooks (session-start, the pre-tool-use guard and session-end) to `~/.claude/settings.json`, or with `--project` to the project's `.claude/settings.json`. An event that already runs an `omnimem hook` is left alone, as is everything else in the file, and the old file is kept beside it as `settings.json.omnimem-backup`. `--dry-run` shows what it would add; `--db` before the command points the hooks at that database. The hooks call `omnimem` when the PATH finds this binary, and its full path otherwise
+- **Backups can carry the RSS reading list.** Tick **Include RSS feeds** beside **Create Backup** in the settings window, or run `omnimem export --feeds`, and the backup holds every feed in `feeds.yml` as a `feeds` list beside its memories. Restoring it (the Backups page, `omnimem import` or `restore_from_file`) adds the feeds the reading list doesn't have, matched by URL, and leaves the ones it already has exactly as they are, the way a restore never overwrites a newer memory. Restored feeds get the same checks as an uploaded `feeds.yml`, and the skill compiler's copy of their influence is refreshed. A backup without feeds, 6.x's included, restores as before and leaves the reading list alone. `dump_to_file` keeps 6.x's parameters, so its backups are memories only. The restore preview says how many feeds a backup holds, and the restore message how many were added
 
 ### Fixed
 - **A comment after a setting no longer stops the server starting.** `MCP_PORT=8765  # the default` in `/etc/omnimem/omnimem.env` reached OmniMem as `8765  # the default`, because systemd's `EnvironmentFile` keeps a trailing comment as part of the value. OmniMem now reads its settings file itself (`OMNIMEM_ENV_FILE`, which the service unit sets), with `#` after whitespace starting a comment as in a shell; quote a value that itself holds ` #`. The desktop app's `omnimem.env` is read the same way
@@ -25,6 +18,7 @@ Format: [version] - date - description
 
 ### Security
 - **glib's `VariantStrIter` advisory (RUSTSEC-2024-0429) is recorded as unreachable** in `.cargo/audit.toml`. Its fix is glib 0.20, but the desktop app's tray, menu and webview crates (tao, wry, muda, tray-icon, webkit2gtk) all still build on gtk 0.18, which holds glib at 0.18.5. The unsound iterator is only created by `Variant::array_iter_str()`, which nothing in OmniMem or its dependencies calls; the desktop app's one D-Bus call reads its reply as a `(bool,)`. The ignore goes when those crates move past gtk 0.18. The headless server doesn't link glib at all
+- Dependencies: ctutils 0.4.5 (RUSTSEC-2026-0385, mask generation and `u128` comparisons that weren't constant-time) and tokio 1.54.1 (RUSTSEC-2026-0386, `AsyncFd::new` and related constructors violating I/O safety)
 
 ## [7.0.3] - 2026-10-21
 
