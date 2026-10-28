@@ -1,0 +1,14 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Harvey;Ric;;;
+FN:Ric Harvey
+ORG:omnimem
+TITLE:Creator of omnimem
+TEL;TYPE=CELL,VOICE:+447940419938
+EMAIL;TYPE=INTERNET,WORK:ric.harvey@omnimem.org
+URL:https://omnimem.org
+item1.URL:https://www.linkedin.com/in/richarvey/
+item1.X-ABLabel:LinkedIn
+item2.URL:https://mastodon.squarecows.com/@ric
+item2.X-ABLabel:Mastodon
+END:VCARD
