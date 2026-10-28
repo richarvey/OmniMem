@@ -58,14 +58,16 @@ Development builds are spelt with a tilde in the package names (`omnimem_7.0.4~d
 
 For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
 
-Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
+Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root and the `omnimem` group only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
 
 ```bash
-sudoedit /etc/omnimem/omnimem.env      # every setting is in there, commented; configuration.md has the rest
+sudoedit /etc/omnimem/omnimem.env      # every setting is in there, unused ones commented out; configuration.md explains them
 sudo systemctl restart omnimem
 curl http://127.0.0.1:8765/healthz     # {"status": "ok"}
 journalctl -u omnimem -f               # its log
 ```
+
+Run the other commands as the service's user, so they read the same settings and the same database: `sudo -u omnimem omnimem stats`.
 
 Removing the package stops the service but leaves `/var/lib/omnimem` alone: your memories aren't the package's to delete.
 
@@ -105,7 +107,7 @@ cargo build --release -p omnimem
 ./target/release/omnimem serve
 ```
 
-With no `OMNIMEM_DB` set, `serve` keeps its database at `data/omnimem.db` under whichever folder you ran it from, with `feeds.yml` and `backups/` beside it.
+With no `OMNIMEM_DB` set, `serve` keeps its database in the same data folder the desktop app uses (below), with `feeds.yml` and `backups/` beside it, wherever you run it from.
 
 **The desktop app** needs the `desktop` feature. On macOS and Windows that's all:
 
@@ -114,7 +116,7 @@ cargo build --release -p omnimem --features desktop
 ./target/release/omnimem            # no command runs the desktop app
 ```
 
-On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. Until 7.0.0 ships, that build has had far less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
+On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. That build has had less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
 
 On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
 
@@ -129,15 +131,16 @@ The binary has a few other commands worth knowing:
 | Command | What it does |
 |---|---|
 | `omnimem serve` | Run the MCP server, the RSS scheduler and the enrichment worker |
-| `omnimem import <backup.json>` | Bring in a 6.x backup and embed it (`--no-embed` to skip embedding) |
-| `omnimem export <file>` | Write every memory to a backup in the same format |
+| `omnimem import <backup.json>` | Bring in a backup, 6.x's or 7's, and embed it (`--no-embed` to skip embedding, `--create` if there's no database yet). RSS feeds in it are added to the reading list where they're missing |
+| `omnimem export <file>` | Write every memory to a backup in the same format (`--feeds` to include the RSS reading list) |
 | `omnimem stats` | Records and vectors per namespace |
 | `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--json`) |
 | `omnimem rss` | Run one feed check now (`--dry-run` shows what it would ingest) |
 | `omnimem embed "<text>"` | Embed some text and print the start of the vector |
 | `omnimem hook [session-start\|session-end]` | Answer a Claude Code hook, so memory works without the agent choosing to use it. See [the hooks guide](claude-code-hook.md) |
+| `omnimem install-hooks` | Add those hooks to Claude Code's `~/.claude/settings.json`, or with `--project` to this project's `.claude/settings.json`. Events that already have one are left alone (`--dry-run` shows what it would add) |
 
-Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`).
+Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the log level (`debug`, `info`, `warn`). Without either, a command uses the same database as the install it's run on: the server package's on a Linux server, otherwise the desktop app's. Only `serve`, the desktop app and `import --create` will start a new database; the others stop and say where they looked.
 
 ## Coming from 6.x
 
@@ -147,7 +150,7 @@ Your memories come with you, and they behave the same. The vectors and the compi
 2. Stop 6.x, or at least make sure it isn't on port 8765.
 3. Bring the backup into 7.0, one of two ways:
    - **Desktop app**: open **Settings… → Backups**, upload the file and restore it.
-   - **Command line**: `omnimem import omnimem_backup.json` (add `--db` if you aren't using the default location).
+   - **Command line**: `omnimem import omnimem_backup.json`, run as `sudo -u omnimem omnimem import omnimem_backup.json` on a server. It says which database it's importing into. If you haven't run OmniMem yet there isn't one, so add `--create`.
 
 Backups don't carry vectors, so every memory is embedded again on the way in. That's roughly 8 ms a memory, so a few thousand take well under a minute. It also brings back any memory 6.x had stopped finding because its stored vector had gone missing or stale.
 

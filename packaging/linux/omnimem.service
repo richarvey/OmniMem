@@ -12,10 +12,11 @@ Type=simple
 User=omnimem
 Group=omnimem
 WorkingDirectory=/var/lib/omnimem
-# Defaults; anything in the environment file wins over these.
-Environment=OMNIMEM_DB=/var/lib/omnimem/omnimem.db
-Environment=HF_HOME=/var/lib/omnimem/huggingface
-EnvironmentFile=/etc/omnimem/omnimem.env
+# OmniMem reads the settings file itself, not through EnvironmentFile=:
+# systemd would keep a trailing "# comment" as part of the value. The file
+# sets OMNIMEM_DB and HF_HOME; anything set here with Environment= (or
+# `systemctl edit omnimem`) wins over it.
+Environment=OMNIMEM_ENV_FILE=/etc/omnimem/omnimem.env
 ExecStart=/usr/bin/omnimem serve
 Restart=on-failure
 RestartSec=5

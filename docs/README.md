@@ -2,7 +2,7 @@
 
 Everything that used to live in one very long README, in sensible pieces. Start with the [project README](../README.md) for the overview.
 
-These pages describe OmniMem 7, the single Rust binary. It isn't released yet, so the install steps are for the packages that arrive with 7.0.0 (each one says so). 6.x's docs live on the `v6.7.x` branch.
+These pages describe OmniMem 7, the single Rust binary, first released as 7.0.3. 6.x's docs live on the `v6.7.x` branch.
 
 ## Getting started
 

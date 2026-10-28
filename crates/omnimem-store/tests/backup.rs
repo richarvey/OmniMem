@@ -279,7 +279,33 @@ fn an_embedder_of_the_wrong_size_is_refused_before_writing() {
 }
 
 #[test]
+fn feeds_travel_in_a_backup_only_when_it_has_them() {
+    let dir = std::env::temp_dir().join(format!("omnimem-store-feeds-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut with = BackupFile::from_value(json!({"metadata": {}, "data": {}})).unwrap();
+    assert_eq!(with.feeds, None, "a 6.x backup has no feeds");
+    let without = with.clone();
+    with.feeds = Some(vec![json!({"url": "https://a.example/rss", "name": "A"})]);
+
+    write_backup(&dir.join("with.json"), &with).unwrap();
+    write_backup(&dir.join("without.json"), &without).unwrap();
+    assert_eq!(read_backup(&dir.join("with.json")).unwrap(), with);
+    assert_eq!(read_backup(&dir.join("without.json")).unwrap(), without);
+    let raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("without.json")).unwrap()).unwrap();
+    assert!(
+        raw.get("feeds").is_none(),
+        "no feeds key unless there are feeds"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn malformed_backups_are_reported() {
+    assert!(matches!(
+        BackupFile::from_value(json!({"data": {}, "feeds": "not a list"})),
+        Err(StoreError::Backup(_))
+    ));
     assert!(matches!(
         BackupFile::from_value(json!([1, 2])),
         Err(StoreError::Backup(_))

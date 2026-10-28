@@ -22,6 +22,8 @@ RUN apt-get update \
 # The database, feeds.yml and backups sit together in /data; the embedding
 # model downloads into it once. 0.0.0.0 so the published port reaches the
 # server, which is why it won't start without MCP_AUTH_TOKEN or OAuth.
+# These win over the package's /etc/omnimem/omnimem.env, which the server
+# still reads: mount your own file there to configure it with comments.
 ENV OMNIMEM_DB=/data/omnimem.db \
     HF_HOME=/data/hf-cache \
     MCP_HOST=0.0.0.0 \

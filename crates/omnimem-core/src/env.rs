@@ -64,34 +64,53 @@ pub fn is_setting_name(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
+/// A value as written after the `=`: quoted or bare, and either way possibly
+/// followed by a comment. As in a shell, `#` starts a comment at the start of
+/// the value or after whitespace, so `MCP_PORT=8765  # the default` is 8765
+/// while `TOKEN=abc#def` keeps its `#`. Quote a value to keep ` #` in it.
 fn unquote(raw: &str) -> String {
     let raw = raw.trim();
-    if raw.len() >= 2 && raw.starts_with('\'') && raw.ends_with('\'') {
-        return raw[1..raw.len() - 1].to_owned();
+    if let Some(rest) = raw.strip_prefix('\'')
+        && let Some(end) = rest.find('\'')
+    {
+        return rest[..end].to_owned();
     }
-    if raw.len() >= 2 && raw.starts_with('"') && raw.ends_with('"') {
+    if let Some(rest) = raw.strip_prefix('"') {
         let mut out = String::new();
-        let mut chars = raw[1..raw.len() - 1].chars();
+        let mut chars = rest.chars();
         while let Some(c) = chars.next() {
-            match (c, chars.clone().next()) {
-                ('\\', Some(next @ ('"' | '\\'))) => {
-                    out.push(next);
-                    chars.next();
+            match c {
+                '"' => return out,
+                '\\' if matches!(chars.clone().next(), Some('"' | '\\')) => {
+                    out.extend(chars.next());
                 }
-                (c, _) => out.push(c),
+                c => out.push(c),
             }
         }
-        return out;
+        // No closing quote: read it as a bare value, quote and all.
     }
-    raw.to_owned()
+    let mut end = raw.len();
+    let mut previous = None;
+    for (i, c) in raw.char_indices() {
+        if c == '#' && previous.is_none_or(char::is_whitespace) {
+            end = i;
+            break;
+        }
+        previous = Some(c);
+    }
+    raw[..end].trim_end().to_owned()
 }
 
-/// Read `KEY=value` lines, as a systemd `EnvironmentFile` or a `.env` file
-/// holds them.
+/// Read `KEY=value` lines, as a `.env` file or a shell script holds them.
 ///
 /// Blank lines, `#` comments, an `export ` prefix and names that aren't
 /// setting names are skipped; values may be single- or double-quoted; a
-/// later line wins.
+/// `#` after whitespace starts a comment on the rest of the line, so
+/// `MCP_PORT=8765 # the default` reads as 8765; a later line wins.
+///
+/// systemd's `EnvironmentFile` doesn't strip that comment: it hands the
+/// service `8765 # the default`. That is why the server reads its settings
+/// file with this rather than through systemd.
 pub fn parse_settings(text: &str) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
     for line in text.lines() {
@@ -179,6 +198,32 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert!(!is_setting_name("9LIVES"));
         assert!(is_setting_name("_PRIVATE_1"));
+    }
+
+    #[test]
+    fn trailing_comments_are_not_part_of_the_value() {
+        let text = "MCP_PORT=8765 # the default\n\
+                    MCP_PUBLIC_URL=https://mcp.example.com     # behind a proxy\n\
+                    MCP_AUTH_TOKEN=abc#def\n\
+                    OAUTH_ADMIN_PASSWORD=\"has # in it\" # quoted keeps it\n\
+                    OAUTH_ADMIN_USER='admin' # single quotes too\n\
+                    SKILL_EXPORT_DIR=   # unset, as written\n\
+                    HF_TOKEN=\ttabbed\t# tab before the comment\n\
+                    BACKUP_DIR=\"unclosed # quote\n";
+        let values = parse_settings(text);
+        let get = |name: &str| values.get(name).map(String::as_str);
+        assert_eq!(get("MCP_PORT"), Some("8765"));
+        assert_eq!(get("MCP_PUBLIC_URL"), Some("https://mcp.example.com"));
+        assert_eq!(
+            get("MCP_AUTH_TOKEN"),
+            Some("abc#def"),
+            "no space, no comment"
+        );
+        assert_eq!(get("OAUTH_ADMIN_PASSWORD"), Some("has # in it"));
+        assert_eq!(get("OAUTH_ADMIN_USER"), Some("admin"));
+        assert_eq!(get("SKILL_EXPORT_DIR"), Some(""));
+        assert_eq!(get("HF_TOKEN"), Some("tabbed"));
+        assert_eq!(get("BACKUP_DIR"), Some("\"unclosed"));
     }
 
     #[test]

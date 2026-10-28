@@ -308,12 +308,14 @@ fn truthy(value: &Value) -> bool {
 }
 
 /// The Hugging Face hub cache: `HF_HUB_CACHE`, else `HF_HOME/hub`, else
-/// `XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`.
+/// `XDG_CACHE_HOME/huggingface/hub`, else `~/.cache/huggingface/hub`. The two
+/// `HF_` settings can come from a settings file, so they're read through
+/// `omnimem_core::env`; the other two are the platform's own.
 pub(crate) fn hub_cache_dir() -> PathBuf {
-    if let Some(dir) = env::var_os("HF_HUB_CACHE").filter(|v| !v.is_empty()) {
+    if let Some(dir) = omnimem_core::env::var("HF_HUB_CACHE").filter(|v| !v.is_empty()) {
         return PathBuf::from(dir);
     }
-    if let Some(home) = env::var_os("HF_HOME").filter(|v| !v.is_empty()) {
+    if let Some(home) = omnimem_core::env::var("HF_HOME").filter(|v| !v.is_empty()) {
         return PathBuf::from(home).join("hub");
     }
     let cache = env::var_os("XDG_CACHE_HOME")

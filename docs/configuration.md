@@ -13,7 +13,9 @@ OmniMem runs happily with no configuration at all: it listens on `127.0.0.1:8765
 
 Changes apply the next time OmniMem starts, and the page tells you so. Anything the page doesn't list can still go in `omnimem.env` by hand; the page keeps lines it doesn't recognise.
 
-**Headless installs** (`omnimem serve`, the packages, the Docker image) read environment variables only. The packages load them from `/etc/omnimem/omnimem.env`, and [`.env.example`](../.env.example) in the repo is a commented starting point.
+**Headless installs** (`omnimem serve`, the packages, the Docker image) read environment variables, and a settings file if there is one. The packages' file is `/etc/omnimem/omnimem.env`, which lists every setting on this page with the unused ones commented out; [`.env.example`](../.env.example) in the repo is the same list. OmniMem reads that file itself rather than through systemd, so a comment can follow a value (`MCP_PORT=8765  # the default`); quote a value that itself holds ` #`.
+
+**The settings file** is the one `OMNIMEM_ENV_FILE` names (the service unit points it at `/etc/omnimem/omnimem.env`, and a file named this way that can't be read stops OmniMem starting). Without it, OmniMem looks for `/etc/omnimem/omnimem.env` on Linux, then `omnimem.env` in the desktop app's data folder. So `omnimem import`, `stats`, `export` and the hooks use the same settings and the same database as the install they're run on. On a server that means running them as the service's user, `sudo -u omnimem omnimem stats`, since the file is readable by root and the `omnimem` group only.
 
 **Either way, a real environment variable wins.** If `MCP_PORT` is set in the environment, the desktop app uses it over whatever the Configuration page saved, and the page points that out.
 
@@ -23,7 +25,8 @@ Flags accept `true`, `1` or `yes` (any case); anything else, or leaving it unset
 
 | Variable | Default | Description |
 |---|---|---|
-| `OMNIMEM_DB` | Desktop app: `omnimem.db` in the data folder. Headless: `data/omnimem.db` under the working directory | The SQLite database. `feeds.yml` and `backups/` default to the folder it's in. Also available as `--db` on every command |
+| `OMNIMEM_DB` | `/var/lib/omnimem/omnimem.db` on Linux where the server package is installed, otherwise `omnimem.db` in the desktop app's data folder | The SQLite database. `feeds.yml` and `backups/` default to the folder it's in. Also available as `--db` on every command. Only `serve`, the desktop app and `import --create` start a new one; every other command stops and says where it looked |
+| `OMNIMEM_ENV_FILE` | *(unset)* | The settings file to read, as above. Set it in the environment, not in the file |
 | `OMNIMEM_LOG` | `info` for `serve` and the desktop app, `warn` for the other commands | Log level or filter, such as `debug` or `omnimem_mcp=debug,info` |
 
 ## MCP server

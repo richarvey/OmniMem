@@ -16,7 +16,7 @@ The first four accept direct writes through `remember()`. The skill namespace is
 
 ## Storage model
 
-OmniMem 7 keeps everything in one SQLite file (`data/omnimem.db` for `omnimem serve`, or the desktop app's data folder). A memory is one row in the `memories` table:
+OmniMem 7 keeps everything in one SQLite file (`/var/lib/omnimem/omnimem.db` on a Linux server install, otherwise `omnimem.db` in the desktop app's data folder). A memory is one row in the `memories` table:
 
 | Column | What it holds |
 |--------|---------------|

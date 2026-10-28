@@ -2,6 +2,22 @@
 
 Ideas worth exploring, gathered from research and from using the thing. Not commitments. What's actually planned for 7.0 lives in [docs/rust-port-plan.md](docs/rust-port-plan.md).
 
+## Planned for 7.0.5: the desktop app sets up the tools you have
+
+The tray menu can connect Claude Desktop and Claude Code to the server today (`crates/omnimem-desktop/src/clients.rs`), and 7.0.4's `omnimem install-hooks` adds the Claude Code hooks from the command line. 7.0.5 brings both together in the desktop app, offering only what fits the tools actually installed.
+
+**Why it matters:** a menu listing every client OmniMem could talk to is noise for someone who uses one of them, and an option for a tool that isn't there can only fail. Showing what's installed, and whether it's already set up, turns the menu into a checklist.
+
+**To do:**
+- [ ] Detect each supported tool: whether it's installed (its command on the PATH or the usual install locations, as `find_claude()` does for `claude`, or its config folder), and whether OmniMem is already configured in it
+- [ ] Claude Code: connect the MCP server (there already) and install the hooks, reusing `install-hooks`' merge so the CLI and the menu behave the same
+- [ ] Claude Desktop: connect the MCP server (there already)
+- [ ] Codex: connect the MCP server in its config, offered only when Codex is installed
+- [ ] Decide which other clients are worth detecting (Cursor, VS Code, Gemini CLI, ...) and how each is configured
+- [ ] Show only installed tools in the menu, each marked as set up or offering to set it up; nothing at all for a tool that isn't there
+- [ ] Back up any config file before changing it and leave everything else in it alone, as the existing writers do
+- [ ] The Flatpak can't reach other tools' config from its sandbox: decide whether it asks for that access or explains what to add by hand
+
 ## Hybrid keyword and vector search
 
 Recall is purely semantic: exact cosine similarity over the embeddings. That's great for "things like this" and not so great for exact tokens like library names, error codes or version numbers.

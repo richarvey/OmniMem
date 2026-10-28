@@ -81,7 +81,7 @@ Extracted facts follow their source in both cases, and neither touches `updated_
 | `explain_memory(key)` | Full metadata for one memory, licence and provenance included |
 | `why_did_you_mention(query)` | Search the recall logs to see why something surfaced |
 | `dump_to_file(filename?)` | Export everything to a JSON backup in `BACKUP_DIR`, in the 6.x format |
-| `restore_from_file(filename, dry_run?)` | Restore a backup from `BACKUP_DIR`, merging rather than overwriting and re-embedding as it goes. Previews unless `dry_run=False` |
+| `restore_from_file(filename, dry_run?)` | Restore a backup from `BACKUP_DIR`, merging rather than overwriting and re-embedding as it goes. Previews unless `dry_run=False`. A backup made with feeds (the settings window's **Include RSS feeds**, or `omnimem export --feeds`) also adds its feeds to the reading list where they're missing, and says so under `feeds` |
 | `list_backups()` | Backup files, newest first |
 | `health()` | Database status, record and vector counts, model status, uptime |
 | `queue_status()` | How many fact-extraction jobs are waiting. Poll it after a batch ingest |

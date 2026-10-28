@@ -1,6 +1,6 @@
 # Connecting OmniMem to Open Design
 
-[Open Design](https://opendesign.ai) is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context and graveyard as the rest of your tools.
+[Open Design](https://open-design.ai) is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context and graveyard as the rest of your tools.
 
 Unlike claude.ai, Open Design is a **native desktop client**, so it signs in as a *public* OAuth client. It uses PKCE with no client secret, registers a loopback redirect (`http://127.0.0.1:<port>/api/mcp/oauth/callback`) on a random port, and registers itself afresh every time it connects. OmniMem 7 handles all of that out of the box: public clients get no secret and prove themselves with PKCE alone.
 

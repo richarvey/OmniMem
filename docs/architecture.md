@@ -63,7 +63,7 @@ The GUI crate sits outside the workspace's default members, so a plain `cargo bu
 
 ## Storage
 
-One SQLite file in WAL mode. By default that's `data/omnimem.db` for `omnimem serve`, or `omnimem.db` in the desktop app's data folder; `OMNIMEM_DB` (or `--db`) points it anywhere. `feeds.yml` and the `backups/` folder live beside it.
+One SQLite file in WAL mode. By default that's `/var/lib/omnimem/omnimem.db` on a Linux server install, or `omnimem.db` in the desktop app's data folder for everything else, `omnimem serve` included; `OMNIMEM_DB` (or `--db`) points it anywhere. `feeds.yml` and the `backups/` folder live beside it.
 
 | Table | What's in it |
 |---|---|

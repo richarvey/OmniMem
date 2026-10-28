@@ -6,6 +6,11 @@
 //! because backups never carried vectors; so is any memory already in the
 //! store without a vector, so a restore that was cut short can be re-run.
 //!
+//! A backup may also carry the RSS reading list, as a top-level `feeds` list
+//! beside `metadata` and `data` (7 only; 6.x reads neither the key nor
+//! needs it). The store keeps it as it came and never interprets it: the
+//! engine, which knows where `feeds.yml` lives, checks and merges it.
+//!
 //! Two deliberate differences from 6.x. Recall logs keep their 30-day expiry
 //! (Python restored them with none, so an old dump resurrected them forever),
 //! and ones already past it are skipped. And every migration runs, not only
@@ -45,6 +50,9 @@ const NAMESPACE_COUNTS: [&str; 5] = ["episodic", "project", "knowledge", "prefer
 pub struct BackupFile {
     pub metadata: Value,
     pub data: Map<String, Value>,
+    /// The reading list's feed mappings, when the backup was made with them.
+    /// `None` is a backup without feeds, every 6.x one among them.
+    pub feeds: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -85,11 +93,14 @@ static PARTIAL_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// one) cannot replace the copy already on disk. The partial file has a
 /// unique name and is created exclusively, so two writers never share one.
 pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
-    let body = serde_json::to_string_pretty(&json!({
+    let mut top = json!({
         "metadata": backup.metadata,
         "data": backup.data,
-    }))
-    .map_err(|e| StoreError::Backup(e.to_string()))?;
+    });
+    if let Some(feeds) = &backup.feeds {
+        top["feeds"] = Value::Array(feeds.clone());
+    }
+    let body = serde_json::to_string_pretty(&top).map_err(|e| StoreError::Backup(e.to_string()))?;
     let io = |source| StoreError::Io {
         path: path.display().to_string(),
         source,
@@ -139,9 +150,19 @@ impl BackupFile {
         let Some(Value::Object(data)) = top.remove("data") else {
             return Err(StoreError::Backup("the backup has no `data` object".into()));
         };
+        let feeds = match top.remove("feeds") {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(feeds)) => Some(feeds),
+            Some(_) => {
+                return Err(StoreError::Backup(
+                    "the backup's `feeds` is not a list".into(),
+                ));
+            }
+        };
         Ok(Self {
             metadata: top.remove("metadata").unwrap_or(Value::Null),
             data,
+            feeds,
         })
     }
 }
@@ -445,7 +466,11 @@ impl Store {
             "namespaces": counts,
             "version": env!("CARGO_PKG_VERSION"),
         });
-        Ok(BackupFile { metadata, data })
+        Ok(BackupFile {
+            metadata,
+            data,
+            feeds: None,
+        })
     }
 }
 
