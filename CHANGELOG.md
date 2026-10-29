@@ -2,7 +2,7 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.5] - Unreleased
+## [7.0.5] - 2026-10-29
 
 ### Added
 - **`CONTRADICTION_MODEL` and `RSS_SUMMARY_MODEL`** ([#11](https://github.com/richarvey/OmniMem/issues/11)). Of the four things OmniMem asks Claude, fact extraction and query expansion already had a model setting, but the contradiction check and RSS summaries (with digest item extraction) were fixed to Haiku, as 6.x had them. Both now take a model, from the environment, `omnimem.env` or the settings window's Configuration page. The default stays `claude-haiku-5-5`

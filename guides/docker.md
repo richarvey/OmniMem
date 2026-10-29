@@ -4,7 +4,7 @@ OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web
 
 The image is `richarvey/omnimem`, built for amd64 and arm64, and it runs `omnimem serve`: the MCP server, the RSS scheduler and the background enrichment worker, all in the one process. It's the headless build, so there's no settings window. You configure it with environment variables.
 
-Inside, it's the same `.deb` the Linux server packages ship, installed on Debian 13. Every v7 tag publishes `richarvey/omnimem:<version>`; `latest` is the newest release and never moves for a `-dev` tag, so pin a version (`7.0.4`) when you want upgrades to be your decision. Before each one is pushed, CI checks that it refuses to start without a token and, with one, serves MCP and reports healthy.
+Inside, it's the same `.deb` the Linux server packages ship, installed on Debian 13. Every v7 tag publishes `richarvey/omnimem:<version>`; `latest` is the newest release and never moves for a `-dev` tag, so pin a version (`7.0.5`) when you want upgrades to be your decision. Before each one is pushed, CI checks that it refuses to start without a token and, with one, serves MCP and reports healthy.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ docker run -d --name omnimem \
   -e HF_HOME=/data/hf-cache \
   -e MCP_HOST=0.0.0.0 \
   -e MCP_AUTH_TOKEN="$(openssl rand -hex 32)" \
-  richarvey/omnimem:7.0.4
+  richarvey/omnimem:7.0.5
 ```
 
 A few things are going on there:
@@ -50,7 +50,7 @@ If you'd rather keep it in a file:
 ```yaml
 services:
   omnimem:
-    image: richarvey/omnimem:7.0.4
+    image: richarvey/omnimem:7.0.5
     restart: unless-stopped
     ports:
       - "127.0.0.1:8765:8765"
@@ -120,7 +120,7 @@ OmniMem only serves `/mcp`, the OAuth routes and `/healthz`, so the whole thing 
 Pin a release tag rather than `latest`:
 
 ```yaml
-image: richarvey/omnimem:7.0.4
+image: richarvey/omnimem:7.0.5
 ```
 
 Releases are listed on the [Forgejo releases page](https://code.squarecows.com/ric/omnimem/releases).
@@ -182,4 +182,4 @@ The old `VALKEY_*`, `WEB_*` and `MCP_TRANSPORT` settings are gone, and clients t
 
 **Clients get 401**: the token after `Bearer` has to match `MCP_AUTH_TOKEN` exactly.
 
-**Clients get 421 (403 on 7.0.4 and earlier)**: the Host header isn't trusted. Connecting by the machine's IP counts too. Set `OAUTH_BASE_URL` or `MCP_PUBLIC_URL` to the public address, or add names to `MCP_ALLOWED_HOSTS`.
+**Clients get 421 (403 on 7.0.5 and earlier)**: the Host header isn't trusted. Connecting by the machine's IP counts too. Set `OAUTH_BASE_URL` or `MCP_PUBLIC_URL` to the public address, or add names to `MCP_ALLOWED_HOSTS`.
