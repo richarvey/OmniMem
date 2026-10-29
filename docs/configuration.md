@@ -37,7 +37,7 @@ Flags accept `true`, `1` or `yes` (any case); anything else, or leaving it unset
 | `MCP_PORT` | `8765` | Port. Clients connect to `http://address:port/mcp` |
 | `MCP_AUTH_TOKEN` | *(unset)* | A shared bearer token clients send as `Authorization: Bearer <token>`. Compared in constant time. Works alongside OAuth |
 | `MCP_PUBLIC_URL` | *(unset)* | Where clients reach OmniMem through a proxy or tunnel. Its host and origin are trusted automatically |
-| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host that isn't allowed gets `421 Misdirected Request` |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host without a port matches any port, `host:port` only that one, and `*` allows any host. A host that isn't allowed gets `421 Misdirected Request`, before any token check |
 | `MCP_ALLOWED_ORIGINS` | *(unset)* | Extra browser origins (`scheme://host[:port]`) to accept, comma separated |
 
 See [remote access](remote-access.md) for putting OmniMem behind a reverse proxy, and what 421 and 403 errors mean.

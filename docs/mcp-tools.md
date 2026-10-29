@@ -4,7 +4,7 @@ All 48 tools, grouped by what they're for. The names, parameters and defaults ar
 
 You don't have to teach your agent any of this. The server sends its operating instructions in the MCP `instructions` field on connect, and each tool carries its own description, so agents pick most of it up by themselves. This page is for you.
 
-The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
+The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone). Writing your own client? A response sent as an event stream opens with an empty `data:` event, the priming event the MCP spec allows so a client can resume, so skip events with no data rather than taking the first `data:` line.
 
 ## Core memory
 

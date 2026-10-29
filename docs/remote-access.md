@@ -64,9 +64,9 @@ The login page allows `OAUTH_LOGIN_MAX_ATTEMPTS` (10) failed logins per address 
 
 ## `421 Misdirected Request` or `403 Forbidden Origin`
 
-These look like OAuth failures. They aren't. They're the Host and Origin guard, which stops a hostile web page from talking to your server through someone's browser (DNS rebinding and friends).
+These look like OAuth or token failures. They aren't. They're the Host and Origin guard, which stops a hostile web page from talking to your server through someone's browser (DNS rebinding and friends). It sits in front of `/mcp` and the OAuth routes, ahead of the token check, so a request for a host that isn't allowed gets 421 whether or not it carries a token. A probe without a token that gets 401 has therefore passed the Host check. The server logs each refusal with the setting to change, and warns at startup when it listens on `0.0.0.0` with no public URL or allowed hosts set, since every remote client would be refused.
 
-- **`421 Misdirected Request`** means the `Host` header isn't on the allowed list. The list is localhost, `127.0.0.1`, `::1`, the listen address, the hosts of `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`, and anything in `MCP_ALLOWED_HOSTS`. A `curl` to localhost still works, which is what makes this one confusing.
+- **`421 Misdirected Request`** means the `Host` header isn't on the allowed list. The list is localhost, `127.0.0.1`, `::1`, the listen address, the hosts of `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`, and anything in `MCP_ALLOWED_HOSTS`. A `curl` to localhost still works, which is what makes this one confusing. 7.0.4 and earlier answered `/mcp` with `403 Forbidden: Host header is not allowed` instead; it's the same problem.
 - **`403 Forbidden Origin`** means a browser sent an `Origin` that isn't allowed. An origin is allowed when it's on the list (the origins of `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`, `http://localhost:<port>`, `http://127.0.0.1:<port>`, and `MCP_ALLOWED_ORIGINS`), when it's loopback talking to loopback, or when it's the server's own host.
 
 That last rule ignores the scheme on purpose. A proxy that terminates TLS forwards the request over plain http while your browser says `Origin: https://...`, and in 6.x that mismatch got the login form a 403. It doesn't any more.
@@ -76,6 +76,12 @@ Most setups need nothing extra: set `OAUTH_BASE_URL` (or `MCP_PUBLIC_URL` if you
 ```bash
 MCP_ALLOWED_HOSTS=mcp.example.com,alt.example.com
 MCP_ALLOWED_ORIGINS=https://alt.example.com
+```
+
+Each entry is a host name or an IP address. Without a port it matches any port (`10.0.0.5` allows `10.0.0.5:8765` and `10.0.0.5:443`); with one, only that port (`10.0.0.5:8765`). `*` allows any Host at all, which switches the guard's Host check off, so only use it when something in front of OmniMem checks the host for you. Connecting straight to a cloud machine by its IP is the common case that needs this:
+
+```bash
+MCP_ALLOWED_HOSTS=203.0.113.10
 ```
 
 FastMCP's `FASTMCP_HTTP_ALLOWED_HOSTS` and `FASTMCP_HTTP_ALLOWED_ORIGINS` JSON-array knobs are gone with FastMCP.

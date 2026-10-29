@@ -182,4 +182,4 @@ The old `VALKEY_*`, `WEB_*` and `MCP_TRANSPORT` settings are gone, and clients t
 
 **Clients get 401**: the token after `Bearer` has to match `MCP_AUTH_TOKEN` exactly.
 
-**Clients get 421 through a proxy**: the Host header isn't trusted. Set `OAUTH_BASE_URL` or `MCP_PUBLIC_URL` to the public address, or add names to `MCP_ALLOWED_HOSTS`.
+**Clients get 421 (403 on 7.0.4 and earlier)**: the Host header isn't trusted. Connecting by the machine's IP counts too. Set `OAUTH_BASE_URL` or `MCP_PUBLIC_URL` to the public address, or add names to `MCP_ALLOWED_HOSTS`.

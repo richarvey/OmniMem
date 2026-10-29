@@ -5,13 +5,23 @@ Format: [version] - date - description
 ## [7.0.5] - Unreleased
 
 ### Added
+- **A startup warning when remote clients would be refused**: listening on `0.0.0.0` or `::` with no `MCP_PUBLIC_URL`, `OAUTH_BASE_URL` or `MCP_ALLOWED_HOSTS` means only loopback names are allowed as Host, and the server now says so and what to set
 - **`RECALL_EXPERIENCE_SPAN` stops experience outranking relevance.** ([#8](https://github.com/richarvey/OmniMem/issues/8)) Recall multiplies a memory's score by its experience weight, as 6.x did, so a weight of 1.8 lifts a loose match at 0.45 to 0.81, past a close one at 0.75. A user's benchmark of 36 queries against a real store of about 3,080 memories found 20 targets ranked first on raw similarity but only 11 through `recall()`, and every target it lost was pushed out by boosted memories. Set the span above 0 and the weight is added instead, as `(weight - 1) × span`: at `0.05` the strongest weight is worth 0.05 of similarity, enough to settle a near-tie between memories but not to beat a clearly better match. It's also what makes models with a narrow score spread, such as bge-small-en-v1.5, usable in recall. The default, `0`, keeps 6.x's multiplier, and the setting is on the settings window's Configuration page
 
 ### Changed
 - **Claude Haiku 5.5 is the default model** for fact extraction, query expansion, contradiction checks and RSS summaries (`claude-haiku-5-5`, was `claude-haiku-4-5-20251001`). It's cheaper and more capable. `FACT_EXTRACTION_MODEL` and `QUERY_EXPANSION_MODEL` still pick another
 
 ### Fixed
+- **A refused Host gets 421 on `/mcp` too, before the token check** ([#6](https://github.com/richarvey/OmniMem/issues/6)). `/mcp` answered a Host that isn't allowed with rmcp's `403 Forbidden: Host header is not allowed`, while the docs (and the OAuth routes) said 421, so searching for the error found nothing. And because the token check ran first, a probe without a token got 401 and looked healthy while every real client was refused. OmniMem's own Host and Origin guard now sits in front of `/mcp` as well, ahead of authentication, and its log line names the setting to change. `MCP_ALLOWED_HOSTS=*` now allows any host, as the OAuth routes already did; `host:port` still allows only that port
+- `omnimem search --help` no longer says recall scoring "arrives with the engine"
+- The Anthropic Blog feed in `examples/feeds.yml` had gone (404). Simon Willison's weblog and the Hugging Face blog take its place
 - **Current Claude models work for fact extraction and the other Claude calls.** ([#4](https://github.com/richarvey/OmniMem/issues/4)) OmniMem read only the reply's first content block, as 6.x did, and newer models can open with a block that isn't text, so every call failed with "no text in the first content block". It now takes the first text block
+
+### Documentation
+- `MCP_ALLOWED_HOSTS`: how ports and `*` match, and connecting straight to a machine's IP ([#6](https://github.com/richarvey/OmniMem/issues/6))
+- 3.x backups import into 7 the same way as 6.x ones
+- A 6.x install that's a clone of this repository needs `git checkout v6.7.x` before its next `git pull`, since `main` is 7 and has no Compose file
+- For people writing their own MCP clients: an event-stream response opens with an empty `data:` priming event
 
 ## [7.0.4] - 2026-10-28
 

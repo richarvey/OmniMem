@@ -70,8 +70,8 @@ enum Command {
     },
     /// Record and vector counts per namespace.
     Stats,
-    /// Nearest memories to a query by raw similarity. Recall scoring
-    /// (recency, experience, lifecycle) arrives with the engine.
+    /// Nearest memories to a query by raw similarity, without recall's
+    /// scoring (recency, experience, lifecycle) or its relevance floor.
     Search {
         query: String,
         #[arg(long, default_value = "episodic")]

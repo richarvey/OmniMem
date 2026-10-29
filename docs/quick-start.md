@@ -144,7 +144,7 @@ Every command takes `--db <file>` (or `OMNIMEM_DB`), and `OMNIMEM_LOG` sets the 
 
 ## Coming from 6.x
 
-Your memories come with you, and they behave the same. The vectors and the compiled skill bodies are identical to 6.x, so nothing needs retuning. Recall scoring has three deliberate changes: recency declines from day one (so a memory older than 90 days ranks a little lower than it did, though the relevance floor reads raw similarity and drops nothing extra), an abandoned outcome scores 1.0 rather than 0.1, and abandonment no longer auto-suppresses approach names.
+The same steps work from 3.x onwards: 3.x backups use the same format and import the same way. Your memories come with you, and they behave the same. The vectors and the compiled skill bodies are identical to 6.x, so nothing needs retuning. Recall scoring has three deliberate changes: recency declines from day one (so a memory older than 90 days ranks a little lower than it did, though the relevance floor reads raw similarity and drops nothing extra), an abandoned outcome scores 1.0 rather than 0.1, and abandonment no longer auto-suppresses approach names.
 
 1. On 6.x, take a backup: ask your agent to call `dump_to_file()`, or use the Backups page in the old web UI. You get a JSON file.
 2. Stop 6.x, or at least make sure it isn't on port 8765.
@@ -153,6 +153,8 @@ Your memories come with you, and they behave the same. The vectors and the compi
    - **Command line**: `omnimem import omnimem_backup.json`, run as `sudo -u omnimem omnimem import omnimem_backup.json` on a server. It says which database it's importing into. If you haven't run OmniMem yet there isn't one, so add `--create`.
 
 Backups don't carry vectors, so every memory is embedded again on the way in. That's roughly 8 ms a memory, so a few thousand take well under a minute. It also brings back any memory 6.x had stopped finding because its stored vector had gone missing or stale.
+
+If you installed 6.x by cloning this repository, keep that clone on 6.x: `main` is 7 now and has no Compose file, so a `git pull` followed by `docker compose build` fails. Run `git checkout v6.7.x` in the clone first, and the guides' update steps work as before.
 
 A few things from 6.x are gone on purpose: Valkey, the Compose stack, the web UI on port 8080, `/metrics`, and the SSE transport. The [configuration page](configuration.md#gone-since-6x) lists the settings that went with them.
 

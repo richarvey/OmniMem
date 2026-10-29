@@ -46,9 +46,12 @@ feeds:
     topics: [automation, workflow, n8n]
 
   # AI / LLM
-  - url: https://www.anthropic.com/rss.xml
-    name: Anthropic Blog
-    topics: [ai, llm, claude]
+  - url: https://simonwillison.net/atom/everything/
+    name: Simon Willison's Weblog
+    topics: [ai, llm, python]
+  - url: https://huggingface.co/blog/feed.xml
+    name: Hugging Face Blog
+    topics: [ai, llm, embeddings]
 
   # DevOps / infra
   - url: https://www.docker.com/blog/feed/
