@@ -139,7 +139,7 @@ curl -fsSL https://code.squarecows.com/ric/omnimem/raw/branch/main/install.sh | 
 Or build from source:
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git && cd omnimem
+git clone -b v6.7.x https://code.squarecows.com/ric/omnimem.git && cd omnimem
 cp .env.example .env
 # Set VALKEY_PASSWORD and ANTHROPIC_API_KEY in .env
 docker compose up -d

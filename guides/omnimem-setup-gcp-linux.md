@@ -106,7 +106,7 @@ docker compose version
 ## Step 4 — Clone OmniMem
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git
+git clone -b v6.7.x https://code.squarecows.com/ric/omnimem.git
 cd omnimem
 ```
 
@@ -430,6 +430,7 @@ If you built from source:
 
 ```bash
 cd omnimem
+git checkout v6.7.x  # main is OmniMem 7 now, with no Compose file
 git pull
 docker compose build
 docker compose up -d

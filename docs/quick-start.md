@@ -11,7 +11,7 @@ Works on macOS and Linux. See [../guides/docker-hub.md](../guides/docker-hub.md)
 Or build from source instead:
 
 ```bash
-git clone https://code.squarecows.com/ric/omnimem.git && cd omnimem
+git clone -b v6.7.x https://code.squarecows.com/ric/omnimem.git && cd omnimem
 cp .env.example .env
 # Set VALKEY_PASSWORD and ANTHROPIC_API_KEY in .env
 docker compose up -d

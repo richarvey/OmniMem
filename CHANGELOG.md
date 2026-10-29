@@ -3,6 +3,9 @@ All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
 ## [6.7.2] - Unreleased
+### Documentation
+- **The guides clone `v6.7.x`, and their update steps check it out first**: `main` is OmniMem 7 now, with no Compose file, so a clone of `main` that runs `git pull` then `docker compose build` fails. A clone made earlier needs `git checkout v6.7.x` once ([richarvey/OmniMem#6](https://github.com/richarvey/OmniMem/issues/6))
+
 ### Fixed
 - **The Test Coverage job failed on fastmcp 4 / mcp 2** (#37): with no ceiling on fastmcp, a fresh CI install resolved fastmcp 4.0.3 and mcp 2.2.0, which production already runs without trouble. The one casualty was a test: mcp 2 makes `client_id` a required string on `OAuthClientInformationFull` (its registration handler assigns a uuid before calling the provider), so `test_register_and_get` could no longer build a client with `client_id=None`. Real registrations always arrive with an id, so nothing in the server was affected. The test now registers a client the way mcp 2 delivers one, with its id already assigned, and a second test reaches the provider's generate-if-missing fallback through `model_copy`, since mcp 2 also strips an empty `client_id` at parse time. Requirements now declare the versions production runs as the floor, `fastmcp>=4.0.3,<5` and `mcp>=2.2.0,<3`, with mcp listed explicitly because fastmcp doesn't declare it, and a ceiling at the next major so the next breaking release is adopted deliberately
 - **`tools/` is back at 100% line coverage**: the #34 staleness exemption shipped with two untested branches in `_skill_source_keys`, a skill whose fields come back empty and a store error while reading manifests. Both now have tests, including that a store error still leaves the briefing's stale list working
