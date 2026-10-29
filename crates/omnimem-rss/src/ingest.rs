@@ -309,7 +309,13 @@ impl Ingester {
                 None => {}
             }
         }
-        let items = extract_items(self.llm(), &title, url, &content)?;
+        let items = extract_items(
+            self.llm(),
+            &self.config.summary_model,
+            &title,
+            url,
+            &content,
+        )?;
         let published_at = published_at(entry);
         Some(
             items
@@ -395,7 +401,13 @@ impl Ingester {
             }
             let title = entry_title(entry);
             let content = take_chars(&entry_content(entry), 2000);
-            let Some(summary) = summarise(self.llm(), &title, &link, &content) else {
+            let Some(summary) = summarise(
+                self.llm(),
+                &self.config.summary_model,
+                &title,
+                &link,
+                &content,
+            ) else {
                 info!(title, "skipping: summarisation refused");
                 stats.skipped += 1;
                 continue;

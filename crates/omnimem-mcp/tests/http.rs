@@ -36,6 +36,13 @@ impl TextEmbedder for Words {
 }
 
 async fn start(auth_token: Option<&str>) -> (String, CancellationToken) {
+    start_with(auth_token, Vec::new()).await
+}
+
+async fn start_with(
+    auth_token: Option<&str>,
+    extra_hosts: Vec<String>,
+) -> (String, CancellationToken) {
     let engine = Arc::new(Engine::new(
         Arc::new(Store::open_in_memory().unwrap()),
         Arc::new(Words),
@@ -46,6 +53,7 @@ async fn start(auth_token: Option<&str>) -> (String, CancellationToken) {
     let config = ServerConfig {
         port,
         auth_token: auth_token.map(str::to_owned),
+        extra_hosts,
         ..ServerConfig::default()
     };
     let shutdown = CancellationToken::new();
@@ -240,5 +248,66 @@ async fn a_bearer_token_is_required_when_configured() {
             "{method} /mcp without a token"
         );
     }
+    shutdown.cancel();
+}
+
+async fn post_as_host(base: &str, host: &str, token: Option<&str>) -> reqwest::StatusCode {
+    let mut request = reqwest::Client::new()
+        .post(format!("{base}/mcp"))
+        .header("host", host)
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .body(r#"{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}"#);
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    request.send().await.unwrap().status()
+}
+
+#[tokio::test]
+async fn a_host_that_isnt_allowed_gets_421_before_authentication() {
+    let (base, shutdown) = start(Some("s3cret")).await;
+    // Without a token too, so a probe can't mistake the 401 for health.
+    for token in [None, Some("s3cret")] {
+        assert_eq!(
+            post_as_host(&base, "mcp.example.com", token).await,
+            reqwest::StatusCode::MISDIRECTED_REQUEST
+        );
+    }
+    let port = base.rsplit(':').next().unwrap();
+    assert!(
+        post_as_host(&base, &format!("localhost:{port}"), Some("s3cret"))
+            .await
+            .is_success()
+    );
+    shutdown.cancel();
+}
+
+#[tokio::test]
+async fn allowed_hosts_take_a_port_and_a_wildcard() {
+    let (base, shutdown) = start_with(
+        Some("s3cret"),
+        vec!["10.0.0.5:8765".into(), "mcp.example.com".into()],
+    )
+    .await;
+    let ok = |s: reqwest::StatusCode| s.is_success();
+    assert!(ok(
+        post_as_host(&base, "10.0.0.5:8765", Some("s3cret")).await
+    ));
+    assert!(ok(post_as_host(
+        &base,
+        "mcp.example.com:443",
+        Some("s3cret")
+    )
+    .await));
+    assert!(!ok(
+        post_as_host(&base, "10.0.0.5:9999", Some("s3cret")).await
+    ));
+    shutdown.cancel();
+
+    let (base, shutdown) = start_with(Some("s3cret"), vec!["*".into()]).await;
+    assert!(ok(
+        post_as_host(&base, "anything.example", Some("s3cret")).await
+    ));
     shutdown.cancel();
 }

@@ -17,7 +17,7 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::OmniMemServer;
 use crate::oauth::{self, OAuth, OAuthSetup};
@@ -170,6 +170,20 @@ impl ServerConfig {
         hosts.extend(self.trusted_urls().map(|(_, h)| h));
         hosts.extend(self.extra_hosts.iter().cloned());
         dedupe(hosts)
+    }
+
+    /// What to say at startup when the server listens on every interface
+    /// but only loopback names will be accepted, so every remote client
+    /// would get 421 and nothing else would say why.
+    fn remote_host_hint(&self) -> Option<String> {
+        let everywhere = matches!(self.host.as_str(), "0.0.0.0" | "::");
+        let named = self.trusted_urls().next().is_some() || !self.extra_hosts.is_empty();
+        (everywhere && !named).then(|| {
+            format!(
+                "listening on {} but only localhost, 127.0.0.1 and ::1 are allowed as Host, so remote clients will get 421: set MCP_PUBLIC_URL to the address they use, or list it in MCP_ALLOWED_HOSTS",
+                self.host
+            )
+        })
     }
 
     fn allowed_origins(&self) -> Vec<String> {
@@ -327,8 +341,15 @@ pub fn router(
         OAuthSetup::Off | OAuthSetup::Invalid(_) => None,
     };
     let server = OmniMemServer::new(engine);
+    let hosts = config.allowed_hosts();
     let mut http_config = StreamableHttpServerConfig::default();
-    http_config.allowed_hosts = config.allowed_hosts();
+    // `*` accepts any Host. rmcp has no wildcard, so its own check is
+    // switched off (an empty list) and the guard below lets everything by.
+    http_config.allowed_hosts = if hosts.iter().any(|h| h == "*") {
+        Vec::new()
+    } else {
+        hosts.clone()
+    };
     http_config.allowed_origins = config.allowed_origins();
     http_config.cancellation_token = shutdown;
     let service = StreamableHttpService::new(
@@ -347,9 +368,14 @@ pub fn router(
             require_auth,
         ));
     }
+    // The Host and Origin guard sits outside authentication, so a refused
+    // host gets 421 even without a token: a probe that only sees 401 looks
+    // healthy while every real client is refused. rmcp's own check (403)
+    // stays behind it and enforces a port given in `MCP_ALLOWED_HOSTS`.
+    let allow = oauth::Allowlists::new(&hosts, &config.allowed_origins());
+    app = app.layer(middleware::from_fn_with_state(allow.clone(), oauth::guard));
     app = app.route("/healthz", get(|| async { r#"{"status": "ok"}"# }));
     if let Some(oauth) = oauth {
-        let allow = oauth::Allowlists::new(&config.allowed_hosts(), &config.allowed_origins());
         app = app
             .merge(oauth::routes(oauth).layer(middleware::from_fn_with_state(allow, oauth::guard)));
     }
@@ -384,6 +410,9 @@ pub async fn serve(
         (false, false) => "none (loopback)",
     };
     info!(address = %local, auth, "OmniMem MCP server listening on /mcp");
+    if let Some(hint) = config.remote_host_hint() {
+        warn!("{hint}");
+    }
     // The client address feeds the OAuth login rate limit.
     axum::serve(
         listener,
@@ -430,6 +459,31 @@ mod tests {
         let origins = config.allowed_origins();
         assert!(origins.contains(&"https://mcp.example.com".to_owned()));
         assert!(origins.contains(&"https://ui.example.com".to_owned()));
+    }
+
+    #[test]
+    fn a_bind_on_every_interface_with_no_names_gets_a_startup_hint() {
+        let bare = ServerConfig {
+            host: "0.0.0.0".into(),
+            auth_token: Some("t".into()),
+            ..ServerConfig::default()
+        };
+        assert!(
+            bare.remote_host_hint()
+                .unwrap()
+                .contains("MCP_ALLOWED_HOSTS")
+        );
+        let named = ServerConfig {
+            public_urls: vec!["https://mcp.example.com".into()],
+            ..bare.clone()
+        };
+        assert_eq!(named.remote_host_hint(), None);
+        let listed = ServerConfig {
+            extra_hosts: vec!["10.0.0.5".into()],
+            ..bare
+        };
+        assert_eq!(listed.remote_host_hint(), None);
+        assert_eq!(ServerConfig::default().remote_host_hint(), None);
     }
 
     #[test]

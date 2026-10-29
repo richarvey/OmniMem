@@ -2,6 +2,35 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.5] - 2026-10-29
+
+### Added
+- **`CONTRADICTION_MODEL` and `RSS_SUMMARY_MODEL`** ([#11](https://github.com/richarvey/OmniMem/issues/11)). Of the four things OmniMem asks Claude, fact extraction and query expansion already had a model setting, but the contradiction check and RSS summaries (with digest item extraction) were fixed to Haiku, as 6.x had them. Both now take a model, from the environment, `omnimem.env` or the settings window's Configuration page. The default stays `claude-haiku-5-5`
+- **Extracted facts say when their source was written** ([#10](https://github.com/richarvey/OmniMem/issues/10)). A fact reads as though it's true now, so it went stale quietly. Facts now store `as_of`, and recall shows it as a date on every fact and preference drawn from another memory (the extraction day for facts from before 7.0.5)
+- **`EMBEDDING_QUERY_PREFIX` and `EMBEDDING_PASSAGE_PREFIX`, for models trained with them** ([#9](https://github.com/richarvey/OmniMem/issues/9)). bge-*-en-v1.5 wants an instruction before every search query, and e5 wants `query:` and `passage:`. Without them they score below what they can do: in one user's 36-query benchmark, bge-small-en-v1.5 with its instruction ranked 26 targets first on raw similarity against MiniLM's 20. Queries (recall and its expanded variants, `find_skills`, `check_contradictions` with a query, and `omnimem search`) now get the query prefix, and everything stored gets the passage prefix. Changing the passage prefix changes stored vectors, so re-embed afterwards (export, then import). Neither is set by default, so the default model's vectors don't move, but a bge or e5 model with no prefix set gets a startup warning saying what to try
+- **Recall results show raw similarity** ([#7](https://github.com/richarvey/OmniMem/issues/7)). `recall` and `recall_index` results carry `similarity` beside `score`. `score` is what the result was ranked by, after recency, experience and the rest, while `RECALL_MIN_SCORE` and `RECALL_WEAK_SCORE` compare raw similarity, so the two numbers looked inconsistent with only `score` shown. Clients that ignore unknown fields see no change
+- **A `forget` preview says how to go ahead**: its new `hint` explains that nothing was deleted, that `confirm=true` deletes, and that `deprioritise` is the gentler option
+- **A startup warning when remote clients would be refused**: listening on `0.0.0.0` or `::` with no `MCP_PUBLIC_URL`, `OAUTH_BASE_URL` or `MCP_ALLOWED_HOSTS` means only loopback names are allowed as Host, and the server now says so and what to set
+- **`RECALL_EXPERIENCE_SPAN` stops experience outranking relevance.** ([#8](https://github.com/richarvey/OmniMem/issues/8)) Recall multiplies a memory's score by its experience weight, as 6.x did, so a weight of 1.8 lifts a loose match at 0.45 to 0.81, past a close one at 0.75. A user's benchmark of 36 queries against a real store of about 3,080 memories found 20 targets ranked first on raw similarity but only 11 through `recall()`, and every target it lost was pushed out by boosted memories. Set the span above 0 and the weight is added instead, as `(weight - 1) × span`: at `0.05` the strongest weight is worth 0.05 of similarity, enough to settle a near-tie between memories but not to beat a clearly better match. It's also what makes models with a narrow score spread, such as bge-small-en-v1.5, usable in recall. The default, `0`, keeps 6.x's multiplier, and the setting is on the settings window's Configuration page
+
+### Changed
+- **Extracted facts follow the memory they came from** ([#10](https://github.com/richarvey/OmniMem/issues/10)). Deprioritise, archive or forget a memory and its facts and preferences go with it, and reinstating it brings back the ones it took, as they were. Before, they stayed active, so "the legacy server is at <ip>" kept being recalled as true after its source had been turned down. A transition's result says how many it moved (`derived_facts`)
+- **Fact extraction is stricter about preferences** ([#10](https://github.com/richarvey/OmniMem/issues/10)). A user's test of 20 memories got 47 preferences from Haiku 4.5, many of them statuses and to-dos ("The bearer token needs to be rotated", "Implementation is awaiting sign-off"). The prompt now says a status, a task, a plan or something waiting to happen is a fact however it's worded, and to file a fact when unsure
+- **Claude Haiku 5.5 is the default model** for fact extraction, query expansion, contradiction checks and RSS summaries (`claude-haiku-5-5`, was `claude-haiku-4-5-20251001`). It's cheaper and more capable. `FACT_EXTRACTION_MODEL`, `QUERY_EXPANSION_MODEL`, `CONTRADICTION_MODEL` and `RSS_SUMMARY_MODEL` pick another
+
+### Fixed
+- **An import into a running server's database is found straight away** ([#5](https://github.com/richarvey/OmniMem/issues/5)). The server loads vectors into memory when it starts, so memories that `omnimem import` (or anything else) wrote beside it stayed invisible to recall, with `0` vectors in `health`, until a restart, and nothing said so. It now checks SQLite's `data_version` before each search, one cheap pragma, and reloads the vectors when another process has committed. `import` says a running server will find them
+- **A refused Host gets 421 on `/mcp` too, before the token check** ([#6](https://github.com/richarvey/OmniMem/issues/6)). `/mcp` answered a Host that isn't allowed with rmcp's `403 Forbidden: Host header is not allowed`, while the docs (and the OAuth routes) said 421, so searching for the error found nothing. And because the token check ran first, a probe without a token got 401 and looked healthy while every real client was refused. OmniMem's own Host and Origin guard now sits in front of `/mcp` as well, ahead of authentication, and its log line names the setting to change. `MCP_ALLOWED_HOSTS=*` now allows any host, as the OAuth routes already did; `host:port` still allows only that port
+- `omnimem search --help` no longer says recall scoring "arrives with the engine"
+- The Anthropic Blog feed in `examples/feeds.yml` had gone (404). Simon Willison's weblog and the Hugging Face blog take its place
+- **Current Claude models work for fact extraction and the other Claude calls.** ([#4](https://github.com/richarvey/OmniMem/issues/4)) OmniMem read only the reply's first content block, as 6.x did, and newer models can open with a block that isn't text, so every call failed with "no text in the first content block". It now takes the first text block
+
+### Documentation
+- `MCP_ALLOWED_HOSTS`: how ports and `*` match, and connecting straight to a machine's IP ([#6](https://github.com/richarvey/OmniMem/issues/6))
+- 3.x backups import into 7 the same way as 6.x ones
+- A 6.x install that's a clone of this repository needs `git checkout v6.7.x` before its next `git pull`, since `main` is 7 and has no Compose file
+- For people writing their own MCP clients: an event-stream response opens with an empty `data:` priming event
+
 ## [7.0.4] - 2026-10-28
 
 ### Added

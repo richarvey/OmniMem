@@ -162,13 +162,108 @@ impl Engine {
         if new_state == MemoryState::Deleted {
             self.store.delete(key)?;
         }
+        let derived = self.cascade_to_derived(key, new_state)?;
+        if derived > 0 {
+            result.insert("derived_facts".into(), derived.into());
+        }
         info!(
             key,
             from = current.as_str(),
             to = new_state.as_str(),
+            derived,
             "transitioned memory"
         );
         Ok(result)
+    }
+
+    /// Facts and preferences extracted from `key` follow it: deprioritised,
+    /// archived or deleted with it, and back to active when it's reinstated.
+    /// A fact the source took with it is marked `retired_with`, so reinstating
+    /// the source brings back only those, never one turned down on its own.
+    /// Facts outlive nothing they were drawn from, which is how "the server
+    /// is at <ip>" stopped being recalled as true after its source went.
+    fn cascade_to_derived(&self, key: &str, new_state: MemoryState) -> Result<usize> {
+        if key.starts_with("mem:skill:") {
+            return Ok(0);
+        }
+        let mut derived = Vec::new();
+        for ns in ["knowledge", "preference"] {
+            let keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
+            let rows = self.store.get_fields_multi(
+                &keys,
+                &[
+                    "enriched_from",
+                    "source_doc_id",
+                    "state",
+                    "surface_score",
+                    "retired_with",
+                    "retired_surface",
+                    "retired_state",
+                ],
+            )?;
+            for (fact, row) in keys.into_iter().zip(rows) {
+                let Some(row) = row else { continue };
+                let from_source = |field: &str| row.get(field).is_some_and(|v| v == key);
+                if fact != key && (from_source("enriched_from") || from_source("source_doc_id")) {
+                    derived.push((fact, row));
+                }
+            }
+        }
+        let mut changed = 0;
+        let now = now_str();
+        for (fact, row) in derived {
+            let state = row.get("state").map_or("active", String::as_str);
+            let retired_by_source = row.get("retired_with").is_some_and(|v| v == key);
+            let follow = match new_state {
+                MemoryState::Deprioritised => state == "active",
+                MemoryState::Archived => matches!(state, "active" | "deprioritised"),
+                MemoryState::Deleted => true,
+                MemoryState::Active => retired_by_source,
+            };
+            if !follow {
+                continue;
+            }
+            if new_state == MemoryState::Deleted {
+                self.store.delete(&fact)?;
+                changed += 1;
+                continue;
+            }
+            let mut updates = Fields::from([
+                ("state".to_owned(), new_state.as_str().to_owned()),
+                ("updated_at".to_owned(), now.clone()),
+            ]);
+            if new_state == MemoryState::Active {
+                // Back to where it was before the source took it.
+                let saved = |name: &str, default: &str| {
+                    row.get(name)
+                        .filter(|v| !v.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| default.to_owned())
+                };
+                updates.insert("state".to_owned(), saved("retired_state", "active"));
+                updates.insert("surface_score".to_owned(), saved("retired_surface", "0.5"));
+                for name in ["retired_with", "retired_surface", "retired_state"] {
+                    updates.insert(name.to_owned(), String::new());
+                }
+            } else {
+                updates.insert(
+                    "surface_score".to_owned(),
+                    py_float(self.surface_score(new_state)),
+                );
+                updates.insert("retired_with".to_owned(), key.to_owned());
+                if !retired_by_source {
+                    let surface = row
+                        .get("surface_score")
+                        .cloned()
+                        .unwrap_or_else(|| "0.5".to_owned());
+                    updates.insert("retired_surface".to_owned(), surface);
+                    updates.insert("retired_state".to_owned(), state.to_owned());
+                }
+            }
+            self.store.set_fields(&fact, &updates)?;
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     pub(crate) fn suppressed_topics(&self) -> Result<Vec<String>> {

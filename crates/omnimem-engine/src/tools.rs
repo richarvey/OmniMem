@@ -166,6 +166,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     e.insert("namespace".into(), r.namespace.as_str().into());
     e.insert("content".into(), r.content.as_str().into());
     e.insert("score".into(), json!(r.adjusted_score));
+    e.insert("similarity".into(), json!(round_to(r.score, 4)));
     e.insert("state".into(), r.state.as_str().into());
     if let Some(p) = nonempty(&r.project) {
         e.insert("project".into(), p.into());
@@ -208,6 +209,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     }
     for (name, value) in [
         ("enriched_from", &r.enriched_from),
+        ("as_of", &r.as_of),
         ("licence", &r.licence),
         ("licence_note", &r.licence_note),
         ("provenance", &r.provenance),
@@ -674,6 +676,7 @@ impl Engine {
             e.insert("namespace".into(), r.namespace.as_str().into());
             e.insert("snippet".into(), snippet.as_str().into());
             e.insert("score".into(), json!(r.adjusted_score));
+            e.insert("similarity".into(), json!(round_to(r.score, 4)));
             e.insert("estimated_tokens".into(), estimate.into());
             if let Some(p) = nonempty(&r.project) {
                 e.insert("project".into(), p.into());
@@ -833,11 +836,16 @@ impl Engine {
         } else {
             for r in self.query_targets(key_or_query)? {
                 if r.state == "active" {
-                    affected.push(Value::Object(self.transition(
-                        &r.key,
-                        MemoryState::Deprioritised,
-                        Some(reason),
-                    )?));
+                    // A fact whose source matched first has already gone
+                    // with it, so its own transition is refused.
+                    match self.transition(&r.key, MemoryState::Deprioritised, Some(reason)) {
+                        Ok(t) => affected.push(Value::Object(t)),
+                        Err(EngineError::Invalid(e)) => {
+                            warn!(key = %r.key, error = %e, "cannot deprioritise");
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
                     if let Some(hints) = &hints {
                         self.add_reinstate_hints(&r.key, hints)?;
                     }
@@ -932,7 +940,11 @@ impl Engine {
                 .iter()
                 .map(|(k, c)| json!({"key": k, "content": c}))
                 .collect();
-            return Ok(json!({"status": "preview", "targets": preview}));
+            return Ok(json!({
+                "status": "preview",
+                "targets": preview,
+                "hint": "Nothing deleted yet. Call forget again with confirm=true to delete these, or deprioritise to stop them surfacing instead.",
+            }));
         }
         let mut deleted = Vec::new();
         for (key, _) in &targets {

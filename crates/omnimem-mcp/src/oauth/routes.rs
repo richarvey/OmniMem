@@ -67,7 +67,7 @@ pub(crate) fn routes(oauth: Arc<OAuth>) -> Router {
         .with_state(oauth)
 }
 
-/// The hosts and origins the OAuth routes accept. 6.x's FastMCP guard sat in
+/// The hosts and origins `/mcp` and the OAuth routes accept. 6.x's FastMCP guard sat in
 /// front of every route: a Host that isn't allowed gets 421, and a browser
 /// Origin that is neither allowed, nor loopback calling loopback, nor the
 /// server's own gets 403.
@@ -149,7 +149,7 @@ pub(crate) async fn guard(
     if !allow.host_allowed(&host) {
         warn!(
             host,
-            "refused an OAuth request for a host that isn't allowed"
+            "refused a request for a Host that isn't allowed: set MCP_PUBLIC_URL to the address clients use, or add the host to MCP_ALLOWED_HOSTS"
         );
         return (StatusCode::MISDIRECTED_REQUEST, "Misdirected Request").into_response();
     }
@@ -158,7 +158,7 @@ pub(crate) async fn guard(
     {
         warn!(
             host,
-            "refused an OAuth request from a browser origin that isn't allowed"
+            "refused a request from a browser Origin that isn't allowed: add it to MCP_ALLOWED_ORIGINS"
         );
         return (StatusCode::FORBIDDEN, "Forbidden Origin").into_response();
     }

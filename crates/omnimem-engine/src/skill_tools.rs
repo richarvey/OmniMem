@@ -105,7 +105,7 @@ impl Engine {
             seen.insert(key.as_str());
         }
 
-        let query_vector = self.embed(query_or_domain)?;
+        let query_vector = self.embed_query(query_or_domain)?;
         let hits =
             self.store
                 .search(Namespace::Skill, &query_vector, 10, &active_filter(), None)?;

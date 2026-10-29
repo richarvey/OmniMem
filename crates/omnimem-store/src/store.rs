@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use omnimem_core::classification::DEFAULT_CLASSIFICATION;
@@ -109,6 +110,10 @@ pub struct Store {
     pub(crate) vectors: RwLock<VectorIndex>,
     pub(crate) origin_id: String,
     dim: usize,
+    /// `PRAGMA data_version` when the matrix was last loaded. It moves when
+    /// another connection commits (an `omnimem import` while the server
+    /// runs, say), never for this one's own writes.
+    seen_version: AtomicI64,
 }
 
 impl Store {
@@ -142,12 +147,41 @@ impl Store {
         schema::migrate(&conn)?;
         let origin_id = schema::origin_id(&conn)?;
         let vectors = VectorIndex::load(&conn, dim)?;
+        let version = data_version(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
             vectors: RwLock::new(vectors),
             origin_id,
             dim,
+            seen_version: AtomicI64::new(version),
         })
+    }
+
+    /// Reload the vector matrix if another connection has committed since
+    /// it was loaded, so memories another process wrote (an import while the
+    /// server runs) can be found without a restart. One cheap pragma when
+    /// nothing changed. Failures are logged and the old matrix kept.
+    fn sync_external_writes(&self) {
+        let conn = self.conn();
+        let result = data_version(&conn).and_then(|version| {
+            if version == self.seen_version.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            let fresh = VectorIndex::load(&conn, self.dim)?;
+            let mut vectors = self.vectors_write();
+            let before = vectors.total();
+            *vectors = fresh;
+            self.seen_version.store(version, Ordering::Release);
+            tracing::info!(
+                before,
+                after = vectors.total(),
+                "another process changed the database; vectors reloaded"
+            );
+            Ok(())
+        });
+        if let Err(e) = result {
+            tracing::warn!(error = %e, "could not check the database for outside changes");
+        }
     }
 
     pub fn dimension(&self) -> usize {
@@ -601,11 +635,13 @@ impl Store {
 
     /// How many memories in a namespace have a vector.
     pub fn vector_count(&self, namespace: Namespace) -> usize {
+        self.sync_external_writes();
         self.vectors_read().len(namespace)
     }
 
     /// Stored vectors, aligned with `keys`.
     pub fn get_vectors_multi(&self, keys: &[String]) -> Vec<Option<Vec<f32>>> {
+        self.sync_external_writes();
         let index = self.vectors_read();
         keys.iter()
             .map(|k| memory_namespace(k).ok().and_then(|ns| index.get(ns, k)))
@@ -623,6 +659,7 @@ impl Store {
         return_fields: Option<&[&str]>,
     ) -> Result<Vec<SearchHit>> {
         self.check_dim(vector)?;
+        self.sync_external_writes();
         let top_k = top_k.clamp(1, 100);
         let allowed = if filter.is_empty() {
             None
@@ -886,6 +923,10 @@ pub(crate) fn write_vector(conn: &Connection, key: &str, vector: &[f32]) -> Resu
     )?;
     stmt.execute(params![key, to_bytes(vector)])?;
     Ok(())
+}
+
+fn data_version(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("PRAGMA data_version", [], |row| row.get(0))?)
 }
 
 #[cfg(test)]

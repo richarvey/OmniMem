@@ -52,6 +52,9 @@ pub struct RssConfig {
     /// and link-local addresses. Off by default, so a feed entry can't point
     /// OmniMem at the machine it runs on or the network behind it.
     pub allow_private_hosts: bool,
+    /// `RSS_SUMMARY_MODEL`: article summaries and digest items, which 6.x
+    /// hard-coded.
+    pub summary_model: String,
 }
 
 /// A `true`, `1` or `yes` setting.
@@ -90,6 +93,10 @@ impl RssConfig {
             max_knowledge_age_days: number("MAX_KNOWLEDGE_AGE_DAYS", 30),
             require_licence: flag("RSS_REQUIRE_LICENCE"),
             allow_private_hosts: flag("RSS_ALLOW_PRIVATE_HOSTS"),
+            summary_model: omnimem_core::env::var("RSS_SUMMARY_MODEL")
+                .map(|m| m.trim().to_owned())
+                .filter(|m| !m.is_empty())
+                .unwrap_or_else(|| summariser::MODEL.to_owned()),
         }
     }
 }

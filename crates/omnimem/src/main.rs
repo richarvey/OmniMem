@@ -70,8 +70,8 @@ enum Command {
     },
     /// Record and vector counts per namespace.
     Stats,
-    /// Nearest memories to a query by raw similarity. Recall scoring
-    /// (recency, experience, lifecycle) arrives with the engine.
+    /// Nearest memories to a query by raw similarity, without recall's
+    /// scoring (recency, experience, lifecycle) or its relevance floor.
     Search {
         query: String,
         #[arg(long, default_value = "episodic")]
@@ -464,6 +464,15 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
         db.path.display(),
         started.elapsed().as_secs_f64()
     );
+    if no_embed {
+        eprintln!(
+            "nothing was embedded, so recall can't find these until it's imported again without --no-embed"
+        );
+    } else {
+        eprintln!(
+            "a server already running on this database finds them on its next recall, no restart needed"
+        );
+    }
     Ok(())
 }
 
@@ -539,7 +548,7 @@ fn search(
     let namespace: Namespace = namespace.parse().map_err(|e| anyhow!("{e}"))?;
     let store = Store::open(db)?;
     let embedder = load_embedder()?;
-    let vector = embedder.embed(query)?;
+    let vector = embedder.embed_queries(&[query])?.pop().unwrap_or_default();
     let filter = SearchFilter {
         states: if all_states {
             Vec::new()

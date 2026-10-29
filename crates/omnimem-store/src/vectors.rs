@@ -106,6 +106,11 @@ impl VectorIndex {
         self.spaces.get(&namespace).map_or(0, |s| s.keys.len())
     }
 
+    /// Vectors across every namespace.
+    pub(crate) fn total(&self) -> usize {
+        self.spaces.values().map(|s| s.keys.len()).sum()
+    }
+
     /// The `k` nearest rows by cosine distance (`1 - cosine`, as valkey-search
     /// reported it), ties broken by key so results never depend on insertion
     /// order. `allowed`, when given, restricts the candidates.

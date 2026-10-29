@@ -80,7 +80,7 @@ const fn setting(
     }
 }
 
-const HAIKU: &str = "claude-haiku-4-5-20251001";
+const HAIKU: &str = "claude-haiku-5-5";
 
 const GROUPS: &[(&str, &[Setting])] = &[
     (
@@ -223,6 +223,20 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "",
             ),
             setting(
+                "CONTRADICTION_MODEL",
+                "Contradiction check model",
+                Kind::Text,
+                HAIKU,
+                "Asked whether two similar memories really contradict each other.",
+            ),
+            setting(
+                "RSS_SUMMARY_MODEL",
+                "RSS summary model",
+                Kind::Text,
+                HAIKU,
+                "Summarises feed articles and splits digests into their items.",
+            ),
+            setting(
                 "INGEST_MODE",
                 "Ingest mode",
                 Kind::Choice(&["full", "raw"]),
@@ -276,6 +290,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Decimal,
                 "0.35",
                 "Results under this are marked as weak matches. 0 turns the marker off.",
+            ),
+            setting(
+                "RECALL_EXPERIENCE_SPAN",
+                "Experience boost span",
+                Kind::Decimal,
+                "0",
+                "Above 0, experience nudges a score by at most this much instead of multiplying it, so a loose match can't outrank a close one. Try 0.05. 0 keeps the multiplier.",
             ),
             setting(
                 "RECENCY_DECAY_DAYS",
@@ -438,6 +459,20 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Integer,
                 "",
                 "Defaults to ONNX Runtime's own choice.",
+            ),
+            setting(
+                "EMBEDDING_QUERY_PREFIX",
+                "Query prefix",
+                Kind::Text,
+                "",
+                "Put before every search query, for models that want one: bge's \"Represent this sentence for searching relevant passages:\", e5's \"query:\".",
+            ),
+            setting(
+                "EMBEDDING_PASSAGE_PREFIX",
+                "Passage prefix",
+                Kind::Text,
+                "",
+                "Put before every memory as it's embedded (e5's \"passage:\"). Re-embed (export, then import) after changing it.",
             ),
             setting(
                 "HF_HUB_OFFLINE",

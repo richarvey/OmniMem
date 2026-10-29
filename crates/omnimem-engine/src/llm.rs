@@ -29,8 +29,11 @@ later by a question-answering system.\n\n\
 For each fact, identify:\n\
 - text: the standalone declarative sentence\n\
 - kind: one of 'fact' (general factual statement) or 'preference' \
-(prescriptive rule about how someone wants to work, e.g. 'I prefer X', \
-'always do Y', 'never do Z')\n\
+(a lasting, prescriptive rule about how someone wants work done, e.g. \
+'I prefer X', 'always do Y', 'never do Z'). A status, a task, a to-do, a \
+plan or something still waiting to happen is never a preference, even \
+when it says 'needs' or 'should': 'the bearer token needs rotating' and \
+'the change is awaiting sign-off' are facts. When unsure, use 'fact'.\n\
 - event_date: if the fact references a specific date or relative time \
 ('last March', '2026-03-15', 'yesterday'), provide it as ISO 8601 \
 (YYYY-MM-DD). Omit this field if no date is mentioned.\n\n\
@@ -38,9 +41,6 @@ Return ONLY a JSON array of objects. No markdown fences, no explanation. \
 If the text contains no extractable facts, return an empty array.\n\
 Skip pleasantries, hedging, and meta-commentary about the conversation.\n\n\
 Text:\n{content}\n";
-
-/// 6.x hard-coded the model for the contradiction check.
-const CONTRADICTION_MODEL: &str = "claude-haiku-4-5-20251001";
 
 const EXPANSION_CACHE_TTL: Duration = Duration::from_secs(86_400);
 
@@ -310,7 +310,7 @@ impl Engine {
             take_chars(content_a, 1000),
             take_chars(content_b, 1000),
         );
-        match llm.complete(CONTRADICTION_MODEL, &prompt, 256) {
+        match llm.complete(&self.config.contradiction_model, &prompt, 256) {
             Err(e) => {
                 error!(error = %e, "contradiction API check failed");
                 unconfirmed(format!("API check failed: {e}"))
@@ -481,6 +481,9 @@ impl Engine {
                 ("source_doc_id".to_owned(), source_doc_id.clone()),
                 ("enriched_from".to_owned(), key.clone()),
             ]);
+            if let Some(as_of) = &source_created_at {
+                fields.insert("as_of".to_owned(), as_of.clone());
+            }
             fields.extend(classification.clone());
             if let Some(project) = &project {
                 fields.insert("project".to_owned(), project.clone());

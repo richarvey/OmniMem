@@ -37,7 +37,7 @@ Flags accept `true`, `1` or `yes` (any case); anything else, or leaving it unset
 | `MCP_PORT` | `8765` | Port. Clients connect to `http://address:port/mcp` |
 | `MCP_AUTH_TOKEN` | *(unset)* | A shared bearer token clients send as `Authorization: Bearer <token>`. Compared in constant time. Works alongside OAuth |
 | `MCP_PUBLIC_URL` | *(unset)* | Where clients reach OmniMem through a proxy or tunnel. Its host and origin are trusted automatically |
-| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host that isn't allowed gets `421 Misdirected Request` |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host without a port matches any port, `host:port` only that one, and `*` allows any host. A host that isn't allowed gets `421 Misdirected Request`, before any token check |
 | `MCP_ALLOWED_ORIGINS` | *(unset)* | Extra browser origins (`scheme://host[:port]`) to accept, comma separated |
 
 See [remote access](remote-access.md) for putting OmniMem behind a reverse proxy, and what 421 and 403 errors mean.
@@ -69,10 +69,12 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | A different Messages API endpoint, such as a proxy |
 | `INGEST_MODE` | `full` | `full` stores a memory as written, then extracts atomic facts in the background (facts go to the knowledge namespace, preferences to the preference namespace). `raw` just stores it. Falls back to raw with no key |
 | `ENRICHMENT_BATCH_MODE` | off | Send a whole `remember_document()` to one extraction call instead of one per chunk. Faster for big documents, with a bigger prompt |
-| `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model for fact extraction |
+| `FACT_EXTRACTION_MODEL` | `claude-haiku-5-5` | Model for fact extraction |
 | `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise. Needs `ANTHROPIC_API_KEY`: without it recall searches the original query alone, and the log says so once |
 | `RECALL_EXPAND_COUNT` | `3` | Variants per expanded query, 1 to 10 |
-| `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Model for query expansion |
+| `QUERY_EXPANSION_MODEL` | `claude-haiku-5-5` | Model for query expansion |
+| `CONTRADICTION_MODEL` | `claude-haiku-5-5` | Model for the second tier of `check_contradictions()`, which confirms or rejects a pair the similarity check flagged |
+| `RSS_SUMMARY_MODEL` | `claude-haiku-5-5` | Model for RSS article summaries and for splitting digest feeds into their items |
 
 ## Recall and maintenance
 
@@ -81,6 +83,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `MEMORY_RECALL_TOP_K` | `5` | Default number of recall results. A ceiling, not a target |
 | `RECALL_MIN_SCORE` | `0.15` | Relevance floor on raw similarity. Anything below it is left out, so a short or empty result is a real answer. Abandoned-approach warnings and reinstate candidates are exempt. `0` keeps everything |
 | `RECALL_WEAK_SCORE` | `0.35` | Results whose raw similarity is above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
+| `RECALL_EXPERIENCE_SPAN` | `0` | How experience weight (from `record_experience`) moves a recall score. At `0` the score is multiplied by the weight, as in 6.x, so a weight of 1.8 lets a loose match at 0.45 (0.81) beat a close one at 0.75. Above `0` the weight is added instead, as `(weight - 1) × span`: with `0.05`, the strongest weight (2.0) is worth 0.05 of similarity and 1.8 is worth 0.04, enough to break a near-tie but not to outrank a clearly better match. Embedding models with a narrow score spread, such as bge-small-en-v1.5, need this most |
 | `RECENCY_DECAY_DAYS` | `90` | Where the gentle decay ends and the steeper one begins. Recency declines from day one, reaching 0.9 here, then 5% per 30 days down to a 0.3 floor. 6.x stayed at 1.0 until here, so past it the multiplier is 0.1 lower than it was. The floor and weak band read raw similarity, so they don't move with it |
 | `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
@@ -135,6 +138,8 @@ The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revisi
 | `EMBEDDING_ONNX_FILE` | `onnx/model.onnx` | Which graph in the repo to run. Quantised graphs are faster but don't produce the same vectors, so re-embed (export and import) before switching |
 | `EMBEDDING_MAX_SEQ_LENGTH` | from the model (256 for MiniLM) | Token cap per text. Clamped to what the model supports |
 | `EMBEDDING_THREADS` | ONNX Runtime's choice | Threads per embedding call |
+| `EMBEDDING_QUERY_PREFIX` | *(unset)* | Text put before every search query (recall, `find_skills`, `check_contradictions` with a query, `omnimem search`), joined with one space. Some models are trained to expect one: `Represent this sentence for searching relevant passages:` for bge-*-en-v1.5, `query:` for e5. Changing it needs no reindex |
+| `EMBEDDING_PASSAGE_PREFIX` | *(unset)* | Text put before every memory, chunk, article and skill as it's embedded, such as e5's `passage:`. Stored vectors were made without it, so re-embed after changing it: export a backup, then import it into a fresh database |
 | `HF_HOME`, `HF_HUB_CACHE` | `~/.cache/huggingface` | Where downloaded models are cached, as the Hugging Face tools use it. `XDG_CACHE_HOME` is honoured too |
 | `HF_ENDPOINT` | `https://huggingface.co` | A mirror to download from |
 | `HF_HUB_OFFLINE` | off | Never contact Hugging Face. The model must already be in the cache (or `EMBEDDING_MODEL` must be a folder) |
