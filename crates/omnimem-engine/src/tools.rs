@@ -166,6 +166,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     e.insert("namespace".into(), r.namespace.as_str().into());
     e.insert("content".into(), r.content.as_str().into());
     e.insert("score".into(), json!(r.adjusted_score));
+    e.insert("similarity".into(), json!(round_to(r.score, 4)));
     e.insert("state".into(), r.state.as_str().into());
     if let Some(p) = nonempty(&r.project) {
         e.insert("project".into(), p.into());
@@ -674,6 +675,7 @@ impl Engine {
             e.insert("namespace".into(), r.namespace.as_str().into());
             e.insert("snippet".into(), snippet.as_str().into());
             e.insert("score".into(), json!(r.adjusted_score));
+            e.insert("similarity".into(), json!(round_to(r.score, 4)));
             e.insert("estimated_tokens".into(), estimate.into());
             if let Some(p) = nonempty(&r.project) {
                 e.insert("project".into(), p.into());
@@ -932,7 +934,11 @@ impl Engine {
                 .iter()
                 .map(|(k, c)| json!({"key": k, "content": c}))
                 .collect();
-            return Ok(json!({"status": "preview", "targets": preview}));
+            return Ok(json!({
+                "status": "preview",
+                "targets": preview,
+                "hint": "Nothing deleted yet. Call forget again with confirm=true to delete these, or deprioritise to stop them surfacing instead.",
+            }));
         }
         let mut deleted = Vec::new();
         for (key, _) in &targets {

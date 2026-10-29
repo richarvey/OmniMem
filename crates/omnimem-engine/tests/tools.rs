@@ -412,6 +412,11 @@ fn a_fact_and_its_source_collapse_to_the_source() {
         (score - 1.0).abs() < 1e-6,
         "promoted to the fact's score, got {score}"
     );
+    assert_eq!(
+        out[0]["similarity"],
+        json!(1.0),
+        "and to its raw similarity, rounded"
+    );
 }
 
 #[test]
@@ -621,9 +626,11 @@ fn lifecycle_transitions_by_key() {
 fn forget_previews_then_deletes() {
     let e = engine();
     put(&e, "mem:episodic:gone", "delete me please", &[]);
-    assert_eq!(
-        e.forget("mem:episodic:gone", false).unwrap()["status"],
-        "preview"
+    let preview = e.forget("mem:episodic:gone", false).unwrap();
+    assert_eq!(preview["status"], "preview");
+    assert!(
+        preview["hint"].as_str().unwrap().contains("confirm=true"),
+        "the preview says how to go ahead"
     );
     assert!(e.store().get("mem:episodic:gone").unwrap().is_some());
     assert_eq!(
