@@ -38,6 +38,7 @@ impl TextEmbedder for Words {
 struct Scripted {
     replies: Mutex<VecDeque<String>>,
     prompts: Mutex<Vec<(u32, String)>>,
+    models: Mutex<Vec<String>>,
 }
 
 impl Scripted {
@@ -57,7 +58,8 @@ impl Scripted {
 }
 
 impl LanguageModel for Scripted {
-    fn complete(&self, _model: &str, prompt: &str, max_tokens: u32) -> Result<String, LlmError> {
+    fn complete(&self, model: &str, prompt: &str, max_tokens: u32) -> Result<String, LlmError> {
+        self.models.lock().unwrap().push(model.to_owned());
         self.prompts
             .lock()
             .unwrap()
@@ -158,6 +160,7 @@ fn config(feeds_path: PathBuf) -> RssConfig {
         require_licence: false,
         // The test servers listen on loopback.
         allow_private_hosts: true,
+        summary_model: "claude-haiku-5-5".to_owned(),
     }
 }
 
@@ -228,7 +231,11 @@ fn summary_mode_stores_articles_and_skips_them_next_time() {
         ),
     );
     let model = Scripted::with(&["  A summary.  "]);
-    let (ingester, store) = ingester(Some(model.clone()), config(no_feeds_file()));
+    let config = RssConfig {
+        summary_model: "claude-sonnet-5-5".to_owned(),
+        ..config(no_feeds_file())
+    };
+    let (ingester, store) = ingester(Some(model.clone()), config);
     let feed =
         feed(&json!({"url": format!("{base}/feed.xml"), "name": "Example", "topics": ["rust"]}));
 
@@ -254,6 +261,7 @@ fn summary_mode_stores_articles_and_skips_them_next_time() {
     let (max_tokens, prompt) = &model.prompts()[0];
     assert_eq!(*max_tokens, 256);
     assert!(prompt.ends_with(&format!("Title: A Post\nURL: {base}/post\n\nHello world")));
+    assert_eq!(*model.models.lock().unwrap(), ["claude-sonnet-5-5"]);
 
     let second = ingester.ingest_feed(&feed).unwrap();
     assert_eq!(

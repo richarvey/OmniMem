@@ -223,6 +223,20 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "",
             ),
             setting(
+                "CONTRADICTION_MODEL",
+                "Contradiction check model",
+                Kind::Text,
+                HAIKU,
+                "Asked whether two similar memories really contradict each other.",
+            ),
+            setting(
+                "RSS_SUMMARY_MODEL",
+                "RSS summary model",
+                Kind::Text,
+                HAIKU,
+                "Summarises feed articles and splits digests into their items.",
+            ),
+            setting(
                 "INGEST_MODE",
                 "Ingest mode",
                 Kind::Choice(&["full", "raw"]),

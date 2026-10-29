@@ -459,4 +459,22 @@ fn tier_two_confirms_or_rejects_heuristic_matches() {
             .unwrap()["contradictions"],
         json!([])
     );
+
+    let model3 = Arc::new(Scripted::default());
+    let e3 = engine_with(
+        EngineConfig {
+            contradiction_model: "claude-sonnet-5-5".to_owned(),
+            ..EngineConfig::default()
+        },
+        Some(model3.clone()),
+    );
+    seed(&e3);
+    model3.reply(r#"{"is_contradiction": false, "confidence": 0.1, "explanation": "no"}"#);
+    e3.check_contradictions(None, "episodic", None, true)
+        .unwrap();
+    assert_eq!(
+        model3.calls()[0].0,
+        "claude-sonnet-5-5",
+        "CONTRADICTION_MODEL is used"
+    );
 }

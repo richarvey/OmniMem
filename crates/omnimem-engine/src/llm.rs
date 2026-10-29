@@ -42,9 +42,6 @@ If the text contains no extractable facts, return an empty array.\n\
 Skip pleasantries, hedging, and meta-commentary about the conversation.\n\n\
 Text:\n{content}\n";
 
-/// 6.x hard-coded the model for the contradiction check.
-const CONTRADICTION_MODEL: &str = "claude-haiku-5-5";
-
 const EXPANSION_CACHE_TTL: Duration = Duration::from_secs(86_400);
 
 /// Whether this process has said that expansion can't run without a key.
@@ -313,7 +310,7 @@ impl Engine {
             take_chars(content_a, 1000),
             take_chars(content_b, 1000),
         );
-        match llm.complete(CONTRADICTION_MODEL, &prompt, 256) {
+        match llm.complete(&self.config.contradiction_model, &prompt, 256) {
             Err(e) => {
                 error!(error = %e, "contradiction API check failed");
                 unconfirmed(format!("API check failed: {e}"))

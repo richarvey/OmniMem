@@ -10,7 +10,7 @@ use omnimem_engine::skills::py_str;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 
-/// 6.x hard-coded the model for both calls.
+/// The default for `RSS_SUMMARY_MODEL`; 6.x hard-coded it for both calls.
 pub const MODEL: &str = "claude-haiku-5-5";
 
 const REFUSAL_PHRASES: [&str; 10] = [
@@ -72,6 +72,7 @@ pub fn fallback_summary(title: &str, content: &str) -> String {
 /// model or the call fails, or `None` when the model refuses.
 pub fn summarise(
     llm: Option<&dyn LanguageModel>,
+    model: &str,
     title: &str,
     url: &str,
     content: &str,
@@ -86,7 +87,7 @@ pub fn summarise(
          Title: {title}\nURL: {url}\n\n{}",
         take_chars(content, 3000)
     );
-    match llm.complete(MODEL, &prompt, 256) {
+    match llm.complete(model, &prompt, 256) {
         Ok(reply) => {
             let summary = reply.trim();
             if is_refusal(summary) {
@@ -107,6 +108,7 @@ pub fn summarise(
 /// there is no model, the call fails, the model refuses or nothing is usable.
 pub fn extract_items(
     llm: Option<&dyn LanguageModel>,
+    model: &str,
     title: &str,
     url: &str,
     content: &str,
@@ -119,7 +121,7 @@ pub fn extract_items(
         "{EXTRACT_PROMPT}Article title: {title}\nArticle URL: {url}\n\n{}",
         take_chars(content, 12_000)
     );
-    let reply = match llm.complete(MODEL, &prompt, 4096) {
+    let reply = match llm.complete(model, &prompt, 4096) {
         Ok(reply) => reply,
         Err(e) => {
             error!(title, error = %e, "extraction failed");
@@ -204,7 +206,7 @@ mod tests {
             "title": "t".repeat(3000), "who": "w", "what": "x", "why": "y"
         });
         let reply = Value::Array(vec![item; MAX_ITEMS + 20]).to_string();
-        let items = extract_items(Some(&Canned(reply)), "T", "u", "c").unwrap();
+        let items = extract_items(Some(&Canned(reply)), MODEL, "T", "u", "c").unwrap();
         assert_eq!(items.len(), MAX_ITEMS);
         assert_eq!(items[0].title.chars().count(), MAX_ITEM_FIELD_CHARS);
         assert_eq!(items[0].who, "w");

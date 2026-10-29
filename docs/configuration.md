@@ -73,6 +73,8 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise. Needs `ANTHROPIC_API_KEY`: without it recall searches the original query alone, and the log says so once |
 | `RECALL_EXPAND_COUNT` | `3` | Variants per expanded query, 1 to 10 |
 | `QUERY_EXPANSION_MODEL` | `claude-haiku-5-5` | Model for query expansion |
+| `CONTRADICTION_MODEL` | `claude-haiku-5-5` | Model for the second tier of `check_contradictions()`, which confirms or rejects a pair the similarity check flagged |
+| `RSS_SUMMARY_MODEL` | `claude-haiku-5-5` | Model for RSS article summaries and for splitting digest feeds into their items |
 
 ## Recall and maintenance
 
