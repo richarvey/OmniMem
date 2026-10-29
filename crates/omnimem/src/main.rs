@@ -464,6 +464,15 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
         db.path.display(),
         started.elapsed().as_secs_f64()
     );
+    if no_embed {
+        eprintln!(
+            "nothing was embedded, so recall can't find these until an agent calls the `reindex` tool"
+        );
+    } else {
+        eprintln!(
+            "a server already running on this database finds them on its next recall, no restart needed"
+        );
+    }
     Ok(())
 }
 

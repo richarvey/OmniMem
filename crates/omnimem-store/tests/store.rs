@@ -721,3 +721,46 @@ fn records_and_vectors_survive_reopening() {
         let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
     }
 }
+
+#[test]
+fn another_connections_writes_are_found_without_reopening() {
+    let path =
+        std::env::temp_dir().join(format!("omnimem-store-outside-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let v = vec![1.0 / (omnimem_core::VECTOR_DIM as f32).sqrt(); omnimem_core::VECTOR_DIM];
+    let server = Store::open(&path).unwrap();
+    server
+        .upsert("mem:episodic:own", &fields(&[("content", "own")]), Some(&v))
+        .unwrap();
+    assert_eq!(server.vector_count(Namespace::Episodic), 1);
+
+    // An `omnimem import` running beside the server: its own connection.
+    let import = Store::open(&path).unwrap();
+    import
+        .upsert(
+            "mem:episodic:imported",
+            &fields(&[("content", "imported")]),
+            Some(&v),
+        )
+        .unwrap();
+    drop(import);
+
+    assert_eq!(server.vector_count(Namespace::Episodic), 2);
+    let hits = server
+        .search(Namespace::Episodic, &v, 5, &SearchFilter::default(), None)
+        .unwrap();
+    assert_eq!(hits.len(), 2, "the imported memory is searchable at once");
+    // The server's own writes still land in the matrix as they always did.
+    server
+        .upsert(
+            "mem:episodic:later",
+            &fields(&[("content", "later")]),
+            Some(&v),
+        )
+        .unwrap();
+    assert_eq!(server.vector_count(Namespace::Episodic), 3);
+    drop(server);
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
