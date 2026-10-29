@@ -3,10 +3,10 @@
 # buttons link straight to the release files). /download/<platform> keeps older
 # links landing on a file: at a new release, change the version here and on
 # the four buttons in index.html.
-/download/macos          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.4/OmniMem-7.0.4-arm64.dmg                   302
-/download/windows        https://code.squarecows.com/ric/omnimem/releases/download/v7.0.4/OmniMem-7.0.4-x64.msi                     302
-/download/linux          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.4/omnimem-desktop-7.0.4-linux-amd64.flatpak 302
-/download/linux-arm64    https://code.squarecows.com/ric/omnimem/releases/download/v7.0.4/omnimem-desktop-7.0.4-linux-arm64.flatpak 302
+/download/macos          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.5/OmniMem-7.0.5-arm64.dmg                   302
+/download/windows        https://code.squarecows.com/ric/omnimem/releases/download/v7.0.5/OmniMem-7.0.5-x64.msi                     302
+/download/linux          https://code.squarecows.com/ric/omnimem/releases/download/v7.0.5/omnimem-desktop-7.0.5-linux-amd64.flatpak 302
+/download/linux-arm64    https://code.squarecows.com/ric/omnimem/releases/download/v7.0.5/omnimem-desktop-7.0.5-linux-arm64.flatpak 302
 
 # Short link to the source on GitHub.
 /source                  https://github.com/richarvey/OmniMem                                                                    302
