@@ -69,10 +69,10 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | A different Messages API endpoint, such as a proxy |
 | `INGEST_MODE` | `full` | `full` stores a memory as written, then extracts atomic facts in the background (facts go to the knowledge namespace, preferences to the preference namespace). `raw` just stores it. Falls back to raw with no key |
 | `ENRICHMENT_BATCH_MODE` | off | Send a whole `remember_document()` to one extraction call instead of one per chunk. Faster for big documents, with a bigger prompt |
-| `FACT_EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model for fact extraction |
+| `FACT_EXTRACTION_MODEL` | `claude-haiku-5-5` | Model for fact extraction |
 | `RECALL_EXPAND_QUERIES` | off | Rephrase every recall query with Claude and merge the results, unless a call says otherwise. Needs `ANTHROPIC_API_KEY`: without it recall searches the original query alone, and the log says so once |
 | `RECALL_EXPAND_COUNT` | `3` | Variants per expanded query, 1 to 10 |
-| `QUERY_EXPANSION_MODEL` | `claude-haiku-4-5-20251001` | Model for query expansion |
+| `QUERY_EXPANSION_MODEL` | `claude-haiku-5-5` | Model for query expansion |
 
 ## Recall and maintenance
 

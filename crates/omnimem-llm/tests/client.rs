@@ -68,7 +68,7 @@ const REPLY: &str = r#"{"content": [{"type": "text", "text": "[\"a\", \"b\"]"}]}
 fn sends_a_messages_request_and_reads_the_first_text_block() {
     let (url, seen) = server(vec![(200, "", REPLY)]);
     let text = client(&url)
-        .complete("claude-haiku-4-5-20251001", "hello", 512)
+        .complete("claude-haiku-5-5", "hello", 512)
         .unwrap();
     assert_eq!(text, r#"["a", "b"]"#);
     let seen = seen.lock().unwrap();
@@ -78,9 +78,27 @@ fn sends_a_messages_request_and_reads_the_first_text_block() {
             .headers
             .contains(&"anthropic-version: 2023-06-01".to_owned())
     );
-    assert_eq!(seen[0].body["model"], "claude-haiku-4-5-20251001");
+    assert_eq!(seen[0].body["model"], "claude-haiku-5-5");
     assert_eq!(seen[0].body["max_tokens"], 512);
     assert_eq!(seen[0].body["messages"][0]["content"], "hello");
+}
+
+#[test]
+fn skips_blocks_before_the_first_text_block() {
+    let reply = r#"{"content": [{"type": "thinking", "thinking": "hmm", "signature": "s"}, {"type": "text", "text": "answer"}, {"type": "text", "text": "more"}]}"#;
+    let (url, _) = server(vec![(200, "", reply)]);
+    let text = client(&url).complete("claude-haiku-5-5", "q", 64).unwrap();
+    assert_eq!(text, "answer");
+}
+
+#[test]
+fn a_reply_without_a_text_block_is_an_error() {
+    let reply = r#"{"content": [{"type": "thinking", "thinking": "hmm", "signature": "s"}]}"#;
+    let (url, _) = server(vec![(200, "", reply)]);
+    let err = client(&url)
+        .complete("claude-haiku-5-5", "q", 64)
+        .unwrap_err();
+    assert!(err.to_string().contains("no text block"), "{err}");
 }
 
 #[test]

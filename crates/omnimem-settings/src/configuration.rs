@@ -80,7 +80,7 @@ const fn setting(
     }
 }
 
-const HAIKU: &str = "claude-haiku-4-5-20251001";
+const HAIKU: &str = "claude-haiku-5-5";
 
 const GROUPS: &[(&str, &[Setting])] = &[
     (

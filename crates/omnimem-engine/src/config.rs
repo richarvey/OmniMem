@@ -80,8 +80,8 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            fact_extraction_model: "claude-haiku-4-5-20251001".to_owned(),
-            query_expansion_model: "claude-haiku-4-5-20251001".to_owned(),
+            fact_extraction_model: "claude-haiku-5-5".to_owned(),
+            query_expansion_model: "claude-haiku-5-5".to_owned(),
             recall_expand_count: 3,
             recall_top_k: 5,
             recall_min_score: 0.15,

@@ -11,7 +11,7 @@ use serde_json::Value;
 use tracing::{debug, error, info, warn};
 
 /// 6.x hard-coded the model for both calls.
-pub const MODEL: &str = "claude-haiku-4-5-20251001";
+pub const MODEL: &str = "claude-haiku-5-5";
 
 const REFUSAL_PHRASES: [&str; 10] = [
     "i don't have access",

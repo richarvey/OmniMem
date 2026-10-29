@@ -149,7 +149,7 @@ fn extraction_parses_fenced_replies_and_fails_open() {
         ("fact", Some(1_773_568_800.0))
     );
     let (model_name, prompt, max_tokens) = &model.calls()[0];
-    assert_eq!(model_name, "claude-haiku-4-5-20251001");
+    assert_eq!(model_name, "claude-haiku-5-5");
     assert_eq!(*max_tokens, 2048);
     assert!(prompt.starts_with("Extract discrete, atomic facts from the following text."));
     assert!(prompt.ends_with("Text:\nwe use rust and shipped\n"));
@@ -355,7 +355,7 @@ fn expansion_is_cached_cleaned_and_unions_into_recall() {
     let (model_name, prompt, max_tokens) = &model.calls()[0];
     assert_eq!(
         (model_name.as_str(), *max_tokens),
-        ("claude-haiku-4-5-20251001", 512)
+        ("claude-haiku-5-5", 512)
     );
     assert!(prompt.starts_with("Generate 3 alternative phrasings"));
     assert!(prompt.ends_with("Original query: which qualification was earned\n"));
@@ -438,7 +438,7 @@ fn tier_two_confirms_or_rejects_heuristic_matches() {
     let (model_name, prompt, max_tokens) = &model.calls()[1];
     assert_eq!(
         (model_name.as_str(), *max_tokens),
-        ("claude-haiku-4-5-20251001", 256)
+        ("claude-haiku-5-5", 256)
     );
     assert!(prompt.contains("Memory A:\n"));
     let linked: Value = serde_json::from_str(

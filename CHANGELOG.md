@@ -2,6 +2,14 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.5] - Unreleased
+
+### Changed
+- **Claude Haiku 5.5 is the default model** for fact extraction, query expansion, contradiction checks and RSS summaries (`claude-haiku-5-5`, was `claude-haiku-4-5-20251001`). It's cheaper and more capable. `FACT_EXTRACTION_MODEL` and `QUERY_EXPANSION_MODEL` still pick another
+
+### Fixed
+- **Current Claude models work for fact extraction and the other Claude calls.** OmniMem read only the reply's first content block, as 6.x did, and newer models can open with a block that isn't text, so every call failed with "no text in the first content block". It now takes the first text block
+
 ## [7.0.4] - 2026-10-28
 
 ### Added

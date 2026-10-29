@@ -40,7 +40,7 @@ Skip pleasantries, hedging, and meta-commentary about the conversation.\n\n\
 Text:\n{content}\n";
 
 /// 6.x hard-coded the model for the contradiction check.
-const CONTRADICTION_MODEL: &str = "claude-haiku-4-5-20251001";
+const CONTRADICTION_MODEL: &str = "claude-haiku-5-5";
 
 const EXPANSION_CACHE_TTL: Duration = Duration::from_secs(86_400);
 

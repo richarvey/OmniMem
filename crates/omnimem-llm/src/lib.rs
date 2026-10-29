@@ -166,13 +166,18 @@ impl AnthropicClient {
             error: AnthropicError::Response(e.to_string()),
             retry_after: None,
         })?;
-        // `message.content[0].text`, as 6.x read it.
-        reply["content"][0]["text"]
-            .as_str()
+        // The first text block. 6.x read `content[0].text`, but newer models
+        // can open with a block of another type (thinking, for one).
+        reply["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|block| block["type"] == "text")
+            .and_then(|block| block["text"].as_str())
             .map(str::to_owned)
             .ok_or_else(|| Attempt {
                 retryable: false,
-                error: AnthropicError::Response("no text in the first content block".into()),
+                error: AnthropicError::Response("no text block in the reply".into()),
                 retry_after: None,
             })
     }
