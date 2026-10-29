@@ -278,6 +278,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Results under this are marked as weak matches. 0 turns the marker off.",
             ),
             setting(
+                "RECALL_EXPERIENCE_SPAN",
+                "Experience boost span",
+                Kind::Decimal,
+                "0",
+                "Above 0, experience nudges a score by at most this much instead of multiplying it, so a loose match can't outrank a close one. Try 0.05. 0 keeps the multiplier.",
+            ),
+            setting(
                 "RECENCY_DECAY_DAYS",
                 "Recency decay after (days)",
                 Kind::Decimal,

@@ -4,6 +4,9 @@ Format: [version] - date - description
 
 ## [7.0.5] - Unreleased
 
+### Added
+- **`RECALL_EXPERIENCE_SPAN` stops experience outranking relevance.** Recall multiplies a memory's score by its experience weight, as 6.x did, so a weight of 1.8 lifts a loose match at 0.45 to 0.81, past a close one at 0.75. A user's benchmark of 36 queries against a real store of about 3,080 memories found 20 targets ranked first on raw similarity but only 11 through `recall()`, and every target it lost was pushed out by boosted memories. Set the span above 0 and the weight is added instead, as `(weight - 1) × span`: at `0.05` the strongest weight is worth 0.05 of similarity, enough to settle a near-tie between memories but not to beat a clearly better match. It's also what makes models with a narrow score spread, such as bge-small-en-v1.5, usable in recall. The default, `0`, keeps 6.x's multiplier, and the setting is on the settings window's Configuration page
+
 ### Changed
 - **Claude Haiku 5.5 is the default model** for fact extraction, query expansion, contradiction checks and RSS summaries (`claude-haiku-5-5`, was `claude-haiku-4-5-20251001`). It's cheaper and more capable. `FACT_EXTRACTION_MODEL` and `QUERY_EXPANSION_MODEL` still pick another
 

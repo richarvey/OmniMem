@@ -701,7 +701,12 @@ impl Engine {
                     (Some(q), Some(e)) => temporal_boost(q, e),
                     _ => 1.0,
                 };
-                let mut adjusted = raw_score * surface * recency * exp_weight * temporal;
+                let span = self.config.recall_experience_span;
+                let mut adjusted = if span > 0.0 {
+                    (raw_score * surface * recency * temporal + (exp_weight - 1.0) * span).max(0.0)
+                } else {
+                    raw_score * surface * recency * exp_weight * temporal
+                };
 
                 let mut reinstate = false;
                 if state == "deprioritised"

@@ -19,6 +19,9 @@ pub struct EngineConfig {
     pub recall_min_score: f64,
     /// `RECALL_WEAK_SCORE`: below this a kept result is `weak_match`; 0 disables.
     pub recall_weak_score: f64,
+    /// `RECALL_EXPERIENCE_SPAN`: 0 multiplies by the experience weight, as
+    /// 6.x did; above 0 the weight adds `(weight - 1) * span` instead.
+    pub recall_experience_span: f64,
     /// `RECENCY_DECAY_DAYS`
     pub recency_decay_days: f64,
     /// `ABANDONED_CACHE_TTL_SECONDS`; zero disables the cache.
@@ -86,6 +89,7 @@ impl Default for EngineConfig {
             recall_top_k: 5,
             recall_min_score: 0.15,
             recall_weak_score: 0.35,
+            recall_experience_span: 0.0,
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),
             deprioritised_weight: 0.2,
@@ -176,6 +180,7 @@ impl EngineConfig {
             recall_top_k: number("MEMORY_RECALL_TOP_K", d.recall_top_k).clamp(1, 50),
             recall_min_score: float("RECALL_MIN_SCORE", d.recall_min_score, UNIT),
             recall_weak_score: float("RECALL_WEAK_SCORE", d.recall_weak_score, UNIT),
+            recall_experience_span: float("RECALL_EXPERIENCE_SPAN", d.recall_experience_span, UNIT),
             recency_decay_days: float("RECENCY_DECAY_DAYS", d.recency_decay_days, NON_NEGATIVE),
             abandoned_cache_ttl: Duration::from_secs(number("ABANDONED_CACHE_TTL_SECONDS", 60)),
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),

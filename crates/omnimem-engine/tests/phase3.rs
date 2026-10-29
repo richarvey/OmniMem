@@ -841,3 +841,80 @@ fn check_contradictions_links_both_sides_once() {
         invalid(e.check_contradictions(None, "logs", None, false)).starts_with("Invalid namespace")
     );
 }
+
+fn ranked(e: &Engine, query: &str) -> Vec<String> {
+    e.recall_results(query, None, Some(5), &[], Some(0.0), Some(false))
+        .unwrap()
+        .into_iter()
+        .map(|r| r.key)
+        .collect()
+}
+
+#[test]
+fn experience_multiplies_the_score_by_default() {
+    let e = engine();
+    // Raw similarities to the query: 0.89 for the close match, 0.75 for the
+    // looser one, which a 1.8 experience weight lifts to 1.35.
+    put(
+        &e,
+        "mem:episodic:01CLOSE",
+        "alpha beta gamma delta epsilon",
+        &[],
+    );
+    put(
+        &e,
+        "mem:episodic:02LOOSE",
+        "alpha beta gamma zeta",
+        &[("experience_weight", "1.8")],
+    );
+    let keys = ranked(&e, "alpha beta gamma delta epsilon");
+    assert_eq!(keys[0], "mem:episodic:02LOOSE");
+}
+
+#[test]
+fn an_experience_span_keeps_a_loose_match_below_a_close_one() {
+    let e = engine_with(EngineConfig {
+        recall_experience_span: 0.05,
+        ..EngineConfig::default()
+    });
+    put(
+        &e,
+        "mem:episodic:01CLOSE",
+        "alpha beta gamma delta epsilon",
+        &[],
+    );
+    put(
+        &e,
+        "mem:episodic:02LOOSE",
+        "alpha beta gamma zeta",
+        &[("experience_weight", "1.8")],
+    );
+    assert_eq!(
+        ranked(&e, "alpha beta gamma delta epsilon")[0],
+        "mem:episodic:01CLOSE"
+    );
+
+    // Between equally close matches, experience still decides.
+    put(&e, "mem:episodic:03PLAIN", "theta iota kappa lambda", &[]);
+    put(
+        &e,
+        "mem:episodic:04PROVEN",
+        "theta iota kappa mu",
+        &[("experience_weight", "1.25")],
+    );
+    put(
+        &e,
+        "mem:episodic:05PIVOT",
+        "theta iota kappa nu",
+        &[("experience_weight", "0.7")],
+    );
+    let keys = ranked(&e, "theta iota kappa xi");
+    assert_eq!(
+        keys[..3],
+        [
+            "mem:episodic:04PROVEN",
+            "mem:episodic:03PLAIN",
+            "mem:episodic:05PIVOT"
+        ]
+    );
+}
