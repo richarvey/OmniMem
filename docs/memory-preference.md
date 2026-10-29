@@ -9,7 +9,7 @@ Field formats follow the [storage model](memory-types.md#storage-model).
 
 ## Writers
 
-1. **Fact extraction (the usual path)**: with `INGEST_MODE=full` and an `ANTHROPIC_API_KEY`, the enrichment worker classifies each fact it pulls out of a memory, and facts of kind `preference` land here instead of in knowledge. That's how "always run the linter before committing", said in passing, becomes a standing rule.
+1. **Fact extraction (the usual path)**: with `INGEST_MODE=full` and an `ANTHROPIC_API_KEY`, the enrichment worker classifies each fact it pulls out of a memory, and facts of kind `preference` land here instead of in knowledge. That's how "always run the linter before committing", said in passing, becomes a standing rule. The prompt keeps the kind for lasting rules: a status, a task or something waiting to happen ("the token needs rotating", "awaiting sign-off") is a fact, however it's worded, and when Claude is unsure it files a fact.
 2. **Direct writes**: `remember(namespace="preference")` stores a preference as written.
 
 ## Fields

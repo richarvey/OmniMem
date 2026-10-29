@@ -225,6 +225,10 @@ pub struct RecallResult {
     pub contradictions: Vec<Value>,
     pub event_date: Option<f64>,
     pub enriched_from: Option<String>,
+    /// For a fact or preference extracted from another memory: the day its
+    /// source was written (`YYYY-MM-DD`), since the fact reads as if it
+    /// were true now.
+    pub as_of: Option<String>,
     pub licence: Option<String>,
     pub licence_note: Option<String>,
     pub provenance: Option<String>,
@@ -493,6 +497,7 @@ impl Engine {
                 contradictions: Vec::new(),
                 event_date: None,
                 enriched_from: None,
+                as_of: None,
                 licence: None,
                 licence_note: None,
                 provenance: None,
@@ -750,6 +755,16 @@ impl Engine {
                     contradictions,
                     event_date,
                     enriched_from: doc.get("enriched_from").cloned(),
+                    as_of: doc
+                        .get("enriched_from")
+                        .filter(|v| !v.is_empty())
+                        .and_then(|_| {
+                            doc.get("as_of")
+                                .filter(|v| !v.is_empty())
+                                .or_else(|| doc.get("created_at"))
+                        })
+                        .and_then(|v| v.trim().parse::<f64>().ok())
+                        .and_then(day_of),
                     licence: Some(effective_licence(doc, ns).to_owned()),
                     licence_note: doc.get("licence_note").cloned(),
                     provenance: Some(provenance),
@@ -782,6 +797,11 @@ impl Engine {
             tracing::warn!(error = %e, "failed to log recall event");
         }
     }
+}
+
+/// The UTC day of a Unix timestamp, as `YYYY-MM-DD`.
+fn day_of(timestamp: f64) -> Option<String> {
+    chrono::DateTime::from_timestamp(timestamp as i64, 0).map(|d| d.format("%Y-%m-%d").to_string())
 }
 
 #[cfg(test)]

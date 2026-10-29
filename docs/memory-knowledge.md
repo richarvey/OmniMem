@@ -45,6 +45,10 @@ With `INGEST_MODE=full` and an `ANTHROPIC_API_KEY`, a `remember()` stores the me
 | `event_date` | unix seconds string | The fact's own date if Claude found one, else the source's `event_date`, else the source's `created_at`, so date-shaped queries still find it. |
 | `licence` / `licence_note` | licence class / string | Inherited from the source: a fact has exactly its source's rights. The live source record wins over what the queued job recorded; a source with no licence gives `own`. |
 | `provenance` | provenance class | Inherited from the source: extraction is restating, not reasoning. A source with none gives `concluded`. |
+| `as_of` | unix seconds string | When the source was written. A fact reads as though it's true now ("the legacy server is at 10.0.0.9"), so recall shows `as_of` as a date (`YYYY-MM-DD`) on every derived result; facts extracted before 7.0.5 show their extraction day. |
+| `retired_with` / `retired_state` / `retired_surface` | key / state / float string | Set while the fact is out of recall because its source is: the source's key, and the state and surface score the fact had before. Cleared when the source is reinstated. |
+
+**Facts follow their source.** Deprioritise, archive or forget a memory and the facts and preferences extracted from it are deprioritised, archived or deleted with it, and the result says how many (`derived_facts`). Reinstate the memory and the facts it took with it come back as they were; a fact you'd turned down yourself stays down. A fact can't outlive what it was drawn from, which matters most when the source was wrong or has gone out of date.
 
 Every fact is dedup-checked (similarity 0.92, same project) against its target namespace before it's written. The queue lives in the database, so a job queued before a crash or a restart still runs.
 

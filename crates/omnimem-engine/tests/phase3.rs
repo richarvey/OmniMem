@@ -961,3 +961,141 @@ fn recall_embeds_its_query_as_a_query_and_remember_as_a_passage() {
         .unwrap();
     assert_eq!(count(), 1);
 }
+
+#[test]
+fn extracted_facts_follow_their_source_through_the_lifecycle() {
+    let e = engine();
+    put(
+        &e,
+        "mem:episodic:01SRC",
+        "the legacy server is at 10.0.0.9",
+        &[],
+    );
+    let fact = |key: &str, extra: &[(&str, &str)]| {
+        let mut fields = vec![
+            ("enriched_from", "mem:episodic:01SRC"),
+            ("surface_score", "0.5"),
+        ];
+        fields.extend_from_slice(extra);
+        put(&e, key, "legacy server address 10.0.0.9", &fields);
+    };
+    fact("mem:knowledge:01F", &[]);
+    // Turned down on its own before the source was: reinstating the source
+    // must not bring this one back.
+    fact(
+        "mem:knowledge:02F",
+        &[("state", "deprioritised"), ("surface_score", "0.2")],
+    );
+    put(
+        &e,
+        "mem:knowledge:03OTHER",
+        "unrelated fact",
+        &[("enriched_from", "mem:episodic:elsewhere")],
+    );
+
+    let out = e
+        .deprioritise("mem:episodic:01SRC", "server deleted", None)
+        .unwrap();
+    assert_eq!(out["affected"][0]["derived_facts"], 1);
+    assert_eq!(
+        field(&e, "mem:knowledge:01F", "state").unwrap(),
+        "deprioritised"
+    );
+    assert_eq!(
+        field(&e, "mem:knowledge:03OTHER", "state").unwrap(),
+        "active"
+    );
+
+    e.archive("mem:episodic:01SRC", None).unwrap();
+    assert_eq!(field(&e, "mem:knowledge:01F", "state").unwrap(), "archived");
+    assert_eq!(field(&e, "mem:knowledge:02F", "state").unwrap(), "archived");
+
+    e.reinstate("mem:episodic:01SRC").unwrap();
+    assert_eq!(field(&e, "mem:knowledge:01F", "state").unwrap(), "active");
+    assert_eq!(
+        field(&e, "mem:knowledge:01F", "surface_score").unwrap(),
+        "0.5"
+    );
+    assert_eq!(
+        field(&e, "mem:knowledge:02F", "state").unwrap(),
+        "deprioritised",
+        "archived with the source, it comes back as it was before"
+    );
+    assert_eq!(
+        field(&e, "mem:knowledge:02F", "surface_score").unwrap(),
+        "0.2"
+    );
+
+    e.forget("mem:episodic:01SRC", true).unwrap();
+    assert!(e.store().get("mem:knowledge:01F").unwrap().is_none());
+    assert!(e.store().get("mem:knowledge:03OTHER").unwrap().is_some());
+}
+
+#[test]
+fn a_fact_only_its_own_deprioritisation_retired_stays_down() {
+    let e = engine();
+    put(&e, "mem:episodic:01SRC", "source text here", &[]);
+    put(
+        &e,
+        "mem:knowledge:01F",
+        "derived fact",
+        &[
+            ("enriched_from", "mem:episodic:01SRC"),
+            ("state", "deprioritised"),
+        ],
+    );
+    e.deprioritise("mem:episodic:01SRC", "stale", None).unwrap();
+    e.reinstate("mem:episodic:01SRC").unwrap();
+    assert_eq!(
+        field(&e, "mem:knowledge:01F", "state").unwrap(),
+        "deprioritised"
+    );
+}
+
+#[test]
+fn recalled_facts_say_when_their_source_was_written() {
+    let e = engine();
+    put(&e, "mem:episodic:01SRC", "an unrelated source", &[]);
+    put(
+        &e,
+        "mem:knowledge:01F",
+        "orchid quartz meridian",
+        &[
+            ("enriched_from", "mem:episodic:01SRC"),
+            ("as_of", "1767225600.0"),
+        ],
+    );
+    put(
+        &e,
+        "mem:episodic:02PLAIN",
+        "orchid quartz meridian plain",
+        &[],
+    );
+    let out = e
+        .recall("orchid quartz meridian", 5, None, None, None, None)
+        .unwrap();
+    let by_key = |k: &str| {
+        out.as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["key"] == k)
+            .cloned()
+    };
+    // The fact collapses into its source, which isn't derived itself.
+    let plain = by_key("mem:episodic:02PLAIN").unwrap();
+    assert!(
+        plain.get("as_of").is_none(),
+        "only derived records carry as_of"
+    );
+    let results = e
+        .recall_results(
+            "orchid quartz meridian",
+            Some(&["knowledge".to_owned()]),
+            Some(5),
+            &[],
+            Some(0.0),
+            Some(false),
+        )
+        .unwrap();
+    assert_eq!(results[0].as_of.as_deref(), Some("2026-01-01"));
+}

@@ -209,6 +209,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     }
     for (name, value) in [
         ("enriched_from", &r.enriched_from),
+        ("as_of", &r.as_of),
         ("licence", &r.licence),
         ("licence_note", &r.licence_note),
         ("provenance", &r.provenance),
@@ -835,11 +836,16 @@ impl Engine {
         } else {
             for r in self.query_targets(key_or_query)? {
                 if r.state == "active" {
-                    affected.push(Value::Object(self.transition(
-                        &r.key,
-                        MemoryState::Deprioritised,
-                        Some(reason),
-                    )?));
+                    // A fact whose source matched first has already gone
+                    // with it, so its own transition is refused.
+                    match self.transition(&r.key, MemoryState::Deprioritised, Some(reason)) {
+                        Ok(t) => affected.push(Value::Object(t)),
+                        Err(EngineError::Invalid(e)) => {
+                            warn!(key = %r.key, error = %e, "cannot deprioritise");
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
                     if let Some(hints) = &hints {
                         self.add_reinstate_hints(&r.key, hints)?;
                     }
