@@ -6,7 +6,7 @@ use ort::session::builder::GraphOptimizationLevel;
 use ort::session::{Session, SessionInputValue};
 use ort::value::Tensor;
 use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::EmbedError;
 use crate::model::{EmbedConfig, ModelFiles, TOKENIZER_FILE};
@@ -40,6 +40,8 @@ pub struct Embedder {
     pooling: Pooling,
     dimension: usize,
     max_seq_length: usize,
+    query_prefix: Option<String>,
+    passage_prefix: Option<String>,
 }
 
 impl Embedder {
@@ -123,6 +125,8 @@ impl Embedder {
             pooling,
             dimension: static_dimension.unwrap_or(0),
             max_seq_length,
+            query_prefix: config.query_prefix.clone(),
+            passage_prefix: config.passage_prefix.clone(),
         };
         if static_dimension.is_none() {
             // A graph with a dynamic hidden size: learn it from one pass.
@@ -133,8 +137,16 @@ impl Embedder {
             pooling = ?engine.pooling,
             max_seq_length = engine.max_seq_length,
             revision = %config.effective_revision(),
+            query_prefix = engine.query_prefix.as_deref().unwrap_or(""),
+            passage_prefix = engine.passage_prefix.as_deref().unwrap_or(""),
             "ONNX embedding model loaded"
         );
+        if let Some(prefixes) = config.suggested_prefixes() {
+            warn!(
+                "{} expects prefixes on its input and none are set, so recall will be weaker than it could be: try {prefixes} (a passage prefix means re-embedding: export, then import)",
+                files.repo()
+            );
+        }
         Ok(engine)
     }
 
@@ -155,7 +167,32 @@ impl Embedder {
         Ok(self.embed_batch(&[text])?.pop().unwrap_or_default())
     }
 
-    /// Unit-length vectors, in input order.
+    /// Vectors for text being stored, after the passage prefix.
+    pub fn embed_passages(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        self.embed_prefixed(self.passage_prefix.as_deref(), texts)
+    }
+
+    /// Vectors for search queries, after the query prefix.
+    pub fn embed_queries(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        self.embed_prefixed(self.query_prefix.as_deref(), texts)
+    }
+
+    fn embed_prefixed(
+        &self,
+        prefix: Option<&str>,
+        texts: &[&str],
+    ) -> Result<Vec<Vec<f32>>, EmbedError> {
+        match prefix {
+            None => self.embed_batch(texts),
+            Some(prefix) => {
+                let joined: Vec<String> = texts.iter().map(|t| join_prefix(prefix, t)).collect();
+                let refs: Vec<&str> = joined.iter().map(String::as_str).collect();
+                self.embed_batch(&refs)
+            }
+        }
+    }
+
+    /// Unit-length vectors, in input order, with no prefix.
     pub fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
         let mut out = Vec::with_capacity(texts.len());
         for chunk in texts.chunks(BATCH_SIZE) {
@@ -295,9 +332,21 @@ fn take_chars(s: &str, n: usize) -> &str {
     s.char_indices().nth(n).map_or(s, |(i, _)| &s[..i])
 }
 
+/// `prefix` and `text` with one space between. Settings files and the
+/// environment often lose a trailing space, so it's never relied on.
+fn join_prefix(prefix: &str, text: &str) -> String {
+    format!("{} {text}", prefix.trim_end())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_prefix_joins_with_one_space() {
+        assert_eq!(join_prefix("query:", "rust"), "query: rust");
+        assert_eq!(join_prefix("query: ", "rust"), "query: rust");
+    }
 
     #[test]
     fn take_chars_cuts_on_character_boundaries() {

@@ -40,6 +40,12 @@ pub struct EmbedConfig {
     pub max_seq_length: Option<usize>,
     /// `EMBEDDING_THREADS`; `None` leaves ONNX Runtime's default.
     pub threads: Option<usize>,
+    /// `EMBEDDING_QUERY_PREFIX`: put before every search query, with a
+    /// space between (bge's instruction, e5's `query:`).
+    pub query_prefix: Option<String>,
+    /// `EMBEDDING_PASSAGE_PREFIX`: put before every text that is stored
+    /// (e5's `passage:`). Changing it means re-embedding.
+    pub passage_prefix: Option<String>,
 }
 
 impl Default for EmbedConfig {
@@ -50,6 +56,8 @@ impl Default for EmbedConfig {
             revision: None,
             max_seq_length: None,
             threads: None,
+            query_prefix: None,
+            passage_prefix: None,
         }
     }
 }
@@ -77,6 +85,26 @@ impl EmbedConfig {
             revision: text("EMBEDDING_MODEL_REVISION"),
             max_seq_length: number("EMBEDDING_MAX_SEQ_LENGTH"),
             threads: number("EMBEDDING_THREADS"),
+            query_prefix: text("EMBEDDING_QUERY_PREFIX"),
+            passage_prefix: text("EMBEDDING_PASSAGE_PREFIX"),
+        }
+    }
+
+    /// The prefixes a model's card asks for, when no prefix is set: a hint
+    /// for the log, never applied on its own, since a passage prefix changes
+    /// every stored vector.
+    pub fn suggested_prefixes(&self) -> Option<&'static str> {
+        let repo = self.repo().to_ascii_lowercase();
+        if self.query_prefix.is_some() || self.passage_prefix.is_some() {
+            None
+        } else if repo.contains("bge-") && repo.contains("-en") {
+            Some(
+                "EMBEDDING_QUERY_PREFIX=\"Represent this sentence for searching relevant passages:\"",
+            )
+        } else if repo.contains("e5-") {
+            Some("EMBEDDING_QUERY_PREFIX=query: and EMBEDDING_PASSAGE_PREFIX=passage:")
+        } else {
+            None
         }
     }
 
@@ -342,6 +370,32 @@ fn hf_snapshot_dir(repo: &str, revision: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn known_models_suggest_their_prefixes_until_one_is_set() {
+        let model = |name: &str| EmbedConfig {
+            model: name.into(),
+            ..EmbedConfig::default()
+        };
+        assert!(
+            model("BAAI/bge-small-en-v1.5")
+                .suggested_prefixes()
+                .unwrap()
+                .contains("Represent this sentence")
+        );
+        assert!(
+            model("intfloat/e5-small-v2")
+                .suggested_prefixes()
+                .unwrap()
+                .contains("passage:")
+        );
+        assert_eq!(EmbedConfig::default().suggested_prefixes(), None);
+        let set = EmbedConfig {
+            query_prefix: Some("query:".into()),
+            ..model("intfloat/e5-small-v2")
+        };
+        assert_eq!(set.suggested_prefixes(), None);
+    }
 
     #[test]
     fn bare_names_resolve_under_sentence_transformers() {

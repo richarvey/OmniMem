@@ -136,6 +136,8 @@ The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revisi
 | `EMBEDDING_ONNX_FILE` | `onnx/model.onnx` | Which graph in the repo to run. Quantised graphs are faster but don't produce the same vectors, so re-embed (export and import) before switching |
 | `EMBEDDING_MAX_SEQ_LENGTH` | from the model (256 for MiniLM) | Token cap per text. Clamped to what the model supports |
 | `EMBEDDING_THREADS` | ONNX Runtime's choice | Threads per embedding call |
+| `EMBEDDING_QUERY_PREFIX` | *(unset)* | Text put before every search query (recall, `find_skills`, `check_contradictions` with a query, `omnimem search`), joined with one space. Some models are trained to expect one: `Represent this sentence for searching relevant passages:` for bge-*-en-v1.5, `query:` for e5. Changing it needs no reindex |
+| `EMBEDDING_PASSAGE_PREFIX` | *(unset)* | Text put before every memory, chunk, article and skill as it's embedded, such as e5's `passage:`. Stored vectors were made without it, so re-embed after changing it: export a backup, then import it into a fresh database |
 | `HF_HOME`, `HF_HUB_CACHE` | `~/.cache/huggingface` | Where downloaded models are cached, as the Hugging Face tools use it. `XDG_CACHE_HOME` is honoured too |
 | `HF_ENDPOINT` | `https://huggingface.co` | A mirror to download from |
 | `HF_HUB_OFFLINE` | off | Never contact Hugging Face. The model must already be in the cache (or `EMBEDDING_MODEL` must be a folder) |

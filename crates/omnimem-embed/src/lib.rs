@@ -29,6 +29,10 @@ impl omnimem_core::TextEmbedder for Embedder {
     }
 
     fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, omnimem_core::EmbeddingError> {
-        Ok(self.embed_batch(texts)?)
+        Ok(self.embed_passages(texts)?)
+    }
+
+    fn embed_queries(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, omnimem_core::EmbeddingError> {
+        Ok(Self::embed_queries(self, texts)?)
     }
 }

@@ -13,6 +13,14 @@ pub trait TextEmbedder: Send + Sync {
     /// Length of every vector this embedder returns.
     fn dimension(&self) -> usize;
 
-    /// Unit-length vectors, in input order.
+    /// Unit-length vectors, in input order, for text being stored (or
+    /// compared with other stored text).
     fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError>;
+
+    /// Unit-length vectors for search queries, matched against stored text.
+    /// The same as [`Self::embed_texts`] unless the model wants queries
+    /// marked differently (bge's instruction, e5's `query:`).
+    fn embed_queries(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        self.embed_texts(texts)
+    }
 }

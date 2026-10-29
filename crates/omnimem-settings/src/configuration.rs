@@ -447,6 +447,20 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Defaults to ONNX Runtime's own choice.",
             ),
             setting(
+                "EMBEDDING_QUERY_PREFIX",
+                "Query prefix",
+                Kind::Text,
+                "",
+                "Put before every search query, for models that want one: bge's \"Represent this sentence for searching relevant passages:\", e5's \"query:\".",
+            ),
+            setting(
+                "EMBEDDING_PASSAGE_PREFIX",
+                "Passage prefix",
+                Kind::Text,
+                "",
+                "Put before every memory as it's embedded (e5's \"passage:\"). Re-embed (export, then import) after changing it.",
+            ),
+            setting(
                 "HF_HUB_OFFLINE",
                 "Stay offline",
                 Kind::Flag,

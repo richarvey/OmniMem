@@ -499,7 +499,7 @@ impl Engine {
             });
         }
 
-        let vector = self.embed(query)?;
+        let vector = self.embed_query(query)?;
         let now = now_secs();
         // Topics stored before suppression was validated may be too short to
         // match anything but noise; they are skipped rather than honoured.
@@ -527,7 +527,7 @@ impl Engine {
                 .iter()
                 .filter(|v| !v.is_empty() && v.as_str() != query)
             {
-                let vector = self.embed(variant)?;
+                let vector = self.embed_query(variant)?;
                 results.extend(self.score_hits(&vector, None, &scope)?);
             }
             if !variants.is_empty() {

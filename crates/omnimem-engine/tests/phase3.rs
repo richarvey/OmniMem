@@ -918,3 +918,46 @@ fn an_experience_span_keeps_a_loose_match_below_a_close_one() {
         ]
     );
 }
+
+/// Counts query embeddings, so a test can see which path a search took.
+struct CountingQueries(std::sync::atomic::AtomicUsize);
+
+impl TextEmbedder for CountingQueries {
+    fn dimension(&self) -> usize {
+        VECTOR_DIM
+    }
+    fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        Ok(texts.iter().map(|t| vector(t)).collect())
+    }
+    fn embed_queries(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        self.0
+            .fetch_add(texts.len(), std::sync::atomic::Ordering::SeqCst);
+        self.embed_texts(texts)
+    }
+}
+
+#[test]
+fn recall_embeds_its_query_as_a_query_and_remember_as_a_passage() {
+    let counter = Arc::new(CountingQueries(std::sync::atomic::AtomicUsize::new(0)));
+    let e = Engine::new(
+        Arc::new(Store::open_in_memory().unwrap()),
+        counter.clone(),
+        EngineConfig::default(),
+    );
+    e.remember(
+        "sqlite write ahead logging",
+        None,
+        None,
+        "episodic",
+        false,
+        Some("raw"),
+        None,
+        None,
+    )
+    .unwrap();
+    let count = || counter.0.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(count(), 0, "a stored memory is a passage");
+    e.recall("sqlite logging", 5, None, None, None, None)
+        .unwrap();
+    assert_eq!(count(), 1);
+}

@@ -124,6 +124,17 @@ impl Engine {
             .ok_or_else(|| EngineError::Embedding("the embedder returned no vector".into()))
     }
 
+    /// A search query's vector, with the model's query prefix if it has one.
+    pub(crate) fn embed_query(&self, query: &str) -> Result<Vec<f32>> {
+        let mut vectors = self
+            .embedder
+            .embed_queries(&[query])
+            .map_err(|e| EngineError::Embedding(e.to_string()))?;
+        vectors
+            .pop()
+            .ok_or_else(|| EngineError::Embedding("the embedder returned no vector".into()))
+    }
+
     /// Vectors for `texts`, embedded [`EMBED_BATCH`] at a time.
     pub(crate) fn embed_many(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         let mut vectors = Vec::with_capacity(texts.len());

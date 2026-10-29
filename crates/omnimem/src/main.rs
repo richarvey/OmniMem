@@ -466,7 +466,7 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     );
     if no_embed {
         eprintln!(
-            "nothing was embedded, so recall can't find these until an agent calls the `reindex` tool"
+            "nothing was embedded, so recall can't find these until it's imported again without --no-embed"
         );
     } else {
         eprintln!(
@@ -548,7 +548,7 @@ fn search(
     let namespace: Namespace = namespace.parse().map_err(|e| anyhow!("{e}"))?;
     let store = Store::open(db)?;
     let embedder = load_embedder()?;
-    let vector = embedder.embed(query)?;
+    let vector = embedder.embed_queries(&[query])?.pop().unwrap_or_default();
     let filter = SearchFilter {
         states: if all_states {
             Vec::new()

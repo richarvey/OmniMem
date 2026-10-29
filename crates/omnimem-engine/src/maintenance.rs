@@ -114,7 +114,7 @@ impl Engine {
         };
 
         let entries: Vec<(String, Fields)> = if let Some(q) = query.filter(|q| !q.is_empty()) {
-            let vector = self.embed(q)?;
+            let vector = self.embed_query(q)?;
             self.store
                 .search(ns, &vector, 20, &SearchFilter::default(), None)?
                 .into_iter()
