@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
 use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use omnimem_core::classification::DEFAULT_CLASSIFICATION;
@@ -11,6 +11,7 @@ use omnimem_core::{Namespace, VECTOR_DIM, content_hash};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
+use crate::audit::Recorder;
 use crate::vectors::{VectorIndex, to_bytes};
 use crate::{Result, StoreError, schema};
 
@@ -114,6 +115,8 @@ pub struct Store {
     /// another connection commits (an `omnimem import` while the server
     /// runs, say), never for this one's own writes.
     seen_version: AtomicI64,
+    /// `AUDIT_LOG`, as `AuditLevel::to_u8`; see `audit.rs`.
+    pub(crate) audit_level: AtomicU8,
 }
 
 impl Store {
@@ -154,6 +157,7 @@ impl Store {
             origin_id,
             dim,
             seen_version: AtomicI64::new(version),
+            audit_level: AtomicU8::new(0),
         })
     }
 
@@ -237,7 +241,9 @@ impl Store {
         }
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        merge_memory(&tx, key, namespace, fields, &self.origin_id)?;
+        let mut audit = self.recorder();
+        merge_audited(&tx, &mut audit, key, namespace, fields, &self.origin_id)?;
+        audit.finish(&tx)?;
         if let Some(v) = vector {
             write_vector(&tx, key, v)?;
         }
@@ -501,7 +507,12 @@ impl Store {
         }
         if key.starts_with("mem:") {
             let namespace = memory_namespace(key)?;
-            merge_memory(&self.conn(), key, namespace, fields, &self.origin_id)?;
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            let mut audit = self.recorder();
+            merge_audited(&tx, &mut audit, key, namespace, fields, &self.origin_id)?;
+            audit.finish(&tx)?;
+            tx.commit()?;
             return Ok(());
         }
         self.hash_set(key, fields)
@@ -517,15 +528,38 @@ impl Store {
         }
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        let mut audit = self.recorder();
         for key in keys {
             if key.starts_with("mem:") {
-                merge_memory(&tx, key, memory_namespace(key)?, fields, &self.origin_id)?;
+                let namespace = memory_namespace(key)?;
+                merge_audited(&tx, &mut audit, key, namespace, fields, &self.origin_id)?;
             } else {
                 crate::kv::hash_merge(&tx, key, fields)?;
             }
         }
+        audit.finish(&tx)?;
         tx.commit()?;
         Ok(keys.len())
+    }
+
+    /// Different field updates on different memories, in one transaction:
+    /// what the derived-fact cascade needs, each fact moving by its own
+    /// saved values. Every key must be a memory.
+    pub fn set_fields_each(&self, updates: &[(String, Fields)]) -> Result<usize> {
+        for (key, _) in updates {
+            validate_key(key)?;
+            memory_namespace(key)?;
+        }
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let mut audit = self.recorder();
+        for (key, fields) in updates {
+            let namespace = memory_namespace(key)?;
+            merge_audited(&tx, &mut audit, key, namespace, fields, &self.origin_id)?;
+        }
+        audit.finish(&tx)?;
+        tx.commit()?;
+        Ok(updates.len())
     }
 
     pub fn delete(&self, key: &str) -> Result<bool> {
@@ -543,17 +577,37 @@ impl Store {
         let tx = conn.transaction()?;
         let (memory_keys, other_keys) = split_keys(keys);
         let mut removed_memories: Vec<String> = Vec::new();
+        let mut audit = self.recorder();
         for chunk in memory_keys.chunks(IN_CHUNK) {
+            // The fields come back with the key when the log is on, which is
+            // all it needs to say what was deleted.
+            let columns = if audit.enabled() {
+                "key, fields"
+            } else {
+                "key, ''"
+            };
             let sql = format!(
-                "DELETE FROM memories WHERE key IN ({}) RETURNING key",
+                "DELETE FROM memories WHERE key IN ({}) RETURNING {columns}",
                 placeholders(chunk.len())
             );
             let mut stmt = tx.prepare(&sql)?;
-            let rows = stmt.query_map(params_from_iter(chunk), |r| r.get::<_, String>(0))?;
-            for key in rows {
-                removed_memories.push(key?);
+            let rows = stmt.query_map(params_from_iter(chunk), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            let mut gone = Vec::new();
+            for row in rows {
+                gone.push(row?);
+            }
+            drop(stmt);
+            for (key, raw) in gone {
+                if audit.enabled() {
+                    let old = parse_fields(&key, &raw)?;
+                    audit.memory(&tx, &key, Some(&old), None)?;
+                }
+                removed_memories.push(key);
             }
         }
+        audit.finish(&tx)?;
         let mut deleted = removed_memories.len();
         for chunk in other_keys.chunks(IN_CHUNK) {
             let sql = format!(
@@ -863,6 +917,35 @@ pub(crate) fn merge_memory(
 ) -> Result<Fields> {
     let existing = load_fields(conn, key)?;
     merge_memory_into(conn, key, namespace, existing, updates, origin_id)
+}
+
+/// [`merge_memory`], recording the change in the audit log. Records are read
+/// first only when the log is on, so with it off this is `merge_memory`.
+pub(crate) fn merge_audited(
+    conn: &Connection,
+    audit: &mut Recorder,
+    key: &str,
+    namespace: Namespace,
+    updates: &Fields,
+    origin_id: &str,
+) -> Result<()> {
+    let existing = load_fields(conn, key)?;
+    merge_audited_into(conn, audit, key, namespace, existing, updates, origin_id)
+}
+
+/// [`merge_audited`] for a caller that has already read the record.
+pub(crate) fn merge_audited_into(
+    conn: &Connection,
+    audit: &mut Recorder,
+    key: &str,
+    namespace: Namespace,
+    existing: Option<Fields>,
+    updates: &Fields,
+    origin_id: &str,
+) -> Result<()> {
+    let old = audit.enabled().then(|| existing.clone()).flatten();
+    let new = merge_memory_into(conn, key, namespace, existing, updates, origin_id)?;
+    audit.memory(conn, key, old.as_ref(), Some(&new))
 }
 
 /// [`merge_memory`] for a caller that has already read the record, so the

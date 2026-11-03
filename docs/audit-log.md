@@ -1,0 +1,70 @@
+# The audit log
+
+Memories change. An agent archives one, a feed expires another, you retag a third from the settings window, and a week later you want to know who did that. Until 7.0.6 the answer was "nobody wrote it down": a change bumped `updated_at` and left a line in the process log, and once a memory was deleted there was nothing to look at.
+
+The audit log is an opt-in record of every change, held in the same database. It's off by default, so the store behaves and weighs exactly as it did.
+
+## Turning it on
+
+Set `AUDIT_LOG` on the Configuration page, in `omnimem.env`, or in the environment. It takes four levels.
+
+| Level | What it records |
+|---|---|
+| `off` | Nothing. The default |
+| `lifecycle` | State changes and deletes: deprioritise, archive, reinstate, forget, the project-wide versions of those, maintenance archives, suppressing and unsuppressing a topic, and skill writes. When a memory's state changes, the facts extracted from it follow it, and that is one entry against the source listing the facts that moved |
+| `writes` | Everything in `lifecycle`, plus every other write: new memories (key, namespace, project and tags, but not what they say), retags, licence and provenance changes, contradiction links, extracted facts, feed items, restores, project context edits, experience records |
+| `full` | Everything in `writes`, plus the text of a memory before and after each change |
+
+`AUDIT_RETENTION_DAYS` says how long rows are kept. The default is 90, and 0 keeps them for ever. The maintenance pass prunes the old ones, and so does starting OmniMem, so a log you've switched off still ages out.
+
+### Privacy at `full`
+
+`full` is the only level that stores what your memories say. Every edit leaves the old text and the new text in the `audit` table, so deleting or rewriting a memory no longer removes it from the database until its rows age out. Anyone who can read the database file can read them, and so can anyone who has a backup made with the audit log in it. If you keep OmniMem on a shared machine, or you'd be unhappy for a deleted memory to still be on disk, use `writes`.
+
+The lower levels never hold memory text. They record keys, states, tags, projects, licences and provenance, and the reasons callers gave. A change to a field they don't show is listed by name (`other_fields: ["content"]`), never by value.
+
+## What a row holds
+
+| Field | Contents |
+|---|---|
+| `at` | When it happened |
+| `actor` | `mcp`, `panel`, `hook`, `maintenance`, `enrichment`, `rss`, `cli` or `import` |
+| `client` | For `mcp`, the name the client gave when it connected (`claude-code`), with the OAuth client id in brackets if it signed in with OAuth. Empty for everyone else |
+| `action` | `remember`, `transition`, `forget`, `retag`, `set_licence`, `set_provenance`, `suppress`, `unsuppress`, `contradiction_link`, `skill_write`, `restore`, `extract_fact`, `feed_item`, `cascade`, `project_transition`, `project_delete`, `update` and a few more |
+| `key` | The memory, project or skill key, or the topic for a suppression |
+| `from`, `to` | The fields that changed, with their old and new values |
+| `reason` | The reason the caller gave, where there was one (an archive or deprioritise reason, a suppression reason) |
+
+A row is written in the same transaction as the change it records. If the change fails, the row isn't there, and if the row can't be written, neither is the change.
+
+One thing to know: a call that makes several writes records each as it goes. Deprioritising a memory, for instance, is one entry for the memory and, if it has extracted facts, one more listing them. Each is atomic, but the two aren't one transaction.
+
+## Reading it
+
+**The settings window.** Audit Log in the sidebar lists the log newest first, with filters for key, actor, action and date (From and To take `2026-11-03` or `7d`). Each memory's page has a History section with its own rows.
+
+**The command line**, for a server with no window:
+
+```bash
+omnimem audit                              # the 50 most recent rows
+omnimem audit --key mem:episodic:01J...    # one memory's history
+omnimem audit --since 7d --actor mcp       # what agents did this week
+omnimem audit --action forget --json       # one JSON object per line
+```
+
+`--since` takes `30m`, `12h`, `7d`, `2w`, a date (`2026-11-03`) or a date and time (`2026-11-03T14:30`, UTC). The command reads the database itself, so it works whether or not the server is running; run it as the service's user on a server install (`sudo -u omnimem omnimem audit`).
+
+**`explain_memory`.** When the log is on and has rows for a memory, the result gains a `history` list, newest first, up to 20 entries. There's no new tool, so the 48 stay 48, and with the log off the result is the 6.x one.
+
+## Backups
+
+The audit log isn't in a backup unless you ask. It can be big, and at `full` it holds text.
+
+- `omnimem export backup.json --audit`
+- Tick **Include audit log** beside Create Backup on the Backups page
+
+`dump_to_file` doesn't take it: it keeps the 6.x parameters. A restore, from the tool, the window or `omnimem import`, adds the rows a backup carries and skips any already in the log, so restoring twice, or onto the store the backup came from, adds nothing.
+
+## Where it doesn't look
+
+Recalls don't write rows (a recall bumps counters on the memories it returns, and those aren't changes), and neither do the tool metrics, recall logs, caches or the enrichment queue. OAuth clients and tokens are never recorded. Nothing secret is logged: a memory's text is held only at `full`, and the session-end hook's redaction has already run by the time a memory reaches the store.

@@ -567,6 +567,7 @@ fn record_session(db: &Path, project: &str, payload: &Value) -> Result<()> {
 
     let config = EngineConfig::from_env(db.parent().unwrap_or(Path::new(".")).join("backups"));
     let embedder = omnimem_app::load_embedder()?;
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Hook, "");
     let engine = Engine::new(store.clone(), std::sync::Arc::new(embedder), config);
     engine
         .remember(

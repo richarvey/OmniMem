@@ -5,7 +5,28 @@ use ulid::Ulid;
 
 use crate::{Result, StoreError};
 
-pub(crate) const SCHEMA_VERSION: i64 = 3;
+pub(crate) const SCHEMA_VERSION: i64 = 4;
+
+/// Version 4: the audit log, one row per change (see `audit.rs`). `key` is
+/// the memory, project or skill key, or the topic for a suppression;
+/// `changed_from` and `changed_to` are JSON objects of the fields that moved.
+/// Empty until `AUDIT_LOG` is switched on.
+const V4: &str = r"
+CREATE TABLE audit (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    at           REAL NOT NULL,
+    actor        TEXT NOT NULL,
+    client       TEXT NOT NULL DEFAULT '',
+    action       TEXT NOT NULL,
+    key          TEXT NOT NULL,
+    changed_from TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(changed_from)),
+    changed_to   TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(changed_to)),
+    reason       TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+CREATE INDEX audit_at  ON audit (at);
+CREATE INDEX audit_key ON audit (key, at);
+";
 
 /// Version 3: OAuth clients, authorisation codes and tokens, which were
 /// `oauth:*` Valkey keys. Codes and tokens are keyed by the SHA-256 of their
@@ -111,6 +132,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     if version < 3 {
         conn.execute_batch(&format!("BEGIN; {V3} PRAGMA user_version = 3; COMMIT;"))?;
     }
+    if version < 4 {
+        conn.execute_batch(&format!("BEGIN; {V4} PRAGMA user_version = 4; COMMIT;"))?;
+    }
     Ok(())
 }
 
@@ -133,4 +157,62 @@ pub(crate) fn origin_id(conn: &Connection) -> Result<String> {
         params![id],
     )?;
     Ok(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_version_3_database_upgrades_to_4_and_keeps_its_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!(
+            "BEGIN; {V1} {V2} {V3} PRAGMA user_version = 3; COMMIT;"
+        ))
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memories (key, namespace, fields) VALUES ('mem:episodic:a', 'episodic', '{\"content\": \"kept\"}')",
+            [],
+        )
+        .unwrap();
+        let has_audit = |conn: &Connection| -> bool {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'audit'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap()
+                == 1
+        };
+        assert!(!has_audit(&conn));
+
+        migrate(&conn).unwrap();
+
+        assert!(has_audit(&conn));
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(SCHEMA_VERSION, 4);
+        let kept: String = conn
+            .query_row(
+                "SELECT json_extract(fields, '$.content') FROM memories WHERE key = 'mem:episodic:a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, "kept");
+        // Running it again is a no-op.
+        migrate(&conn).unwrap();
+    }
+
+    #[test]
+    fn a_database_from_a_newer_build_is_refused() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA user_version = 99").unwrap();
+        assert!(matches!(
+            migrate(&conn),
+            Err(StoreError::SchemaTooNew { found: 99, .. })
+        ));
+    }
 }

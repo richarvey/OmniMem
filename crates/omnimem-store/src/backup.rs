@@ -6,6 +6,10 @@
 //! because backups never carried vectors; so is any memory already in the
 //! store without a vector, so a restore that was cut short can be re-run.
 //!
+//! A backup may also carry the audit log, as a top-level `audit` list of
+//! rows (7 only, and only when asked for: it can be large, and at the `full`
+//! level it holds memory text). A restore adds rows it doesn't have.
+//!
 //! A backup may also carry the RSS reading list, as a top-level `feeds` list
 //! beside `metadata` and `data` (7 only; 6.x reads neither the key nor
 //! needs it). The store keeps it as it came and never interprets it: the
@@ -30,7 +34,7 @@ use tracing::{info, warn};
 use crate::kv::{hash_merge_expiring, set_union};
 use crate::migrations::MigrationReport;
 use crate::store::{
-    discovery_text, load_fields, memory_namespace, merge_memory_into, validate_key, write_vector,
+    discovery_text, load_fields, memory_namespace, merge_audited_into, validate_key, write_vector,
 };
 use crate::time::{iso8601_utc, now};
 use crate::{Fields, Result, Store, StoreError};
@@ -53,6 +57,8 @@ pub struct BackupFile {
     /// The reading list's feed mappings, when the backup was made with them.
     /// `None` is a backup without feeds, every 6.x one among them.
     pub feeds: Option<Vec<Value>>,
+    /// The audit log's rows, when the backup was made with them.
+    pub audit: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -99,6 +105,9 @@ pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
     });
     if let Some(feeds) = &backup.feeds {
         top["feeds"] = Value::Array(feeds.clone());
+    }
+    if let Some(audit) = &backup.audit {
+        top["audit"] = Value::Array(audit.clone());
     }
     let body = serde_json::to_string_pretty(&top).map_err(|e| StoreError::Backup(e.to_string()))?;
     let io = |source| StoreError::Io {
@@ -159,10 +168,20 @@ impl BackupFile {
                 ));
             }
         };
+        let audit = match top.remove("audit") {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(rows)) => Some(rows),
+            Some(_) => {
+                return Err(StoreError::Backup(
+                    "the backup's `audit` is not a list".into(),
+                ));
+            }
+        };
         Ok(Self {
             metadata: top.remove("metadata").unwrap_or(Value::Null),
             data,
             feeds,
+            audit,
         })
     }
 }
@@ -197,9 +216,11 @@ impl Store {
         }
         let mut report = ImportReport::default();
         let mut restored = Vec::new();
+        let _restoring = crate::audit::op(crate::Op::new("restore"));
         {
             let mut conn = self.conn();
             let tx = conn.transaction()?;
+            let mut audit = self.recorder();
             for (key, value) in &backup.data {
                 if validate_key(key).is_err() {
                     warn!(key = %key.chars().take(50).collect::<String>(), "skipping an invalid key");
@@ -288,8 +309,9 @@ impl Store {
                         report.skipped_older += 1;
                         continue;
                     }
-                    merge_memory_into(
+                    merge_audited_into(
                         &tx,
+                        &mut audit,
                         key,
                         memory_namespace(key)?,
                         existing,
@@ -306,6 +328,7 @@ impl Store {
                     }
                 }
             }
+            audit.finish(&tx)?;
             tx.commit()?;
         }
 
@@ -470,6 +493,7 @@ impl Store {
             metadata,
             data,
             feeds: None,
+            audit: None,
         })
     }
 }

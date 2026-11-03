@@ -3240,6 +3240,7 @@ name = "omnimem"
 version = "7.0.5"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "omnimem-app",
  "omnimem-core",

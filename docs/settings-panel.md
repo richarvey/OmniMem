@@ -39,7 +39,8 @@ Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Dock
 | **Telemetry** | Most recalled, gone cold (no recall in `TELEMETRY_COLD_DAYS`, 60), never recalled, skills included |
 | **Token overhead** | What OmniMem costs an agent's context before any tool is called (the instructions, tool schemas and deferred tool names, measured from what the server sends), plus per-tool call counts, durations and errors with a reset button |
 | **RSS feeds** | Edit the reading list: URLs, topics, mode, project label, licence and skill influence scores. Upload or download `feeds.yml` whole. Every change is mirrored for the skill compiler and picked up by the scheduler |
-| **Backups** | Create, upload (up to 100 MB), preview, restore, download and delete backups. Tick **Include RSS feeds** to put the reading list in a new backup; restoring a backup that has feeds adds the ones you don't already list (matched by URL) and leaves the rest alone. Restores go through the same path as `restore_from_file`, so every migration runs and memories are re-embedded |
+| **Audit Log** | The log of changes (see [the audit log](audit-log.md)), newest first, filtered by key, actor, action and date. Each memory's page has a History section with its own rows |
+| **Backups** | Create, upload (up to 100 MB), preview, restore, download and delete backups. Tick **Include RSS feeds** to put the reading list in a new backup, and **Include audit log** to put the audit log in; restoring a backup that has an audit log adds the rows you don't have, and restoring a backup that has feeds adds the ones you don't already list (matched by URL) and leaves the rest alone. Restores go through the same path as `restore_from_file`, so every migration runs and memories are re-embedded |
 | **Configuration** | Everything a headless install sets as environment variables. See below |
 
 ### Skill export and import

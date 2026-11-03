@@ -1,5 +1,6 @@
 //! Experience tools (`tools/experience.py`).
 
+use omnimem_store::{Op, op as audit_op};
 use std::collections::HashSet;
 
 use chrono::Utc;
@@ -187,6 +188,7 @@ impl Engine {
                 updates.insert(name.to_owned(), v.to_owned());
             }
         }
+        let _audit = audit_op(Op::new("record_experience"));
         self.store.set_fields(key, &updates)?;
         if abandoned.is_some() {
             self.invalidate_abandoned_cache();
@@ -258,6 +260,7 @@ impl Engine {
             ),
             ("updated_at".to_owned(), now_str()),
         ]);
+        let _audit = audit_op(Op::new("log_abandoned"));
         self.store.set_fields(key, &updates)?;
         self.invalidate_abandoned_cache();
         Ok(json!({"key": key, "abandoned_count": existing.len(), "latest_entry": entry}))

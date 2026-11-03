@@ -26,6 +26,9 @@ use crate::render::page;
 
 type FormData = HashMap<String, String>;
 
+/// How many of a memory's changes its page lists.
+const HISTORY_ROWS: usize = 25;
+
 fn json_list(raw: Option<&String>) -> Value {
     raw.filter(|r| !r.is_empty())
         .and_then(|r| serde_json::from_str::<Value>(r).ok())
@@ -106,12 +109,37 @@ pub(crate) async fn handler(
         "created_at": fmt_ts(data.get("created_at")),
         "updated_at": fmt_ts(data.get("updated_at")),
     });
+    // The memory's history, once the log is being kept. Rows from before it
+    // was switched off still show, so the section stays while any exist.
+    let engine = state.engine();
+    let history_key = key.clone();
+    let history = match engine {
+        Some(engine) => match blocking(move || {
+            let rows = engine.store().audit_entries(&omnimem_store::AuditQuery {
+                key: Some(history_key),
+                limit: HISTORY_ROWS,
+                ..Default::default()
+            })?;
+            let on = engine.audit_level() != omnimem_engine::AuditLevel::Off;
+            Ok((on || !rows.is_empty(), rows))
+        })
+        .await
+        {
+            Ok(found) => found,
+            Err(failure) => return failure,
+        },
+        None => (false, Vec::new()),
+    };
+    let (history_on, history_rows) = history;
+    let history: Vec<Value> = history_rows.iter().map(crate::audit_log::view).collect();
     let param = |name: &str| query.get(name).cloned().unwrap_or_default();
     page(
         state.templates(),
         "detail.html",
         context! {
             memory,
+            history_on,
+            history,
             tag_error => param("tag_error"),
             licence_error => param("licence_error"),
             licence_classes => LICENCE_CHOICES,

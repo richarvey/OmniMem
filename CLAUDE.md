@@ -29,7 +29,7 @@ crates/
                      files embedded by build.rs, the Configuration page and the SecretStore trait
   omnimem-app/       What server and desktop share: open the engine, run the services, data folder, instance lock
   omnimem-desktop/   Tray or menu bar icon, settings window on the omnimem:// scheme with IPC, keychain, start at login
-  omnimem/           The binary: serve, import, export, stats, search, embed, rss, hook (Claude Code hooks), and desktop (default with the feature)
+  omnimem/           The binary: serve, import, export, stats, search, embed, rss, audit, hook (Claude Code hooks), and desktop (default with the feature)
 ci/desktop/          Container with GTK/WebKitGTK/AppIndicator for building and smoke-testing the desktop crate
 ci/flatpak/          Container with flatpak-builder, Xvfb and D-Bus for building and smoke-testing the Flatpak
 ci/checks/           Container with llvm-tools, cargo-llvm-cov and cargo-audit for coverage and the dependency audit
@@ -90,6 +90,7 @@ Deliberately gone: Valkey, the web UI and `/metrics` over HTTP, SSE transport, `
 - **Licence and provenance are decided at write time and never scored on**. A fact inherits its source's licence and provenance. Reclassifying goes through the lineage stamp, cascades to chunks and extracted facts, and never bumps `updated_at` (the skill compiler reads that as "source changed")
 - **Promotion and feed influence feed skills; ordinary knowledge doesn't.** Refs and feed rules bypass the reinforcement gate but never count towards it or bootstrap a skill
 - **Settings are read through `omnimem_core::env`**, never `std::env::var` directly, and nothing writes to the process environment (not sound once the keychain has started threads)
+- **The audit log is written by the store, in the change's own transaction** (`omnimem-store/src/audit.rs`). `upsert`, `set_fields`, `set_fields_multi`, `set_fields_each`, `delete_many`, suppression's `set_add`/`set_remove` and a restore record themselves; counters, recall logs, caches and migrations don't go through the hook, so a recall never writes a row. Who is calling is a per-thread context (`omnimem_store::enter(Actor, client)`, a guard), and what the engine is doing is an optional `Op` (`omnimem_store::op`) that names the action, level, reason and detail. Both are thread-locals, so they are only valid on one thread across synchronous calls: set them inside `spawn_blocking`, never across an `.await`. A new entry point that writes (a worker, a command) must `enter` an actor, or its rows say `unknown`. Below `AUDIT_LOG=full` no row may hold memory text: the `KEPT` fields in `audit.rs` are the whole list of values shown
 - **The fail-closed rule**: a non-loopback `MCP_HOST` needs `MCP_AUTH_TOKEN` or OAuth; OAuth switched on but incomplete refuses to start
 - **OAuth**: refresh tokens rotate with a grace window (`OAUTH_REFRESH_GRACE_SECONDS`) in which the old token replays the same successor pair, which stops claude.ai's concurrent refreshes being signed out. Codes and tokens are stored as SHA-256 hashes; a code is consumed and a token rotated inside one `Store::with_oauth` transaction
 

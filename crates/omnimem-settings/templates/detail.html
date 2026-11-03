@@ -247,6 +247,33 @@
 </div>
 {% endif %}
 
+{% if history_on %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">History</h3>
+  {% if history %}
+  <table class="data-table">
+    <thead>
+      <tr><th>When</th><th>Who</th><th>Action</th><th>Change</th><th>Reason</th></tr>
+    </thead>
+    <tbody>
+      {% for e in history %}
+      <tr>
+        <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
+        <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
+        <td>{{ e.action }}</td>
+        <td>{{ e.summary }}</td>
+        <td style="color:var(--text-dim)">{{ e.reason }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top:0.5rem;font-size:0.85rem"><a href="/audit?key={{ memory.key }}">All of this memory's history</a></p>
+  {% else %}
+  <p style="color:var(--text-dim);font-size:0.9rem">Nothing recorded for this memory yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="action-bar">
   {% if memory.state == 'active' %}
   <form method="POST" action="/lifecycle/deprioritise" style="display:inline">

@@ -269,6 +269,9 @@ impl Engine {
             let ns = key.split(':').nth(1).unwrap_or("");
             m.extend(classification_fields(&data, ns, Some(key)));
         }
+        // Only with the audit log on and something in it, so the result is
+        // the 6.x one until then (`compact` drops the empty list).
+        m.insert("history".into(), Value::Array(self.history_of(key)?));
         Ok(compact(m))
     }
 

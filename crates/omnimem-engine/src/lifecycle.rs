@@ -1,7 +1,7 @@
 //! Lifecycle states and transitions, topic suppression and reinstate hints
 //! (`memory/lifecycle.py`).
 
-use omnimem_store::Fields;
+use omnimem_store::{AuditLevel, Fields, Op, op as audit_op};
 use serde_json::{Map, Value, json};
 use tracing::info;
 
@@ -123,6 +123,15 @@ impl Engine {
             )));
         }
 
+        // Deleting is a forget however it was asked for (the tool, the panel,
+        // a project): the log names it for what it did to the memory.
+        let action = if new_state == MemoryState::Deleted {
+            "forget"
+        } else {
+            "transition"
+        };
+        let _audit = audit_op(Op::new(action).at(AuditLevel::Lifecycle).reason(reason));
+
         let surface = self.surface_score(new_state);
         if new_state != MemoryState::Deleted {
             let mut updates = Fields::from([
@@ -134,6 +143,16 @@ impl Engine {
                 && let Some(reason) = reason.filter(|r| !r.is_empty())
             {
                 updates.insert("deprioritised_reason".to_owned(), reason.to_owned());
+            }
+            // Reinstating clears the reason it was deprioritised for. The
+            // callers that reinstate clear it again after, which writes the
+            // same values, so the audit log sees one change, not two.
+            if new_state == MemoryState::Active
+                && data
+                    .get("deprioritised_reason")
+                    .is_some_and(|r| !r.is_empty())
+            {
+                updates.insert("deprioritised_reason".to_owned(), String::new());
             }
             // An archive reason is kept beside, never in, the deprioritised
             // one (6.x readers know only that). Reinstating empties it, as
@@ -223,8 +242,9 @@ impl Engine {
                 }
             }
         }
-        let mut changed = 0;
         let now = now_str();
+        let mut deletes: Vec<String> = Vec::new();
+        let mut updates_each: Vec<(String, Fields)> = Vec::new();
         for (fact, row) in derived {
             let state = row.get("state").map_or("active", String::as_str);
             let retired_by_source = row.get("retired_with").is_some_and(|v| v == key);
@@ -238,8 +258,7 @@ impl Engine {
                 continue;
             }
             if new_state == MemoryState::Deleted {
-                self.store.delete(&fact)?;
-                changed += 1;
+                deletes.push(fact);
                 continue;
             }
             let mut updates = Fields::from([
@@ -274,8 +293,17 @@ impl Engine {
                     updates.insert("retired_state".to_owned(), state.to_owned());
                 }
             }
-            self.store.set_fields(&fact, &updates)?;
-            changed += 1;
+            updates_each.push((fact, updates));
+        }
+        let changed = deletes.len() + updates_each.len();
+        // One transaction, and one audit entry against the source listing
+        // the facts that moved with it, however many there were.
+        let _audit = audit_op(Op::new("cascade").at(AuditLevel::Lifecycle).fold_into(key));
+        if !deletes.is_empty() {
+            self.store.delete_many(&deletes)?;
+        }
+        if !updates_each.is_empty() {
+            self.store.set_fields_each(&updates_each)?;
         }
         Ok(changed)
     }

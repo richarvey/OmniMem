@@ -1,6 +1,7 @@
 //! The core tool behaviours (`tools/core.py`, `tools/backup.py`,
 //! `tools/queue.py` and the `health` tool), returning 6.x's result shapes.
 
+use omnimem_store::{AuditLevel, Op, op as audit_op};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -948,6 +949,7 @@ impl Engine {
             }));
         }
         let mut deleted = Vec::new();
+        let _audit = audit_op(Op::new("forget").at(AuditLevel::Lifecycle));
         for (key, _) in &targets {
             if self.transition(key, MemoryState::Deleted, None).is_err() {
                 self.store.delete(key)?;
@@ -982,6 +984,7 @@ impl Engine {
             validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
         let topic_key = trimmed.to_lowercase();
+        let _audit = audit_op(Op::new("suppress").at(AuditLevel::Lifecycle).reason(reason));
         self.store
             .set_add(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
         // A new reason replaces the old one; suppressing again without one
@@ -1001,6 +1004,7 @@ impl Engine {
 
     pub fn unsuppress_topic(&self, topic: &str) -> Result<Value> {
         let topic_key = topic.to_lowercase();
+        let _audit = audit_op(Op::new("unsuppress").at(AuditLevel::Lifecycle));
         self.store
             .set_remove(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
         self.store
@@ -1091,6 +1095,18 @@ impl Engine {
         filename: Option<&str>,
         include_feeds: bool,
     ) -> Result<Value> {
+        self.dump_to_file_with(filename, include_feeds, false)
+    }
+
+    /// [`Engine::dump_to_file_with_feeds`], and the audit log too when
+    /// `include_audit` is set. Only asked for, never by default: the log can
+    /// be large and at the `full` level it holds memory text.
+    pub fn dump_to_file_with(
+        &self,
+        filename: Option<&str>,
+        include_feeds: bool,
+        include_audit: bool,
+    ) -> Result<Value> {
         let filename = filename.map_or_else(
             || {
                 format!(
@@ -1114,6 +1130,9 @@ impl Engine {
                 }
             }
         }
+        if include_audit {
+            dump.audit = Some(self.store.export_audit()?);
+        }
         if let Err(e) = omnimem_store::write_backup(&path, &dump) {
             warn!(error = %e, "failed to write backup file");
             return Ok(json!({"status": "error", "message": "Failed to write backup file"}));
@@ -1126,6 +1145,9 @@ impl Engine {
         });
         if let Some(feeds) = &dump.feeds {
             result["feeds"] = json!(feeds.len());
+        }
+        if let Some(audit) = &dump.audit {
+            result["audit"] = json!(audit.len());
         }
         Ok(result)
     }
@@ -1164,10 +1186,17 @@ impl Engine {
         {
             return error("Invalid backup feeds format");
         }
+        if value
+            .get("audit")
+            .is_some_and(|a| !a.is_array() && !a.is_null())
+        {
+            return error("Invalid backup audit format");
+        }
         let backup = BackupFile::from_value(value).unwrap_or(BackupFile {
             metadata: Value::Null,
             data: Map::new(),
             feeds: None,
+            audit: None,
         });
         if let Some(bad) = backup
             .data
@@ -1192,6 +1221,9 @@ impl Engine {
             });
             if let Some(feeds) = &backup.feeds {
                 result["feeds_in_backup"] = json!(feeds.len());
+            }
+            if let Some(audit) = &backup.audit {
+                result["audit_in_backup"] = json!(audit.len());
             }
             return Ok(result);
         }
@@ -1222,6 +1254,19 @@ impl Engine {
         // backup's result is exactly what 6.x returned.
         if let Some(feeds) = &backup.feeds {
             result["feeds"] = self.restore_feeds(feeds);
+        }
+        if let Some(rows) = &backup.audit {
+            // Rows already in the log are skipped, so restoring twice, or
+            // onto the store the backup came from, adds nothing.
+            match self.store.merge_audit(rows) {
+                Ok((added, skipped)) => {
+                    result["audit"] = json!({"added": added, "already_present": skipped});
+                }
+                Err(e) => {
+                    warn!(error = %e, "could not restore the audit log");
+                    result["audit"] = json!({"error": "could not restore the audit log"});
+                }
+            }
         }
         Ok(result)
     }

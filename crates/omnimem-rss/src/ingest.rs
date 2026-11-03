@@ -342,6 +342,9 @@ impl Ingester {
             Some(url) => py_str(url),
         };
         let name = feed_name(feed, &url);
+        // Whatever starts a cycle, what it writes is the reading list's.
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Rss, "");
+        let _item = omnimem_store::op(omnimem_store::Op::new("feed_item"));
         let topics = feed_topics(feed);
         let digest = feed.get("mode").map(py_str).as_deref() == Some("digest");
         let project = Self::project(feed, &name);

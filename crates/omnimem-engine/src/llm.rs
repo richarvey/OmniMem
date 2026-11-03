@@ -6,6 +6,7 @@
 //! Every one fails open, as in 6.x: no model, an API error or an unreadable
 //! reply means no facts, no variants or no confirmation, never a failed call.
 
+use omnimem_store::{Op, op as audit_op};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -368,6 +369,7 @@ impl Engine {
     /// it is empty.
     pub fn run_enrichment_worker(&self, stop: &AtomicBool) {
         info!("enrichment worker started");
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Enrichment, "");
         while !stop.load(Ordering::Relaxed) {
             match self.process_next_enrichment() {
                 Ok(true) => continue,
@@ -508,6 +510,7 @@ impl Engine {
                 preferences += 1;
             }
             let fact_key = MemoryKey::generate(namespace).to_string();
+            let _audit = audit_op(Op::new("extract_fact"));
             self.store.upsert(&fact_key, &fields, Some(&vector))?;
             stored += 1;
         }

@@ -1,5 +1,6 @@
 //! Tag validation and editing (`memory/tags.py`).
 
+use omnimem_store::{Op, op as audit_op};
 use serde_json::{Value, json};
 
 use crate::error::invalid;
@@ -119,6 +120,7 @@ impl Engine {
             ("tags".to_owned(), py_json(&json!(new_tags))),
             ("updated_at".to_owned(), now_str()),
         ]);
+        let _audit = audit_op(Op::new("retag"));
         self.store.set_fields(key, &fields)?;
         Ok(json!({
             "status": "updated",

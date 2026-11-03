@@ -5,6 +5,7 @@
 //! commits exactly the draft that was reviewed. The MCP tool and the web UI
 //! both run this one flow.
 
+use omnimem_store::{AuditLevel, Op, op as audit_op};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -530,7 +531,10 @@ impl Engine {
             ("rule_manifest".to_owned(), stashed("rule_manifest", "[]")),
         ]);
         let vector = self.embed(&omnimem_store::discovery_text(&name, &description, domain))?;
-        self.store.upsert(skill_id, &fields, Some(&vector))?;
+        {
+            let _audit = audit_op(Op::new("skill_write").at(AuditLevel::Lifecycle));
+            self.store.upsert(skill_id, &fields, Some(&vector))?;
+        }
         self.store.kv_delete(&key)?;
         info!(skill_id, chars = body.chars().count(), "committed skill");
 

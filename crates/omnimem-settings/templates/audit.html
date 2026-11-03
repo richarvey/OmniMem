@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log — OmniMem{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h2>Audit Log <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+</header>
+
+{% if is_off %}
+<div class="flash flash-warning" role="status">
+  The audit log is off, so nothing new is being recorded{% if total %} (what is below was kept from before){% endif %}.
+  Set <code>AUDIT_LOG</code> to <code>lifecycle</code>, <code>writes</code> or <code>full</code> on the
+  <a href="/configuration">Configuration</a> page to start.
+</div>
+{% else %}
+<p style="color:var(--text-dim);margin-bottom:1rem">Recording at the <strong>{{ level }}</strong> level.{% if level == 'full' %} At this level the log holds the text of memories, before and after each change.{% endif %}</p>
+{% endif %}
+
+{% for problem in problems %}
+<div class="flash flash-error" role="alert">{{ problem }}</div>
+{% endfor %}
+
+<form method="GET" action="/audit" class="filter-bar">
+  <div class="form-group">
+    <label for="audit-key">Key contains</label>
+    <input id="audit-key" type="text" class="form-input" name="key" value="{{ key }}" placeholder="mem:episodic:...">
+  </div>
+  <div class="form-group">
+    <label for="audit-actor">Actor</label>
+    <select id="audit-actor" class="form-select" name="actor">
+      <option value="">All</option>
+      {% for a in actors %}
+      <option value="{{ a }}"{% if actor == a %} selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="audit-action">Action</label>
+    <input id="audit-action" type="text" class="form-input" name="action" value="{{ action }}" placeholder="transition, retag...">
+  </div>
+  <div class="form-group">
+    <label for="audit-from">From</label>
+    <input id="audit-from" type="text" class="form-input" name="from" value="{{ from }}" placeholder="2026-11-03 or 7d">
+  </div>
+  <div class="form-group">
+    <label for="audit-to">To</label>
+    <input id="audit-to" type="text" class="form-input" name="to" value="{{ to }}" placeholder="2026-11-30">
+  </div>
+  <div class="form-group" style="align-self:end">
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+  </div>
+</form>
+
+{% if entries %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>When</th>
+      <th>Who</th>
+      <th>Action</th>
+      <th>Key</th>
+      <th>Change</th>
+      <th>Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
+      <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
+      <td>{{ e.action }}</td>
+      <td class="mono">{% if e.key.startswith('mem:') %}<a href="/memory/{{ e.key }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
+      <td>{{ e.summary }}</td>
+      <td style="color:var(--text-dim)">{{ e.reason }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<nav class="pagination">
+  {% if page > 1 %}
+  <a href="/audit?page={{ page - 1 }}{{ extra_params }}" class="page-link">Newer</a>
+  {% endif %}
+  <span class="page-link current">{{ page }}</span>
+  {% if has_next %}
+  <a href="/audit?page={{ page + 1 }}{{ extra_params }}" class="page-link">Older</a>
+  {% endif %}
+</nav>
+{% else %}
+<p class="empty-state">{% if total %}Nothing matches those filters.{% else %}The audit log is empty.{% endif %}</p>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,7 @@
 //! Skill tools and their briefing surfaces (`tools/skills.py`), plus
 //! `promote_knowledge` (`tools/knowledge.py`).
 
+use omnimem_store::{Op, op as audit_op};
 use std::collections::HashSet;
 
 use omnimem_core::Namespace;
@@ -254,6 +255,7 @@ impl Engine {
         };
         let already = data.get("blessed").map(String::as_str) == Some("1");
         if !already {
+            let _audit = audit_op(Op::new("bless"));
             self.store.set_fields(
                 memory_key,
                 &Fields::from([
@@ -319,6 +321,7 @@ impl Engine {
             return Ok(json!({"error": format!("Cannot promote archived item: {key}")}));
         }
         let Some(domain) = domain else {
+            let _audit = audit_op(Op::new("promote_knowledge"));
             self.store.set_field(key, "expires_at", "")?;
             return Ok(json!({"key": key, "promoted": true}));
         };
@@ -380,6 +383,7 @@ impl Engine {
         let changed = !fields.is_empty();
         if changed {
             fields.insert("updated_at".to_owned(), now);
+            let _audit = audit_op(Op::new("promote_knowledge"));
             self.store.set_fields(key, &fields)?;
         }
 

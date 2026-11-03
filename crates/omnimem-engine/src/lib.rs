@@ -12,6 +12,7 @@
 //! the Python raised as a `ValueError`.
 
 mod audit;
+mod audit_log;
 mod briefing;
 mod chunking;
 pub mod classification;
@@ -50,11 +51,13 @@ use std::time::Instant;
 use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
-pub use config::{EngineConfig, GraveyardScope};
+pub use audit_log::{change_summary, parse_when};
+pub use config::{EngineConfig, GraveyardScope, audit_level_from_env};
 pub use dedup::DuplicateMatch;
 pub use error::EngineError;
 pub use experience::AbandonedWarning;
 pub use lifecycle::MemoryState;
+pub use omnimem_store::AuditLevel;
 pub use recall::{RecallResult, compute_experience_weight};
 pub use tools::DomainFilter;
 
@@ -81,6 +84,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(store: Arc<Store>, embedder: Arc<dyn TextEmbedder>, config: EngineConfig) -> Self {
+        store.set_audit_level(config.audit_log);
         Self {
             store,
             embedder,

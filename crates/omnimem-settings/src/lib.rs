@@ -12,6 +12,7 @@
 //! renders a page saying so.
 
 mod assets;
+mod audit_log;
 mod backups;
 mod choices;
 mod configuration;
@@ -243,6 +244,7 @@ impl Panel {
             .route("/suppressions", get(management::suppressions))
             .route("/suppressions/add", post(management::suppress))
             .route("/suppressions/remove", post(management::unsuppress))
+            .route("/audit", get(audit_log::list))
             .route("/telemetry", get(telemetry::telemetry))
             .route("/telemetry/refresh", get(telemetry::telemetry_refresh))
             .route("/token-overhead", get(telemetry::token_overhead))

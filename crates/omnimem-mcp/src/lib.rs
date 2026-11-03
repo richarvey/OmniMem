@@ -7,6 +7,7 @@
 //! token, OAuth 2.1 (the authorisation server lives in `oauth`), or both.
 
 mod args;
+mod audit_client;
 mod descriptions;
 mod handler;
 mod http;

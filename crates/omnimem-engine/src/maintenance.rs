@@ -2,7 +2,7 @@
 //! `memory/maintenance.py`).
 
 use omnimem_core::Namespace;
-use omnimem_store::{Fields, SearchFilter};
+use omnimem_store::{AuditLevel, Fields, Op, SearchFilter, op as audit_op};
 use serde_json::{Value, json};
 use tracing::{debug, error, info};
 
@@ -83,6 +83,13 @@ impl Engine {
                 ),
                 ("updated_at".to_owned(), now.clone()),
             ]);
+            // The explanation is model output that may quote either memory,
+            // so only `full` keeps it.
+            let mut detail = json!({"linked_to": other});
+            if self.store.audit_level() == AuditLevel::Full {
+                detail["explanation"] = json!(explanation);
+            }
+            let _audit = audit_op(Op::new("contradiction_link").detail(detail));
             self.store.set_fields(src, &updates)?;
         }
         info!(key_a, key_b, "linked contradiction");
@@ -246,7 +253,12 @@ impl Engine {
 
     /// Dedup archive, contradiction scan and article expiry for a project.
     pub(crate) fn run_maintenance(&self, project: &str) -> Value {
+        // Whoever's briefing set this off, the pass is maintenance's own.
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Maintenance, "");
         let ran_at = now_str();
+        if let Err(e) = self.prune_audit() {
+            error!(error = %e, "could not prune the audit log");
+        }
         let mut archived = Vec::new();
         match self.find_all_duplicates(Namespace::Episodic, None, Some(project)) {
             Ok(clusters) => {

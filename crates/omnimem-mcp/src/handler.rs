@@ -505,13 +505,16 @@ impl ServerHandler for OmniMemServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        let client = crate::audit_client::describe(&context);
         let name = request.name.to_string();
         let args = Value::Object(request.arguments.unwrap_or_default());
         let engine = self.engine.clone();
         let tool = name.clone();
         let outcome = tokio::task::spawn_blocking(move || {
+            // Changes this call makes are the client's, in the audit log.
+            let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
             let started = Instant::now();
             let result = dispatch(&engine, &tool, args);
             let text = result.as_ref().ok().map(std::string::ToString::to_string);

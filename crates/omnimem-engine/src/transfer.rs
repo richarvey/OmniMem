@@ -8,6 +8,7 @@
 //! missing. Vectors never travel: the importing instance re-embeds. Format 2
 //! adds `feeds.json`, the feeds influencing the skill's domain.
 
+use omnimem_store::{AuditLevel, Op, op as audit_op};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 use std::sync::LazyLock;
@@ -383,6 +384,7 @@ impl Engine {
             }
             fields.insert("imported_at".into(), now.clone());
             let vector = self.embed(fields.get("content").map_or("", String::as_str))?;
+            let _audit = audit_op(Op::new("skill_import"));
             self.store.upsert(key, &fields, Some(&vector))?;
             written.push(key.clone());
         }
@@ -400,6 +402,7 @@ impl Engine {
                 &field("description"),
                 &field("domain"),
             ))?;
+            let _audit = audit_op(Op::new("skill_write").at(AuditLevel::Lifecycle));
             self.store
                 .upsert(&bundle.skill_key, &fields, Some(&vector))?;
             skill_written = true;

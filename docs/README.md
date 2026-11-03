@@ -14,6 +14,7 @@ These pages describe OmniMem 7, the single Rust binary, first released as 7.0.3.
 ## Using OmniMem
 
 - [Features in depth](features.md): the memory lifecycle, the graveyard, experience scoring, deduplication, contradiction detection, the session briefing, auto-maintenance
+- [The audit log](audit-log.md): an opt-in record of every change, with levels, and where to read it
 - [The skill compiler](skill-compiler.md): compiling experience into SKILL.md documents, the propose-and-accept gate, promoted reference material
 - [RSS feeds and the knowledge base](rss-knowledge.md): passive knowledge ingestion and promotion
 - [MCP tool reference](mcp-tools.md): all 48 tools with their parameters

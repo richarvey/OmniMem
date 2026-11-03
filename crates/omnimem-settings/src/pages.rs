@@ -20,9 +20,13 @@ use crate::render::{failure, page};
 pub(crate) async fn off_runtime<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, Response> {
-    tokio::task::spawn_blocking(work)
-        .await
-        .map_err(|e| failure(&format!("the request's worker stopped: {e}")))
+    tokio::task::spawn_blocking(move || {
+        // Every change the panel makes is the panel's, in the audit log.
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Panel, "");
+        work()
+    })
+    .await
+    .map_err(|e| failure(&format!("the request's worker stopped: {e}")))
 }
 
 /// Run store and engine work off the async workers. An error becomes the

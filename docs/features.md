@@ -171,8 +171,13 @@ Every memory records two things about where it came from, and neither ever chang
 - **Licence:** may it be redistributed? `own`, `open`, `restricted` or `unknown`, decided at ingest. Recall points out anything still `unknown` so you can classify it. See [RSS and knowledge](rss-knowledge.md#licence-and-redistribution-rights).
 - **Provenance:** who's speaking? `asserted` (you said it), `concluded` (the system's own write-up) or `retrieved` (an article or document). So a later session can tell evidence from its own reasoning, instead of citing itself as corroboration.
 
+## The audit log
+
+Switch on `AUDIT_LOG` and OmniMem keeps a record of every change: who made it (an agent, the settings window, a hook, the maintenance pass), when, and what moved from what to what. You choose how much, from just state changes and deletes up to the full text of every edit. It's off by default. See [the audit log](audit-log.md).
+
 ## See also
 
 - [The skill compiler](skill-compiler.md): distil experience into loadable `SKILL.md` documents
+- [The audit log](audit-log.md): who changed what, and when
 - [MCP tool reference](mcp-tools.md): every tool these features expose
 - [Architecture](architecture.md): how the recall pipeline applies all of this

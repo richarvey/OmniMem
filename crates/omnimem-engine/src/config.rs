@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use omnimem_store::AuditLevel;
 use tracing::warn;
 
 /// Whose dead ends may warn a recall or a hook (`GRAVEYARD_SCOPE`).
@@ -61,6 +62,12 @@ pub struct EngineConfig {
     /// `GRAVEYARD_SCOPE`: `project` keeps a scoped recall's and the hook's
     /// dead-end warnings to their own projects; `all` crosses projects.
     pub graveyard_scope: GraveyardScope,
+    /// `AUDIT_LOG`: how much of each change is written to the audit log.
+    /// `full` is the only level that keeps memory text.
+    pub audit_log: AuditLevel,
+    /// `AUDIT_RETENTION_DAYS`: audit rows older than this are pruned by the
+    /// maintenance pass; 0 keeps them for ever.
+    pub audit_retention_days: u32,
     /// `DEPRIORITISED_WEIGHT`
     pub deprioritised_weight: f64,
     /// `DEDUP_SIMILARITY_THRESHOLD`
@@ -129,6 +136,8 @@ impl Default for EngineConfig {
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),
             graveyard_scope: GraveyardScope::Project,
+            audit_log: AuditLevel::Off,
+            audit_retention_days: 90,
             deprioritised_weight: 0.2,
             dedup_threshold: 0.92,
             contradiction_threshold: 0.7,
@@ -208,6 +217,18 @@ fn graveyard_scope(default: GraveyardScope) -> GraveyardScope {
     }
 }
 
+/// `AUDIT_LOG`, falling back to the default (with a warning) on a value that
+/// is not a level. The default is off, so a typo never starts keeping a log.
+pub fn audit_level_from_env() -> AuditLevel {
+    match text("AUDIT_LOG") {
+        None => AuditLevel::Off,
+        Some(raw) => AuditLevel::parse(&raw).unwrap_or_else(|| {
+            warn!("AUDIT_LOG={raw:?} is not off, lifecycle, writes or full; using off");
+            AuditLevel::Off
+        }),
+    }
+}
+
 fn flag(name: &str) -> bool {
     text(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
 }
@@ -234,6 +255,8 @@ impl EngineConfig {
             recency_decay_days: float("RECENCY_DECAY_DAYS", d.recency_decay_days, NON_NEGATIVE),
             abandoned_cache_ttl: Duration::from_secs(number("ABANDONED_CACHE_TTL_SECONDS", 60)),
             graveyard_scope: graveyard_scope(d.graveyard_scope),
+            audit_log: audit_level_from_env(),
+            audit_retention_days: number("AUDIT_RETENTION_DAYS", d.audit_retention_days),
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
             dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
             contradiction_threshold: float(
@@ -393,5 +416,39 @@ mod tests {
             EngineConfig::from_env(PathBuf::from("backups")).graveyard_scope,
             GraveyardScope::Project
         );
+    }
+
+    #[test]
+    fn audit_settings_parse_and_a_bad_level_leaves_the_log_off() {
+        let d = EngineConfig::default();
+        assert_eq!(d.audit_log, AuditLevel::Off);
+        assert_eq!(d.audit_retention_days, 90);
+
+        let level = |value: &str| {
+            with_var("AUDIT_LOG", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).audit_log
+            })
+        };
+        assert_eq!(level("lifecycle"), AuditLevel::Lifecycle);
+        assert_eq!(level("Writes"), AuditLevel::Writes);
+        assert_eq!(level(" FULL "), AuditLevel::Full);
+        assert_eq!(level("off"), AuditLevel::Off);
+        // A typo never starts keeping a log, least of all one with text in it.
+        assert_eq!(level("everything"), AuditLevel::Off);
+        assert_eq!(level("true"), AuditLevel::Off);
+        assert_eq!(
+            EngineConfig::from_env(PathBuf::from("backups")).audit_log,
+            AuditLevel::Off
+        );
+
+        let days = |value: &str| {
+            with_var("AUDIT_RETENTION_DAYS", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).audit_retention_days
+            })
+        };
+        assert_eq!(days("30"), 30);
+        assert_eq!(days("0"), 0);
+        assert_eq!(days("-5"), 90, "not a count of days, so the default");
+        assert_eq!(days("soon"), 90);
     }
 }

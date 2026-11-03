@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
+use chrono::TimeZone;
 use clap::{Parser, Subcommand};
 mod hook;
 mod install_hooks;
@@ -67,6 +68,38 @@ enum Command {
         /// Put the RSS reading list (feeds.yml) in the backup too.
         #[arg(long)]
         feeds: bool,
+        /// Put the audit log in the backup too. It can be large, and at
+        /// AUDIT_LOG=full it holds memory text, so it is only included when
+        /// asked for.
+        #[arg(long)]
+        audit: bool,
+    },
+    /// Show the audit log: who changed what, and when. It stays empty until
+    /// AUDIT_LOG is set to lifecycle, writes or full; see docs/audit-log.md.
+    /// Newest first.
+    Audit {
+        /// Only changes to this memory, project or skill key (or this
+        /// suppressed topic).
+        #[arg(long)]
+        key: Option<String>,
+        /// Only changes since this long ago (30m, 12h, 7d, 2w), or since this
+        /// date or time (2026-11-03, 2026-11-03T14:30, UTC).
+        #[arg(long)]
+        since: Option<String>,
+        /// Only changes by this actor: mcp, panel, hook, maintenance,
+        /// enrichment, rss, cli or import.
+        #[arg(long)]
+        actor: Option<String>,
+        /// Only this action, such as transition, forget, retag, remember or
+        /// suppress.
+        #[arg(long)]
+        action: Option<String>,
+        /// Most rows to show.
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// One JSON object per line, with the full from and to.
+        #[arg(long)]
+        json: bool,
     },
     /// Record and vector counts per namespace.
     Stats,
@@ -160,6 +193,7 @@ fn main() -> Result<()> {
         Some(
             Command::Import { .. }
                 | Command::Export { .. }
+                | Command::Audit { .. }
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
@@ -198,6 +232,8 @@ fn main() -> Result<()> {
         return install_hooks::run(db.as_deref(), project, dry_run);
     }
     let db = resolve_db(db, &settings)?;
+    // What a command writes is the command line's, unless it says otherwise.
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Cli, "");
     match command {
         Command::Serve => serve(&db.path),
         Command::Import {
@@ -210,9 +246,20 @@ fn main() -> Result<()> {
             }
             import(&db, &file, no_embed)
         }
-        Command::Export { file, feeds } => {
+        Command::Export { file, feeds, audit } => {
             db.must_exist(None)?;
-            export(&db, &file, feeds)
+            export(&db, &file, feeds, audit)
+        }
+        Command::Audit {
+            key,
+            since,
+            actor,
+            action,
+            limit,
+            json,
+        } => {
+            db.must_exist(None)?;
+            audit_log(&db.path, key, since, actor, action, limit, json)
         }
         Command::Hook { event, project } => {
             // A hook never fails the tool call or session it answers: say why
@@ -432,6 +479,9 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     );
     let backup = read_backup(file).with_context(|| format!("reading {}", file.display()))?;
     let store = Store::open(&db.path).with_context(|| format!("opening {}", db.path.display()))?;
+    // This store isn't opened through an engine, so it reads AUDIT_LOG itself.
+    store.set_audit_level(omnimem_engine::audit_level_from_env());
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Import, "");
     let embedder = if no_embed {
         None
     } else {
@@ -457,6 +507,10 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&report)?);
     if let Some(feeds) = &backup.feeds {
         import_feeds(&feeds_path(&db.path), feeds)?;
+    }
+    if let Some(rows) = &backup.audit {
+        let (added, skipped) = store.merge_audit(rows)?;
+        eprintln!("audit log: {added} rows added, {skipped} already there");
     }
     eprintln!(
         "imported {} into {} in {:.1}s",
@@ -497,7 +551,7 @@ fn import_feeds(path: &Path, feeds: &[serde_json::Value]) -> Result<()> {
     Ok(())
 }
 
-fn export(db: &Database, file: &Path, include_feeds: bool) -> Result<()> {
+fn export(db: &Database, file: &Path, include_feeds: bool, include_audit: bool) -> Result<()> {
     eprintln!(
         "exporting from {} (from {})",
         db.path.display(),
@@ -516,8 +570,89 @@ fn export(db: &Database, file: &Path, include_feeds: bool) -> Result<()> {
         );
         dump.feeds = Some(feeds.into_iter().map(serde_json::Value::Object).collect());
     }
+    if include_audit {
+        let rows = store.export_audit()?;
+        let plural = if rows.len() == 1 { "" } else { "s" };
+        eprintln!("including {} audit log row{plural}", rows.len());
+        dump.audit = Some(rows);
+    }
     write_backup(file, &dump)?;
     eprintln!("wrote {} keys to {}", dump.data.len(), file.display());
+    Ok(())
+}
+
+/// The audit log, newest first, as a table or one JSON object a line.
+fn audit_log(
+    db: &Path,
+    key: Option<String>,
+    since: Option<String>,
+    actor: Option<String>,
+    action: Option<String>,
+    limit: usize,
+    json: bool,
+) -> Result<()> {
+    let store = Store::open(db)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
+    let since = since
+        .map(|raw| {
+            omnimem_engine::parse_when(&raw, now).ok_or_else(|| {
+                anyhow!("can't read --since {raw:?}: try 7d, 12h, 2026-11-03 or 2026-11-03T14:30")
+            })
+        })
+        .transpose()?;
+    if let Some(actor) = &actor
+        && omnimem_store::Actor::parse(actor).is_none()
+    {
+        bail!(
+            "--actor {actor:?} isn't one of mcp, panel, hook, maintenance, enrichment, rss, cli or import"
+        );
+    }
+    let rows = store.audit_entries(&omnimem_store::AuditQuery {
+        key,
+        actor: actor.map(|a| a.to_ascii_lowercase()),
+        action,
+        since,
+        limit: limit.max(1),
+        ..Default::default()
+    })?;
+    if rows.is_empty() && !json {
+        let level = omnimem_engine::audit_level_from_env();
+        if level == omnimem_engine::AuditLevel::Off && store.audit_count()? == 0 {
+            eprintln!(
+                "the audit log is empty, and AUDIT_LOG is off: set it to lifecycle, writes or full to start keeping one"
+            );
+        } else {
+            eprintln!("no audit rows match");
+        }
+        return Ok(());
+    }
+    for row in rows {
+        if json {
+            println!("{}", row.to_json());
+            continue;
+        }
+        let when = chrono::Local
+            .timestamp_opt(row.at as i64, 0)
+            .single()
+            .map_or_else(String::new, |t| t.format("%Y-%m-%d %H:%M:%S").to_string());
+        let who = if row.client.is_empty() {
+            row.actor.clone()
+        } else {
+            format!("{} ({})", row.actor, row.client)
+        };
+        let change = omnimem_engine::change_summary(&row.from, &row.to, 60);
+        let reason = if row.reason.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", row.reason)
+        };
+        println!(
+            "{when}  {who}  {}  {}  {change}{reason}",
+            row.action, row.key
+        );
+    }
     Ok(())
 }
 

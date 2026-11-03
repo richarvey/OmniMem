@@ -357,6 +357,25 @@ const GROUPS: &[(&str, &[Setting])] = &[
         ],
     ),
     (
+        "Audit log",
+        &[
+            setting(
+                "AUDIT_LOG",
+                "Audit log",
+                Kind::Choice(&["off", "lifecycle", "writes", "full"]),
+                "off",
+                "Keeps a record of who changed what, and when. Off records nothing. Lifecycle records state changes and deletes (deprioritise, archive, reinstate, forget, suppression, skill writes). Writes adds every other write, such as new memories, tags, licences and restores, without their text. Full also keeps the text of a memory before and after each change, so it is the one level that stores what your memories say: anyone who can read the database or a backup made with the audit log can read it too.",
+            ),
+            setting(
+                "AUDIT_RETENTION_DAYS",
+                "Keep audit rows for (days)",
+                Kind::Integer,
+                "90",
+                "Older rows are removed by the maintenance pass and when OmniMem starts. 0 keeps them for ever.",
+            ),
+        ],
+    ),
+    (
         "RSS",
         &[
             setting(
