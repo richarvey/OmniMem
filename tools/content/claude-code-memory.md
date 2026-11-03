@@ -13,17 +13,17 @@ Claude Code starts every session with a fresh context window, so nothing carries
 
 ## What Claude Code remembers on its own
 
-**[CLAUDE.md](https://code.claude.com/docs/en/memory#claude-md-files)** is a markdown file Claude Code reads at the start of every session. There's one for you in `~/.claude/CLAUDE.md` that applies everywhere, and one per project in the repository, usually checked into git. It's the right place for rules: how to run the tests, which branch to work on, how you like commits written. You write it and you keep it up to date.
+**[CLAUDE.md](https://code.claude.com/docs/en/memory#claude-md-files)** is a markdown file Claude Code reads at the start of every session. There's one for you in `~/.claude/CLAUDE.md` that applies everywhere, and one per project in the repository, usually checked into git. CLAUDE.md files in subfolders, and path-scoped rules, load on demand when Claude works in those parts of the project. It's the right place for rules: how to run the tests, which branch to work on, how you like commits written. You write it and you keep it up to date.
 
-**[Auto memory](https://code.claude.com/docs/en/memory#auto-memory)** is Claude Code writing its own notes. It saves markdown files in `~/.claude/projects/<project>/memory/`, with a `MEMORY.md` index that gets loaded into the next session. Only the first 200 lines or 25KB of that index are loaded, whichever comes first, so it works best as a short list of pointers. Anthropic's own [memory documentation](https://code.claude.com/docs/en/memory) covers both.
+**[Auto memory](https://code.claude.com/docs/en/memory#auto-memory)** is Claude Code writing its own notes. It saves markdown files in `~/.claude/projects/<project>/memory/`, with a `MEMORY.md` index that gets loaded into the next session. Only the first 200 lines or 25KB of that index are loaded, whichever comes first, so it works best as a short list of pointers. The other notes in that folder aren't loaded at the start: Claude reads them with its ordinary file tools when it decides they're relevant. Anthropic's own [memory documentation](https://code.claude.com/docs/en/memory) covers both.
 
-Both are plain files on one machine (Anthropic's docs say of auto memory that "files are not shared across machines"), read whole into the context window. That's their strength (you can open them and see exactly what Claude knows) and their limit.
+Both are plain markdown files, and that's their strength: you can open them and see exactly what Claude knows. Your project's CLAUDE.md travels with the repository through git, but auto memory and your own `~/.claude/CLAUDE.md` stay on the machine they were written on (Anthropic's docs say of auto memory that "files are not shared across machines").
 
 ## Where that runs out
 
-- **Nothing in CLAUDE.md or auto memory is searched.** A file is either loaded or it isn't. Once a project has hundreds of things worth knowing, they can't all be in the opening context, and there's no way to pull up the one that matters for the task in hand.
+- **Nothing is ranked by meaning.** What's there at the start is whatever fits: your CLAUDE.md files and the top of the auto memory index. Beyond that, Claude opens a file when it decides to, going by file names and the index, and nothing searches the notes for the one that matters to the task in hand. Once a project has hundreds of things worth knowing, the right one is easy to miss.
 - **Failures aren't kept.** The most expensive thing to forget is what didn't work: the library that crashed on Alpine, the redirect WebKitGTK ignores. Nothing records that an approach was tried, how much effort it cost, and why it was dropped, so the agent suggests it again next month.
-- **One machine, one agent.** Notes on your laptop aren't on your desktop or your server, and Cursor or Codex can't read Claude Code's files.
+- **One machine, one agent.** Auto memory on your laptop isn't on your desktop or your server, and Cursor or Codex can't read Claude Code's notes.
 - **Nothing tidies up.** Old notes don't fade, contradictions sit side by side, and duplicates pile up until someone edits the file by hand.
 
 ## What OmniMem adds
