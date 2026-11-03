@@ -69,7 +69,7 @@
         "https://omnimem.org/omnimem-social.png"
       ],
       "datePublished": "2026-03-24",
-      "dateModified": "2026-10-19",
+      "dateModified": "2026-11-03",
       "inLanguage": "en-GB",
       "author": {
         "@id": "https://omnimem.org/#ric",
@@ -221,7 +221,12 @@
 <p>If you want to tweak how Claude uses OmniMem, copy <code>claude_config/CLAUDE.md</code> from the repo into your project (or into <code>~/.claude/CLAUDE.md</code> for every project) and edit away.</p>
 <h2 id="hooks-memory-that-does-not-wait-to-be-asked">Hooks: memory that does not wait to be asked</h2>
 <p>Instructions are advice, and measurement says advice does not bind: across twenty benchmark runs with the server connected and the answer sitting in the store, the agent made zero memory calls. <code>omnimem hook</code> puts memory where it cannot be skipped instead, as Claude Code hooks: the project's briefing injected at session start, a tool call denied when it repeats an approach the project already abandoned, and a record written when the session ends.</p>
-<p>The settings entry and what each event will and will not do are in <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">the hooks guide</a>.</p>
+<p>One command sets them up for every project:</p>
+<pre class="bash"><code>omnimem install-hooks</code></pre>
+<p>It adds the three hooks to <code>~/.claude/settings.json</code>, leaves everything else in the file as it was and keeps a copy of the old one beside it. Add <code>--project</code> to set them up for the current project only (in <code>./.claude/settings.json</code>), or <code>--dry-run</code> to see what it would change. Running it again changes nothing.</p>
+<p>With the Mac app, the <code>omnimem</code> binary lives inside the app bundle rather than on your PATH, so run it from there:</p>
+<pre class="bash"><code>/Applications/OmniMem.app/Contents/MacOS/omnimem install-hooks</code></pre>
+<p>The Flatpak can't reach Claude Code's settings from its sandbox, so add the hooks by hand there. The settings entry, and what each event will and will not do, are in <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">the hooks guide</a>.</p>
 <h2 id="verifying-the-connection">Verifying the connection</h2>
 <p>Start Claude Code and run:</p>
 <pre><code>/mcp</code></pre>
@@ -248,7 +253,7 @@
 </ul>
 
 <aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>OmniMem needs to be running first:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul><p>Connecting another agent as well:</p><ul><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Why bother? <a href="/claude-code-memory/">Persistent memory for Claude Code, beyond CLAUDE.md</a> covers what Claude Code keeps on its own and what OmniMem adds.</p></aside>
-<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-19">19 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md">This guide on Forgejo</a></p>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-11-03">3 November 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">
