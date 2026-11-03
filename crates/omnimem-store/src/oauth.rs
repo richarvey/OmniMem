@@ -188,6 +188,28 @@ impl OAuthStore<'_> {
         Ok(expires_at.is_some_and(|t| t > now()))
     }
 
+    /// The client a live token was issued to (empty if the record names
+    /// none), or `None` for a token that is absent or expired.
+    pub fn live_token_client(&self, kind: TokenKind, token: &str) -> Result<Option<String>> {
+        let row: Option<(String, f64)> = self
+            .conn
+            .query_row(
+                "SELECT record, expires_at FROM oauth_tokens WHERE kind = ?1 AND token_hash = ?2",
+                params![kind.as_str(), secret_hash(token)],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((record, _)) = row.filter(|(_, t)| *t > now()) else {
+            return Ok(None);
+        };
+        Ok(Some(
+            parse("a token record", &record)?["client_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        ))
+    }
+
     /// True when the token was there to delete.
     pub fn delete_token(&self, kind: TokenKind, token: &str) -> Result<bool> {
         Ok(self.conn.execute(

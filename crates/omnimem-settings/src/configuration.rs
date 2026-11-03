@@ -299,6 +299,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Above 0, experience nudges a score by at most this much instead of multiplying it, so a loose match can't outrank a close one. Try 0.05. 0 keeps the multiplier.",
             ),
             setting(
+                "GRAVEYARD_SCOPE",
+                "Dead-end warnings",
+                Kind::Choice(&["project", "all"]),
+                "project",
+                "Project keeps a recall's warnings (and the Claude Code hook's refusals) to dead ends from the project you're working in, plus any recorded with no project. A recall with no project still sees them all. All warns about any project's dead ends and says which project each came from.",
+            ),
+            setting(
                 "RECENCY_DECAY_DAYS",
                 "Recency decay after (days)",
                 Kind::Decimal,
@@ -346,6 +353,25 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Text,
                 "",
                 "Defaults to a backups folder beside the database.",
+            ),
+        ],
+    ),
+    (
+        "Audit log",
+        &[
+            setting(
+                "AUDIT_LOG",
+                "Audit log",
+                Kind::Choice(&["off", "lifecycle", "writes", "full"]),
+                "off",
+                "Keeps a record of who changed what, and when. Off records nothing. Lifecycle records state changes and deletes (deprioritise, archive, reinstate, forget, suppression, skill writes). Writes adds every other write, such as new memories, tags, licences and restores, without their text. Full also keeps the text of a memory before and after each change, so it is the one level that stores what your memories say: anyone who can read the database or a backup made with the audit log can read it too.",
+            ),
+            setting(
+                "AUDIT_RETENTION_DAYS",
+                "Keep audit rows for (days)",
+                Kind::Integer,
+                "90",
+                "Older rows are removed by the maintenance pass and when OmniMem starts. 0 keeps them for ever.",
             ),
         ],
     ),
@@ -406,6 +432,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
     (
         "Skills",
         &[
+            setting(
+                "HUMAN_APPROVAL",
+                "Who approves changes",
+                Kind::Choice(&["human", "agent"]),
+                "human",
+                "Human means an agent can propose a skill, or the resolution of a contradiction, but a person has to accept it: your client asks you, or the proposal waits under Pending proposals on the Skills page or Pending on the Contradictions page. Agent lets the agent's own call commit it, as 6.x did.",
+            ),
             setting(
                 "OMNIMEM_USER",
                 "Skill owner name",
@@ -489,6 +522,16 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Only needed for a private or gated model.",
             ),
         ],
+    ),
+    (
+        "Updates",
+        &[setting(
+            "UPDATE_CHECK",
+            "Tell me about new releases",
+            Kind::Flag,
+            "on",
+            "Looks at code.squarecows.com for a newer release a little after start and every 12 hours, and says so in the tray, the settings window and the session briefing. It sends nothing but the request itself. false turns every update check off.",
+        )],
     ),
     (
         "Settings panel",
@@ -797,7 +840,16 @@ mod tests {
                 .unwrap_err()
                 .contains("full, raw")
         );
+        assert!(validate(find("HUMAN_APPROVAL"), "agent").is_ok());
+        assert!(validate(find("HUMAN_APPROVAL"), "human").is_ok());
+        assert!(
+            validate(find("HUMAN_APPROVAL"), "nobody")
+                .unwrap_err()
+                .contains("human, agent")
+        );
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "true").is_ok());
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "yes").is_err());
+        assert!(validate(find("UPDATE_CHECK"), "false").is_ok());
+        assert!(validate(find("UPDATE_CHECK"), "off").is_err());
     }
 }

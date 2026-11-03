@@ -1,6 +1,7 @@
 //! Project context tools and domain suggestion (`tools/project.py`, and the
 //! suggestion half of `memory/project_domains.py`).
 
+use omnimem_store::{AuditLevel, Op, op as audit_op};
 use std::collections::{BTreeMap, HashSet};
 
 use omnimem_core::Namespace;
@@ -26,7 +27,6 @@ const STACK_STOPWORDS: [&str; 28] = [
     "stack", "based", "", "",
 ];
 const MIN_TAG_OCCURRENCES: usize = 2;
-const MAX_SUGGEST_SCAN_KEYS: usize = 5000;
 const PROJECT_NAMESPACES: [Namespace; 4] = [
     Namespace::Episodic,
     Namespace::Project,
@@ -181,17 +181,10 @@ impl Engine {
         }
 
         let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
-        self.warn_if_capped(
-            Namespace::Episodic,
-            MAX_SUGGEST_SCAN_KEYS,
-            "domain suggestion",
-        );
-        // The project's active memories, and only their tags, out of the
-        // capped key range: the state and project tests run in SQL.
-        let filter = MemoryFilter {
-            key_cap: Some(MAX_SUGGEST_SCAN_KEYS),
-            ..active_in_project(name)
-        };
+        // The project's active memories, and only their tags: the state and
+        // project tests run in SQL. Not capped by key, which counted the
+        // oldest episodic memories first and so ignored a project's newest.
+        let filter = active_in_project(name);
         for (_, row) in self
             .store
             .list_memories(Namespace::Episodic, &filter, &["tags"])?
@@ -290,6 +283,7 @@ impl Engine {
         if let Some(resolved) = &resolved {
             fields.insert("domains".to_owned(), resolved.join(","));
         }
+        let _audit = audit_op(Op::new("set_project_context"));
         self.store.upsert(&key, &fields, Some(&vector))?;
         self.invalidate_domain_cache();
         info!(project = name, "saved project context");
@@ -443,6 +437,7 @@ impl Engine {
                 ("domains".to_owned(), s.merged.join(",")),
                 ("updated_at".to_owned(), now_str()),
             ]);
+            let _audit = audit_op(Op::new("compile_project_domains"));
             self.store.set_fields(&key, &updates)?;
             self.invalidate_domain_cache();
             true
@@ -512,6 +507,7 @@ impl Engine {
         if let Some(n) = notes {
             updates.insert("notes".to_owned(), n.to_owned());
         }
+        let _audit = audit_op(Op::new("update_project_state"));
         self.store.set_fields(&key, &updates)?;
         Ok(json!({"project_name": name}))
     }
@@ -566,6 +562,11 @@ impl Engine {
             }));
         }
         let mut deleted = 0;
+        let _audit = audit_op(
+            Op::new("project_delete")
+                .at(AuditLevel::Lifecycle)
+                .detail(json!({"project": name})),
+        );
         for (_, keys) in &groups {
             let keys: Vec<String> = keys.iter().map(|(k, _)| k.clone()).collect();
             deleted += self.store.delete_many(&keys)?;
@@ -622,6 +623,18 @@ impl Engine {
             {
                 updates.insert("deprioritised_reason".to_owned(), r.to_owned());
             }
+            // Nothing here archives, but reinstating brings archived memories
+            // back, and their archive reason goes as `transition` drops it.
+            if new_state == MemoryState::Active {
+                updates.insert("archived_reason".to_owned(), String::new());
+            }
+            // One row per memory, each naming the project-wide act.
+            let _audit = audit_op(
+                Op::new("project_transition")
+                    .at(AuditLevel::Lifecycle)
+                    .reason(reason)
+                    .detail(json!({"project": name})),
+            );
             self.store.set_fields_multi(&to_change, &updates)?
         } else {
             0
@@ -951,6 +964,7 @@ impl Engine {
             if existing_data.is_none() {
                 fields.insert("created_at".to_owned(), now);
             }
+            let _audit = audit_op(Op::new("compile_project_context"));
             self.store.upsert(&existing_key, &fields, Some(&vector))?;
             self.invalidate_domain_cache();
             true

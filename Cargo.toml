@@ -17,7 +17,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "7.0.5"
+version = "7.0.6"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -48,7 +48,7 @@ clap = { version = "4.6", features = ["derive", "env"] }
 
 # MCP server
 omnimem-mcp = { path = "crates/omnimem-mcp" }
-rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
+rmcp = { version = "3.3", features = ["transport-streamable-http-server", "elicitation"] }
 axum = "0.8"
 tokio-util = "0.7"
 # OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.
@@ -121,7 +121,7 @@ png = "0.18"
 minijinja = { version = "2.24", features = ["preserve_order"] }
 minijinja-contrib = { version = "2.24", features = ["pycompat"] }
 tower = { version = "0.5", features = ["util"] }
-zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 opt-level = 3

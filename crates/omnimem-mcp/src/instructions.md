@@ -26,7 +26,11 @@ guide is `docs/agent-guide.md`; this is the working summary.
 Call `briefing(project="<name>")`. It aggregates project context, experience,
 stale memories, contradiction warnings and reinstate candidates in one call.
 Summarise what came back, and surface any contradiction warnings explicitly
-before doing work — they are blockers, not notes.
+before doing work — they are blockers, not notes. Ask the human which side
+holds, then record their answer with `check_contradictions(mode="resolve",
+key_a=..., key_b=..., outcome=..., winner=..., reason=...)`: they are asked to
+confirm it, and the pair stops warning. Outcomes are `supersedes` (name the
+`winner`), `both_valid`, `both_wrong`, `false_positive` and `reopened`.
 
 ### Storing
 
@@ -72,6 +76,9 @@ Compiled procedure for a domain. `briefing()` suggests them and
 `find_skills("<query>")` finds them; load with `get_skill()` only after the
 human agrees, never silently. Build and change them through
 `compile_skill(domain, mode="propose")`, then `mode="write"` once they accept.
+A person must accept the write: the client asks them, or the result is
+`awaiting_approval` and they accept it in OmniMem's settings window. On
+`declined`, leave it alone.
 Skills are derived output: update the underlying memories, never edit a skill
 by hand. See `docs/agent-guide.md` for promotion, blessing and feed influence.
 

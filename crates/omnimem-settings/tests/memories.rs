@@ -297,6 +297,10 @@ async fn lifecycle_actions_move_state_and_land_where_asked() {
 
     location(&post(&panel, "/lifecycle/archive", &form("")).await);
     assert_eq!(field(&engine, &key, "state").as_deref(), Some("archived"));
+    assert_eq!(
+        field(&engine, &key, "archived_reason").as_deref(),
+        Some("Archived via web UI")
+    );
 
     assert_eq!(
         location(&post(&panel, "/lifecycle/delete", &form("")).await),
@@ -374,4 +378,21 @@ async fn search_shows_results_with_weak_matches_marked() {
         found.contains(r#"1 result for "searchable memor""#),
         "{found}"
     );
+}
+
+#[tokio::test]
+async fn the_detail_page_shows_why_a_memory_was_archived() {
+    let (panel, engine) = setup();
+    let key = remember(&engine, "A memory that was put away", "episodic", None);
+    assert!(
+        !text(&get(&panel, &format!("/memory/{key}")).await).contains("Archived Reason"),
+        "nothing to show before it is archived"
+    );
+
+    engine
+        .archive(&key, Some("replaced by the 7.0 design"))
+        .unwrap();
+    let page = text(&get(&panel, &format!("/memory/{key}")).await);
+    assert!(page.contains("Archived Reason"), "{page}");
+    assert!(page.contains("replaced by the 7.0 design"), "{page}");
 }

@@ -19,10 +19,10 @@ use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use minijinja::context;
-use omnimem_engine::EngineError;
 use omnimem_engine::domains::{is_valid_domain, resolve_domain};
 use omnimem_engine::skills::{INVALID_DOMAIN, SKILL_KEY_PREFIX, generated_skill_key};
 use omnimem_engine::transfer::{ValidatedBundle, merge_feed_influences, validate_skill_import};
+use omnimem_engine::{EngineError, SkillReview};
 use omnimem_store::Fields;
 use serde_json::{Map, Value, json};
 use tracing::{info, warn};
@@ -34,7 +34,6 @@ use crate::format::{minutes, timestamp};
 use crate::pages::{blocking, quote, see_other, starting};
 use crate::render::page;
 
-const PROPOSAL_PREFIX: &str = "meta:skill:proposal:";
 const IMPORT_STASH_PREFIX: &str = "meta:skill:import:";
 const IMPORT_STASH_TTL: Duration = Duration::from_mins(30);
 /// The compile defaults `compile_skill` and the 6.x page use.
@@ -67,6 +66,22 @@ fn json_list(raw: Option<&String>) -> Vec<Value> {
 
 fn short_name(key: &str) -> String {
     key.rsplit(':').next().unwrap_or(key).to_owned()
+}
+
+/// A pending proposal as the Skills page lists it.
+fn proposal_row(review: &SkillReview) -> Value {
+    json!({
+        "domain": review.domain,
+        "skill_id": review.skill_id,
+        "new_skill": review.new_skill,
+        "description": review.description,
+        "shown": review.shown,
+        "added": review.added,
+        "removed": review.removed,
+        "rules": review.rules,
+        "created_at": minutes(Some(&review.created_at.to_string())),
+        "stale": review.stale,
+    })
 }
 
 fn skill_not_found() -> Response {
@@ -117,17 +132,14 @@ pub(crate) async fn list(
         }
         skills.sort_by_key(|s| s["name"].as_str().unwrap_or("").to_lowercase());
 
-        // Proposals live under a TTL, so anything listed is still committable.
-        let mut proposals: Vec<Value> = Vec::new();
-        for key in store.scan_prefix(PROPOSAL_PREFIX)? {
-            let row = store.hash_get_all(&key)?.unwrap_or_default();
-            proposals.push(json!({
-                "domain": row.get("domain").filter(|d| !d.is_empty()).cloned().unwrap_or_else(|| short_name(&key)),
-                "created_at": minutes(row.get("created_at")),
-                "key": key,
-            }));
-        }
-        proposals.sort_by_key(|p| p["domain"].as_str().unwrap_or("").to_owned());
+        // Every stashed proposal, whoever made it: the agent over MCP, the
+        // auto scan or this window. They live under a TTL, so what is listed
+        // can still be accepted unless it has gone stale.
+        let proposals: Vec<Value> = engine
+            .pending_skill_proposals()?
+            .iter()
+            .map(proposal_row)
+            .collect();
         Ok((skills, states, proposals))
     })
     .await;
@@ -303,6 +315,62 @@ pub(crate) async fn commit(
         )),
         Ok(result) => compile_result(&state, &result),
         Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/discard`: throw a pending proposal away. The skill it would
+/// have changed is untouched.
+pub(crate) async fn discard(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let domain = match domain_from(&form, "Missing domain.") {
+        Ok(domain) => domain,
+        Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+    };
+    let discarded = blocking(move || {
+        let found = engine.discard_skill_proposal(&domain)?;
+        if found {
+            info!(domain, "discarded a skill proposal from the settings panel");
+        }
+        Ok(found)
+    })
+    .await;
+    match discarded {
+        Ok(true) => see_other(&format!("/skills?message={}", quote("Proposal discarded."))),
+        Ok(false) => see_other(&format!(
+            "/skills?error={}",
+            quote("That proposal had already gone.")
+        )),
+        Err(failure) => failure,
+    }
+}
+
+/// GET `/skills/pending-badge`: the sidebar's count of proposals waiting for
+/// a person, or nothing. Loaded like the version marker, so a page never waits
+/// on it.
+pub(crate) async fn pending_badge(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return Html("").into_response();
+    };
+    let waiting = blocking(move || {
+        Ok(engine
+            .pending_skill_proposals()?
+            .iter()
+            .filter(|p| !p.stale)
+            .count())
+    })
+    .await;
+    match waiting {
+        Ok(n) if n > 0 => Html(format!(
+            r#"<span class="nav-count" title="{n} skill proposal{} awaiting your approval">{n}</span>"#,
+            if n == 1 { "" } else { "s" }
+        ))
+        .into_response(),
+        _ => Html("").into_response(),
     }
 }
 

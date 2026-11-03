@@ -54,6 +54,8 @@ WARNING: previously abandoned approaches match this query
 
 The fast path is a keyword scan of the graveyard, so it doesn't even wait for an embedding. Record dead ends with `record_experience` at the end of some work, or one at a time with `log_abandoned` as you go. Nothing is hidden as a result: abandoning an approach does not suppress anything, it means a later session that proposes the same approach is answered with what happened last time and what worked instead.
 
+By default a recall scoped to a project, and the Claude Code hook working in one, are only warned about dead ends from that project (plus any recorded with no project at all), so one project's lesson doesn't block another's. A recall with no project filter still sees every dead end, and `warn_if_abandoned` always does, naming the project on each match. If you'd rather a dead end followed you everywhere, set `GRAVEYARD_SCOPE=all`: the warning then ends with "Recorded on project X" when it isn't from the project you're in. An archived memory's dead ends keep warning either way.
+
 Dead ends don't get a second chance to waste your afternoon.
 
 ## Experience scoring
@@ -103,6 +105,37 @@ contradiction_warning:
   explanation: "These memories discuss the same topic but contain opposing language"
 ```
 
+### Settling a contradiction
+
+A link that nothing can clear just nags, so a pair can be resolved: you say which memory is current, or that both stand, and the warning stops. The link isn't deleted (the scan would only find the pair again). It gains a `resolution` on both memories:
+
+```json
+{"key": "mem:episodic:01B...", "explanation": "...", "detected_at": "...",
+ "resolution": {"outcome": "supersedes", "winner": "mem:episodic:01B...",
+                "reason": "we moved to rebase", "resolved_at": "...",
+                "resolved_by": "panel", "history": []}}
+```
+
+| Outcome | Meaning | The loser |
+|---|---|---|
+| `supersedes` | One is current, the other out of date ("we moved from X to Y") | Gets `superseded_by`; the winner gets `supersedes`. Optionally deprioritised or archived, and its extracted facts follow |
+| `both_valid` | Not a contradiction: different contexts, projects or times | Nothing |
+| `both_wrong` | Neither holds | Both optionally deprioritised or archived |
+| `false_positive` | The heuristic misfired | Nothing; the pair is never flagged again |
+| `reopened` | Circumstances changed: put the warning back | Nothing; the earlier resolution is kept in `history` |
+
+A resolved pair drops out of the briefing, the session-start hook, the Contradictions page, `check_contradictions` and the maintenance scan. Recall still shows it: a hit carries `resolved_contradictions` (and `superseded_by` for a memory that was replaced), so an agent reads "superseded by X" rather than "disputed". `explain_memory` and the memory's page show the history. Forget one of the pair and the other's link is settled as `other_forgotten`.
+
+Who decides is a person. From an agent it is `check_contradictions(mode="resolve", ...)`, and under `HUMAN_APPROVAL=human` (the default, the same switch as skill writes) OmniMem asks you through MCP elicitation, showing both memories, the outcome, the winner and the reason; nothing is written unless you accept. If your client can't be asked, the proposal waits a week as Pending on the Contradictions page (a newer proposal for the pair replaces it), or you can deal with it from a terminal. `HUMAN_APPROVAL=agent` lets the agent's call write straight away. On a server with no window:
+
+```bash
+omnimem contradictions                                   # open pairs and pending proposals
+omnimem contradictions resolve KEY_A KEY_B --outcome supersedes --winner KEY_B \
+    --reason "moved to rebase" --retire-loser
+omnimem contradictions accept KEY_A KEY_B                # a pending proposal, as proposed
+omnimem contradictions discard KEY_A KEY_B
+```
+
 ## Session briefing
 
 Rather than three separate calls at the start of a session, one `briefing(project="myproject")` gives your agent everything it needs:
@@ -111,7 +144,7 @@ Rather than three separate calls at the start of a session, one `briefing(projec
 - **Experience summary:** effort stats, the graveyard, breakthroughs
 - **Stale memories:** active memories untouched for `STALE_MEMORY_DAYS` (30)
 - **New knowledge:** RSS articles from the last 7 days
-- **Contradiction warnings:** memories with unresolved contradictions
+- **Contradiction warnings:** memories with contradictions nobody has resolved
 - **Reinstate candidates:** deprioritised memories whose hints match current work
 - **Suppressed topics:** what's being filtered out
 - **Skill suggestions:** compiled skills relevant to the work, as a recommendation rather than an auto-load. On a greenfield project with no context yet they move to the top, because there the skill is the only thing carrying your conventions
@@ -169,8 +202,13 @@ Every memory records two things about where it came from, and neither ever chang
 - **Licence:** may it be redistributed? `own`, `open`, `restricted` or `unknown`, decided at ingest. Recall points out anything still `unknown` so you can classify it. See [RSS and knowledge](rss-knowledge.md#licence-and-redistribution-rights).
 - **Provenance:** who's speaking? `asserted` (you said it), `concluded` (the system's own write-up) or `retrieved` (an article or document). So a later session can tell evidence from its own reasoning, instead of citing itself as corroboration.
 
+## The audit log
+
+Switch on `AUDIT_LOG` and OmniMem keeps a record of every change: who made it (an agent, the settings window, a hook, the maintenance pass), when, and what moved from what to what. You choose how much, from just state changes and deletes up to the full text of every edit. It's off by default. See [the audit log](audit-log.md).
+
 ## See also
 
 - [The skill compiler](skill-compiler.md): distil experience into loadable `SKILL.md` documents
+- [The audit log](audit-log.md): who changed what, and when
 - [MCP tool reference](mcp-tools.md): every tool these features expose
 - [Architecture](architecture.md): how the recall pipeline applies all of this

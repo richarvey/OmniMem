@@ -12,6 +12,7 @@
 //! the Python raised as a `ValueError`.
 
 mod audit;
+mod audit_log;
 mod briefing;
 mod chunking;
 pub mod classification;
@@ -32,6 +33,8 @@ mod maintenance;
 mod projects;
 pub mod pyfmt;
 mod recall;
+pub mod release;
+mod resolution;
 mod skill_scan;
 mod skill_tools;
 pub mod skills;
@@ -47,14 +50,19 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use omnimem_core::{LanguageModel, Namespace, TextEmbedder};
+use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
-pub use config::EngineConfig;
+pub use audit_log::{change_summary, parse_when};
+pub use compiler::{ProposalCheck, SkillReview};
+pub use config::{EngineConfig, GraveyardScope, HumanApproval, audit_level_from_env};
 pub use dedup::DuplicateMatch;
 pub use error::EngineError;
+pub use experience::AbandonedWarning;
 pub use lifecycle::MemoryState;
+pub use omnimem_store::AuditLevel;
 pub use recall::{RecallResult, compute_experience_weight};
+pub use resolution::{Outcome, PENDING_TTL, ResolutionReview, ResolveRequest, Retire};
 pub use tools::DomainFilter;
 
 pub type Result<T, E = EngineError> = std::result::Result<T, E>;
@@ -80,6 +88,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(store: Arc<Store>, embedder: Arc<dyn TextEmbedder>, config: EngineConfig) -> Self {
+        store.set_audit_level(config.audit_log);
         Self {
             store,
             embedder,
@@ -153,18 +162,6 @@ impl Engine {
             vectors.extend(embedded);
         }
         Ok(vectors)
-    }
-
-    /// Record count of a namespace, for the scans that cap how many keys
-    /// they consider and say so when the cap bites.
-    pub(crate) fn warn_if_capped(&self, namespace: Namespace, cap: usize, what: &str) {
-        match self.store.count_records(namespace) {
-            Ok(total) if total > cap => {
-                tracing::warn!(cap, total, "{what} scan capped");
-            }
-            Ok(_) => {}
-            Err(e) => tracing::warn!(error = %e, "could not count {namespace} records"),
-        }
     }
 
     /// Drop the cached abandoned-approach list after a write that may change it.

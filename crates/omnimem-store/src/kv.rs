@@ -192,6 +192,25 @@ pub(crate) fn hash_merge_expiring(
     )
 }
 
+/// The members of a set, empty when there is none.
+fn set_members_of(conn: &Connection, key: &str) -> Result<Vec<String>> {
+    Ok(match load(conn, key)? {
+        Some(entry) => {
+            expect(key, &entry, Kind::Set)?;
+            entry
+                .value
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        None => Vec::new(),
+    })
+}
+
 pub(crate) fn set_union(conn: &Connection, key: &str, members: &[String]) -> Result<usize> {
     let (mut current, expiry) = match load(conn, key)? {
         Some(entry) => {
@@ -293,13 +312,35 @@ impl Store {
     /// SADD: the number of members that were new.
     pub fn set_add(&self, key: &str, members: &[String]) -> Result<usize> {
         validate_key(key)?;
-        set_union(&self.conn(), key, members)
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let audit = self.recorder();
+        // Only the topics that weren't there are a change worth a row.
+        let fresh: Vec<String> = if audit.enabled() {
+            let current = set_members_of(&tx, key)?;
+            let mut fresh: Vec<String> = members
+                .iter()
+                .filter(|m| !current.contains(m))
+                .cloned()
+                .collect();
+            fresh.sort();
+            fresh.dedup();
+            fresh
+        } else {
+            Vec::new()
+        };
+        let added = set_union(&tx, key, members)?;
+        audit.topics(&tx, key, &fresh, &[])?;
+        tx.commit()?;
+        Ok(added)
     }
 
     /// SREM: the number of members removed.
     pub fn set_remove(&self, key: &str, members: &[String]) -> Result<usize> {
-        let conn = self.conn();
-        let Some(entry) = load(&conn, key)? else {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let conn = &tx;
+        let Some(entry) = load(conn, key)? else {
             return Ok(0);
         };
         expect(key, &entry, Kind::Set)?;
@@ -318,11 +359,17 @@ impl Store {
             .cloned()
             .collect();
         let removed = current.len() - kept.len();
+        let gone: Vec<String> = current
+            .into_iter()
+            .filter(|m| members.contains(m))
+            .collect();
         if kept.is_empty() {
             conn.execute("DELETE FROM kv WHERE key = ?1", params![key])?;
         } else {
-            save(&conn, key, Kind::Set, &Value::from(kept), entry.expires_at)?;
+            save(conn, key, Kind::Set, &Value::from(kept), entry.expires_at)?;
         }
+        self.recorder().topics(conn, key, &[], &gone)?;
+        tx.commit()?;
         Ok(removed)
     }
 

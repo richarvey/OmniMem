@@ -599,3 +599,85 @@ async fn repeated_failed_logins_are_throttled() {
     assert_eq!(blocked.status, StatusCode::TOO_MANY_REQUESTS);
     assert!(blocked.body.contains("Too many failed attempts"));
 }
+
+#[tokio::test]
+async fn a_change_made_with_an_oauth_token_names_the_client_it_was_issued_to() {
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    let engine = Arc::new(Engine::new(
+        store.clone(),
+        Arc::new(Flat),
+        EngineConfig {
+            audit_log: omnimem_engine::AuditLevel::Writes,
+            ..EngineConfig::default()
+        },
+    ));
+    let config = ServerConfig {
+        oauth: OAuthSetup::On(OAuthConfig::new(
+            "https://mcp.example.com",
+            "admin",
+            "secret123",
+        )),
+        ..ServerConfig::default()
+    };
+    let app = router(engine, &config, CancellationToken::new()).unwrap();
+    let expires = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        + 3600.0;
+    store
+        .with_oauth(|o| {
+            o.save_token(
+                omnimem_store::TokenKind::Access,
+                "live-access-token",
+                &serde_json::json!({"client_id": "client-abc"}),
+                expires,
+            )
+        })
+        .unwrap();
+
+    let post = |body: &str, session: Option<&str>| {
+        let mut request = Request::post("/mcp")
+            .header(header::HOST, HOST)
+            .header(header::AUTHORIZATION, "Bearer live-access-token")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::ACCEPT, "application/json, text/event-stream");
+        if let Some(session) = session {
+            request = request.header("mcp-session-id", session);
+        }
+        request.body(Body::from(body.to_owned())).unwrap()
+    };
+    let init = send(
+        &app,
+        post(
+            r#"{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "claude-ai", "version": "1"}}}"#,
+            None,
+        ),
+    )
+    .await;
+    let session = init.header("mcp-session-id").unwrap().to_owned();
+    send(
+        &app,
+        post(
+            r#"{"jsonrpc": "2.0", "method": "notifications/initialized"}"#,
+            Some(&session),
+        ),
+    )
+    .await;
+    let reply = send(
+        &app,
+        post(
+            r#"{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "remember", "arguments": {"content": "said over oauth", "mode": "raw"}}}"#,
+            Some(&session),
+        ),
+    )
+    .await;
+    assert!(reply.body.contains("mem:episodic:"), "{}", reply.body);
+
+    let rows = store
+        .audit_entries(&omnimem_store::AuditQuery::default())
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(rows[0].actor, "mcp");
+    assert_eq!(rows[0].client, "claude-ai (client-abc)");
+}

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
+use chrono::TimeZone;
 use clap::{Parser, Subcommand};
 mod hook;
 mod install_hooks;
@@ -67,6 +68,48 @@ enum Command {
         /// Put the RSS reading list (feeds.yml) in the backup too.
         #[arg(long)]
         feeds: bool,
+        /// Put the audit log in the backup too. It can be large, and at
+        /// AUDIT_LOG=full it holds memory text, so it is only included when
+        /// asked for.
+        #[arg(long)]
+        audit: bool,
+    },
+    /// Show the audit log: who changed what, and when. It stays empty until
+    /// AUDIT_LOG is set to lifecycle, writes or full; see docs/audit-log.md.
+    /// Newest first.
+    Audit {
+        /// Only changes to this memory, project or skill key (or this
+        /// suppressed topic).
+        #[arg(long)]
+        key: Option<String>,
+        /// Only changes since this long ago (30m, 12h, 7d, 2w), or since this
+        /// date or time (2026-11-03, 2026-11-03T14:30, UTC).
+        #[arg(long)]
+        since: Option<String>,
+        /// Only changes by this actor: mcp, panel, hook, maintenance,
+        /// enrichment, rss, cli or import.
+        #[arg(long)]
+        actor: Option<String>,
+        /// Only this action, such as transition, forget, retag, remember or
+        /// suppress.
+        #[arg(long)]
+        action: Option<String>,
+        /// Most rows to show.
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// One JSON object per line, with the full from and to.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Memories linked as contradicting each other: the pairs still in
+    /// dispute and the resolutions waiting for a person. With `resolve`,
+    /// settle one; for a server with no settings window.
+    Contradictions {
+        #[command(subcommand)]
+        action: Option<ContradictionAction>,
+        /// One JSON object instead of the lists.
+        #[arg(long, global = true)]
+        json: bool,
     },
     /// Record and vector counts per namespace.
     Stats,
@@ -139,6 +182,37 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ContradictionAction {
+    /// Record how a pair was settled. The decision is yours: this is the
+    /// command line's equivalent of a click in the settings window.
+    Resolve {
+        key_a: String,
+        key_b: String,
+        /// supersedes, both_valid, both_wrong, false_positive or reopened.
+        #[arg(long)]
+        outcome: String,
+        /// For supersedes: the key of the memory that is current.
+        #[arg(long)]
+        winner: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        /// Deprioritise the out-of-date memory (both, for both_wrong). Give
+        /// it `archive` to archive instead.
+        #[arg(
+            long,
+            value_name = "deprioritise|archive",
+            num_args = 0..=1,
+            default_missing_value = "deprioritise"
+        )]
+        retire_loser: Option<String>,
+    },
+    /// Write a resolution an agent proposed, as it was proposed.
+    Accept { key_a: String, key_b: String },
+    /// Throw a proposed resolution away.
+    Discard { key_a: String, key_b: String },
+}
+
 fn main() -> Result<()> {
     #[cfg(all(windows, feature = "desktop"))]
     attach_parent_console();
@@ -160,6 +234,8 @@ fn main() -> Result<()> {
         Some(
             Command::Import { .. }
                 | Command::Export { .. }
+                | Command::Audit { .. }
+                | Command::Contradictions { .. }
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
@@ -198,6 +274,8 @@ fn main() -> Result<()> {
         return install_hooks::run(db.as_deref(), project, dry_run);
     }
     let db = resolve_db(db, &settings)?;
+    // What a command writes is the command line's, unless it says otherwise.
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Cli, "");
     match command {
         Command::Serve => serve(&db.path),
         Command::Import {
@@ -210,9 +288,24 @@ fn main() -> Result<()> {
             }
             import(&db, &file, no_embed)
         }
-        Command::Export { file, feeds } => {
+        Command::Export { file, feeds, audit } => {
             db.must_exist(None)?;
-            export(&db, &file, feeds)
+            export(&db, &file, feeds, audit)
+        }
+        Command::Audit {
+            key,
+            since,
+            actor,
+            action,
+            limit,
+            json,
+        } => {
+            db.must_exist(None)?;
+            audit_log(&db.path, key, since, actor, action, limit, json)
+        }
+        Command::Contradictions { action, json } => {
+            db.must_exist(None)?;
+            contradictions(&db.path, action, json)
         }
         Command::Hook { event, project } => {
             // A hook never fails the tool call or session it answers: say why
@@ -432,6 +525,9 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     );
     let backup = read_backup(file).with_context(|| format!("reading {}", file.display()))?;
     let store = Store::open(&db.path).with_context(|| format!("opening {}", db.path.display()))?;
+    // This store isn't opened through an engine, so it reads AUDIT_LOG itself.
+    store.set_audit_level(omnimem_engine::audit_level_from_env());
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Import, "");
     let embedder = if no_embed {
         None
     } else {
@@ -457,6 +553,10 @@ fn import(db: &Database, file: &Path, no_embed: bool) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&report)?);
     if let Some(feeds) = &backup.feeds {
         import_feeds(&feeds_path(&db.path), feeds)?;
+    }
+    if let Some(rows) = &backup.audit {
+        let (added, skipped) = store.merge_audit(rows)?;
+        eprintln!("audit log: {added} rows added, {skipped} already there");
     }
     eprintln!(
         "imported {} into {} in {:.1}s",
@@ -497,7 +597,7 @@ fn import_feeds(path: &Path, feeds: &[serde_json::Value]) -> Result<()> {
     Ok(())
 }
 
-fn export(db: &Database, file: &Path, include_feeds: bool) -> Result<()> {
+fn export(db: &Database, file: &Path, include_feeds: bool, include_audit: bool) -> Result<()> {
     eprintln!(
         "exporting from {} (from {})",
         db.path.display(),
@@ -516,9 +616,192 @@ fn export(db: &Database, file: &Path, include_feeds: bool) -> Result<()> {
         );
         dump.feeds = Some(feeds.into_iter().map(serde_json::Value::Object).collect());
     }
+    if include_audit {
+        let rows = store.export_audit()?;
+        let plural = if rows.len() == 1 { "" } else { "s" };
+        eprintln!("including {} audit log row{plural}", rows.len());
+        dump.audit = Some(rows);
+    }
     write_backup(file, &dump)?;
     eprintln!("wrote {} keys to {}", dump.data.len(), file.display());
     Ok(())
+}
+
+/// The audit log, newest first, as a table or one JSON object a line.
+fn audit_log(
+    db: &Path,
+    key: Option<String>,
+    since: Option<String>,
+    actor: Option<String>,
+    action: Option<String>,
+    limit: usize,
+    json: bool,
+) -> Result<()> {
+    let store = Store::open(db)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
+    let since = since
+        .map(|raw| {
+            omnimem_engine::parse_when(&raw, now).ok_or_else(|| {
+                anyhow!("can't read --since {raw:?}: try 7d, 12h, 2026-11-03 or 2026-11-03T14:30")
+            })
+        })
+        .transpose()?;
+    if let Some(actor) = &actor
+        && omnimem_store::Actor::parse(actor).is_none()
+    {
+        bail!(
+            "--actor {actor:?} isn't one of mcp, panel, hook, maintenance, enrichment, rss, cli or import"
+        );
+    }
+    let rows = store.audit_entries(&omnimem_store::AuditQuery {
+        key,
+        actor: actor.map(|a| a.to_ascii_lowercase()),
+        action,
+        since,
+        limit: limit.max(1),
+        ..Default::default()
+    })?;
+    if rows.is_empty() && !json {
+        let level = omnimem_engine::audit_level_from_env();
+        if level == omnimem_engine::AuditLevel::Off && store.audit_count()? == 0 {
+            eprintln!(
+                "the audit log is empty, and AUDIT_LOG is off: set it to lifecycle, writes or full to start keeping one"
+            );
+        } else {
+            eprintln!("no audit rows match");
+        }
+        return Ok(());
+    }
+    for row in rows {
+        if json {
+            println!("{}", row.to_json());
+            continue;
+        }
+        let when = chrono::Local
+            .timestamp_opt(row.at as i64, 0)
+            .single()
+            .map_or_else(String::new, |t| t.format("%Y-%m-%d %H:%M:%S").to_string());
+        let who = if row.client.is_empty() {
+            row.actor.clone()
+        } else {
+            format!("{} ({})", row.actor, row.client)
+        };
+        let change = omnimem_engine::change_summary(&row.from, &row.to, 60);
+        let reason = if row.reason.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", row.reason)
+        };
+        println!(
+            "{when}  {who}  {}  {}  {change}{reason}",
+            row.action, row.key
+        );
+    }
+    Ok(())
+}
+
+/// List the open and pending contradictions, or act on one.
+fn contradictions(db: &Path, action: Option<ContradictionAction>, json: bool) -> Result<()> {
+    let engine = hook::open_engine(db)?;
+    let say = |result: serde_json::Value| {
+        if json {
+            println!("{result}");
+        } else {
+            println!("{}", result["status"].as_str().unwrap_or("done"));
+        }
+    };
+    match action {
+        None => {
+            let open = engine.open_contradictions().map_err(|e| anyhow!("{e}"))?;
+            let pending = engine.pending_resolutions().map_err(|e| anyhow!("{e}"))?;
+            if json {
+                println!("{}", serde_json::json!({"open": open, "pending": pending}));
+                return Ok(());
+            }
+            let snippet = |v: &serde_json::Value| {
+                v.as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .take(70)
+                    .collect::<String>()
+                    .replace('\n', " ")
+            };
+            if open.is_empty() && pending.is_empty() {
+                eprintln!("no contradictions in dispute");
+            }
+            for pair in &open {
+                println!(
+                    "open     {}  {}",
+                    pair["key_a"].as_str().unwrap_or(""),
+                    snippet(&pair["content_a"])
+                );
+                println!(
+                    "         {}  {}",
+                    pair["key_b"].as_str().unwrap_or(""),
+                    snippet(&pair["content_b"])
+                );
+            }
+            for p in &pending {
+                let winner = p["winner"]
+                    .as_str()
+                    .filter(|w| !w.is_empty())
+                    .map_or(String::new(), |w| format!(", {w} is current"));
+                println!(
+                    "pending  {}  {}  {}{winner}",
+                    p["key_a"].as_str().unwrap_or(""),
+                    p["key_b"].as_str().unwrap_or(""),
+                    p["outcome"].as_str().unwrap_or(""),
+                );
+            }
+            Ok(())
+        }
+        Some(ContradictionAction::Resolve {
+            key_a,
+            key_b,
+            outcome,
+            winner,
+            reason,
+            retire_loser,
+        }) => {
+            let retire = omnimem_engine::Retire::parse(retire_loser.as_deref().unwrap_or("no"))
+                .map_err(|e| anyhow!("{e}"))?;
+            let request = omnimem_engine::ResolveRequest::new(
+                &key_a,
+                &key_b,
+                &outcome,
+                winner.as_deref(),
+                reason.as_deref(),
+                retire,
+            )
+            .map_err(|e| anyhow!("{e}"))?;
+            say(engine
+                .resolve_contradiction(&request, "cli")
+                .map_err(|e| anyhow!("{e}"))?);
+            Ok(())
+        }
+        Some(ContradictionAction::Accept { key_a, key_b }) => {
+            match engine
+                .accept_pending_resolution(&key_a, &key_b, "cli")
+                .map_err(|e| anyhow!("{e}"))?
+            {
+                Some(result) => say(result),
+                None => bail!("no pending resolution for that pair (it may have expired)"),
+            }
+            Ok(())
+        }
+        Some(ContradictionAction::Discard { key_a, key_b }) => {
+            if !engine
+                .discard_pending_resolution(&key_a, &key_b)
+                .map_err(|e| anyhow!("{e}"))?
+            {
+                bail!("no pending resolution for that pair");
+            }
+            say(serde_json::json!({"status": "discarded"}));
+            Ok(())
+        }
+    }
 }
 
 fn stats(db: &Path) -> Result<()> {

@@ -1595,16 +1595,23 @@ impl OAuth {
         Ok(token_response(&access, &refresh, scopes))
     }
 
-    /// True for a live access token. Checked on every `/mcp` request, so it
-    /// is a plain read: expired rows are left for the next issue or
-    /// revocation to purge. A store error is reported as such rather than
-    /// as a bad token, which would have clients throw their tokens away.
+    /// True for a live access token.
+    #[cfg(test)]
     pub(crate) fn verify_access(&self, token: &str) -> Result<bool, StoreError> {
+        Ok(self.access_client(token)?.is_some())
+    }
+
+    /// The client a live access token belongs to, or `None` for a token that
+    /// isn't live. Checked on every `/mcp` request, so it is a plain read:
+    /// expired rows are left for the next issue or revocation to purge. A
+    /// store error is reported as such rather than as a bad token, which
+    /// would have clients throw their tokens away.
+    pub(crate) fn access_client(&self, token: &str) -> Result<Option<String>, StoreError> {
         if token.is_empty() {
-            return Ok(false);
+            return Ok(None);
         }
         self.store
-            .read_oauth(|o| o.token_is_live(TokenKind::Access, token))
+            .read_oauth(|o| o.live_token_client(TokenKind::Access, token))
     }
 
     /// Token revocation (RFC 7009). A token that doesn't exist, or belongs to
@@ -1788,6 +1795,28 @@ mod tests {
         );
         assert!(!oauth.verify_access("bogus").unwrap());
         assert!(!oauth.verify_access("").unwrap());
+    }
+
+    #[test]
+    fn a_live_access_token_names_the_client_it_was_issued_to() {
+        let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
+        let (client, tokens) = issue(&oauth);
+        let id = client["client_id"].as_str().unwrap();
+        assert_eq!(
+            oauth
+                .access_client(tokens["access_token"].as_str().unwrap())
+                .unwrap()
+                .as_deref(),
+            Some(id)
+        );
+        // A refresh token isn't an access token, and a made-up one is nobody's.
+        assert_eq!(
+            oauth
+                .access_client(tokens["refresh_token"].as_str().unwrap())
+                .unwrap(),
+            None
+        );
+        assert_eq!(oauth.access_client("bogus").unwrap(), None);
     }
 
     #[test]

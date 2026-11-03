@@ -1,5 +1,6 @@
 //! Experience tools (`tools/experience.py`).
 
+use omnimem_store::{Op, op as audit_op};
 use std::collections::HashSet;
 
 use chrono::Utc;
@@ -16,6 +17,14 @@ use crate::tools::{
     MAX_LONG_TEXT, MAX_SHORT_TEXT, validate_project_name, validate_text, validate_writable_key,
 };
 use crate::{Engine, Result};
+
+/// A dead end ready to show an agent: the sentence, and the project it was
+/// recorded on when that is not the one the caller asked from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbandonedWarning {
+    pub text: String,
+    pub elsewhere: Option<String>,
+}
 
 const OUTCOMES: [&str; 3] = ["succeeded", "pivoted", "abandoned"];
 const APPROACH_TYPES: [&str; 5] = ["approach", "library", "pattern", "service", "tool"];
@@ -179,6 +188,7 @@ impl Engine {
                 updates.insert(name.to_owned(), v.to_owned());
             }
         }
+        let _audit = audit_op(Op::new("record_experience"));
         self.store.set_fields(key, &updates)?;
         if abandoned.is_some() {
             self.invalidate_abandoned_cache();
@@ -250,6 +260,7 @@ impl Engine {
             ),
             ("updated_at".to_owned(), now_str()),
         ]);
+        let _audit = audit_op(Op::new("log_abandoned"));
         self.store.set_fields(key, &updates)?;
         self.invalidate_abandoned_cache();
         Ok(json!({"key": key, "abandoned_count": existing.len(), "latest_entry": entry}))
@@ -411,21 +422,34 @@ impl Engine {
     /// PreToolUse hook runs on every tool call, where loading the model would
     /// add about a second each time. `warn_if_abandoned` returns the fields;
     /// this returns the sentence, including what worked instead.
-    pub fn abandoned_warnings(&self, query: &str) -> Result<Vec<String>> {
+    ///
+    /// `projects` is where the caller is working, which decides whose dead
+    /// ends count (see `GRAVEYARD_SCOPE`) and which warnings are labelled as
+    /// recorded elsewhere.
+    pub fn abandoned_warnings(
+        &self,
+        query: &str,
+        projects: &[String],
+    ) -> Result<Vec<AbandonedWarning>> {
         let now = crate::pyfmt::now_secs();
         Ok(self
-            .abandoned_matches(query)?
+            .abandoned_matches(query, projects)?
             .into_iter()
             .take(crate::recall::MAX_ABANDONED_WARNINGS)
             .map(|w| {
                 let age = w.created_at.map(|at| ((now - at) / 86_400.0).max(0.0));
-                crate::recall::warning_text(&w, age)
+                AbandonedWarning {
+                    text: crate::recall::warning_text(&w, age, projects),
+                    elsewhere: w.elsewhere(projects).map(str::to_owned),
+                }
             })
             .collect())
     }
 
     pub fn warn_if_abandoned(&self, query: &str) -> Result<Value> {
-        let matches = self.abandoned_matches(query)?;
+        // No project argument on the tool (its parameters are part of the 6.x
+        // contract), so this looks across every project; each match names its own.
+        let matches = self.abandoned_matches(query, &[])?;
         if matches.is_empty() {
             return Ok(json!({"status": "clear"}));
         }

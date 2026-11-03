@@ -73,13 +73,48 @@
 </div>
 
 {% if proposals %}
-<div class="flash flash-info">
-  <span>
-    {{ proposals|length }} pending proposal{{ "" if proposals|length == 1 else "s" }} awaiting review:
-    {% for p in proposals %}<strong>{{ p.domain }}</strong> (proposed {{ p.created_at }}){% if not loop.last %}, {% endif %}{% endfor %}
-    — commit with <code>compile_skill(domain, mode="write")</code> before the proposal expires.
-  </span>
-</div>
+<section class="pending-proposals" id="pending-proposals">
+  <h3>Pending proposals <span class="badge" style="font-size:0.75rem">{{ proposals|length }}</span></h3>
+  <p class="section-note">
+    Drafts waiting for a person, including any an agent proposed over MCP.
+    Nothing here is written until you accept it, and each one expires on its
+    own if you leave it.
+  </p>
+  {% for p in proposals %}
+  <div class="pending-proposal">
+    <div class="pending-head">
+      <strong>{{ p.domain }}</strong>
+      <span class="badge ns-skill">{{ "new skill" if p.new_skill else "changes the stored skill" }}</span>
+      <span class="mono">+{{ p.added }} / -{{ p.removed }} lines</span>
+      {% if p.rules %}<span class="mono">{% for kind, n in p.rules.items() %}{{ n }} {{ kind }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+      <span class="mono">proposed {{ p.created_at }}</span>
+    </div>
+    {% if p.description %}<p class="section-note">{{ p.description }}</p>{% endif %}
+    <details open>
+      <summary>{{ "The draft" if p.new_skill else "The diff" }}</summary>
+      <pre class="skill-draft">{{ p.shown }}</pre>
+    </details>
+    {% if p.stale %}
+    <div class="flash flash-warning">
+      <span>The stored skill changed after this was proposed, so it can't be accepted. Discard it and propose again.</span>
+    </div>
+    {% endif %}
+    <div id="pending-result-{{ loop.index }}"></div>
+    <div class="pending-actions">
+      <form method="POST" action="/skills/discard" style="display:inline">
+        <input type="hidden" name="domain" value="{{ p.domain }}">
+        <button type="submit" class="btn btn-secondary btn-sm">Discard</button>
+      </form>
+      {% if not p.stale %}
+      <form hx-post="/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
+        <input type="hidden" name="domain" value="{{ p.domain }}">
+        <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
 {% endif %}
 
 {% if skills %}

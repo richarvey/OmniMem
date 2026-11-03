@@ -10,6 +10,9 @@
       <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.85rem;color:var(--text-dim)" title="Add the RSS reading list (feeds.yml) to the backup">
         <input type="checkbox" name="feeds" value="1"> Include RSS feeds
       </label>
+      <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.85rem;color:var(--text-dim)" title="Add the audit log to the backup. At AUDIT_LOG=full it holds memory text.">
+        <input type="checkbox" name="audit" value="1"> Include audit log
+      </label>
       <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
     </form>
     <form method="POST" action="/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
@@ -56,6 +59,10 @@
     <div class="meta-item">
       <div class="meta-label">RSS Feeds</div>
       <div class="meta-value">{% if preview.feeds is not none %}{{ preview.feeds }} (added if not already listed){% else %}Not in this backup{% endif %}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Audit Log</div>
+      <div class="meta-value">{% if preview.audit is not none %}{{ preview.audit }} rows (added if not already in the log){% else %}Not in this backup{% endif %}</div>
     </div>
     {% if preview.metadata.namespaces is defined %}
     <div class="meta-item">

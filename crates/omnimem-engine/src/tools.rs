@@ -1,6 +1,7 @@
 //! The core tool behaviours (`tools/core.py`, `tools/backup.py`,
 //! `tools/queue.py` and the `health` tool), returning 6.x's result shapes.
 
+use omnimem_store::{AuditLevel, Op, op as audit_op};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -19,7 +20,8 @@ use crate::classification::{classification_fields, licence_for_write, provenance
 use crate::domains::DomainInput;
 use crate::error::invalid;
 use crate::lifecycle::{
-    MAX_TOPIC_CHARS, MIN_TOPIC_CHARS, MemoryState, SUPPRESSED_KEY, validate_reinstate_hints,
+    MAX_TOPIC_CHARS, MIN_TOPIC_CHARS, MemoryState, SUPPRESSED_KEY, SUPPRESSED_REASONS_KEY,
+    validate_reinstate_hints,
 };
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
@@ -198,8 +200,39 @@ fn recall_entry(r: &RecallResult) -> Value {
             e.insert(name.into(), v.into());
         }
     }
-    if !r.contradictions.is_empty() {
-        e.insert("contradictions".into(), r.contradictions.len().into());
+    // The count is of links still in dispute, as 6.x's was of all of them
+    // before a link could be settled. A settled one is shown with what was
+    // decided, so a reader sees "superseded by X" and not "disputed".
+    let open = r
+        .contradictions
+        .iter()
+        .filter(|l| !crate::resolution::link_is_resolved(l))
+        .count();
+    if open > 0 {
+        e.insert("contradictions".into(), open.into());
+    }
+    let settled: Vec<Value> = r
+        .contradictions
+        .iter()
+        .filter(|l| crate::resolution::link_is_resolved(l))
+        .map(|l| {
+            let mut s = Map::new();
+            s.insert("key".into(), l.get("key").cloned().unwrap_or(Value::Null));
+            if let Some(Value::Object(res)) = l.get("resolution") {
+                for name in ["outcome", "winner", "reason", "resolved_at", "resolved_by"] {
+                    if let Some(v) = res.get(name) {
+                        s.insert(name.into(), v.clone());
+                    }
+                }
+            }
+            Value::Object(s)
+        })
+        .collect();
+    if !settled.is_empty() {
+        e.insert("resolved_contradictions".into(), settled.into());
+    }
+    if let Some(winner) = nonempty(&r.superseded_by) {
+        e.insert("superseded_by".into(), winner.into());
     }
     if let Some(url) = nonempty(&r.source_url) {
         e.insert("source_url".into(), url.into());
@@ -947,6 +980,7 @@ impl Engine {
             }));
         }
         let mut deleted = Vec::new();
+        let _audit = audit_op(Op::new("forget").at(AuditLevel::Lifecycle));
         for (key, _) in &targets {
             if self.transition(key, MemoryState::Deleted, None).is_err() {
                 self.store.delete(key)?;
@@ -980,8 +1014,18 @@ impl Engine {
         if let Some(reason) = reason {
             validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
+        let topic_key = trimmed.to_lowercase();
+        let _audit = audit_op(Op::new("suppress").at(AuditLevel::Lifecycle).reason(reason));
         self.store
-            .set_add(SUPPRESSED_KEY, &[trimmed.to_lowercase()])?;
+            .set_add(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
+        // A new reason replaces the old one; suppressing again without one
+        // leaves what was said before standing.
+        if let Some(reason) = reason.filter(|r| !r.is_empty()) {
+            self.store.hash_set(
+                SUPPRESSED_REASONS_KEY,
+                &Fields::from([(topic_key, reason.to_owned())]),
+            )?;
+        }
         info!(topic, "suppressed topic");
         let mut m = Map::new();
         m.insert("topic".into(), topic.into());
@@ -990,13 +1034,34 @@ impl Engine {
     }
 
     pub fn unsuppress_topic(&self, topic: &str) -> Result<Value> {
+        let topic_key = topic.to_lowercase();
+        let _audit = audit_op(Op::new("unsuppress").at(AuditLevel::Lifecycle));
         self.store
-            .set_remove(SUPPRESSED_KEY, &[topic.to_lowercase()])?;
+            .set_remove(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
+        self.store
+            .hash_delete_fields(SUPPRESSED_REASONS_KEY, &[topic_key.as_str()])?;
         Ok(json!({"topic": topic}))
     }
 
     pub fn list_suppressions(&self) -> Result<Value> {
-        Ok(json!({"suppressed_topics": self.suppressed_topics()?}))
+        let topics = self.suppressed_topics()?;
+        let mut m = Map::new();
+        // Added in 7.0.6, and only when a topic has a reason, so the 6.x
+        // shape is untouched until one is given. Keyed by the topics listed.
+        let reasons = self
+            .store
+            .hash_get_all(SUPPRESSED_REASONS_KEY)?
+            .unwrap_or_default();
+        let reasons: Map<String, Value> = reasons
+            .into_iter()
+            .filter(|(topic, reason)| topics.contains(topic) && !reason.is_empty())
+            .map(|(topic, reason)| (topic, reason.into()))
+            .collect();
+        m.insert("suppressed_topics".into(), json!(topics));
+        if !reasons.is_empty() {
+            m.insert("reasons".into(), reasons.into());
+        }
+        Ok(Value::Object(m))
     }
 
     pub fn find_duplicates(
@@ -1061,6 +1126,18 @@ impl Engine {
         filename: Option<&str>,
         include_feeds: bool,
     ) -> Result<Value> {
+        self.dump_to_file_with(filename, include_feeds, false)
+    }
+
+    /// [`Engine::dump_to_file_with_feeds`], and the audit log too when
+    /// `include_audit` is set. Only asked for, never by default: the log can
+    /// be large and at the `full` level it holds memory text.
+    pub fn dump_to_file_with(
+        &self,
+        filename: Option<&str>,
+        include_feeds: bool,
+        include_audit: bool,
+    ) -> Result<Value> {
         let filename = filename.map_or_else(
             || {
                 format!(
@@ -1084,6 +1161,9 @@ impl Engine {
                 }
             }
         }
+        if include_audit {
+            dump.audit = Some(self.store.export_audit()?);
+        }
         if let Err(e) = omnimem_store::write_backup(&path, &dump) {
             warn!(error = %e, "failed to write backup file");
             return Ok(json!({"status": "error", "message": "Failed to write backup file"}));
@@ -1096,6 +1176,9 @@ impl Engine {
         });
         if let Some(feeds) = &dump.feeds {
             result["feeds"] = json!(feeds.len());
+        }
+        if let Some(audit) = &dump.audit {
+            result["audit"] = json!(audit.len());
         }
         Ok(result)
     }
@@ -1134,10 +1217,17 @@ impl Engine {
         {
             return error("Invalid backup feeds format");
         }
+        if value
+            .get("audit")
+            .is_some_and(|a| !a.is_array() && !a.is_null())
+        {
+            return error("Invalid backup audit format");
+        }
         let backup = BackupFile::from_value(value).unwrap_or(BackupFile {
             metadata: Value::Null,
             data: Map::new(),
             feeds: None,
+            audit: None,
         });
         if let Some(bad) = backup
             .data
@@ -1162,6 +1252,9 @@ impl Engine {
             });
             if let Some(feeds) = &backup.feeds {
                 result["feeds_in_backup"] = json!(feeds.len());
+            }
+            if let Some(audit) = &backup.audit {
+                result["audit_in_backup"] = json!(audit.len());
             }
             return Ok(result);
         }
@@ -1192,6 +1285,19 @@ impl Engine {
         // backup's result is exactly what 6.x returned.
         if let Some(feeds) = &backup.feeds {
             result["feeds"] = self.restore_feeds(feeds);
+        }
+        if let Some(rows) = &backup.audit {
+            // Rows already in the log are skipped, so restoring twice, or
+            // onto the store the backup came from, adds nothing.
+            match self.store.merge_audit(rows) {
+                Ok((added, skipped)) => {
+                    result["audit"] = json!({"added": added, "already_present": skipped});
+                }
+                Err(e) => {
+                    warn!(error = %e, "could not restore the audit log");
+                    result["audit"] = json!({"error": "could not restore the audit log"});
+                }
+            }
         }
         Ok(result)
     }

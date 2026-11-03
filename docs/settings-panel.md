@@ -25,21 +25,22 @@ Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Dock
 
 | Page | What it does |
 |---|---|
-| **Dashboard** | Namespace counts and state breakdowns, recent activity, the enrichment queue, and a version check. Counts are cached for `DASHBOARD_STATS_TTL` seconds (60) |
+| **Dashboard** | Namespace counts and state breakdowns, recent activity, the enrichment queue, and a version check (a marker in the sidebar, from `UPDATE_CHECK`). Counts are cached for `DASHBOARD_STATS_TTL` seconds (60) |
 | **Memories** | Browse every memory with namespace, state, project, licence and provenance filters. `licence=unknown` is the queue of records nobody has classified. Rows carry deprioritise and delete actions and a recall-heat bar |
 | **Memory detail** | Full content and metadata, experience data and contradictions. Edit tags, set the licence (with an optional note) and the provenance, through the same engine as `retag`, `set_licence` and `set_provenance`, so extracted facts follow and `updated_at` isn't touched |
 | **Create** | Store a memory, with the duplicate check shown inline and the namespace defaults for licence and provenance |
 | **Search** | Semantic search through the full recall pipeline, weak matches marked |
 | **Projects** | List, create, edit and delete projects, with domain chips, a domain filter, a **Suggest** button that drafts domains from the stack and recurring tags, and bulk deprioritise and reinstate |
 | **Experience** | Effort stats, outcomes, breakthroughs and the most effortful work, with the graveyard on its own page |
-| **Skills** | Compiled skills with their rules, sources and load counts, plus pending proposals. **New Skill** runs the same propose-and-accept gate as `compile_skill`, and refuses a domain that already has a skill (recompiles stay with the MCP tool, which shows the diff). Skills can be deleted but never edited |
+| **Skills** | Compiled skills with their rules, sources and load counts, plus **Pending proposals**: every stashed draft or diff, including ones an agent proposed over MCP, each with Accept and Discard (a count shows beside the Skills link while any wait; `HUMAN_APPROVAL` is on the Configuration page). **New Skill** runs the same propose-and-accept gate as `compile_skill`, and refuses a domain that already has a skill (recompiles stay with the MCP tool, which shows the diff). Skills can be deleted but never edited |
 | **Duplicates** | Scan a namespace for near-identical clusters and archive the extras |
-| **Contradictions** | Each recorded pair once, both sides side by side |
+| **Contradictions** | Each pair still in dispute once, both sides side by side, with **A is current**, **B is current**, **Both stand** and **Not a contradiction** (an optional reason, and a box to deprioritise the out-of-date memory). A click is your approval and records the resolution on both memories. Above them, **Pending** lists resolutions an agent proposed that couldn't be put to you through MCP, each with Accept and Discard. See [settling a contradiction](features.md#settling-a-contradiction) |
 | **Suppressions** | Add and remove suppressed topics |
 | **Telemetry** | Most recalled, gone cold (no recall in `TELEMETRY_COLD_DAYS`, 60), never recalled, skills included |
 | **Token overhead** | What OmniMem costs an agent's context before any tool is called (the instructions, tool schemas and deferred tool names, measured from what the server sends), plus per-tool call counts, durations and errors with a reset button |
 | **RSS feeds** | Edit the reading list: URLs, topics, mode, project label, licence and skill influence scores. Upload or download `feeds.yml` whole. Every change is mirrored for the skill compiler and picked up by the scheduler |
-| **Backups** | Create, upload (up to 100 MB), preview, restore, download and delete backups. Tick **Include RSS feeds** to put the reading list in a new backup; restoring a backup that has feeds adds the ones you don't already list (matched by URL) and leaves the rest alone. Restores go through the same path as `restore_from_file`, so every migration runs and memories are re-embedded |
+| **Audit Log** | The log of changes (see [the audit log](audit-log.md)), newest first, filtered by key, actor, action and date. Each memory's page has a History section with its own rows |
+| **Backups** | Create, upload (up to 100 MB), preview, restore, download and delete backups. Tick **Include RSS feeds** to put the reading list in a new backup, and **Include audit log** to put the audit log in; restoring a backup that has an audit log adds the rows you don't have, and restoring a backup that has feeds adds the ones you don't already list (matched by URL) and leaves the rest alone. Restores go through the same path as `restore_from_file`, so every migration runs and memories are re-embedded |
 | **Configuration** | Everything a headless install sets as environment variables. See below |
 
 ### Skill export and import

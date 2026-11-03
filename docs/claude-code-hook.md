@@ -124,6 +124,12 @@ command is checked only when it mutates, so `ls vendor/kestrel-rs` passes and
 for an `Edit` that is `new_string`, never `old_string`, so removing an abandoned
 approach is never mistaken for proposing it.
 
+It works out which project it is speaking for the same way session start does
+(`--project`, then `OMNIMEM_PROJECT`, then the directory name), and by default
+only denies for dead ends recorded on that project, or recorded with no project.
+With `GRAVEYARD_SCOPE=all` it also denies for another project's, and the refusal
+names the project rather than saying it was tried here.
+
 No embedding: the graveyard scan is keyword-based, so a hook that runs on every
 tool call costs about 5ms rather than the second a model load would add.
 

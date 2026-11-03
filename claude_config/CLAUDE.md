@@ -38,7 +38,7 @@ At the beginning of every session:
 - Recent decisions and discovered patterns
 - Abandoned approaches to avoid (graveyard)
 - Stale memories that may need reviewing
-- **Contradiction warnings** — surface these explicitly and ask the human which version reflects current reality before proceeding with any work
+- **Contradiction warnings** — surface these explicitly and ask the human which version reflects current reality before proceeding with any work. Record their answer with `check_contradictions(mode="resolve", key_a, key_b, outcome, winner?, reason?, retire_loser?)`: `outcome` is `supersedes` (with the `winner`), `both_valid`, `both_wrong`, `false_positive` or `reopened`, and `retire_loser=true` also deprioritises the memory that lost. The human is asked to confirm it (or, if their client can't be asked, accepts it in the settings window or with `omnimem contradictions`), so the call may come back `awaiting_approval`, `declined` or `cancelled`; don't repeat it. A resolved pair stops warning, and recall shows `resolved_contradictions` and `superseded_by` instead
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`
 - **Knowledge watch** — if the briefing includes `skill_knowledge_watch`, recent articles look relevant to a compiled skill; entries flagged `possible_contradiction` may mean the world moved under a rule. Surface them and, if the human agrees an article belongs in the skill, call `promote_knowledge(key, domain="<domain>")` then recompile
@@ -169,7 +169,7 @@ OmniMem can compile your accumulated experience in a domain into a loadable skil
 
 1. `compile_skill("<domain>")` returns a diff (or a full draft for a new skill) plus a risk-classified change summary
 1. Show the human the changes — additions are low-stakes; rewrites or removals of existing rules deserve individual attention
-1. Only after they accept, call `compile_skill("<domain>", mode="write")` — it commits exactly the proposed draft, nothing else
+1. Only after they accept, call `compile_skill("<domain>", mode="write")` — it commits exactly the proposed draft, nothing else. Your say-so is not the approval: the client asks the human again (MCP elicitation), or you get `awaiting_approval` and they accept it in OmniMem's settings window under Skills. On `declined` or `cancelled`, nothing was written, so don't ask again unless they do
 
 The skill's `description` is the load trigger and is human-owned: the compiler drafts it once at creation, the human approves or edits it (pass `description=` to change it deliberately), and recompiles never clobber it.
 

@@ -565,6 +565,38 @@ a.stat-card:hover .stat-ns {
   gap: 0.35rem;
 }
 
+/* Pending skill proposals, and the count beside the Skills link */
+.nav-count {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 99px;
+  background: var(--orange, #ff8e01);
+  color: #00101d;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.pending-proposal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.pending-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pending-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
 /* Badges */
 .badge {
   font-size: 0.7rem;

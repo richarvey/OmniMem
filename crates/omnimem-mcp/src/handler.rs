@@ -3,26 +3,30 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use omnimem_engine::{DomainFilter, Engine, EngineError};
+use omnimem_engine::{
+    DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
+    ResolveRequest, Retire, SkillReview,
+};
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
     ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::schemars::JsonSchema;
-use rmcp::service::RequestContext;
+use rmcp::service::{Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
+use crate::approval::{self, APPROVAL_TIMEOUT, Answer};
 use crate::args::{
     Archive, Bless, Briefing, BulkProject, CheckContradictions, CompileProject, CompileSkill,
     Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, FindDuplicates, FindSkills, Forget,
     GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs, OptionalProject,
     ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex, RecentKnowledge,
-    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, SetLicence,
-    SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
+    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, RetireArg,
+    SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
 };
 use crate::descriptions as d;
 
@@ -386,6 +390,18 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         }
         "check_contradictions" => {
             let a: CheckContradictions = parse(args)?;
+            match a.mode.as_deref().map(str::trim) {
+                None | Some("" | "check") => {}
+                // Only reached when no person is asked: `HUMAN_APPROVAL=agent`.
+                Some("resolve") => {
+                    return Ok(e.resolve_contradiction(&resolve_request(&a)?, "mcp")?);
+                }
+                Some(other) => {
+                    return Err(CallError::Invalid(format!(
+                        "Unknown mode '{other}'. Use 'check' (the default) or 'resolve'."
+                    )));
+                }
+            }
             e.check_contradictions(
                 a.query.as_deref(),
                 &a.namespace,
@@ -430,6 +446,279 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         }
         other => return Err(CallError::UnknownTool(other.to_owned())),
     })
+}
+
+/// How much of a proposed diff goes into the question. A person reads it in
+/// a dialog, so the rest is summarised and left to the settings window.
+const DIFF_PREVIEW_CHARS: usize = 3_000;
+
+/// What a person is asked when an agent wants to write a skill: the domain,
+/// counts, and the start of the diff (or the draft, for a new skill).
+fn skill_approval_message(review: &SkillReview) -> String {
+    let mut message = format!(
+        "An agent wants to {} the \"{}\" skill.\n{} line{} added, {} removed.",
+        if review.new_skill { "create" } else { "change" },
+        review.domain,
+        review.added,
+        if review.added == 1 { "" } else { "s" },
+        review.removed,
+    );
+    if let Some(rules) = review.rules.as_object().filter(|r| !r.is_empty()) {
+        let counts: Vec<String> = rules.iter().map(|(k, n)| format!("{n} {k}")).collect();
+        message.push_str(&format!(" Rules: {}.", counts.join(", ")));
+    }
+    if !review.description.is_empty() {
+        message.push_str(&format!("\nDescription: {}", review.description));
+    }
+    message.push_str(if review.new_skill {
+        "\n\nThe draft:\n"
+    } else {
+        "\n\nThe diff:\n"
+    });
+    let total = review.shown.chars().count();
+    message.push_str(
+        &review
+            .shown
+            .chars()
+            .take(DIFF_PREVIEW_CHARS)
+            .collect::<String>(),
+    );
+    if total > DIFF_PREVIEW_CHARS {
+        message.push_str(&format!(
+            "\n... and {} more characters (see the Skills page in OmniMem's settings window).",
+            total - DIFF_PREVIEW_CHARS
+        ));
+    }
+    message.push_str("\n\nAccept to write it. Decline to leave things as they are.");
+    message
+}
+
+/// Run engine work on a blocking thread and flatten the join error.
+async fn blocking<T: Send + 'static>(
+    engine: &Arc<Engine>,
+    work: impl FnOnce(&Engine) -> Result<T, EngineError> + Send + 'static,
+) -> Result<T, CallError> {
+    let engine = engine.clone();
+    tokio::task::spawn_blocking(move || work(&engine))
+        .await
+        .map_err(|e| CallError::Internal(format!("tool task failed: {e}")))?
+        .map_err(CallError::from)
+}
+
+/// The resolution a `check_contradictions(mode="resolve")` call proposes.
+fn resolve_request(a: &CheckContradictions) -> Result<ResolveRequest, CallError> {
+    fn need<'a>(name: &str, value: &'a Option<String>) -> Result<&'a str, CallError> {
+        value
+            .as_deref()
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| CallError::Invalid(format!("mode='resolve' needs {name}.")))
+    }
+    let retire = match &a.retire_loser {
+        None => Retire::No,
+        Some(RetireArg::Flag(true)) => Retire::Deprioritise,
+        Some(RetireArg::Flag(false)) => Retire::No,
+        Some(RetireArg::Mode(mode)) => Retire::parse(mode)?,
+    };
+    Ok(ResolveRequest::new(
+        need("key_a", &a.key_a)?,
+        need("key_b", &a.key_b)?,
+        need("outcome", &a.outcome)?,
+        a.winner.as_deref(),
+        a.reason.as_deref(),
+        retire,
+    )?)
+}
+
+/// What the person is shown: both memories, the outcome, the winner and the
+/// reason, as far as a client's dialog can take.
+fn contradiction_approval_message(review: &ResolutionReview) -> String {
+    const SHOWN_CHARS: usize = 400;
+    let r = &review.request;
+    let shown = |text: &str| {
+        let mut s: String = text.chars().take(SHOWN_CHARS).collect();
+        if text.chars().count() > SHOWN_CHARS {
+            s.push_str("...");
+        }
+        s
+    };
+    let mut message = format!(
+        "An agent wants to settle a contradiction between two memories.\n\nA ({}):\n{}\n\nB ({}):\n{}\n\nOutcome: {}",
+        r.key_a,
+        shown(&review.content_a),
+        r.key_b,
+        shown(&review.content_b),
+        r.outcome.as_str(),
+    );
+    if let Some(winner) = &r.winner {
+        let side = if *winner == r.key_a { "A" } else { "B" };
+        message.push_str(&format!("\nCurrent: {side} ({winner})"));
+    }
+    message.push_str(&format!(
+        "\nReason: {}",
+        r.reason.as_deref().unwrap_or("(none given)")
+    ));
+    match r.retire {
+        Retire::No => {}
+        Retire::Deprioritise => message.push_str("\nThe out-of-date memory will be deprioritised."),
+        Retire::Archive => message.push_str("\nThe out-of-date memory will be archived."),
+    }
+    message.push_str("\n\nAccept to record it. Decline to leave things as they are.");
+    message
+}
+
+/// `check_contradictions(mode="resolve")` under `HUMAN_APPROVAL=human`: the
+/// agent proposes, a person's answer is what writes. Without a person to
+/// ask, the proposal waits for the settings window (or `omnimem
+/// contradictions`).
+async fn resolve_with_approval(
+    engine: &Arc<Engine>,
+    peer: &Peer<RoleServer>,
+    client: &str,
+    args: Value,
+) -> Result<Value, CallError> {
+    let a: CheckContradictions = parse(args)?;
+    let request = resolve_request(&a)?;
+    let proposed = request.clone();
+    let review = blocking(engine, move |e| e.review_resolution(&proposed)).await?;
+    let answer = approval::ask_human(
+        peer,
+        &contradiction_approval_message(&review),
+        APPROVAL_TIMEOUT,
+    )
+    .await;
+    let client = client.to_owned();
+    match answer {
+        Answer::Accepted => {
+            blocking(engine, move |e| {
+                // The write is the client's, and the log says a person let it through.
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                let _note = omnimem_store::op(
+                    omnimem_store::Op::new("approved")
+                        .reason(Some("approved by the user via elicitation")),
+                );
+                e.resolve_contradiction(&review.request, "mcp-elicitation")
+            })
+            .await
+        }
+        Answer::Unsupported => {
+            let mut stored = blocking(engine, move |e| {
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                e.propose_resolution(&request, "mcp")
+            })
+            .await?;
+            stored["note"] = json!(
+                "A person has to accept this, and this client can't ask them: it didn't declare MCP elicitation. \
+                 Nothing has been written. They can accept it in OmniMem's settings window, on the Contradictions \
+                 page under Pending, or with `omnimem contradictions` on the server. Don't call resolve again."
+            );
+            Ok(stored)
+        }
+        declined_or_not => Ok(json!({
+            "status": declined_or_not.status(),
+            "key_a": review.request.key_a,
+            "key_b": review.request.key_b,
+            "note": if declined_or_not == Answer::Declined {
+                "The person declined, so nothing was written. Don't ask again unless they do."
+            } else {
+                "The person didn't answer, so nothing was written."
+            },
+        })),
+    }
+}
+
+/// `compile_skill(mode="write")` under `HUMAN_APPROVAL=human`: the agent's
+/// call is a request, and a person's answer is the commit. Without a person
+/// to ask, the proposal waits for the settings window.
+async fn write_with_approval(
+    engine: &Arc<Engine>,
+    peer: &Peer<RoleServer>,
+    client: &str,
+    args: Value,
+) -> Result<Value, CallError> {
+    let a: CompileSkill = parse(args)?;
+    let domain = a.domain.clone();
+    let review = match blocking(engine, move |e| e.review_skill_proposal(&domain)).await? {
+        ProposalCheck::Ready(review) => review,
+        // No proposal, a stale one, or a skill the compiler doesn't own: the
+        // result is the one a plain write gives, and no one needs asking.
+        ProposalCheck::Blocked(result) => return Ok(result),
+    };
+    let ttl = engine.config().skill_proposal_ttl;
+    let answer = if approval::can_ask(peer) {
+        // The stash expires on its own clock; asking past it only wastes the answer.
+        let timeout = APPROVAL_TIMEOUT.min(ttl);
+        approval::ask_human(peer, &skill_approval_message(&review), timeout).await
+    } else {
+        Answer::Unsupported
+    };
+    let note = match answer {
+        Answer::Accepted => {
+            let (domain, export, sha) = (a.domain, a.export_path, review.body_sha);
+            let client = client.to_owned();
+            return blocking(engine, move |e| {
+                // The write is the client's, and the log says a person let it through.
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                let _note = omnimem_store::op(
+                    omnimem_store::Op::new("approved")
+                        .reason(Some("approved by the user via elicitation")),
+                );
+                e.commit_approved_skill(&domain, export.as_deref(), &sha)
+            })
+            .await;
+        }
+        Answer::Unsupported => format!(
+            "A person has to accept this proposal, and this client can't ask them: it didn't declare MCP elicitation. \
+             Accept it in OmniMem's settings window, on the Skills page under Pending proposals. A headless server has \
+             no window, so it needs a client that supports elicitation. Don't call write again; the proposal waits \
+             {}s for them.",
+            ttl.as_secs()
+        ),
+        Answer::Declined => "The person declined, so nothing was written. The proposal is still stashed until it expires, \
+             and they can accept it later from OmniMem's settings window. Don't ask again unless they do."
+            .to_owned(),
+        _ => "The person didn't answer, so nothing was written. The proposal is still stashed until it expires, \
+             and they can accept it from OmniMem's settings window."
+            .to_owned(),
+    };
+    Ok(json!({
+        "status": answer.status(),
+        "skill_id": review.skill_id,
+        "domain": review.domain,
+        "note": note,
+    }))
+}
+
+/// Count and time a finished call, and log it. Returns the reply text.
+/// Failures to record are ignored.
+fn observe(
+    engine: &Engine,
+    tool: &str,
+    started: Instant,
+    result: Result<Value, CallError>,
+) -> Result<String, CallError> {
+    let text = result.as_ref().ok().map(std::string::ToString::to_string);
+    if !matches!(result, Err(CallError::UnknownTool(_))) {
+        record_metrics(
+            engine,
+            tool,
+            started,
+            text.as_ref().map(|t| t.chars().count()),
+        );
+    }
+    // Successful calls were invisible: the server logged writes and
+    // failures, so "recall returned nothing" and "recall was never
+    // called" looked identical from the outside. Deliberately no
+    // arguments and no result content, because a query or a memory
+    // can hold anything the user typed.
+    if let Some(text) = text.as_ref() {
+        info!(
+            tool = %tool,
+            duration_ms = started.elapsed().as_millis() as u64,
+            chars = text.chars().count(),
+            "tool call served"
+        );
+    }
+    result.map(|_| text.unwrap_or_default())
 }
 
 /// Call counts, duration and response size per tool, as the 6.x telemetry
@@ -505,41 +794,43 @@ impl ServerHandler for OmniMemServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        let client = crate::audit_client::describe(&context);
         let name = request.name.to_string();
         let args = Value::Object(request.arguments.unwrap_or_default());
         let engine = self.engine.clone();
         let tool = name.clone();
-        let outcome = tokio::task::spawn_blocking(move || {
+        // A skill write is the one call the agent can't make on its own say-so
+        // (unless `HUMAN_APPROVAL=agent`): it goes through a person first.
+        // Settling a contradiction is the second: an agent's `resolve` is a
+        // proposal until a person says yes.
+        let mode = args.get("mode").and_then(Value::as_str);
+        let skill_write = name == "compile_skill" && mode == Some("write");
+        let resolves = name == "check_contradictions" && mode.map(str::trim) == Some("resolve");
+        let needs_person =
+            (skill_write || resolves) && engine.config().human_approval == HumanApproval::Human;
+        let outcome = if needs_person {
             let started = Instant::now();
-            let result = dispatch(&engine, &tool, args);
-            let text = result.as_ref().ok().map(std::string::ToString::to_string);
-            if !matches!(result, Err(CallError::UnknownTool(_))) {
-                record_metrics(
-                    &engine,
-                    &tool,
-                    started,
-                    text.as_ref().map(|t| t.chars().count()),
-                );
-            }
-            // Successful calls were invisible: the server logged writes and
-            // failures, so "recall returned nothing" and "recall was never
-            // called" looked identical from the outside. Deliberately no
-            // arguments and no result content, because a query or a memory
-            // can hold anything the user typed.
-            if let Some(text) = text.as_ref() {
-                info!(
-                    tool = %tool,
-                    duration_ms = started.elapsed().as_millis() as u64,
-                    chars = text.chars().count(),
-                    "tool call served"
-                );
-            }
-            result.map(|_| text.unwrap_or_default())
-        })
-        .await
-        .map_err(|e| ErrorData::internal_error(format!("tool task failed: {e}"), None))?;
+            let result = if resolves {
+                resolve_with_approval(&engine, &context.peer, &client, args).await
+            } else {
+                write_with_approval(&engine, &context.peer, &client, args).await
+            };
+            tokio::task::spawn_blocking(move || observe(&engine, &tool, started, result))
+                .await
+                .map_err(|e| ErrorData::internal_error(format!("tool task failed: {e}"), None))?
+        } else {
+            tokio::task::spawn_blocking(move || {
+                // Changes this call makes are the client's, in the audit log.
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                let started = Instant::now();
+                let result = dispatch(&engine, &tool, args);
+                observe(&engine, &tool, started, result)
+            })
+            .await
+            .map_err(|e| ErrorData::internal_error(format!("tool task failed: {e}"), None))?
+        };
 
         let result = match outcome {
             Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),

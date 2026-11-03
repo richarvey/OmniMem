@@ -195,3 +195,47 @@ async fn a_missing_keychain_is_explained_and_the_file_still_saves() {
             .contains("MCP_PORT=9100")
     );
 }
+
+#[tokio::test]
+async fn the_audit_settings_are_on_the_page_and_the_choice_is_checked() {
+    let dir = scratch();
+    let file = dir.0.join("omnimem.env");
+    let panel = Panel::new();
+    panel.set_settings_path(file.clone());
+    panel.set_secret_store(Arc::new(MemoryKeychain::default()));
+
+    let page = text(&get(&panel, "/configuration").await);
+    assert!(
+        page.contains("AUDIT_LOG") && page.contains("AUDIT_RETENTION_DAYS"),
+        "{page}"
+    );
+    // `full` is the one level that holds memory text, and the page says so.
+    assert!(page.contains("the one level that stores what your memories say"));
+    for level in ["off", "lifecycle", "writes", "full"] {
+        assert!(
+            page.contains(&format!(r#"<option value="{level}""#)),
+            "{level}"
+        );
+    }
+
+    let saved = landed(&post(&panel, "AUDIT_LOG=writes&AUDIT_RETENTION_DAYS=30").await);
+    assert!(
+        saved.starts_with("/configuration?message=Saved."),
+        "{saved}"
+    );
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.contains("AUDIT_LOG=writes\n") && written.contains("AUDIT_RETENTION_DAYS=30\n")
+    );
+
+    let refused = landed(&post(&panel, "AUDIT_LOG=everything").await);
+    assert!(
+        refused.contains("AUDIT_LOG") || refused.contains("Audit"),
+        "{refused}"
+    );
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("AUDIT_LOG=writes")
+    );
+}

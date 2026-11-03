@@ -22,9 +22,9 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 | `forget(key_or_query, confirm?)` | Permanent delete. Without `confirm=True` it only previews, and the preview's `hint` says so |
 | `suppress_topic(topic, reason?)` | Filter a topic out of every recall until you lift it |
 | `unsuppress_topic(topic)` | Lift a suppression |
-| `list_suppressions()` | What's currently suppressed |
+| `list_suppressions()` | What's currently suppressed, with a `reasons` map for the topics that were given one |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Clusters of near-identical memories (threshold 0.92 by default) |
-| `check_contradictions(query?, namespace?, project_filter?, use_api?)` | Tier 1 heuristic scan, or tier 2 verification with Claude when `use_api=True` |
+| `check_contradictions(query?, namespace?, project_filter?, use_api?, mode?, key_a?, key_b?, outcome?, winner?, reason?, retire_loser?)` | Tier 1 heuristic scan, or tier 2 verification with Claude when `use_api=True`. `mode="resolve"` records how a linked pair was settled: `outcome` is `supersedes` (with `winner`, the current memory), `both_valid`, `both_wrong`, `false_positive` or `reopened`; `retire_loser` (`true`, `"deprioritise"` or `"archive"`) also retires the out-of-date memory (both, for `both_wrong`). The resolution is written to both memories and the pair stops warning. Under `HUMAN_APPROVAL=human` a person is asked through MCP elicitation and the result is `resolved`, `declined` or `cancelled`; a client that can't be asked gets `awaiting_approval` and the proposal waits on the settings window's Contradictions page. See [contradiction detection](features.md#contradiction-detection) |
 | `briefing(project?, include_knowledge?)` | The session-start call: project context, experience summary, stale memories, new articles, contradictions, reinstate candidates and the skill sections. Runs auto-maintenance and the auto skill scan on their intervals |
 
 ## Projects
@@ -47,7 +47,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 |---|---|
 | `record_experience(key, effort_score, outcome, iterations?, abandoned_approaches?, breakthrough?, gotchas?, lesson?)` | How hard it was (effort 1 to 5), how it ended (`succeeded`, `pivoted`, `abandoned`), what failed, what worked, and the `lesson` that transfers. Abandoned approaches are not suppressed; they come back as a warning when a later session proposes one |
 | `log_abandoned(key, name, type, reason)` | Add one dead end mid-session. `type` is `library`, `approach`, `tool`, `pattern` or `service` |
-| `warn_if_abandoned(query)` | Check the graveyard before suggesting something |
+| `warn_if_abandoned(query)` | Check the graveyard before suggesting something. Looks across every project and names the one each match came from |
 | `experience_summary(project?)` | Effort stats, outcomes, the graveyard and breakthroughs |
 | `get_experience(key)` | Experience data for one memory |
 
@@ -55,7 +55,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 
 | Tool | What it does |
 |---|---|
-| `compile_skill(domain, mode?, min_reinforcement?, include_graveyard?, export_path?, description?)` | Compile a domain's experience into a `SKILL.md`. `propose` (default) returns a reviewable diff and stashes it; `write` commits only that stashed, reviewed draft. `export_path` mirrors the file under `SKILL_EXPORT_DIR` |
+| `compile_skill(domain, mode?, min_reinforcement?, include_graveyard?, export_path?, description?)` | Compile a domain's experience into a `SKILL.md`. `propose` (default) returns a reviewable diff and stashes it; `write` commits only that stashed, reviewed draft, and only once a person accepts it (the client asks them, or the result is `awaiting_approval`; see `HUMAN_APPROVAL`). `export_path` mirrors the file under `SKILL_EXPORT_DIR` |
 | `find_skills(query_or_domain)` | Ranked skills for a domain or a description of the work, above `SKILL_MIN_SCORE` (0.25) |
 | `get_skill(skill_id)` | The whole skill body, by key, name or bare domain |
 | `bless(memory_key)` | Let one strong lesson past the reinforcement gate at the next compile |
@@ -81,7 +81,7 @@ Extracted facts follow their source in both cases, and neither touches `updated_
 | `explain_memory(key)` | Full metadata for one memory, licence and provenance included |
 | `why_did_you_mention(query)` | Search the recall logs to see why something surfaced |
 | `dump_to_file(filename?)` | Export everything to a JSON backup in `BACKUP_DIR`, in the 6.x format |
-| `restore_from_file(filename, dry_run?)` | Restore a backup from `BACKUP_DIR`, merging rather than overwriting and re-embedding as it goes. Previews unless `dry_run=False`. A backup made with feeds (the settings window's **Include RSS feeds**, or `omnimem export --feeds`) also adds its feeds to the reading list where they're missing, and says so under `feeds` |
+| `restore_from_file(filename, dry_run?)` | Restore a backup from `BACKUP_DIR`, merging rather than overwriting and re-embedding as it goes. Previews unless `dry_run=False`. A backup made with feeds (the settings window's **Include RSS feeds**, or `omnimem export --feeds`) also adds its feeds to the reading list where they're missing, and says so under `feeds`. One made with the audit log (**Include audit log**, or `omnimem export --audit`) adds the audit rows the log doesn't have, and says so under `audit` |
 | `list_backups()` | Backup files, newest first |
 | `health()` | Database status, record and vector counts, model status, uptime |
 | `queue_status()` | How many fact-extraction jobs are waiting. Poll it after a batch ingest |

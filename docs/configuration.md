@@ -85,6 +85,9 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `RECALL_WEAK_SCORE` | `0.35` | Results whose raw similarity is above the floor but below this come back marked `weak_match`: read them, don't build on them. `0` turns the marker off |
 | `RECALL_EXPERIENCE_SPAN` | `0` | How experience weight (from `record_experience`) moves a recall score. At `0` the score is multiplied by the weight, as in 6.x, so a weight of 1.8 lets a loose match at 0.45 (0.81) beat a close one at 0.75. Above `0` the weight is added instead, as `(weight - 1) × span`: with `0.05`, the strongest weight (2.0) is worth 0.05 of similarity and 1.8 is worth 0.04, enough to break a near-tie but not to outrank a clearly better match. Embedding models with a narrow score spread, such as bge-small-en-v1.5, need this most |
 | `RECENCY_DECAY_DAYS` | `90` | Where the gentle decay ends and the steeper one begins. Recency declines from day one, reaching 0.9 here, then 5% per 30 days down to a 0.3 floor. 6.x stayed at 1.0 until here, so past it the multiplier is 0.1 lower than it was. The floor and weak band read raw similarity, so they don't move with it |
+| `GRAVEYARD_SCOPE` | `project` | Whose dead ends warn. `project` keeps a `recall` or `recall_index` with a project filter, and the Claude Code hook, to dead ends recorded on that project (plus any recorded with no project). A recall with no project filter still sees them all, and so does `warn_if_abandoned`, which takes no project. `all` warns about any project's dead end and names the project it came from |
+| `AUDIT_LOG` | `off` | Keeps a record of who changed what, and when. `off` writes nothing. `lifecycle` records state changes and deletes (deprioritise, archive, reinstate, forget, suppression, skill writes). `writes` adds every other write, such as new memories, tags, licences and restores, without their text. `full` also keeps the text of a memory before and after each change, so it is the one level that stores what your memories say: anyone who can read the database, or a backup made with the audit log, can read it too. See [the audit log](audit-log.md) |
+| `AUDIT_RETENTION_DAYS` | `90` | How long audit rows are kept. The maintenance pass, and starting OmniMem, remove older ones. `0` keeps them for ever |
 | `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity at which two memories are checked for contradicting each other |
@@ -112,11 +115,12 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 
 | Variable | Default | Description |
 |---|---|---|
+| `HUMAN_APPROVAL` | `human` | Who accepts a skill write, or an agent's resolution of a contradiction (`check_contradictions(mode='resolve')`). `human`: a person does, through the client (MCP elicitation) or the settings window's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
 | `OMNIMEM_USER` | `local` | The user part of generated skill names (`{domain}-{user}`) |
 | `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Exact domain matches are never held back |
 | `SKILL_CLUSTER_THRESHOLD` | `0.80` | Similarity at which two lessons count as the same lesson for reinforcement |
 | `SKILL_DOMAIN_SUGGEST_THRESHOLD` | `0.60` | Floor for the "did you mean" domain suggestion when a compile finds nothing |
-| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill can still be written with `compile_skill(mode='write')` |
+| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill can still be accepted. A person answering a question from the client gets ten minutes, or this long if it's shorter |
 | `SKILL_EXPORT_DIR` | `skills/` inside the backup folder | Where `compile_skill(export_path=...)` writes a copy |
 | `SKILL_FEED_MAX_ARTICLES` | `25` | Cap on a skill's Feed watch section from influencing feeds. `0` leaves it out |
 | `SKILL_KNOWLEDGE_WATCH_DAYS` | `14` | How far back the briefing's knowledge watch looks for articles relevant to a skill. `0` turns it off |
@@ -144,6 +148,12 @@ The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revisi
 | `HF_ENDPOINT` | `https://huggingface.co` | A mirror to download from |
 | `HF_HUB_OFFLINE` | off | Never contact Hugging Face. The model must already be in the cache (or `EMBEDDING_MODEL` must be a folder) |
 | `HF_TOKEN` | *(unset)* | Only needed for a private or gated model |
+
+## Updates
+
+| Variable | Default | Description |
+|---|---|---|
+| `UPDATE_CHECK` | `true` | Look at code.squarecows.com for a newer release a little after start and every 12 hours, and say so in the tray, the settings window's sidebar and `briefing()` (as `update_available`). The request sends nothing but itself. `false` stops every update check. A development build never shows a notice either way |
 
 ## Settings panel
 

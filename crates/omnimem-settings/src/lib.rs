@@ -12,6 +12,7 @@
 //! renders a page saying so.
 
 mod assets;
+mod audit_log;
 mod backups;
 mod choices;
 mod configuration;
@@ -73,7 +74,6 @@ pub struct StaticOverhead {
 #[derive(Default)]
 struct Caches {
     dashboard: Option<(Instant, Value)>,
-    latest_release: Option<(Instant, Option<String>)>,
 }
 
 pub(crate) struct Shared {
@@ -228,6 +228,8 @@ impl Panel {
             .route("/skills", get(skills::list))
             .route("/skills/compile", post(skills::compile))
             .route("/skills/commit", post(skills::commit))
+            .route("/skills/discard", post(skills::discard))
+            .route("/skills/pending-badge", get(skills::pending_badge))
             .route("/skills/delete", post(skills::delete))
             .route(
                 "/skills/import",
@@ -240,9 +242,22 @@ impl Panel {
             .route("/duplicates", get(management::duplicates))
             .route("/duplicates/scan", get(management::duplicates_scan))
             .route("/contradictions", get(management::contradictions))
+            .route(
+                "/contradictions/resolve",
+                post(management::resolve_contradiction),
+            )
+            .route(
+                "/contradictions/accept",
+                post(management::accept_resolution),
+            )
+            .route(
+                "/contradictions/discard",
+                post(management::discard_resolution),
+            )
             .route("/suppressions", get(management::suppressions))
             .route("/suppressions/add", post(management::suppress))
             .route("/suppressions/remove", post(management::unsuppress))
+            .route("/audit", get(audit_log::list))
             .route("/telemetry", get(telemetry::telemetry))
             .route("/telemetry/refresh", get(telemetry::telemetry_refresh))
             .route("/token-overhead", get(telemetry::token_overhead))

@@ -67,11 +67,19 @@ pub fn open_engine(db: &Path) -> Result<Engine> {
     }
     let store = Arc::new(Store::open(db).with_context(|| format!("opening {}", db.display()))?);
     store.run_migrations().context("running migrations")?;
-    omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
+    {
+        // Seeding writes project memories, which the log attributes to the
+        // housekeeping rather than to whoever happens to start the app.
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Maintenance, "");
+        omnimem_engine::migrate_project_domains(&store).context("seeding project domains")?;
+    }
     let embedder = Arc::new(load_embedder()?);
     let mut config = EngineConfig::from_env(data_dir(db).join("backups"));
     config.feeds_path = Some(feeds_path(db));
     let mut engine = Engine::new(store, embedder, config);
+    if let Err(e) = engine.prune_audit() {
+        tracing::warn!(error = %e, "could not prune the audit log");
+    }
     if let Some(llm) = AnthropicConfig::from_env() {
         let client = AnthropicClient::new(llm).context("starting the Anthropic client")?;
         engine = engine.with_llm(Arc::new(client));
@@ -154,6 +162,16 @@ fn serve_until_shutdown(
             move || rss.run(&stop)
         })
         .context("starting the RSS scheduler")?;
+
+    // Like the RSS scheduler, left to end with the process: it sleeps in
+    // one-second steps and a request is bounded by its timeout.
+    std::thread::Builder::new()
+        .name("update-check".into())
+        .spawn({
+            let (engine, stop) = (engine.clone(), stop.clone());
+            move || crate::update::run_update_checks(engine.store(), &stop)
+        })
+        .context("starting the update check")?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

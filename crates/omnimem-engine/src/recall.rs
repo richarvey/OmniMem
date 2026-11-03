@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use tracing::{debug, info};
 
 use crate::classification::{effective_licence, effective_provenance};
+use crate::config::GraveyardScope;
 use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
 use crate::pyfmt::{now_secs, py_float, py_json, take_chars};
 use crate::temporal::{parse_query_date, temporal_boost};
@@ -22,7 +23,6 @@ use crate::{Engine, Result};
 
 pub const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
 
-const MAX_ABANDONED_SCAN_KEYS: usize = 5000;
 /// Abandoned warnings a recall result carries at most. They are advisory
 /// and never displace the memories the caller asked for.
 pub(crate) const MAX_ABANDONED_WARNINGS: usize = 3;
@@ -111,6 +111,16 @@ pub(crate) fn normalise_name(text: &str) -> String {
     out
 }
 
+impl AbandonedEntry {
+    /// The project this dead end was recorded on when that is not one of
+    /// `current`. None when there is no current project, the dead end has no
+    /// project (it counts as everyone's) or it belongs to one of them.
+    pub(crate) fn elsewhere(&self, current: &[String]) -> Option<&str> {
+        let own = self.scope_project.as_deref()?;
+        (!current.is_empty() && !current.iter().any(|p| p == own)).then_some(own)
+    }
+}
+
 /// A query mentions an abandoned name, or the name mentions the query.
 fn cross_mentions(query: &str, name: &str) -> bool {
     mentions(query, name) || mentions(name, query)
@@ -124,6 +134,10 @@ pub(crate) struct AbandonedEntry {
     pub reason: String,
     pub effort_score: Option<i64>,
     pub project: Option<String>,
+    /// The project the memory belongs to as recall reads it: `project`, else
+    /// `project_name`. `project` above stays the raw field so
+    /// `warn_if_abandoned` reports what it always did.
+    pub scope_project: Option<String>,
     /// What worked instead. A warning that says only "not that" leaves the
     /// agent to go and find the answer, which is the re-derivation the
     /// graveyard exists to save.
@@ -138,7 +152,14 @@ pub(crate) struct AbandonedEntry {
 /// One function so the two can never drift: a warning shown when the agent
 /// asks and a warning shown when the agent acts must say the same thing.
 /// `age_days` is how long ago it was abandoned, where that is known.
-pub(crate) fn warning_text(warning: &AbandonedEntry, age_days: Option<f64>) -> String {
+/// `current` is the projects the caller is working in: a dead end recorded
+/// on some other project says so, since the sentence would otherwise read
+/// as though it happened here. Empty means no project, so nothing to add.
+pub(crate) fn warning_text(
+    warning: &AbandonedEntry,
+    age_days: Option<f64>,
+    current: &[String],
+) -> String {
     let mut text = format!(
         "Abandoned approach: {} — {}",
         warning.abandoned_name, warning.reason
@@ -181,6 +202,9 @@ pub(crate) fn warning_text(warning: &AbandonedEntry, age_days: Option<f64>) -> S
         Some(_) => ". Tried and set aside: may be worth another look",
         None => "",
     });
+    if let Some(elsewhere) = warning.elsewhere(current) {
+        text.push_str(&format!(". Recorded on project {elsewhere}"));
+    }
     // Stated once it means something, and never silently
     // suppressed: an old dead end may no longer be one, and the
     // agent is better placed to judge that than a decay curve
@@ -223,6 +247,9 @@ pub struct RecallResult {
     pub breakthrough: Option<String>,
     pub lesson: Option<String>,
     pub contradictions: Vec<Value>,
+    /// The memory that replaced this one, when a person resolved a
+    /// contradiction in its favour.
+    pub superseded_by: Option<String>,
     pub event_date: Option<f64>,
     pub enriched_from: Option<String>,
     /// For a fact or preference extracted from another memory: the day its
@@ -350,13 +377,15 @@ impl Engine {
                 return Ok(entries.clone());
             }
         }
-        self.warn_if_capped(Namespace::Episodic, MAX_ABANDONED_SCAN_KEYS, "abandoned");
-        // Only memories that logged an abandoned approach can contribute,
-        // so the presence test runs in SQL over the capped key range and
-        // the rest of the namespace is never read.
+        // Only memories that logged an abandoned approach can contribute, so
+        // the presence test runs in SQL and the rest of the namespace is
+        // never read. There is no cap on keys: one counted the oldest
+        // episodic memories first, so past the cap new dead ends never warned.
+        //
+        // No state filter either, on purpose: archiving hides a memory from
+        // recall, but the lesson in its dead ends still holds.
         let filter = MemoryFilter {
             present_any: vec!["abandoned_approaches".to_owned()],
-            key_cap: Some(MAX_ABANDONED_SCAN_KEYS),
             ..MemoryFilter::default()
         };
         let rows = self.store.list_memories(
@@ -366,6 +395,7 @@ impl Engine {
                 "abandoned_approaches",
                 "effort_score",
                 "project",
+                "project_name",
                 "breakthrough",
                 "lesson",
                 "created_at",
@@ -380,6 +410,9 @@ impl Engine {
                 continue;
             };
             let effort = integer(row, "effort_score");
+            let scope_project = text(row, "project")
+                .or_else(|| text(row, "project_name"))
+                .map(str::to_owned);
             for approach in approaches {
                 // Names stored before they were validated may be blank or a
                 // letter or two; those would match everything, so they never
@@ -403,6 +436,7 @@ impl Engine {
                         .to_owned(),
                     effort_score: effort,
                     project: row.get("project").cloned(),
+                    scope_project: scope_project.clone(),
                     breakthrough: row.get("breakthrough").cloned().filter(|v| !v.is_empty()),
                     lesson: row.get("lesson").cloned().filter(|v| !v.is_empty()),
                     created_at: row.get("created_at").and_then(|v| v.parse::<f64>().ok()),
@@ -420,15 +454,27 @@ impl Engine {
 
     /// Abandoned approaches whose name the query mentions, or which mention
     /// it, on word boundaries. A blank query matches nothing.
-    pub(crate) fn abandoned_matches(&self, query: &str) -> Result<Vec<AbandonedEntry>> {
+    ///
+    /// `projects` is where the caller is working. Under `GRAVEYARD_SCOPE=project`
+    /// (the default) only dead ends from those projects, or with no project,
+    /// match; with no projects, or under `all`, every dead end can.
+    pub(crate) fn abandoned_matches(
+        &self,
+        query: &str,
+        projects: &[String],
+    ) -> Result<Vec<AbandonedEntry>> {
         let query = normalise_name(query);
         if query.is_empty() {
             return Ok(Vec::new());
         }
         let entries = self.abandoned_entries()?;
+        let scoped = self.config.graveyard_scope == GraveyardScope::Project;
         let mut seen: HashSet<(&str, &str)> = HashSet::new();
         let mut matches = Vec::new();
         for entry in entries.iter() {
+            if scoped && entry.elsewhere(projects).is_some() {
+                continue;
+            }
             let name = &entry.name_lower;
             if cross_mentions(&query, name)
                 && seen.insert((entry.memory_key.as_str(), name.as_str()))
@@ -459,7 +505,7 @@ impl Engine {
         let mut results: Vec<RecallResult> = Vec::new();
         let now = now_secs();
         for warning in self
-            .abandoned_matches(query)?
+            .abandoned_matches(query, projects)?
             .into_iter()
             .take(MAX_ABANDONED_WARNINGS)
         {
@@ -470,7 +516,7 @@ impl Engine {
                 .map_or(1.0, |age| decay(age, self.config.recency_decay_days))
                 .max(WARNING_FLOOR);
             // Built before the struct literal, which moves warning's fields.
-            let content = warning_text(&warning, warning_age_days);
+            let content = warning_text(&warning, warning_age_days, projects);
             results.push(RecallResult {
                 key: warning.memory_key,
                 namespace: "episodic".into(),
@@ -495,6 +541,7 @@ impl Engine {
                 breakthrough: None,
                 lesson: None,
                 contradictions: Vec::new(),
+                superseded_by: None,
                 event_date: None,
                 enriched_from: None,
                 as_of: None,
@@ -753,6 +800,7 @@ impl Engine {
                     breakthrough: doc.get("breakthrough").cloned(),
                     lesson: doc.get("lesson").cloned(),
                     contradictions,
+                    superseded_by: doc.get("superseded_by").filter(|v| !v.is_empty()).cloned(),
                     event_date,
                     enriched_from: doc.get("enriched_from").cloned(),
                     as_of: doc

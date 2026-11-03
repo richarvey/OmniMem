@@ -22,6 +22,7 @@
   <thead>
     <tr>
       <th>Topic</th>
+      <th>Reason</th>
       <th style="width:100px">Actions</th>
     </tr>
   </thead>
@@ -29,6 +30,7 @@
     {% for topic in topics %}
     <tr>
       <td style="font-weight:600">{{ topic }}</td>
+      <td style="color:var(--text-dim)">{{ reasons[topic] if reasons and reasons[topic] else "" }}</td>
       <td>
         <form hx-post="/suppressions/remove" hx-target="body" style="display:inline">
           <input type="hidden" name="topic" value="{{ topic }}">

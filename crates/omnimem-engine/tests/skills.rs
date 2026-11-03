@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use omnimem_core::{EmbeddingError, TextEmbedder, VECTOR_DIM};
 use omnimem_engine::transfer::{merge_feed_influences, validate_skill_import};
-use omnimem_engine::{Engine, EngineConfig, EngineError};
+use omnimem_engine::{Engine, EngineConfig, EngineError, ProposalCheck, SkillReview};
 use omnimem_store::{Fields, Store};
 use serde_json::{Map, Value, json};
 
@@ -628,7 +628,7 @@ fn rezip(data: &[u8], replace: &str, with: &[u8]) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
-        let name = file.name().to_owned();
+        let name = file.name().unwrap().into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
         writer
@@ -747,4 +747,91 @@ fn feed_merges_only_ever_add() {
         "an existing score is never rewritten"
     );
     assert_eq!(merged.len(), 2);
+}
+
+fn seeded() -> Engine {
+    let e = engine();
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    e
+}
+
+fn ready(check: ProposalCheck) -> SkillReview {
+    match check {
+        ProposalCheck::Ready(review) => review,
+        other => panic!("expected a proposal waiting, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_proposal_can_be_reviewed_listed_and_discarded() {
+    let e = seeded();
+    // Nothing proposed: a write would say so, and nothing is listed.
+    assert!(matches!(
+        e.review_skill_proposal("python").unwrap(),
+        ProposalCheck::Blocked(ref r) if r["status"] == "no_proposal"
+    ));
+    assert!(e.pending_skill_proposals().unwrap().is_empty());
+
+    let proposal = propose(&e, "python");
+    let review = ready(e.review_skill_proposal("py").unwrap());
+    assert_eq!(review.domain, "python");
+    assert!(review.new_skill && !review.stale);
+    assert_eq!(review.shown, proposal["draft"].as_str().unwrap());
+    assert_eq!(review.rules, json!({"do": 1}));
+    assert!(review.added > 0 && review.removed == 0);
+    assert!(review.created_at > 0.0);
+
+    let listed = e.pending_skill_proposals().unwrap();
+    assert_eq!(listed, vec![review]);
+
+    assert!(e.discard_skill_proposal("python").unwrap());
+    assert!(!e.discard_skill_proposal("python").unwrap());
+    assert!(e.pending_skill_proposals().unwrap().is_empty());
+    assert_eq!(write(&e, "python")["status"], "no_proposal");
+}
+
+#[test]
+fn an_approved_commit_writes_exactly_what_was_reviewed() {
+    let e = seeded();
+    let proposal = propose(&e, "python");
+    let review = ready(e.review_skill_proposal("python").unwrap());
+
+    // An approval of some other body is not an approval of this one, and
+    // refusing it leaves the proposal where it was.
+    let replaced = e
+        .commit_approved_skill("python", None, "not-the-sha")
+        .unwrap();
+    assert_eq!(replaced["status"], "proposal_changed");
+    assert!(field(&e, "mem:skill:gen:python-local", "body").is_none());
+
+    let written = e
+        .commit_approved_skill("python", None, &review.body_sha)
+        .unwrap();
+    assert_eq!(written["status"], "written");
+    assert_eq!(
+        field(&e, "mem:skill:gen:python-local", "body").unwrap(),
+        proposal["draft"].as_str().unwrap()
+    );
+}
+
+#[test]
+fn a_stale_proposal_is_blocked_for_review_and_listed_as_stale() {
+    let e = seeded();
+    propose(&e, "python");
+    assert_eq!(write(&e, "python")["status"], "written");
+    lesson(&e, "mem:episodic:01C", "python", "gamma", QUEUES);
+    assert_eq!(propose(&e, "python")["status"], "proposal");
+
+    // The stored skill moves under the proposal.
+    e.store()
+        .set_field("mem:skill:gen:python-local", "body", "edited underneath")
+        .unwrap();
+    assert!(matches!(
+        e.review_skill_proposal("python").unwrap(),
+        ProposalCheck::Blocked(ref r) if r["status"] == "stale_proposal"
+    ));
+    assert!(e.pending_skill_proposals().unwrap()[0].stale);
+    let refused = e.commit_approved_skill("python", None, "x").unwrap();
+    assert_eq!(refused["status"], "stale_proposal");
 }

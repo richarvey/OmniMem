@@ -52,6 +52,8 @@ enum AppEvent {
     ServicesExited,
     /// A change to a client's settings finished.
     ClientDone(Client, Result<(), String>),
+    /// The newest release, when it is newer than this one (or no longer is).
+    Update(Option<String>),
 }
 
 const ICON_SIZE: u32 = 64;
@@ -60,9 +62,13 @@ const SMOKE_DEADLINE: Duration = Duration::from_secs(60);
 const QUIT_DEADLINE: Duration = Duration::from_secs(15);
 /// How often the clients' settings are read again, for edits made elsewhere.
 const CLIENT_RECHECK: Duration = Duration::from_secs(30);
+/// How often the store is asked whether a newer release has turned up.
+const UPDATE_RECHECK: Duration = Duration::from_secs(30);
 
 struct TrayMenu {
     menu: Menu,
+    /// "Update available", at the top of the menu only while one is.
+    update: MenuItem,
     status: MenuItem,
     settings: MenuItem,
     copy_url: MenuItem,
@@ -77,6 +83,7 @@ impl TrayMenu {
         let enabled = login.and_then(|l| l.is_enabled().ok()).unwrap_or(false);
         let this = Self {
             menu: Menu::new(),
+            update: MenuItem::new(model::update_item_text(""), true, None),
             status: MenuItem::new(model::status_line(&ServiceState::Starting), false, None),
             settings: MenuItem::new("Settings…", true, None),
             copy_url: MenuItem::new("Copy MCP URL", false, None),
@@ -134,6 +141,8 @@ struct App {
     desktop: ClientSlot,
     code: ClientSlot,
     clients_checked: Option<Instant>,
+    /// The newer release the tray is announcing.
+    update: Option<String>,
     started: Instant,
     in_flatpak: bool,
 }
@@ -202,6 +211,38 @@ fn open_externally(url: String) {
     });
 }
 
+/// Read the background check's answer from the store every half minute and
+/// tell the event loop when it changes. A thread of its own, so the loop never
+/// waits on SQLite; it ends with the services or when the loop is gone.
+/// `UPDATE_CHECK=false` makes the answer always "none".
+fn watch_for_updates(
+    engine: Arc<omnimem_engine::Engine>,
+    proxy: EventLoopProxy<AppEvent>,
+    stop: CancellationToken,
+) {
+    let spawned = std::thread::Builder::new()
+        .name("update-watch".into())
+        .spawn(move || {
+            let mut told: Option<String> = None;
+            while !stop.is_cancelled() {
+                let latest = omnimem_engine::release::newer_release(
+                    engine.store(),
+                    env!("CARGO_PKG_VERSION"),
+                );
+                if latest != told {
+                    if proxy.send_event(AppEvent::Update(latest.clone())).is_err() {
+                        return;
+                    }
+                    told = latest;
+                }
+                std::thread::sleep(UPDATE_RECHECK);
+            }
+        });
+    if let Err(e) = spawned {
+        warn!(error = %e, "could not watch for a newer release");
+    }
+}
+
 fn is_openable(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();
     ["http://", "https://", "mailto:"]
@@ -226,7 +267,7 @@ impl App {
         #[allow(unused_mut)]
         let mut builder = TrayIconBuilder::new()
             .with_menu(Box::new(self.menu.menu.clone()))
-            .with_tooltip("OmniMem")
+            .with_tooltip(model::tooltip(self.update.as_deref()))
             .with_icon(icon);
         // On Linux the icon goes to the tray as a file. Inside a Flatpak the
         // tray, outside the sandbox, can only read $XDG_RUNTIME_DIR/app/<id>.
@@ -258,8 +299,11 @@ impl App {
                     }
                     let _ = proxy.send_event(AppEvent::State(state));
                 };
-                let ready = |engine: &Arc<omnimem_engine::Engine>| panel.set_engine(engine.clone());
-                if let Err(e) = run_services(&db, token, false, &report, &ready) {
+                let ready = |engine: &Arc<omnimem_engine::Engine>| {
+                    panel.set_engine(engine.clone());
+                    watch_for_updates(engine.clone(), proxy.clone(), token.clone());
+                };
+                if let Err(e) = run_services(&db, token.clone(), false, &report, &ready) {
                     error!(error = %format!("{e:#}"), "services stopped");
                 }
                 let _ = proxy.send_event(AppEvent::ServicesExited);
@@ -357,6 +401,31 @@ impl App {
         let webview = webview.context("creating the settings webview")?;
         self.window = Some((window, webview));
         Ok(())
+    }
+
+    /// Show or hide the update item and say so in the tooltip.
+    fn set_update(&mut self, latest: Option<String>) {
+        if latest == self.update {
+            return;
+        }
+        if let Some(latest) = &latest {
+            self.menu.update.set_text(model::update_item_text(latest));
+            if self.update.is_none() {
+                // The top of the menu, above the status line.
+                if let Err(e) = self.menu.menu.insert(&self.menu.update, 0) {
+                    warn!(error = %e, "could not add the update item to the menu");
+                }
+            }
+            info!(latest, "a newer release is out");
+        } else {
+            let _ = self.menu.menu.remove(&self.menu.update);
+        }
+        if let Some(tray) = &self.tray
+            && let Err(e) = tray.set_tooltip(Some(model::tooltip(latest.as_deref())))
+        {
+            warn!(error = %e, "could not update the tray tooltip");
+        }
+        self.update = latest;
     }
 
     fn set_state(&mut self, state: ServiceState) {
@@ -578,6 +647,7 @@ impl App {
                 }
             }
             Event::UserEvent(AppEvent::State(state)) => self.set_state(state),
+            Event::UserEvent(AppEvent::Update(latest)) => self.set_update(latest),
             Event::UserEvent(AppEvent::ClientDone(client, result)) => {
                 self.client_done(client, result);
             }
@@ -592,6 +662,10 @@ impl App {
                 if id == self.menu.settings.id() {
                     if let Err(e) = self.open_window(target) {
                         error!(error = %format!("{e:#}"), "could not open the settings window");
+                    }
+                } else if id == self.menu.update.id() {
+                    if let Some(latest) = &self.update {
+                        open_externally(omnimem_engine::release::release_url(latest));
                     }
                 } else if id == self.menu.copy_url.id() {
                     self.copy_mcp_url();
@@ -808,6 +882,7 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         desktop: ClientSlot::default(),
         code: ClientSlot::default(),
         clients_checked: None,
+        update: None,
         started: Instant::now(),
         in_flatpak: std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()),
     };

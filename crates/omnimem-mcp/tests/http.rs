@@ -48,6 +48,14 @@ async fn start_with(
         Arc::new(Words),
         EngineConfig::default(),
     ));
+    start_engine(engine, auth_token, extra_hosts).await
+}
+
+async fn start_engine(
+    engine: Arc<Engine>,
+    auth_token: Option<&str>,
+    extra_hosts: Vec<String>,
+) -> (String, CancellationToken) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let config = ServerConfig {
@@ -201,6 +209,55 @@ async fn a_session_remembers_and_recalls() {
     assert!(is_error);
     assert_eq!(message, "Content cannot be empty");
 
+    shutdown.cancel();
+}
+
+#[tokio::test]
+async fn a_tool_call_is_attributed_to_the_client_that_made_it() {
+    let engine = Arc::new(Engine::new(
+        Arc::new(Store::open_in_memory().unwrap()),
+        Arc::new(Words),
+        EngineConfig {
+            audit_log: omnimem_engine::AuditLevel::Writes,
+            ..EngineConfig::default()
+        },
+    ));
+    let (base, shutdown) = start_engine(engine.clone(), Some("s3cret"), Vec::new()).await;
+    let mut s = session(&base, Some("s3cret"));
+    s.initialise().await;
+    let (_, stored) = s
+        .call(
+            "remember",
+            json!({"content": "an audited memory", "mode": "raw"}),
+        )
+        .await;
+    let key = stored["key"].as_str().unwrap().to_owned();
+    let (_, archived) = s
+        .call(
+            "archive",
+            json!({"key_or_query": key, "reason": "done with it"}),
+        )
+        .await;
+    assert!(archived["affected"].is_array(), "{archived}");
+    // Reads leave nothing behind.
+    s.call("recall", json!({"query": "an audited memory"}))
+        .await;
+    let (_, explained) = s.call("explain_memory", json!({"key": key})).await;
+
+    let rows = engine
+        .store()
+        .audit_entries(&omnimem_store::AuditQuery::default())
+        .unwrap();
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    for row in &rows {
+        assert_eq!(row.actor, "mcp");
+        // The name the client gave in `initialize` (a shared bearer token has no OAuth id).
+        assert_eq!(row.client, "test");
+    }
+    assert_eq!(rows[0].action, "transition");
+    assert_eq!(rows[0].reason, "done with it");
+    assert_eq!(explained["history"][0]["client"], "test");
+    assert_eq!(explained["history"].as_array().unwrap().len(), 2);
     shutdown.cancel();
 }
 

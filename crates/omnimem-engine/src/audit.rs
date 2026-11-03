@@ -237,6 +237,7 @@ impl Engine {
         m.insert("lesson".into(), opt("lesson"));
         m.insert("gotchas".into(), opt("gotchas"));
         m.insert("deprioritised_reason".into(), opt("deprioritised_reason"));
+        m.insert("archived_reason".into(), opt("archived_reason"));
         m.insert(
             "reinstate_hints".into(),
             safe_json(data.get("reinstate_hints")),
@@ -245,6 +246,14 @@ impl Engine {
             "contradictions".into(),
             safe_json(data.get("contradictions")),
         );
+        // Only a memory a person has superseded (or that supersedes one)
+        // carries these, so the result is unchanged for the rest.
+        if let Some(winner) = data.get("superseded_by").filter(|v| !v.is_empty()) {
+            m.insert("superseded_by".into(), winner.as_str().into());
+        }
+        if data.get("supersedes").is_some_and(|v| !v.is_empty()) {
+            m.insert("supersedes".into(), safe_json(data.get("supersedes")));
+        }
         m.insert(
             "recall_count".into(),
             data.get("recall_count")
@@ -268,6 +277,9 @@ impl Engine {
             let ns = key.split(':').nth(1).unwrap_or("");
             m.extend(classification_fields(&data, ns, Some(key)));
         }
+        // Only with the audit log on and something in it, so the result is
+        // the 6.x one until then (`compact` drops the empty list).
+        m.insert("history".into(), Value::Array(self.history_of(key)?));
         Ok(compact(m))
     }
 

@@ -2,7 +2,7 @@
 //! `memory/maintenance.py`).
 
 use omnimem_core::Namespace;
-use omnimem_store::{Fields, SearchFilter};
+use omnimem_store::{AuditLevel, Fields, Op, SearchFilter, op as audit_op};
 use serde_json::{Value, json};
 use tracing::{debug, error, info};
 
@@ -10,6 +10,7 @@ use crate::contradiction::has_negation_pair;
 use crate::error::invalid;
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{now_secs, now_str, py_json, take_chars};
+use crate::resolution::row_resolved_with;
 use crate::skills::py_str;
 use crate::tools::validate_namespace;
 use crate::{Engine, Result};
@@ -83,6 +84,13 @@ impl Engine {
                 ),
                 ("updated_at".to_owned(), now.clone()),
             ]);
+            // The explanation is model output that may quote either memory,
+            // so only `full` keeps it.
+            let mut detail = json!({"linked_to": other});
+            if self.store.audit_level() == AuditLevel::Full {
+                detail["explanation"] = json!(explanation);
+            }
+            let _audit = audit_op(Op::new("contradiction_link").detail(detail));
             self.store.set_fields(src, &updates)?;
         }
         info!(key_a, key_b, "linked contradiction");
@@ -124,9 +132,16 @@ impl Engine {
         } else {
             let mut keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
             keys.truncate(SCAN_CAP);
-            let rows = self
-                .store
-                .get_fields_multi(&keys, &["state", "project", "project_name", "content"])?;
+            let rows = self.store.get_fields_multi(
+                &keys,
+                &[
+                    "state",
+                    "project",
+                    "project_name",
+                    "content",
+                    "contradictions",
+                ],
+            )?;
             keys.into_iter()
                 .zip(rows)
                 .filter_map(|(k, r)| r.map(|r| (k, r)))
@@ -154,6 +169,10 @@ impl Engine {
                 let (key_b, doc_b) = &entries[j];
                 let content_b = doc_b.get("content").map_or("", String::as_str);
                 if content_b.is_empty() {
+                    continue;
+                }
+                // A person has settled this pair, whichever row says so.
+                if row_resolved_with(doc_a, key_b) || row_resolved_with(doc_b, key_a) {
                     continue;
                 }
                 let pair = if key_a < key_b {
@@ -246,7 +265,12 @@ impl Engine {
 
     /// Dedup archive, contradiction scan and article expiry for a project.
     pub(crate) fn run_maintenance(&self, project: &str) -> Value {
+        // Whoever's briefing set this off, the pass is maintenance's own.
+        let _audit = omnimem_store::enter(omnimem_store::Actor::Maintenance, "");
         let ran_at = now_str();
+        if let Err(e) = self.prune_audit() {
+            error!(error = %e, "could not prune the audit log");
+        }
         let mut archived = Vec::new();
         match self.find_all_duplicates(Namespace::Episodic, None, Some(project)) {
             Ok(clusters) => {
@@ -287,9 +311,16 @@ impl Engine {
         let mut contradictions = Vec::new();
         let mut scan = || -> Result<()> {
             let keys = self.store.scan_prefix("mem:episodic:")?;
-            let rows = self
-                .store
-                .get_fields_multi(&keys, &["state", "project", "project_name", "content"])?;
+            let rows = self.store.get_fields_multi(
+                &keys,
+                &[
+                    "state",
+                    "project",
+                    "project_name",
+                    "content",
+                    "contradictions",
+                ],
+            )?;
             let entries: Vec<(String, Fields)> = keys
                 .into_iter()
                 .zip(rows)
@@ -309,6 +340,11 @@ impl Engine {
                 for j in (i + 1)..entries.len() {
                     if comparisons >= COMPARISON_CAP || contradictions.len() >= RESULTS_CAP {
                         break 'outer;
+                    }
+                    if row_resolved_with(&entries[i].1, &entries[j].0)
+                        || row_resolved_with(&entries[j].1, &entries[i].0)
+                    {
+                        continue;
                     }
                     comparisons += 1;
                     if dot(&vectors[i], &vectors[j]) < SIMILARITY_THRESHOLD {

@@ -112,7 +112,8 @@ pub(crate) async fn list(
 }
 
 /// POST `/backups/create`: a backup of every memory, and of the RSS reading
-/// list too when the form's `feeds` box is ticked.
+/// list too when the form's `feeds` box is ticked, and the audit log when
+/// `audit` is.
 pub(crate) async fn create(
     State(state): State<PanelState>,
     Form(form): Form<HashMap<String, String>>,
@@ -121,11 +122,12 @@ pub(crate) async fn create(
         return starting(&state);
     };
     let include_feeds = form.contains_key("feeds");
+    let include_audit = form.contains_key("audit");
     let result = blocking(move || {
         std::fs::create_dir_all(&engine.config().backup_dir).map_err(|e| {
             omnimem_engine::EngineError::Io(format!("creating the backup folder: {e}"))
         })?;
-        engine.dump_to_file_with_feeds(None, include_feeds)
+        engine.dump_to_file_with(None, include_feeds, include_audit)
     })
     .await;
     match result {
@@ -141,6 +143,11 @@ pub(crate) async fn create(
                 Some(1) => " and 1 feed".to_owned(),
                 Some(n) => format!(" and {n} feeds"),
                 None => String::new(),
+            };
+            let feeds = match result["audit"].as_u64() {
+                Some(1) => format!("{feeds} and 1 audit row"),
+                Some(n) => format!("{feeds} and {n} audit rows"),
+                None => feeds,
             };
             with_message(
                 false,
@@ -280,6 +287,7 @@ pub(crate) async fn preview(
                     "total_keys": result["total_keys_in_backup"],
                     "metadata": result["metadata"],
                     "feeds": result.get("feeds_in_backup").cloned().unwrap_or(Value::Null),
+                    "audit": result.get("audit_in_backup").cloned().unwrap_or(Value::Null),
                 }),
             },
         ),
@@ -318,6 +326,16 @@ pub(crate) async fn restore(
                     ". RSS feeds not restored: {}",
                     feeds["message"].as_str().unwrap_or("unknown error")
                 ),
+            };
+            let audit = &result["audit"];
+            let feeds = match (audit["added"].as_u64(), audit["already_present"].as_u64()) {
+                (Some(added), Some(present)) => {
+                    format!("{feeds}. Audit log: {added} rows added, {present} already there")
+                }
+                _ if audit["error"].is_string() => {
+                    format!("{feeds}. The audit log was not restored")
+                }
+                _ => feeds,
             };
             with_message(
                 false,

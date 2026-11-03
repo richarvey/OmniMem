@@ -1,7 +1,7 @@
 //! Classifying memories and cascading to their derived facts
 //! (`memory/lineage.py`, `tools/licence.py`, `tools/provenance.py`).
 
-use omnimem_store::Fields;
+use omnimem_store::{Fields, Op, op as audit_op};
 use serde_json::{Map, Value, json};
 use tracing::info;
 
@@ -120,6 +120,12 @@ impl Engine {
             }
         }
         let all: Vec<String> = found.iter().chain(&cascaded).cloned().collect();
+        let action = if fields.contains_key("licence") {
+            "set_licence"
+        } else {
+            "set_provenance"
+        };
+        let _audit = audit_op(Op::new(action));
         self.store.set_fields_multi(&all, fields)?;
         Ok(Stamped {
             classified: found,

@@ -3,10 +3,74 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use omnimem_store::AuditLevel;
 use tracing::warn;
+
+/// Whose dead ends may warn a recall or a hook (`GRAVEYARD_SCOPE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GraveyardScope {
+    /// Only dead ends recorded in the projects the caller is working in (and
+    /// those with no project at all). A caller with no project sees everything.
+    #[default]
+    Project,
+    /// Every dead end, whichever project recorded it, as 6.x did.
+    All,
+}
+
+impl GraveyardScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::All => "all",
+        }
+    }
+
+    /// `project` or `all`, in any case. Anything else is not a scope.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "project" => Some(Self::Project),
+            "all" => Some(Self::All),
+            _ => None,
+        }
+    }
+}
+
+/// Who has to say yes before an agent's change takes effect (`HUMAN_APPROVAL`).
+/// Read by every gate that has one: skill writes today, contradiction
+/// resolution next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HumanApproval {
+    /// A person accepts it: through the client (MCP elicitation) or the
+    /// settings window. The agent's say-so is never enough.
+    #[default]
+    Human,
+    /// The agent's call is the approval, as 6.x behaved.
+    Agent,
+}
+
+impl HumanApproval {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Agent => "agent",
+        }
+    }
+
+    /// `human` or `agent`, in any case. Anything else is not a mode.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "human" => Some(Self::Human),
+            "agent" => Some(Self::Agent),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
+    /// `HUMAN_APPROVAL`: `human` (the default) makes an agent's skill write
+    /// wait for a person; `agent` lets the call commit, as 6.x did.
+    pub human_approval: HumanApproval,
     /// `FACT_EXTRACTION_MODEL`
     pub fact_extraction_model: String,
     /// `QUERY_EXPANSION_MODEL`
@@ -29,6 +93,15 @@ pub struct EngineConfig {
     pub recency_decay_days: f64,
     /// `ABANDONED_CACHE_TTL_SECONDS`; zero disables the cache.
     pub abandoned_cache_ttl: Duration,
+    /// `GRAVEYARD_SCOPE`: `project` keeps a scoped recall's and the hook's
+    /// dead-end warnings to their own projects; `all` crosses projects.
+    pub graveyard_scope: GraveyardScope,
+    /// `AUDIT_LOG`: how much of each change is written to the audit log.
+    /// `full` is the only level that keeps memory text.
+    pub audit_log: AuditLevel,
+    /// `AUDIT_RETENTION_DAYS`: audit rows older than this are pruned by the
+    /// maintenance pass; 0 keeps them for ever.
+    pub audit_retention_days: u32,
     /// `DEPRIORITISED_WEIGHT`
     pub deprioritised_weight: f64,
     /// `DEDUP_SIMILARITY_THRESHOLD`
@@ -81,11 +154,14 @@ pub struct EngineConfig {
     pub skill_scan_min_pool: i64,
     /// `SKILL_SCAN_CROSS_PROJECT`
     pub skill_scan_cross_project: bool,
+    /// `UPDATE_CHECK`: whether the briefing says a newer release is out.
+    pub update_check: bool,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
+            human_approval: HumanApproval::Human,
             fact_extraction_model: "claude-haiku-5-5".to_owned(),
             query_expansion_model: "claude-haiku-5-5".to_owned(),
             contradiction_model: "claude-haiku-5-5".to_owned(),
@@ -96,6 +172,9 @@ impl Default for EngineConfig {
             recall_experience_span: 0.0,
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),
+            graveyard_scope: GraveyardScope::Project,
+            audit_log: AuditLevel::Off,
+            audit_retention_days: 90,
             deprioritised_weight: 0.2,
             dedup_threshold: 0.92,
             contradiction_threshold: 0.7,
@@ -121,6 +200,7 @@ impl Default for EngineConfig {
             skill_scan_max_proposals: 3,
             skill_scan_min_pool: 3,
             skill_scan_cross_project: true,
+            update_check: true,
         }
     }
 }
@@ -163,6 +243,42 @@ fn float(name: &str, default: f64, range: std::ops::RangeInclusive<f64>) -> f64 
 const UNIT: std::ops::RangeInclusive<f64> = 0.0..=1.0;
 const NON_NEGATIVE: std::ops::RangeInclusive<f64> = 0.0..=f64::MAX;
 
+/// `GRAVEYARD_SCOPE`, falling back to the default (with a warning) on a value
+/// that is neither `project` nor `all`, like the numeric settings do.
+fn graveyard_scope(default: GraveyardScope) -> GraveyardScope {
+    match text("GRAVEYARD_SCOPE") {
+        None => default,
+        Some(raw) => GraveyardScope::parse(&raw).unwrap_or_else(|| {
+            warn!("GRAVEYARD_SCOPE={raw:?} is not project or all; using the default");
+            default
+        }),
+    }
+}
+
+/// `HUMAN_APPROVAL`, falling back to the default (`human`, the safe side)
+/// with a warning on a value that is neither `human` nor `agent`.
+fn human_approval(default: HumanApproval) -> HumanApproval {
+    match text("HUMAN_APPROVAL") {
+        None => default,
+        Some(raw) => HumanApproval::parse(&raw).unwrap_or_else(|| {
+            warn!("HUMAN_APPROVAL={raw:?} is not human or agent; using the default");
+            default
+        }),
+    }
+}
+
+/// `AUDIT_LOG`, falling back to the default (with a warning) on a value that
+/// is not a level. The default is off, so a typo never starts keeping a log.
+pub fn audit_level_from_env() -> AuditLevel {
+    match text("AUDIT_LOG") {
+        None => AuditLevel::Off,
+        Some(raw) => AuditLevel::parse(&raw).unwrap_or_else(|| {
+            warn!("AUDIT_LOG={raw:?} is not off, lifecycle, writes or full; using off");
+            AuditLevel::Off
+        }),
+    }
+}
+
 fn flag(name: &str) -> bool {
     text(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
 }
@@ -178,6 +294,7 @@ impl EngineConfig {
             .filter(|u| crate::domains::is_valid_domain(u))
             .unwrap_or(d.skill_user);
         Self {
+            human_approval: human_approval(d.human_approval),
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
             contradiction_model: text("CONTRADICTION_MODEL").unwrap_or(d.contradiction_model),
@@ -188,6 +305,9 @@ impl EngineConfig {
             recall_experience_span: float("RECALL_EXPERIENCE_SPAN", d.recall_experience_span, UNIT),
             recency_decay_days: float("RECENCY_DECAY_DAYS", d.recency_decay_days, NON_NEGATIVE),
             abandoned_cache_ttl: Duration::from_secs(number("ABANDONED_CACHE_TTL_SECONDS", 60)),
+            graveyard_scope: graveyard_scope(d.graveyard_scope),
+            audit_log: audit_level_from_env(),
+            audit_retention_days: number("AUDIT_RETENTION_DAYS", d.audit_retention_days),
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
             dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
             contradiction_threshold: float(
@@ -254,6 +374,7 @@ impl EngineConfig {
             skill_scan_min_pool: number("SKILL_SCAN_MIN_POOL", d.skill_scan_min_pool).max(1),
             skill_scan_cross_project: text("SKILL_SCAN_CROSS_PROJECT")
                 .is_none_or(|v| !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "no")),
+            update_check: crate::release::update_check_enabled(),
         }
     }
 }
@@ -317,5 +438,88 @@ mod tests {
             0.0
         );
         assert_eq!(float("OMNIMEM_TEST_UNSET", 0.25, UNIT), 0.25);
+    }
+
+    #[test]
+    fn graveyard_scope_parses_and_refuses_the_rest() {
+        assert_eq!(
+            EngineConfig::default().graveyard_scope,
+            GraveyardScope::Project
+        );
+        assert_eq!(
+            GraveyardScope::parse("project"),
+            Some(GraveyardScope::Project)
+        );
+        assert_eq!(GraveyardScope::parse(" ALL "), Some(GraveyardScope::All));
+        assert_eq!(GraveyardScope::parse("global"), None);
+        assert_eq!(GraveyardScope::parse(""), None);
+
+        // Through the environment: a good value is taken, a bad one falls
+        // back to the default rather than guessing, and unset is the default.
+        let read = |value: &str| {
+            with_var("GRAVEYARD_SCOPE", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).graveyard_scope
+            })
+        };
+        assert_eq!(read("all"), GraveyardScope::All);
+        assert_eq!(read("Project"), GraveyardScope::Project);
+        assert_eq!(read("everywhere"), GraveyardScope::Project);
+        assert_eq!(
+            EngineConfig::from_env(PathBuf::from("backups")).graveyard_scope,
+            GraveyardScope::Project
+        );
+    }
+
+    #[test]
+    fn audit_settings_parse_and_a_bad_level_leaves_the_log_off() {
+        let d = EngineConfig::default();
+        assert_eq!(d.audit_log, AuditLevel::Off);
+        assert_eq!(d.audit_retention_days, 90);
+
+        let level = |value: &str| {
+            with_var("AUDIT_LOG", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).audit_log
+            })
+        };
+        assert_eq!(level("lifecycle"), AuditLevel::Lifecycle);
+        assert_eq!(level("Writes"), AuditLevel::Writes);
+        assert_eq!(level(" FULL "), AuditLevel::Full);
+        assert_eq!(level("off"), AuditLevel::Off);
+        // A typo never starts keeping a log, least of all one with text in it.
+        assert_eq!(level("everything"), AuditLevel::Off);
+        assert_eq!(level("true"), AuditLevel::Off);
+        assert_eq!(
+            EngineConfig::from_env(PathBuf::from("backups")).audit_log,
+            AuditLevel::Off
+        );
+
+        let days = |value: &str| {
+            with_var("AUDIT_RETENTION_DAYS", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).audit_retention_days
+            })
+        };
+        assert_eq!(days("30"), 30);
+        assert_eq!(days("0"), 0);
+        assert_eq!(days("-5"), 90, "not a count of days, so the default");
+        assert_eq!(days("soon"), 90);
+    }
+
+    #[test]
+    fn human_approval_parses_and_refuses_the_rest() {
+        assert_eq!(EngineConfig::default().human_approval, HumanApproval::Human);
+        assert_eq!(HumanApproval::parse(" AGENT "), Some(HumanApproval::Agent));
+        assert_eq!(HumanApproval::parse("human"), Some(HumanApproval::Human));
+        assert_eq!(HumanApproval::parse("nobody"), None);
+        assert_eq!(HumanApproval::parse(""), None);
+
+        // A bad value falls back to the safe side, not to the agent.
+        let read = |value: &str| {
+            with_var("HUMAN_APPROVAL", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).human_approval
+            })
+        };
+        assert_eq!(read("agent"), HumanApproval::Agent);
+        assert_eq!(read("Human"), HumanApproval::Human);
+        assert_eq!(read("robot"), HumanApproval::Human);
     }
 }

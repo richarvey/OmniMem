@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow};
 use clap::ValueEnum;
 use omnimem_core::{EmbeddingError, TextEmbedder};
-use omnimem_engine::{Engine, EngineConfig};
+use omnimem_engine::{AbandonedWarning, Engine, EngineConfig};
 use omnimem_store::Store;
 use serde_json::{Value, json};
 
@@ -210,6 +210,9 @@ pub(crate) fn render_briefing(project: &str, briefing: &Value) -> String {
                 bullet(&mut out, text);
             }
         }
+        out.push_str(
+            "Ask the person which holds; check_contradictions(mode=\"resolve\") records their answer and stops the warning.\n",
+        );
         out.push('\n');
     }
 
@@ -230,11 +233,28 @@ pub(crate) fn render_briefing(project: &str, briefing: &Value) -> String {
          further along.",
     );
 
-    if out.chars().count() > MAX_BRIEFING_CHARS {
-        out = out.chars().take(MAX_BRIEFING_CHARS).collect::<String>();
+    // One line at the very end, and counted in the cap so a long briefing is
+    // cut short of it rather than losing the notice.
+    let update = update_line(briefing.get("update_available"));
+    let room = MAX_BRIEFING_CHARS.saturating_sub(update.chars().count());
+    if out.chars().count() > room {
+        out = out.chars().take(room).collect::<String>();
         out.push_str("\n[briefing truncated]");
     }
+    out.push_str(&update);
     out
+}
+
+/// "OmniMem 7.0.7 is out (you're on 7.0.6): <url>", on its own line, from the
+/// briefing's `update_available`. Empty when there is no update.
+fn update_line(update: Option<&Value>) -> String {
+    let field = |name: &str| update?.get(name)?.as_str().filter(|s| !s.is_empty());
+    match (field("latest"), field("current"), field("url")) {
+        (Some(latest), Some(current), Some(url)) => {
+            format!("\n\nOmniMem {latest} is out (you're on {current}): {url}")
+        }
+        _ => String::new(),
+    }
 }
 
 /// True when a briefing has something worth paying context for.
@@ -431,33 +451,82 @@ fn session_record(work: &SessionWork) -> Option<String> {
 }
 
 /// The refusal an agent reads. Carries the way out, not just the wall.
-pub(crate) fn deny_reason(warnings: &[String]) -> String {
+///
+/// `elsewhere` names the projects any of these dead ends were recorded on,
+/// when they are not the one the call is for. With none, every warning is from
+/// this project and the wording is the one it always had; with some it says
+/// where they came from rather than claiming this codebase tried them.
+pub(crate) fn deny_reason(warnings: &[String], elsewhere: &[String]) -> String {
     let body = warnings
         .iter()
         .map(|w| format!("- {w}"))
         .collect::<Vec<_>>()
         .join("\n");
+    let (tried, source) = if elsewhere.is_empty() {
+        (
+            "already tried on this project and abandoned".to_owned(),
+            "earlier work on this codebase",
+        )
+    } else {
+        (
+            format!(
+                "already tried and abandoned, recorded on {} {}",
+                if elsewhere.len() == 1 {
+                    "project"
+                } else {
+                    "projects"
+                },
+                elsewhere.join(", ")
+            ),
+            "earlier work",
+        )
+    };
     format!(
-        "Stopped by project memory: this approach was already tried on this project \
-         and abandoned.\n\n{body}\n\nThis is recorded experience from earlier work on \
-         this codebase, not a guess. Do not spend turns re-establishing that it fails. \
-         Take the approach that worked instead, and only revisit the abandoned one if \
-         you have a specific reason to believe the situation has changed."
+        "Stopped by project memory: this approach was {tried}.\n\n{body}\n\nThis is \
+         recorded experience from {source}, not a guess. Do not spend turns \
+         re-establishing that it fails. Take the approach that worked instead, and only \
+         revisit the abandoned one if you have a specific reason to believe the \
+         situation has changed."
     )
 }
 
-fn decision(warnings: &[String]) -> Value {
+fn decision(warnings: &[AbandonedWarning]) -> Value {
+    let (texts, elsewhere) = split_warnings(warnings);
     json!({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": deny_reason(warnings),
+            "permissionDecisionReason": deny_reason(&texts, &elsewhere),
         }
     })
 }
 
+/// The sentences, and the distinct projects (sorted) any came from that are
+/// not the hook's own.
+fn split_warnings(warnings: &[AbandonedWarning]) -> (Vec<String>, Vec<String>) {
+    let texts = warnings.iter().map(|w| w.text.clone()).collect();
+    let mut elsewhere: Vec<String> = warnings
+        .iter()
+        .filter_map(|w| w.elsewhere.clone())
+        .collect();
+    elsewhere.sort();
+    elsewhere.dedup();
+    (texts, elsewhere)
+}
+
 /// The warnings for one hook payload, or none if the call should proceed.
-fn warnings_for(db: &Path, payload: &Value) -> Result<Vec<String>> {
+/// Dead ends are matched for the project the hook speaks for, resolved the
+/// way session start does it (see `GRAVEYARD_SCOPE`).
+fn warnings_for(
+    db: &Path,
+    payload: &Value,
+    project: Option<&str>,
+) -> Result<Vec<AbandonedWarning>> {
+    guard(&open_engine(db)?, payload, project)
+}
+
+/// `warnings_for` once the store is open, so a test can hand it an engine.
+fn guard(engine: &Engine, payload: &Value, project: Option<&str>) -> Result<Vec<AbandonedWarning>> {
     let tool = payload
         .get("tool_name")
         .and_then(Value::as_str)
@@ -471,15 +540,16 @@ fn warnings_for(db: &Path, payload: &Value) -> Result<Vec<String>> {
     if proposal.trim().is_empty() {
         return Ok(Vec::new());
     }
-    open_engine(db)?
-        .abandoned_warnings(&proposal)
+    let projects: Vec<String> = project_name(project, payload).into_iter().collect();
+    engine
+        .abandoned_warnings(&proposal, &projects)
         .map_err(|error| anyhow!("{error}"))
 }
 
 /// Opened read-only in spirit: no migrations are run, because the server owns
 /// the schema and a hook must not race it. SQLite is in WAL mode, so reading
 /// alongside a running server is safe.
-fn open_engine(db: &Path) -> Result<Engine> {
+pub(crate) fn open_engine(db: &Path) -> Result<Engine> {
     let store = std::sync::Arc::new(Store::open(db)?);
     let config = EngineConfig::from_env(db.parent().unwrap_or(Path::new(".")).join("backups"));
     Ok(Engine::new(store, std::sync::Arc::new(NoEmbedder), config))
@@ -517,6 +587,7 @@ fn record_session(db: &Path, project: &str, payload: &Value) -> Result<()> {
 
     let config = EngineConfig::from_env(db.parent().unwrap_or(Path::new(".")).join("backups"));
     let embedder = omnimem_app::load_embedder()?;
+    let _audit = omnimem_store::enter(omnimem_store::Actor::Hook, "");
     let engine = Engine::new(store.clone(), std::sync::Arc::new(embedder), config);
     engine
         .remember(
@@ -564,7 +635,7 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>) -> Result<()> 
     // particular is worth answering from the working directory alone.
     let payload = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({}));
     match event {
-        Event::PreToolUse => match warnings_for(db, &payload) {
+        Event::PreToolUse => match warnings_for(db, &payload, project) {
             Ok(warnings) if !warnings.is_empty() => println!("{}", decision(&warnings)),
             Ok(_) => {}
             // To stderr, where it reaches the hook log without being read as a
@@ -604,6 +675,7 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use omnimem_engine::GraveyardScope;
 
     #[test]
     fn reading_is_never_a_proposal() {
@@ -654,9 +726,13 @@ mod tests {
 
     #[test]
     fn the_refusal_carries_the_way_out() {
-        let reason = deny_reason(&["Abandoned approach: kestrel-rs — global handle. \
-                                    What worked instead: pellham"
-            .to_owned()]);
+        let reason = deny_reason(
+            &["Abandoned approach: kestrel-rs — global handle. \
+               What worked instead: pellham"
+                .to_owned()],
+            &[],
+        );
+        assert!(reason.contains("tried on this project"), "{reason}");
         assert!(reason.contains("What worked instead: pellham"), "{reason}");
         assert!(reason.contains("specific reason"), "{reason}");
     }
@@ -760,9 +836,164 @@ mod tests {
     }
 
     #[test]
+    fn a_newer_release_is_one_line_at_the_end_and_inside_the_cap() {
+        let update = json!({
+            "current": "7.0.6",
+            "latest": "7.0.7",
+            "url": "https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.7"
+        });
+        let mut briefing = json!({
+            "project_context": {"current_state": "mid rollout"},
+            "update_available": update,
+        });
+        let text = render_briefing("harrier", &briefing);
+        assert!(
+            text.ends_with(
+                "\n\nOmniMem 7.0.7 is out (you're on 7.0.6): https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.7"
+            ),
+            "{text}"
+        );
+
+        // A briefing that hits the cap is cut short of the notice, not past it.
+        briefing["project_context"]["current_state"] = "x".repeat(MAX_BRIEFING_CHARS * 2).into();
+        let long = render_briefing("harrier", &briefing);
+        assert!(long.chars().count() <= MAX_BRIEFING_CHARS + "\n[briefing truncated]".len());
+        assert!(long.contains("is out (you're on 7.0.6)"));
+
+        briefing.as_object_mut().unwrap().remove("update_available");
+        assert!(!render_briefing("harrier", &briefing).contains("is out"));
+    }
+
+    #[test]
     fn a_whole_file_write_is_bounded() {
         let huge = "x".repeat(MAX_QUERY_CHARS * 2);
         let text = proposal_text("Write", &json!({"content": huge}));
         assert_eq!(text.chars().count(), MAX_QUERY_CHARS);
+    }
+
+    /// An engine over an in-memory store with one dead end ("kestrel-rs")
+    /// recorded on project `alpha`, and the scope setting as given.
+    fn engine_with_dead_end(scope: GraveyardScope) -> Engine {
+        let config = EngineConfig {
+            graveyard_scope: scope,
+            ..EngineConfig::default()
+        };
+        let engine = Engine::new(
+            std::sync::Arc::new(Store::open_in_memory().unwrap()),
+            std::sync::Arc::new(NoEmbedder),
+            config,
+        );
+        let now = omnimem_engine::pyfmt::now_str();
+        let fields: omnimem_store::Fields = [
+            ("content", "tried a process-wide limiter"),
+            ("state", "active"),
+            ("project", "alpha"),
+            ("created_at", now.as_str()),
+            ("updated_at", now.as_str()),
+            (
+                "abandoned_approaches",
+                r#"[{"name": "kestrel-rs", "type": "library", "reason": "global governor."}]"#,
+            ),
+        ]
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .collect();
+        engine
+            .store()
+            .upsert("mem:episodic:01A", &fields, None)
+            .unwrap();
+        engine
+    }
+
+    #[test]
+    fn the_session_start_text_leaves_out_a_settled_contradiction() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let now = omnimem_engine::pyfmt::now_str();
+        for (key, other, content) in [
+            (
+                "mem:episodic:01X",
+                "mem:episodic:01Y",
+                "always squash merge",
+            ),
+            ("mem:episodic:01Y", "mem:episodic:01X", "never squash merge"),
+        ] {
+            let links = json!([{"key": other, "explanation": "x", "detected_at": "1"}]);
+            let fields: omnimem_store::Fields = [
+                ("content", content),
+                ("state", "active"),
+                ("project", "alpha"),
+                ("created_at", now.as_str()),
+                ("updated_at", now.as_str()),
+                ("contradictions", links.to_string().as_str()),
+            ]
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+            engine.store().upsert(key, &fields, None).unwrap();
+        }
+        let render = |engine: &Engine| {
+            let briefing = engine.session_briefing(Some("alpha"), false).unwrap();
+            render_briefing("alpha", &briefing)
+        };
+        let warned = render(&engine);
+        assert!(warned.contains("contradict each other"), "{warned}");
+        assert!(warned.contains("squash merge"), "{warned}");
+
+        let request = omnimem_engine::ResolveRequest::new(
+            "mem:episodic:01X",
+            "mem:episodic:01Y",
+            "both_valid",
+            None,
+            None,
+            omnimem_engine::Retire::No,
+        )
+        .unwrap();
+        engine.resolve_contradiction(&request, "cli").unwrap();
+        let settled = render(&engine);
+        assert!(!settled.contains("contradict each other"), "{settled}");
+        assert!(!settled.contains("squash merge"), "{settled}");
+    }
+
+    fn bash(command: &str) -> Value {
+        json!({"tool_name": "Bash", "tool_input": {"command": command}})
+    }
+
+    #[test]
+    fn the_hook_denies_only_for_the_project_that_recorded_the_dead_end() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let payload = bash("cargo add kestrel-rs");
+
+        let own = guard(&engine, &payload, Some("alpha")).unwrap();
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].elsewhere, None);
+        let (texts, elsewhere) = split_warnings(&own);
+        let reason = deny_reason(&texts, &elsewhere);
+        assert!(reason.contains("already tried on this project"), "{reason}");
+
+        assert!(
+            guard(&engine, &payload, Some("beta")).unwrap().is_empty(),
+            "another project's dead end must not stop this one"
+        );
+    }
+
+    #[test]
+    fn under_all_the_refusal_names_the_project_it_came_from() {
+        let engine = engine_with_dead_end(GraveyardScope::All);
+        let found = guard(&engine, &bash("cargo add kestrel-rs"), Some("beta")).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].elsewhere.as_deref(), Some("alpha"));
+        assert!(
+            found[0].text.ends_with("Recorded on project alpha"),
+            "{}",
+            found[0].text
+        );
+
+        let reason = decision(&found)["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert!(reason.contains("recorded on project alpha"), "{reason}");
+        assert!(!reason.contains("on this project"), "{reason}");
+        assert!(!reason.contains("this codebase"), "{reason}");
     }
 }

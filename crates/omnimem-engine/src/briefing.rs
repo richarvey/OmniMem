@@ -16,6 +16,9 @@ use crate::pyfmt::{compact, now_secs, py_json, take_chars};
 use crate::tools::validate_project_name;
 use crate::{Engine, Result};
 
+/// The version this build reports itself as.
+const RUNNING_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 impl Engine {
     /// Memory keys that compiled into a skill: exempt from the stale list,
     /// read live from each skill's manifest (issue #34).
@@ -94,10 +97,14 @@ impl Engine {
                             }),
                         ));
                     }
+                    // A pair a person has settled no longer warns.
                     let links: Vec<Value> = data
                         .get("contradictions")
-                        .and_then(|c| serde_json::from_str(c).ok())
-                        .unwrap_or_default();
+                        .and_then(|c| serde_json::from_str::<Vec<Value>>(c).ok())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|l| !crate::resolution::link_is_resolved(l))
+                        .collect();
                     if !links.is_empty() {
                         let contradicts: Vec<&str> = links
                             .iter()
@@ -316,6 +323,17 @@ impl Engine {
             && let Err(e) = self.briefing_skill_sections(p, &mut result)
         {
             error!(project = p, error = %e, "skill briefing sections failed");
+        }
+        // Last, and only when the background check has found a newer release:
+        // an addition to 6.x's result, listed in CLAUDE.md. The kv read is
+        // local, so a briefing never waits on the network.
+        if self.config.update_check
+            && let Some(latest) = crate::release::newer_release_in(&self.store, RUNNING_VERSION)
+        {
+            result.insert(
+                "update_available".into(),
+                crate::release::update_available(&latest, RUNNING_VERSION),
+            );
         }
         Ok(Value::Object(result))
     }

@@ -12,6 +12,7 @@
 //! migrations that can silently fail, and phantom index entries. There is no
 //! index to drift from the data.
 
+mod audit;
 mod backup;
 mod error;
 mod kv;
@@ -24,6 +25,7 @@ mod store;
 mod time;
 mod vectors;
 
+pub use audit::{Actor, AuditLevel, AuditQuery, AuditRow, Op, OpGuard, ScopeGuard, enter, op};
 pub use backup::{BACKUP_KEY_PREFIXES, BackupFile, ImportReport, read_backup, write_backup};
 pub use error::StoreError;
 pub use migrations::MigrationReport;

@@ -169,7 +169,7 @@ pub const SET_PROVENANCE: &str = r"Record where one or more memories came from.
     ('concluded'). Facts extracted from a reclassified memory follow it.
     Provenance is reported on recall and never changes ranking.";
 
-pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification.";
+pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification. mode='resolve' (key_a, key_b, outcome, winner, reason, retire_loser) records how a linked pair was settled: a person confirms it, and the pair stops warning.";
 
 pub const BRIEFING: &str = r"Session-start briefing: project context, experience summary, stale memories, knowledge, contradictions, reinstate candidates.";
 
@@ -181,7 +181,7 @@ pub const RECENT_KNOWLEDGE: &str = r"Recent knowledge articles ingested by the R
 
 // Phase 4: skills.
 
-pub const COMPILE_SKILL: &str = r"Compile domain procedure from experience and graveyard memories into a loadable SKILL.md. 'propose' (default) returns a reviewable diff; 'write' commits only a previously proposed and accepted diff — there is no silent-commit path.
+pub const COMPILE_SKILL: &str = r"Compile domain procedure from experience and graveyard memories into a loadable SKILL.md. 'propose' (default) returns a reviewable diff; 'write' commits only a previously proposed diff that a person accepts: the client asks them (MCP elicitation), or, if it can't, the result is `awaiting_approval` and they accept it in OmniMem's settings window. `declined` means nothing was written; don't ask again. There is no silent-commit path.
 
     The compiled skill is build output: derived from raw memories, never
     hand-edited. To change domain guidance, update the underlying memories

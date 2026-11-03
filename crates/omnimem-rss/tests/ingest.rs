@@ -551,3 +551,32 @@ fn pages_are_capped_and_only_fetched_over_http() {
             .is_none()
     );
 }
+
+#[test]
+fn articles_are_recorded_as_the_rss_readers_in_the_audit_log() {
+    let (base, routes, _) = server();
+    route(
+        &routes,
+        "/feed.xml",
+        &rss(&base, &[("/post", "A Post", "<p>Hello <b>world</b></p>")]),
+    );
+    let (ingester, store) = ingester(
+        Some(Scripted::with(&["A summary."])),
+        config(no_feeds_file()),
+    );
+    store.set_audit_level(omnimem_store::AuditLevel::Writes);
+    // `omnimem rss` runs under the command line's scope; the cycle is still the reader's.
+    let _cli = omnimem_store::enter(omnimem_store::Actor::Cli, "");
+    let feed = feed(&json!({"url": format!("{base}/feed.xml"), "name": "Example"}));
+    assert_eq!(ingester.ingest_feed(&feed).unwrap().added, 1);
+
+    let rows = store
+        .audit_entries(&omnimem_store::AuditQuery::default())
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(rows[0].actor, "rss");
+    assert_eq!(rows[0].client, "");
+    assert_eq!(rows[0].action, "feed_item");
+    assert_eq!(rows[0].to["feed_name"], "Example");
+    assert!(rows[0].to.get("content").is_none(), "no text below full");
+}

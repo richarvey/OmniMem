@@ -102,7 +102,7 @@ pub(crate) async fn archive(
     Form(form): Form<FormData>,
 ) -> Response {
     act(state, form, to_memory, |engine, key, _| {
-        if let Err(e) = engine.transition(key, MemoryState::Archived, None) {
+        if let Err(e) = engine.transition(key, MemoryState::Archived, Some("Archived via web UI")) {
             warn!(key, error = %e, "could not archive");
         }
     })

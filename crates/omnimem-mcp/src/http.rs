@@ -256,7 +256,7 @@ fn unauthorised(body: String, challenge: &str) -> Response {
     response
 }
 
-async fn require_auth(State(auth): State<McpAuth>, request: Request, next: Next) -> Response {
+async fn require_auth(State(auth): State<McpAuth>, mut request: Request, next: Next) -> Response {
     let presented_header = request.headers().get(header::AUTHORIZATION).cloned();
 
     let Some(oauth) = &auth.oauth else {
@@ -302,10 +302,16 @@ async fn require_auth(State(auth): State<McpAuth>, request: Request, next: Next)
         }
         // The token lookup reads SQLite, so it runs off the async runtime.
         let checker = oauth.clone();
-        let verified = tokio::task::spawn_blocking(move || checker.verify_access(&presented)).await;
+        let verified = tokio::task::spawn_blocking(move || checker.access_client(&presented)).await;
         match verified {
-            Ok(Ok(true)) => return next.run(request).await,
-            Ok(Ok(false)) => {}
+            Ok(Ok(Some(client_id))) => {
+                // The audit log names the client a change came from.
+                request
+                    .extensions_mut()
+                    .insert(crate::audit_client::OAuthClient(client_id));
+                return next.run(request).await;
+            }
+            Ok(Ok(None)) => {}
             Ok(Err(e)) => {
                 tracing::error!(error = %e, "could not check an OAuth access token");
                 return (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable").into_response();

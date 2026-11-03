@@ -11,10 +11,37 @@ A skill in OmniMem isn't a list of instructions somebody wrote once, and it's ne
 The premise is simple. A bad memory is noise: recall ranks it, dilutes it, and you move on. A bad skill is policy: the agent obeys it. So a bad lesson can't become policy quietly.
 
 - **A pattern earns a rule, an episode doesn't.** A lesson has to recur across `min_reinforcement` memories (2 by default) before it compiles. One strong lesson can jump the queue if you `bless()` it.
-- **Nothing writes silently.** `compile_skill` proposes a diff with a change summary sorted by risk. You review it, then `mode="write"` commits exactly what you accepted. Recompiles that rewrite or remove a rule are flagged loudly; simple additions stay cheap.
+- **Nothing writes silently, and the agent can't accept for you.** `compile_skill` proposes a diff with a change summary sorted by risk. A person accepts it (see below), and then it commits exactly what was shown. Recompiles that rewrite or remove a rule are flagged loudly; simple additions stay cheap.
 - **Derived, never hand-edited.** The memories are the source of truth and the skill is build output. Want different guidance? Update the memories and recompile.
 - **Suggested, never auto-loaded.** The briefing recommends skills. You and the agent decide what loads.
 - **Reference material is promoted, never absorbed.** Articles only reach a skill through `promote_knowledge(key, domain=...)`, a deliberate act that stands in for the reinforcement an article can't earn. Promoted articles compile into their own Reference section, each citing its source. An article with discrete guidance (a "5 things to avoid" list, say) can be promoted with `rules=[{kind, text}, ...]`: the agent drafts the items, you approve them, and each becomes its own bullet rather than one summary line. That extraction happens at promotion, under review, never at compile, so compiling stays deterministic. Volatile facts like version numbers belong in the knowledge namespace, looked up with `recall()`.
+
+## Who accepts
+
+Early versions treated `mode="write"` as the accept, which meant an agent could propose a skill and then approve it itself. From 7.0.6 it can't. `compile_skill(mode="propose")` is still open to the agent, but `mode="write"` over MCP is a request: OmniMem asks you, and only your answer commits it. This is the `HUMAN_APPROVAL` setting, and its default is `human`.
+
+- **Your client asks you.** If the client supports MCP elicitation, you get a question with the domain, the line counts, the rule counts and the start of the diff (or the draft, for a new skill), with Accept and Decline. Accept writes exactly the stashed draft. Decline or dismiss writes nothing and the call returns `declined` or `cancelled`; the proposal stays stashed, so you can still accept it from the settings window. You get ten minutes to answer, or the proposal's lifetime if that's shorter.
+- **Your client can't ask.** The call returns `awaiting_approval` and the proposal waits. Open OmniMem's settings window, go to Skills, and accept it under **Pending proposals**, which lists every stashed proposal with its diff or draft. The Skills link in the sidebar shows how many are waiting. A headless `omnimem serve` has no window, so there you need a client that supports elicitation.
+- **You'd rather not be asked.** `HUMAN_APPROVAL=agent` restores the 6.x behaviour, where the agent's `mode="write"` commits.
+
+Either way the stale check still applies: if the stored skill changed after the proposal, nothing is written. And if the agent replaces the proposal while you're reading the old one, your yes doesn't carry over to the new one.
+
+`HUMAN_APPROVAL` is deliberately not skill-specific. Resolving contradictions is meant to go through the same switch.
+
+### Which clients can ask
+
+This is what each client's own documentation says, checked in November 2026. Elicitation support changes quickly, so check yours.
+
+| Client | Elicitation | Source |
+|---|---|---|
+| Claude Code | Yes. Shows a dialog in the terminal. Per its docs, requests from MCP tasks are cancelled in non-interactive sessions; the page doesn't say what happens to an ordinary tool call there, so don't count on `claude -p` | [Claude Code MCP docs](https://code.claude.com/docs/en/mcp#respond-to-mcp-elicitation-requests) |
+| Cursor | Yes. Its MCP page lists Elicitation as supported | [Cursor MCP docs](https://cursor.com/docs/context/mcp) |
+| VS Code (GitHub Copilot) | Yes. Listed among the MCP features VS Code supports | [VS Code MCP developer guide](https://code.visualstudio.com/api/extension-guides/ai/mcp) |
+| Codex | Handles form requests, but with open bugs: users report forms with only Deny and Cancel on Android Remote, a required form auto-declined, and a cancelled request left on screen. I found no official statement of support, so treat it as unreliable and expect `declined` or `awaiting_approval` | [openai/codex #44899](https://github.com/openai/codex/issues/44899), [#30978](https://github.com/openai/codex/issues/30978), [#40390](https://github.com/openai/codex/issues/40390) |
+| Claude Desktop | Not sure. Anthropic's connector documentation says what Claude doesn't support (resource subscriptions, sampling, draft capabilities) and doesn't mention elicitation either way | [Build an MCP server for Claude](https://claude.com/docs/connectors/building) |
+| claude.ai | Not sure, for the same reason. Claude Code's docs mention connecting to claude.ai connectors, but that's Claude Code as the client, not claude.ai | [Build an MCP server for Claude](https://claude.com/docs/connectors/building) |
+
+If a client says nothing, OmniMem sees no `elicitation` capability at connect and answers `awaiting_approval`, so the worst case is a trip to the settings window, never a silent write.
 
 ## The flywheel
 

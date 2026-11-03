@@ -478,3 +478,68 @@ fn tier_two_confirms_or_rejects_heuristic_matches() {
         "CONTRADICTION_MODEL is used"
     );
 }
+
+#[test]
+fn the_enrichment_worker_is_who_the_audit_log_names_for_the_facts_it_writes() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let model = Arc::new(Scripted::default());
+    let engine = Arc::new(engine_with(
+        EngineConfig {
+            audit_log: omnimem_store::AuditLevel::Writes,
+            ..EngineConfig::default()
+        },
+        Some(model.clone()),
+    ));
+    let source = {
+        let _who = omnimem_store::enter(omnimem_store::Actor::Mcp, "an-agent");
+        engine
+            .remember(
+                "the team moved the api to v2",
+                Some("alpha"),
+                None,
+                "episodic",
+                false,
+                None,
+                None,
+                None,
+            )
+            .unwrap()["key"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    model.reply(r#"[{"text": "The API moved to v2"}]"#);
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker = {
+        let (engine, stop) = (engine.clone(), stop.clone());
+        std::thread::spawn(move || engine.run_enrichment_worker(&stop))
+    };
+    for _ in 0..100 {
+        if !memories(&engine, "mem:knowledge:").is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    stop.store(true, Ordering::Relaxed);
+    worker.join().unwrap();
+
+    let rows = engine
+        .store()
+        .audit_entries(&omnimem_store::AuditQuery::default())
+        .unwrap();
+    let fact = rows
+        .iter()
+        .find(|r| r.action == "extract_fact")
+        .unwrap_or_else(|| panic!("no fact was recorded: {rows:#?}"));
+    assert_eq!(fact.actor, "enrichment");
+    assert_eq!(fact.client, "");
+    assert_eq!(fact.to["enriched_from"], source.as_str());
+    assert!(fact.to.get("content").is_none());
+    let remembered = rows.iter().find(|r| r.key == source).unwrap();
+    assert_eq!(
+        (remembered.actor.as_str(), remembered.client.as_str()),
+        ("mcp", "an-agent")
+    );
+}
