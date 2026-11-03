@@ -34,6 +34,7 @@ mod projects;
 pub mod pyfmt;
 mod recall;
 pub mod release;
+mod resolution;
 mod skill_scan;
 mod skill_tools;
 pub mod skills;
@@ -61,6 +62,7 @@ pub use experience::AbandonedWarning;
 pub use lifecycle::MemoryState;
 pub use omnimem_store::AuditLevel;
 pub use recall::{RecallResult, compute_experience_weight};
+pub use resolution::{Outcome, PENDING_TTL, ResolutionReview, ResolveRequest, Retire};
 pub use tools::DomainFilter;
 
 pub type Result<T, E = EngineError> = std::result::Result<T, E>;

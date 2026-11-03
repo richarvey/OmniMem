@@ -193,6 +193,8 @@ impl Engine {
         }
 
         if new_state == MemoryState::Deleted {
+            // Whatever was linked to it stops pointing at nothing.
+            self.settle_links_to_deleted(key, &data)?;
             self.store.delete(key)?;
         }
         let derived = self.cascade_to_derived(key, new_state)?;

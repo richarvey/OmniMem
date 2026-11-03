@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use omnimem_engine::{
-    DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, SkillReview,
+    DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
+    ResolveRequest, Retire, SkillReview,
 };
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
@@ -24,8 +25,8 @@ use crate::args::{
     Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, FindDuplicates, FindSkills, Forget,
     GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs, OptionalProject,
     ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex, RecentKnowledge,
-    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, SetLicence,
-    SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
+    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, RetireArg,
+    SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
 };
 use crate::descriptions as d;
 
@@ -389,6 +390,18 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         }
         "check_contradictions" => {
             let a: CheckContradictions = parse(args)?;
+            match a.mode.as_deref().map(str::trim) {
+                None | Some("" | "check") => {}
+                // Only reached when no person is asked: `HUMAN_APPROVAL=agent`.
+                Some("resolve") => {
+                    return Ok(e.resolve_contradiction(&resolve_request(&a)?, "mcp")?);
+                }
+                Some(other) => {
+                    return Err(CallError::Invalid(format!(
+                        "Unknown mode '{other}'. Use 'check' (the default) or 'resolve'."
+                    )));
+                }
+            }
             e.check_contradictions(
                 a.query.as_deref(),
                 &a.namespace,
@@ -490,6 +503,127 @@ async fn blocking<T: Send + 'static>(
         .await
         .map_err(|e| CallError::Internal(format!("tool task failed: {e}")))?
         .map_err(CallError::from)
+}
+
+/// The resolution a `check_contradictions(mode="resolve")` call proposes.
+fn resolve_request(a: &CheckContradictions) -> Result<ResolveRequest, CallError> {
+    fn need<'a>(name: &str, value: &'a Option<String>) -> Result<&'a str, CallError> {
+        value
+            .as_deref()
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| CallError::Invalid(format!("mode='resolve' needs {name}.")))
+    }
+    let retire = match &a.retire_loser {
+        None => Retire::No,
+        Some(RetireArg::Flag(true)) => Retire::Deprioritise,
+        Some(RetireArg::Flag(false)) => Retire::No,
+        Some(RetireArg::Mode(mode)) => Retire::parse(mode)?,
+    };
+    Ok(ResolveRequest::new(
+        need("key_a", &a.key_a)?,
+        need("key_b", &a.key_b)?,
+        need("outcome", &a.outcome)?,
+        a.winner.as_deref(),
+        a.reason.as_deref(),
+        retire,
+    )?)
+}
+
+/// What the person is shown: both memories, the outcome, the winner and the
+/// reason, as far as a client's dialog can take.
+fn contradiction_approval_message(review: &ResolutionReview) -> String {
+    const SHOWN_CHARS: usize = 400;
+    let r = &review.request;
+    let shown = |text: &str| {
+        let mut s: String = text.chars().take(SHOWN_CHARS).collect();
+        if text.chars().count() > SHOWN_CHARS {
+            s.push_str("...");
+        }
+        s
+    };
+    let mut message = format!(
+        "An agent wants to settle a contradiction between two memories.\n\nA ({}):\n{}\n\nB ({}):\n{}\n\nOutcome: {}",
+        r.key_a,
+        shown(&review.content_a),
+        r.key_b,
+        shown(&review.content_b),
+        r.outcome.as_str(),
+    );
+    if let Some(winner) = &r.winner {
+        let side = if *winner == r.key_a { "A" } else { "B" };
+        message.push_str(&format!("\nCurrent: {side} ({winner})"));
+    }
+    message.push_str(&format!(
+        "\nReason: {}",
+        r.reason.as_deref().unwrap_or("(none given)")
+    ));
+    match r.retire {
+        Retire::No => {}
+        Retire::Deprioritise => message.push_str("\nThe out-of-date memory will be deprioritised."),
+        Retire::Archive => message.push_str("\nThe out-of-date memory will be archived."),
+    }
+    message.push_str("\n\nAccept to record it. Decline to leave things as they are.");
+    message
+}
+
+/// `check_contradictions(mode="resolve")` under `HUMAN_APPROVAL=human`: the
+/// agent proposes, a person's answer is what writes. Without a person to
+/// ask, the proposal waits for the settings window (or `omnimem
+/// contradictions`).
+async fn resolve_with_approval(
+    engine: &Arc<Engine>,
+    peer: &Peer<RoleServer>,
+    client: &str,
+    args: Value,
+) -> Result<Value, CallError> {
+    let a: CheckContradictions = parse(args)?;
+    let request = resolve_request(&a)?;
+    let proposed = request.clone();
+    let review = blocking(engine, move |e| e.review_resolution(&proposed)).await?;
+    let answer = approval::ask_human(
+        peer,
+        &contradiction_approval_message(&review),
+        APPROVAL_TIMEOUT,
+    )
+    .await;
+    let client = client.to_owned();
+    match answer {
+        Answer::Accepted => {
+            blocking(engine, move |e| {
+                // The write is the client's, and the log says a person let it through.
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                let _note = omnimem_store::op(
+                    omnimem_store::Op::new("approved")
+                        .reason(Some("approved by the user via elicitation")),
+                );
+                e.resolve_contradiction(&review.request, "mcp-elicitation")
+            })
+            .await
+        }
+        Answer::Unsupported => {
+            let mut stored = blocking(engine, move |e| {
+                let _audit = omnimem_store::enter(omnimem_store::Actor::Mcp, &client);
+                e.propose_resolution(&request, "mcp")
+            })
+            .await?;
+            stored["note"] = json!(
+                "A person has to accept this, and this client can't ask them: it didn't declare MCP elicitation. \
+                 Nothing has been written. They can accept it in OmniMem's settings window, on the Contradictions \
+                 page under Pending, or with `omnimem contradictions` on the server. Don't call resolve again."
+            );
+            Ok(stored)
+        }
+        declined_or_not => Ok(json!({
+            "status": declined_or_not.status(),
+            "key_a": review.request.key_a,
+            "key_b": review.request.key_b,
+            "note": if declined_or_not == Answer::Declined {
+                "The person declined, so nothing was written. Don't ask again unless they do."
+            } else {
+                "The person didn't answer, so nothing was written."
+            },
+        })),
+    }
 }
 
 /// `compile_skill(mode="write")` under `HUMAN_APPROVAL=human`: the agent's
@@ -669,12 +803,20 @@ impl ServerHandler for OmniMemServer {
         let tool = name.clone();
         // A skill write is the one call the agent can't make on its own say-so
         // (unless `HUMAN_APPROVAL=agent`): it goes through a person first.
-        let needs_person = name == "compile_skill"
-            && args.get("mode").and_then(Value::as_str) == Some("write")
-            && engine.config().human_approval == HumanApproval::Human;
+        // Settling a contradiction is the second: an agent's `resolve` is a
+        // proposal until a person says yes.
+        let mode = args.get("mode").and_then(Value::as_str);
+        let skill_write = name == "compile_skill" && mode == Some("write");
+        let resolves = name == "check_contradictions" && mode.map(str::trim) == Some("resolve");
+        let needs_person =
+            (skill_write || resolves) && engine.config().human_approval == HumanApproval::Human;
         let outcome = if needs_person {
             let started = Instant::now();
-            let result = write_with_approval(&engine, &context.peer, &client, args).await;
+            let result = if resolves {
+                resolve_with_approval(&engine, &context.peer, &client, args).await
+            } else {
+                write_with_approval(&engine, &context.peer, &client, args).await
+            };
             tokio::task::spawn_blocking(move || observe(&engine, &tool, started, result))
                 .await
                 .map_err(|e| ErrorData::internal_error(format!("tool task failed: {e}"), None))?

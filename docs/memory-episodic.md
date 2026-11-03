@@ -68,7 +68,9 @@ Recording an `abandoned` outcome with an effort score of 4 or 5 lists the approa
 | `deprioritised_reason` | string | Why it was deprioritised. Set to `""` on reinstate. |
 | `archived_reason` | string | Why it was archived, including the maintenance pass's "auto-maintenance: duplicate of <key>". Set to `""` on reinstate. |
 | `reinstate_hints` | JSON array of strings | Keywords that make this deprioritised memory a reinstate candidate when a recall query mentions one. |
-| `contradictions` | JSON array | Cross-links from contradiction detection: `{"key", "explanation", "detected_at"}`, written to both memories and de-duplicated by key. |
+| `contradictions` | JSON array | Cross-links from contradiction detection: `{"key", "explanation", "detected_at"}`, written to both memories and de-duplicated by key. A resolved link also carries `"resolution": {"outcome", "winner"?, "reason"?, "resolved_at", "resolved_by", "history"?}` (see [settling a contradiction](features.md#settling-a-contradiction)). |
+| `superseded_by` | string | The key of the memory that replaced this one, set when a contradiction is resolved as `supersedes` in the other memory's favour. |
+| `supersedes` | JSON array of strings | On the winner, the keys of the memories it replaced. |
 | `recall_count` / `last_recalled` | int string / unix seconds string | Recall counters. |
 | `event_date` | unix seconds string | Optional date the memory is about. When a recall query mentions a date near it, the temporal boost (1.0-1.5x) applies. `remember()` doesn't set it; it arrives with imported 6.x records, and extracted facts carry one (see [knowledge](memory-knowledge.md)). |
 

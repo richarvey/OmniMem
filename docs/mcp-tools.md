@@ -24,7 +24,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 | `unsuppress_topic(topic)` | Lift a suppression |
 | `list_suppressions()` | What's currently suppressed, with a `reasons` map for the topics that were given one |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Clusters of near-identical memories (threshold 0.92 by default) |
-| `check_contradictions(query?, namespace?, project_filter?, use_api?)` | Tier 1 heuristic scan, or tier 2 verification with Claude when `use_api=True` |
+| `check_contradictions(query?, namespace?, project_filter?, use_api?, mode?, key_a?, key_b?, outcome?, winner?, reason?, retire_loser?)` | Tier 1 heuristic scan, or tier 2 verification with Claude when `use_api=True`. `mode="resolve"` records how a linked pair was settled: `outcome` is `supersedes` (with `winner`, the current memory), `both_valid`, `both_wrong`, `false_positive` or `reopened`; `retire_loser` (`true`, `"deprioritise"` or `"archive"`) also retires the out-of-date memory (both, for `both_wrong`). The resolution is written to both memories and the pair stops warning. Under `HUMAN_APPROVAL=human` a person is asked through MCP elicitation and the result is `resolved`, `declined` or `cancelled`; a client that can't be asked gets `awaiting_approval` and the proposal waits on the settings window's Contradictions page. See [contradiction detection](features.md#contradiction-detection) |
 | `briefing(project?, include_knowledge?)` | The session-start call: project context, experience summary, stale memories, new articles, contradictions, reinstate candidates and the skill sections. Runs auto-maintenance and the auto skill scan on their intervals |
 
 ## Projects

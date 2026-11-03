@@ -210,6 +210,9 @@ pub(crate) fn render_briefing(project: &str, briefing: &Value) -> String {
                 bullet(&mut out, text);
             }
         }
+        out.push_str(
+            "Ask the person which holds; check_contradictions(mode=\"resolve\") records their answer and stops the warning.\n",
+        );
         out.push('\n');
     }
 
@@ -546,7 +549,7 @@ fn guard(engine: &Engine, payload: &Value, project: Option<&str>) -> Result<Vec<
 /// Opened read-only in spirit: no migrations are run, because the server owns
 /// the schema and a hook must not race it. SQLite is in WAL mode, so reading
 /// alongside a running server is safe.
-fn open_engine(db: &Path) -> Result<Engine> {
+pub(crate) fn open_engine(db: &Path) -> Result<Engine> {
     let store = std::sync::Arc::new(Store::open(db)?);
     let config = EngineConfig::from_env(db.parent().unwrap_or(Path::new(".")).join("backups"));
     Ok(Engine::new(store, std::sync::Arc::new(NoEmbedder), config))
@@ -900,6 +903,55 @@ mod tests {
             .upsert("mem:episodic:01A", &fields, None)
             .unwrap();
         engine
+    }
+
+    #[test]
+    fn the_session_start_text_leaves_out_a_settled_contradiction() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let now = omnimem_engine::pyfmt::now_str();
+        for (key, other, content) in [
+            (
+                "mem:episodic:01X",
+                "mem:episodic:01Y",
+                "always squash merge",
+            ),
+            ("mem:episodic:01Y", "mem:episodic:01X", "never squash merge"),
+        ] {
+            let links = json!([{"key": other, "explanation": "x", "detected_at": "1"}]);
+            let fields: omnimem_store::Fields = [
+                ("content", content),
+                ("state", "active"),
+                ("project", "alpha"),
+                ("created_at", now.as_str()),
+                ("updated_at", now.as_str()),
+                ("contradictions", links.to_string().as_str()),
+            ]
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+            engine.store().upsert(key, &fields, None).unwrap();
+        }
+        let render = |engine: &Engine| {
+            let briefing = engine.session_briefing(Some("alpha"), false).unwrap();
+            render_briefing("alpha", &briefing)
+        };
+        let warned = render(&engine);
+        assert!(warned.contains("contradict each other"), "{warned}");
+        assert!(warned.contains("squash merge"), "{warned}");
+
+        let request = omnimem_engine::ResolveRequest::new(
+            "mem:episodic:01X",
+            "mem:episodic:01Y",
+            "both_valid",
+            None,
+            None,
+            omnimem_engine::Retire::No,
+        )
+        .unwrap();
+        engine.resolve_contradiction(&request, "cli").unwrap();
+        let settled = render(&engine);
+        assert!(!settled.contains("contradict each other"), "{settled}");
+        assert!(!settled.contains("squash merge"), "{settled}");
     }
 
     fn bash(command: &str) -> Value {

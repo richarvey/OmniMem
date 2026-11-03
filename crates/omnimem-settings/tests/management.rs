@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use axum::http::{Request, Response};
 use omnimem_core::{EmbeddingError, TextEmbedder, VECTOR_DIM};
-use omnimem_engine::{Engine, EngineConfig};
+use omnimem_engine::{Engine, EngineConfig, ResolveRequest, Retire};
 use omnimem_settings::{Panel, StaticOverhead};
 use omnimem_store::{Fields, Store};
+use serde_json::Value;
 
 /// Texts of the same length embed identically, so duplicates are easy to make.
 struct Flat;
@@ -189,6 +190,172 @@ async fn a_pair_shows_its_explanation_whichever_side_recorded_it() {
             if explained_first { "first" } else { "second" }
         );
     }
+}
+
+/// Two memories linked as contradicting each other, both rows.
+fn linked_pair(engine: &Engine) -> (String, String) {
+    let a = remember(engine, "Always squash merge", "omnimem");
+    let b = remember(engine, "Never squash merge", "omnimem");
+    for (key, other) in [(&a, &b), (&b, &a)] {
+        engine
+            .store()
+            .set_field(
+                key,
+                "contradictions",
+                &format!(r#"[{{"key": "{other}", "explanation": "They disagree"}}]"#),
+            )
+            .unwrap();
+    }
+    (a, b)
+}
+
+fn form_keys(a: &str, b: &str) -> String {
+    format!(
+        "key_a={}&key_b={}",
+        a.replace(':', "%3A"),
+        b.replace(':', "%3A")
+    )
+}
+
+fn redirect(response: &Response<Vec<u8>>) -> String {
+    response.headers()["x-omnimem-redirect"]
+        .to_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn resolution_of(engine: &Engine, key: &str) -> Value {
+    let raw = engine.store().get(key).unwrap().unwrap()["contradictions"].clone();
+    serde_json::from_str::<Vec<Value>>(&raw).unwrap()[0]["resolution"].clone()
+}
+
+#[tokio::test]
+async fn the_page_offers_resolve_actions_in_place_of_the_archive_buttons() {
+    let (panel, engine) = setup();
+    linked_pair(&engine);
+    let page = text(&get(&panel, "/contradictions").await);
+    for label in [
+        "A is current",
+        "B is current",
+        "Both stand",
+        "Not a contradiction",
+    ] {
+        assert!(page.contains(label), "{label} missing: {page}");
+    }
+    assert!(page.contains("action=\"/contradictions/resolve\""));
+    assert!(page.contains("name=\"reason\""));
+    assert!(page.contains("name=\"retire_loser\""));
+    assert!(!page.contains("Archive A") && !page.contains("/lifecycle/archive"));
+}
+
+#[tokio::test]
+async fn a_click_resolves_the_pair_and_it_leaves_the_page() {
+    let (panel, engine) = setup();
+    let (a, b) = linked_pair(&engine);
+    let form = format!(
+        "{}&choice=b&reason=we+moved&retire_loser=1",
+        form_keys(&a, &b)
+    );
+    let response = post(&panel, "/contradictions/resolve", &form).await;
+    assert_eq!(redirect(&response), "/contradictions?message=Resolved.");
+
+    for key in [&a, &b] {
+        let r = resolution_of(&engine, key);
+        assert_eq!(r["outcome"], "supersedes");
+        assert_eq!(r["winner"], b.as_str());
+        assert_eq!(r["reason"], "we moved");
+        assert_eq!(r["resolved_by"], "panel");
+    }
+    assert_eq!(
+        engine.store().get(&a).unwrap().unwrap()["state"],
+        "deprioritised"
+    );
+    assert_eq!(engine.store().get(&b).unwrap().unwrap()["state"], "active");
+    let page = text(&get(&panel, "/contradictions").await);
+    assert!(page.contains("No contradictions detected."), "{page}");
+
+    // The memory's page shows what was decided.
+    let detail = text(&get(&panel, &format!("/memory/{a}")).await);
+    assert!(
+        detail.contains("Resolved:") && detail.contains("supersedes"),
+        "{detail}"
+    );
+    assert!(detail.contains("Replaced by"), "{detail}");
+}
+
+#[tokio::test]
+async fn both_stand_and_not_a_contradiction_keep_both_memories_as_they_are() {
+    for (choice, outcome) in [("both", "both_valid"), ("not", "false_positive")] {
+        let (panel, engine) = setup();
+        let (a, b) = linked_pair(&engine);
+        // The box is for a side that lost, so it does nothing here.
+        let form = format!("{}&choice={choice}&retire_loser=1", form_keys(&a, &b));
+        post(&panel, "/contradictions/resolve", &form).await;
+        assert_eq!(resolution_of(&engine, &a)["outcome"], outcome);
+        assert_eq!(engine.store().get(&b).unwrap().unwrap()["state"], "active");
+        assert_eq!(engine.store().get(&a).unwrap().unwrap()["state"], "active");
+    }
+    let (panel, engine) = setup();
+    let (a, b) = linked_pair(&engine);
+    let response = post(&panel, "/contradictions/resolve", &form_keys(&a, &b)).await;
+    assert!(
+        redirect(&response).starts_with("/contradictions?error="),
+        "{}",
+        redirect(&response)
+    );
+}
+
+#[tokio::test]
+async fn pending_resolutions_are_listed_to_accept_or_discard() {
+    let (panel, engine) = setup();
+    let (a, b) = linked_pair(&engine);
+    let request = ResolveRequest::new(
+        &a,
+        &b,
+        "supersedes",
+        Some(&a),
+        Some("agent says so"),
+        Retire::No,
+    )
+    .unwrap();
+    engine.propose_resolution(&request, "mcp").unwrap();
+
+    let page = text(&get(&panel, "/contradictions").await);
+    assert!(
+        page.contains("Pending") && page.contains("agent says so"),
+        "{page}"
+    );
+    assert!(page.contains("action=\"/contradictions/accept\""));
+    assert!(page.contains("action=\"/contradictions/discard\""));
+
+    // Discard writes nothing.
+    let response = post(&panel, "/contradictions/discard", &form_keys(&a, &b)).await;
+    assert_eq!(
+        redirect(&response),
+        "/contradictions?message=Proposal%20discarded."
+    );
+    assert!(engine.pending_resolutions().unwrap().is_empty());
+    assert!(!text(&get(&panel, "/contradictions").await).contains("agent says so"));
+
+    // Accept writes exactly the proposal; the click is the approval.
+    engine.propose_resolution(&request, "mcp").unwrap();
+    let response = post(&panel, "/contradictions/accept", &form_keys(&a, &b)).await;
+    assert_eq!(redirect(&response), "/contradictions?message=Resolved.");
+    let r = resolution_of(&engine, &b);
+    assert_eq!(
+        (r["outcome"].as_str(), r["winner"].as_str()),
+        (Some("supersedes"), Some(a.as_str()))
+    );
+    assert_eq!(r["reason"], "agent says so");
+    assert_eq!(r["resolved_by"], "panel");
+
+    // Once it has gone, accepting says so.
+    let response = post(&panel, "/contradictions/accept", &form_keys(&a, &b)).await;
+    assert!(
+        redirect(&response).contains("already"),
+        "{}",
+        redirect(&response)
+    );
 }
 
 #[tokio::test]

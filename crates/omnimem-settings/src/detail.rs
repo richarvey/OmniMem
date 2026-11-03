@@ -89,6 +89,8 @@ pub(crate) async fn handler(
         "gotchas": present("gotchas"),
         "abandoned_approaches": json_list(data.get("abandoned_approaches")),
         "contradictions": json_list(data.get("contradictions")),
+        "superseded_by": text("superseded_by"),
+        "supersedes": json_list(data.get("supersedes")),
         "reinstate_hints": json_list(data.get("reinstate_hints")),
         "deprioritised_reason": text("deprioritised_reason"),
         "archived_reason": text("archived_reason"),

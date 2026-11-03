@@ -169,7 +169,7 @@ pub const SET_PROVENANCE: &str = r"Record where one or more memories came from.
     ('concluded'). Facts extracted from a reclassified memory follow it.
     Provenance is reported on recall and never changes ranking.";
 
-pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification.";
+pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification. mode='resolve' (key_a, key_b, outcome, winner, reason, retire_loser) records how a linked pair was settled: a person confirms it, and the pair stops warning.";
 
 pub const BRIEFING: &str = r"Session-start briefing: project context, experience summary, stale memories, knowledge, contradictions, reinstate candidates.";
 

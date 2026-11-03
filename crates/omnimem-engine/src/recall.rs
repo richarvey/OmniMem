@@ -247,6 +247,9 @@ pub struct RecallResult {
     pub breakthrough: Option<String>,
     pub lesson: Option<String>,
     pub contradictions: Vec<Value>,
+    /// The memory that replaced this one, when a person resolved a
+    /// contradiction in its favour.
+    pub superseded_by: Option<String>,
     pub event_date: Option<f64>,
     pub enriched_from: Option<String>,
     /// For a fact or preference extracted from another memory: the day its
@@ -538,6 +541,7 @@ impl Engine {
                 breakthrough: None,
                 lesson: None,
                 contradictions: Vec::new(),
+                superseded_by: None,
                 event_date: None,
                 enriched_from: None,
                 as_of: None,
@@ -796,6 +800,7 @@ impl Engine {
                     breakthrough: doc.get("breakthrough").cloned(),
                     lesson: doc.get("lesson").cloned(),
                     contradictions,
+                    superseded_by: doc.get("superseded_by").filter(|v| !v.is_empty()).cloned(),
                     event_date,
                     enriched_from: doc.get("enriched_from").cloned(),
                     as_of: doc

@@ -1,27 +1,23 @@
 //! Duplicates, contradictions and topic suppressions
 //! (`web_ui/routes/duplicates.py`, `contradictions.py` and `suppressions.py`).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use axum::Form;
 use axum::extract::{Query, State};
 use axum::response::Response;
 use chrono::{TimeZone, Utc};
 use minijinja::context;
-use omnimem_engine::{Engine, EngineError};
-use serde_json::{Map, Value, json};
+use omnimem_engine::{Engine, EngineError, ResolveRequest, Retire};
+use serde_json::{Value, json};
 use tracing::warn;
 
 use crate::PanelState;
-use crate::pages::{blocking, starting};
+use crate::pages::{blocking, quote, see_other, starting};
 use crate::render::page;
 
 const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
 const MAINTENANCE_PREFIX: &str = "meta:maintenance:";
-
-fn clip(text: &str, chars: usize) -> String {
-    text.chars().take(chars).collect()
-}
 
 /// The latest auto-maintenance run across all projects, for the note the
 /// duplicates and contradictions pages show.
@@ -120,125 +116,152 @@ pub(crate) async fn duplicates_scan(
     }
 }
 
-/// Every recorded contradiction pair once, with both sides' content.
-fn contradiction_pairs(engine: &Engine) -> omnimem_engine::Result<Vec<Value>> {
-    let store = engine.store();
-    let keys = store.scan_prefix("mem:episodic:")?;
-    let rows = store.get_fields_multi(&keys, &["content", "contradictions"])?;
-    // Each pair, by its sorted keys, to where it sits in `raw_pairs`.
-    let mut seen: BTreeMap<[String; 2], usize> = BTreeMap::new();
-    let mut others: BTreeSet<String> = BTreeSet::new();
-    let mut raw_pairs: Vec<(String, String, Map<String, Value>)> = Vec::new();
-    for (key, row) in keys.iter().zip(rows) {
-        let Some(row) = row else { continue };
-        let Some(recorded) = row
-            .get("contradictions")
-            .filter(|r| !r.is_empty())
-            .and_then(|r| serde_json::from_str::<Value>(r).ok())
-        else {
-            continue;
-        };
-        for entry in recorded.as_array().into_iter().flatten() {
-            let Some(entry) = entry.as_object() else {
-                continue;
-            };
-            let other = entry
-                .get("key")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned();
-            let mut pair = [key.clone(), other.clone()];
-            pair.sort();
-            if let Some(&at) = seen.get(&pair) {
-                // The other side's record of a pair already listed. Only one
-                // side may carry the explanation (a 6.x import, a link made
-                // from one side), and which side comes first is down to key
-                // order, so take what the first sighting lacked.
-                let listed = &mut raw_pairs[at].2;
-                for field in ["explanation", "similarity"] {
-                    if is_blank(listed.get(field))
-                        && let Some(value) = entry.get(field).filter(|v| !is_blank(Some(v)))
-                    {
-                        listed.insert(field.to_owned(), value.clone());
-                    }
-                }
-                continue;
-            }
-            seen.insert(pair, raw_pairs.len());
-            if !other.is_empty() {
-                others.insert(other);
-            }
-            raw_pairs.push((
-                key.clone(),
-                row.get("content").cloned().unwrap_or_default(),
-                entry.clone(),
-            ));
-        }
-    }
-    // One batched read for every other side.
-    let other_keys: Vec<String> = others.into_iter().collect();
-    let other_content: HashMap<String, String> = other_keys
-        .iter()
-        .cloned()
-        .zip(store.get_fields_multi(&other_keys, &["content"])?)
-        .map(|(key, row)| {
-            (
-                key,
-                row.and_then(|r| r.get("content").cloned())
-                    .unwrap_or_default(),
-            )
-        })
-        .collect();
-    Ok(raw_pairs
-        .into_iter()
-        .map(|(key, content_a, entry)| {
-            let other = entry.get("key").and_then(Value::as_str).unwrap_or("");
-            let content_b = other_content
-                .get(other)
-                .filter(|c| !c.is_empty())
-                .cloned()
-                .unwrap_or_else(|| {
-                    entry
-                        .get("content")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned()
-                });
-            json!({
-                "key_a": key,
-                "content_a": clip(&content_a, 150),
-                "key_b": other,
-                "content_b": clip(&content_b, 150),
-                "explanation": entry.get("explanation").cloned().unwrap_or_else(|| json!("")),
-                "similarity": entry.get("similarity").cloned().unwrap_or(Value::Null),
-            })
-        })
-        .collect())
-}
-
-/// Missing, null or an empty string.
-fn is_blank(value: Option<&Value>) -> bool {
-    value.is_none_or(|v| v.is_null() || v.as_str() == Some(""))
-}
-
-pub(crate) async fn contradictions(State(state): State<PanelState>) -> Response {
+pub(crate) async fn contradictions(
+    State(state): State<PanelState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let found =
-        blocking(move || Ok((contradiction_pairs(&engine)?, last_maintenance(&engine)?))).await;
+    let found = blocking(move || {
+        Ok((
+            engine.open_contradictions()?,
+            engine.pending_resolutions()?,
+            last_maintenance(&engine)?,
+        ))
+    })
+    .await;
     match found {
-        Ok((pairs, last)) => page(
+        Ok((pairs, pending, last)) => page(
             state.templates(),
             "contradictions.html",
             context! {
                 current_page => "contradictions",
                 pairs,
+                pending,
                 last_maintenance => last,
+                message => query.get("message"),
+                error => query.get("error"),
             },
         ),
         Err(failure) => failure,
     }
+}
+
+fn form_value(form: &HashMap<String, String>, name: &str) -> String {
+    form.get(name).map_or("", |v| v.trim()).to_owned()
+}
+
+/// Where the contradictions page goes after an action.
+fn contradictions_notice(result: Result<String, String>) -> Response {
+    match result {
+        Ok(message) => see_other(&format!("/contradictions?message={}", quote(&message))),
+        Err(problem) => see_other(&format!("/contradictions?error={}", quote(&problem))),
+    }
+}
+
+/// An engine refusal (a pair that has gone, a bad choice) is shown on the
+/// page; anything else is the error page.
+fn notice(
+    result: omnimem_engine::Result<String>,
+) -> omnimem_engine::Result<Result<String, String>> {
+    match result {
+        Ok(message) => Ok(Ok(message)),
+        Err(EngineError::Invalid(problem)) => Ok(Err(problem)),
+        Err(e) => Err(e),
+    }
+}
+
+/// POST `/contradictions/resolve`: a click is the person's say-so, so it
+/// writes at once. `choice` is `a` or `b` (that one is current), `both` or
+/// `not`.
+pub(crate) async fn resolve_contradiction(
+    State(state): State<PanelState>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (key_a, key_b) = (form_value(&form, "key_a"), form_value(&form, "key_b"));
+    let choice = form_value(&form, "choice");
+    let reason = form_value(&form, "reason");
+    // The box retires the loser, which only picking a side gives one to retire.
+    let retire = form.contains_key("retire_loser");
+    let done = blocking(move || {
+        notice((|| {
+            let (outcome, winner) = match choice.as_str() {
+                "a" => ("supersedes", Some(key_a.as_str())),
+                "b" => ("supersedes", Some(key_b.as_str())),
+                "both" => ("both_valid", None),
+                "not" => ("false_positive", None),
+                _ => {
+                    return Err(EngineError::Invalid(
+                        "Choose how to resolve the pair.".into(),
+                    ));
+                }
+            };
+            let retire = if retire && winner.is_some() {
+                Retire::Deprioritise
+            } else {
+                Retire::No
+            };
+            let request =
+                ResolveRequest::new(&key_a, &key_b, outcome, winner, Some(&reason), retire)?;
+            engine.resolve_contradiction(&request, "panel")?;
+            Ok("Resolved.".to_owned())
+        })())
+    })
+    .await;
+    done.map_or_else(|failure| failure, contradictions_notice)
+}
+
+/// POST `/contradictions/accept`: write a proposal an agent left for a person.
+pub(crate) async fn accept_resolution(
+    State(state): State<PanelState>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (key_a, key_b) = (form_value(&form, "key_a"), form_value(&form, "key_b"));
+    let done = blocking(move || {
+        notice(
+            engine
+                .accept_pending_resolution(&key_a, &key_b, "panel")
+                .map(|accepted| match accepted {
+                    Some(_) => "Resolved.".to_owned(),
+                    None => "That proposal had already gone.".to_owned(),
+                }),
+        )
+    })
+    .await;
+    done.map_or_else(|failure| failure, contradictions_notice)
+}
+
+/// POST `/contradictions/discard`: throw a proposal away.
+pub(crate) async fn discard_resolution(
+    State(state): State<PanelState>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (key_a, key_b) = (form_value(&form, "key_a"), form_value(&form, "key_b"));
+    let done = blocking(move || {
+        notice(
+            engine
+                .discard_pending_resolution(&key_a, &key_b)
+                .map(|found| {
+                    if found {
+                        "Proposal discarded.".to_owned()
+                    } else {
+                        "That proposal had already gone.".to_owned()
+                    }
+                }),
+        )
+    })
+    .await;
+    done.map_or_else(|failure| failure, contradictions_notice)
 }
 
 /// Apply a change to the suppression list, then show the whole page (the

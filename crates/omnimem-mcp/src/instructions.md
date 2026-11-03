@@ -26,7 +26,11 @@ guide is `docs/agent-guide.md`; this is the working summary.
 Call `briefing(project="<name>")`. It aggregates project context, experience,
 stale memories, contradiction warnings and reinstate candidates in one call.
 Summarise what came back, and surface any contradiction warnings explicitly
-before doing work — they are blockers, not notes.
+before doing work — they are blockers, not notes. Ask the human which side
+holds, then record their answer with `check_contradictions(mode="resolve",
+key_a=..., key_b=..., outcome=..., winner=..., reason=...)`: they are asked to
+confirm it, and the pair stops warning. Outcomes are `supersedes` (name the
+`winner`), `both_valid`, `both_wrong`, `false_positive` and `reopened`.
 
 ### Storing
 

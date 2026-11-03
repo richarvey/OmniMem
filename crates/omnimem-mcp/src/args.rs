@@ -396,6 +396,35 @@ pub struct CheckContradictions {
     pub project_filter: Option<String>,
     #[serde(default)]
     pub use_api: bool,
+    /// `resolve` records a person's decision about a linked pair; anything
+    /// else (or nothing) is the scan.
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub key_a: Option<String>,
+    #[serde(default)]
+    pub key_b: Option<String>,
+    /// `supersedes`, `both_valid`, `both_wrong`, `false_positive` or `reopened`.
+    #[serde(default)]
+    pub outcome: Option<String>,
+    /// For `supersedes`: the key of the memory that is current.
+    #[serde(default)]
+    pub winner: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// `true` or `"deprioritise"` stops the loser surfacing, `"archive"`
+    /// retires it. For `both_wrong` it applies to both.
+    #[serde(default)]
+    pub retire_loser: Option<RetireArg>,
+}
+
+/// `retire_loser` as a flag or a word.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(untagged)]
+pub enum RetireArg {
+    Flag(bool),
+    Mode(String),
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

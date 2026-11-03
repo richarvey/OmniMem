@@ -200,8 +200,39 @@ fn recall_entry(r: &RecallResult) -> Value {
             e.insert(name.into(), v.into());
         }
     }
-    if !r.contradictions.is_empty() {
-        e.insert("contradictions".into(), r.contradictions.len().into());
+    // The count is of links still in dispute, as 6.x's was of all of them
+    // before a link could be settled. A settled one is shown with what was
+    // decided, so a reader sees "superseded by X" and not "disputed".
+    let open = r
+        .contradictions
+        .iter()
+        .filter(|l| !crate::resolution::link_is_resolved(l))
+        .count();
+    if open > 0 {
+        e.insert("contradictions".into(), open.into());
+    }
+    let settled: Vec<Value> = r
+        .contradictions
+        .iter()
+        .filter(|l| crate::resolution::link_is_resolved(l))
+        .map(|l| {
+            let mut s = Map::new();
+            s.insert("key".into(), l.get("key").cloned().unwrap_or(Value::Null));
+            if let Some(Value::Object(res)) = l.get("resolution") {
+                for name in ["outcome", "winner", "reason", "resolved_at", "resolved_by"] {
+                    if let Some(v) = res.get(name) {
+                        s.insert(name.into(), v.clone());
+                    }
+                }
+            }
+            Value::Object(s)
+        })
+        .collect();
+    if !settled.is_empty() {
+        e.insert("resolved_contradictions".into(), settled.into());
+    }
+    if let Some(winner) = nonempty(&r.superseded_by) {
+        e.insert("superseded_by".into(), winner.into());
     }
     if let Some(url) = nonempty(&r.source_url) {
         e.insert("source_url".into(), url.into());

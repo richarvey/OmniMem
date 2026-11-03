@@ -97,10 +97,14 @@ impl Engine {
                             }),
                         ));
                     }
+                    // A pair a person has settled no longer warns.
                     let links: Vec<Value> = data
                         .get("contradictions")
-                        .and_then(|c| serde_json::from_str(c).ok())
-                        .unwrap_or_default();
+                        .and_then(|c| serde_json::from_str::<Vec<Value>>(c).ok())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|l| !crate::resolution::link_is_resolved(l))
+                        .collect();
                     if !links.is_empty() {
                         let contradicts: Vec<&str> = links
                             .iter()

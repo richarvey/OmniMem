@@ -1,4 +1,5 @@
-//! The human gate on `compile_skill(mode="write")`, over a real MCP session.
+//! The human gate on `compile_skill(mode="write")` and
+//! `check_contradictions(mode="resolve")`, over a real MCP session.
 //!
 //! The client here can answer a server's `elicitation/create` the way a
 //! client with a person behind it does: the question arrives on the stream of
@@ -455,5 +456,200 @@ async fn a_stale_or_missing_proposal_is_reported_without_asking() {
         "no point asking about a draft that can't be written"
     );
     assert_eq!(stored_body(&engine).unwrap(), "edited underneath");
+    stop.cancel();
+}
+
+const KEY_A: &str = "mem:episodic:01A";
+const KEY_B: &str = "mem:episodic:01B";
+
+/// The seeded pair, linked as contradicting each other.
+fn link_pair(engine: &Engine) {
+    for (key, other) in [(KEY_A, KEY_B), (KEY_B, KEY_A)] {
+        let links = json!([{"key": other, "explanation": "Opposing language patterns detected.", "detected_at": "1"}]);
+        engine
+            .store()
+            .set_field(key, "contradictions", &links.to_string())
+            .unwrap();
+    }
+}
+
+fn resolve_args() -> Value {
+    json!({
+        "mode": "resolve", "key_a": KEY_A, "key_b": KEY_B,
+        "outcome": "supersedes", "winner": KEY_B, "reason": "we moved to beta",
+        "retire_loser": true,
+    })
+}
+
+fn resolution(engine: &Engine, key: &str) -> Option<Value> {
+    let raw = engine
+        .store()
+        .get(key)
+        .unwrap()?
+        .get("contradictions")?
+        .clone();
+    serde_json::from_str::<Vec<Value>>(&raw).ok()?[0]
+        .get("resolution")
+        .cloned()
+}
+
+#[tokio::test]
+async fn an_accepted_question_writes_exactly_the_proposed_resolution() {
+    let (engine, base, stop) = start(HumanApproval::Human).await;
+    link_pair(&engine);
+    let mut client = Client::connect(&base, true).await;
+
+    let (result, questions) = client
+        .call("check_contradictions", resolve_args(), &Reply::Accept)
+        .await;
+    assert_eq!(result["status"], "resolved", "{result}");
+    assert_eq!(result["resolved_by"], "mcp-elicitation");
+    assert_eq!(result["retired"][0]["key"], KEY_A);
+
+    // One question, naming both memories, the outcome, the winner and why.
+    assert_eq!(questions.len(), 1);
+    let message = questions[0]["message"].as_str().unwrap();
+    for shown in [
+        "work on alpha",
+        "work on beta",
+        "supersedes",
+        KEY_B,
+        "we moved to beta",
+    ] {
+        assert!(message.contains(shown), "{shown} missing from {message}");
+    }
+    assert_eq!(
+        questions[0]["requestedSchema"]["properties"]["approve"]["type"],
+        "boolean"
+    );
+
+    for key in [KEY_A, KEY_B] {
+        let r = resolution(&engine, key).unwrap();
+        assert_eq!(r["outcome"], "supersedes");
+        assert_eq!(r["winner"], KEY_B);
+        assert_eq!(r["reason"], "we moved to beta");
+        assert_eq!(r["resolved_by"], "mcp-elicitation");
+    }
+    let loser = engine.store().get(KEY_A).unwrap().unwrap();
+    assert_eq!(loser["state"], "deprioritised");
+    assert_eq!(loser["superseded_by"], KEY_B);
+    stop.cancel();
+}
+
+#[tokio::test]
+async fn a_declined_resolution_writes_nothing() {
+    let (engine, base, stop) = start(HumanApproval::Human).await;
+    link_pair(&engine);
+    let mut client = Client::connect(&base, true).await;
+    for (reply, status) in [
+        (Reply::Decline, "declined"),
+        (Reply::AcceptUnticked, "declined"),
+        (Reply::Cancel, "cancelled"),
+    ] {
+        let (result, questions) = client
+            .call("check_contradictions", resolve_args(), &reply)
+            .await;
+        assert_eq!(result["status"], status, "{result}");
+        assert_eq!(questions.len(), 1);
+        for key in [KEY_A, KEY_B] {
+            assert!(resolution(&engine, key).is_none());
+        }
+        assert_eq!(
+            engine.store().get(KEY_A).unwrap().unwrap()["state"],
+            "active"
+        );
+        assert!(engine.pending_resolutions().unwrap().is_empty());
+    }
+    stop.cancel();
+}
+
+#[tokio::test]
+async fn a_client_that_cannot_be_asked_leaves_a_pending_resolution_for_the_panel() {
+    let (engine, base, stop) = start(HumanApproval::Human).await;
+    link_pair(&engine);
+    let mut client = Client::connect(&base, false).await;
+
+    let (result, questions) = client
+        .call("check_contradictions", resolve_args(), &Reply::Accept)
+        .await;
+    assert_eq!(result["status"], "awaiting_approval", "{result}");
+    assert!(questions.is_empty());
+    assert!(result["note"].as_str().unwrap().contains("Contradictions"));
+    assert!(resolution(&engine, KEY_A).is_none(), "nothing is written");
+    assert_eq!(
+        engine.store().get(KEY_A).unwrap().unwrap()["state"],
+        "active"
+    );
+
+    // A second proposal for the pair replaces the first.
+    let mut other = resolve_args();
+    other["outcome"] = json!("both_valid");
+    other["winner"] = Value::Null;
+    other["retire_loser"] = Value::Null;
+    client
+        .call("check_contradictions", other, &Reply::Accept)
+        .await;
+    let pending = engine.pending_resolutions().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["outcome"], "both_valid");
+
+    // The person accepts it where they can be asked.
+    engine
+        .accept_pending_resolution(KEY_B, KEY_A, "panel")
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolution(&engine, KEY_B).unwrap()["outcome"], "both_valid");
+    stop.cancel();
+}
+
+#[tokio::test]
+async fn human_approval_agent_resolves_on_the_agents_say_so() {
+    let (engine, base, stop) = start(HumanApproval::Agent).await;
+    link_pair(&engine);
+    let mut client = Client::connect(&base, true).await;
+    let (result, questions) = client
+        .call("check_contradictions", resolve_args(), &Reply::Decline)
+        .await;
+    assert_eq!(result["status"], "resolved", "{result}");
+    assert_eq!(result["resolved_by"], "mcp");
+    assert!(questions.is_empty());
+    assert_eq!(resolution(&engine, KEY_A).unwrap()["resolved_by"], "mcp");
+    stop.cancel();
+}
+
+#[tokio::test]
+async fn the_default_call_is_the_scan_and_a_bad_resolve_is_refused_unasked() {
+    let (engine, base, stop) = start(HumanApproval::Human).await;
+    link_pair(&engine);
+    let mut client = Client::connect(&base, true).await;
+
+    let (scan, questions) = client
+        .call("check_contradictions", json!({}), &Reply::Accept)
+        .await;
+    assert_eq!(scan, json!({"contradictions": []}));
+    assert!(questions.is_empty());
+    let (explicit, _) = client
+        .call(
+            "check_contradictions",
+            json!({"mode": "check"}),
+            &Reply::Accept,
+        )
+        .await;
+    assert_eq!(explicit, scan);
+
+    // Missing arguments and an unknown pair are refused before anyone is asked.
+    for args in [
+        json!({"mode": "resolve"}),
+        json!({"mode": "resolve", "key_a": KEY_A, "key_b": KEY_B, "outcome": "supersedes"}),
+        json!({"mode": "resolve", "key_a": KEY_A, "key_b": "mem:episodic:nope", "outcome": "both_valid"}),
+        json!({"mode": "tidy"}),
+    ] {
+        let (result, questions) = client
+            .call("check_contradictions", args, &Reply::Accept)
+            .await;
+        assert!(result.is_string(), "{result}");
+        assert!(questions.is_empty());
+    }
+    assert!(resolution(&engine, KEY_A).is_none());
     stop.cancel();
 }

@@ -11,7 +11,7 @@ Set `AUDIT_LOG` on the Configuration page, in `omnimem.env`, or in the environme
 | Level | What it records |
 |---|---|
 | `off` | Nothing. The default |
-| `lifecycle` | State changes and deletes: deprioritise, archive, reinstate, forget, the project-wide versions of those, maintenance archives, suppressing and unsuppressing a topic, and skill writes. When a memory's state changes, the facts extracted from it follow it, and that is one entry against the source listing the facts that moved |
+| `lifecycle` | State changes and deletes: deprioritise, archive, reinstate, forget, the project-wide versions of those, maintenance archives, suppressing and unsuppressing a topic, resolving a contradiction (the choice and the winner, never the memories' text), and skill writes. When a memory's state changes, the facts extracted from it follow it, and that is one entry against the source listing the facts that moved |
 | `writes` | Everything in `lifecycle`, plus every other write: new memories (key, namespace, project and tags, but not what they say), retags, licence and provenance changes, contradiction links, extracted facts, feed items, restores, project context edits, experience records |
 | `full` | Everything in `writes`, plus the text of a memory before and after each change |
 
@@ -30,7 +30,7 @@ The lower levels never hold memory text. They record keys, states, tags, project
 | `at` | When it happened |
 | `actor` | `mcp`, `panel`, `hook`, `maintenance`, `enrichment`, `rss`, `cli` or `import` |
 | `client` | For `mcp`, the name the client gave when it connected (`claude-code`), with the OAuth client id in brackets if it signed in with OAuth. Empty for everyone else |
-| `action` | `remember`, `transition`, `forget`, `retag`, `set_licence`, `set_provenance`, `suppress`, `unsuppress`, `contradiction_link`, `skill_write`, `restore`, `extract_fact`, `feed_item`, `cascade`, `project_transition`, `project_delete`, `update` and a few more |
+| `action` | `remember`, `transition`, `forget`, `retag`, `set_licence`, `set_provenance`, `suppress`, `unsuppress`, `contradiction_link`, `contradiction_resolve`, `skill_write`, `restore`, `extract_fact`, `feed_item`, `cascade`, `project_transition`, `project_delete`, `update` and a few more |
 | `key` | The memory, project or skill key, or the topic for a suppression |
 | `from`, `to` | The fields that changed, with their old and new values |
 | `reason` | The reason the caller gave, where there was one (an archive or deprioritise reason, a suppression reason) |

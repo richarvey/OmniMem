@@ -219,8 +219,25 @@
   <div class="search-result" style="border-color:var(--red)">
     <span class="mono" style="font-size:0.75rem;color:var(--text-dim)">{{ c.key if c.key is defined else c }}</span>
     {% if c.explanation is defined %}<p style="margin-top:0.25rem;font-size:0.85rem">{{ c.explanation }}</p>{% endif %}
+    {% if c.resolution is defined and c.resolution %}
+    <p style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-dim)">
+      Resolved: <strong>{{ c.resolution.outcome }}</strong>{% if c.resolution.winner %}, current: <span class="mono">{{ c.resolution.winner }}</span>{% endif %}{% if c.resolution.reason %} ({{ c.resolution.reason }}){% endif %}
+      {% if c.resolution.resolved_by %}by {{ c.resolution.resolved_by }}{% endif %}
+    </p>
+    {% for h in c.resolution.history or [] %}
+    <p style="margin-top:0.15rem;font-size:0.8rem;color:var(--text-dim)">Earlier: {{ h.outcome }}{% if h.winner %}, current: <span class="mono">{{ h.winner }}</span>{% endif %}{% if h.reason %} ({{ h.reason }}){% endif %}</p>
+    {% endfor %}
+    {% endif %}
   </div>
   {% endfor %}
+</div>
+{% endif %}
+
+{% if memory.superseded_by or memory.supersedes %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Superseded</h3>
+  {% if memory.superseded_by %}<p style="font-size:0.85rem">Replaced by <a href="/memory/{{ memory.superseded_by }}" class="mono" style="color:var(--accent);text-decoration:none">{{ memory.superseded_by }}</a></p>{% endif %}
+  {% for k in memory.supersedes %}<p style="font-size:0.85rem">Replaces <a href="/memory/{{ k }}" class="mono" style="color:var(--accent);text-decoration:none">{{ k }}</a></p>{% endfor %}
 </div>
 {% endif %}
 

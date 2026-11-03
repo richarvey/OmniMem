@@ -246,6 +246,14 @@ impl Engine {
             "contradictions".into(),
             safe_json(data.get("contradictions")),
         );
+        // Only a memory a person has superseded (or that supersedes one)
+        // carries these, so the result is unchanged for the rest.
+        if let Some(winner) = data.get("superseded_by").filter(|v| !v.is_empty()) {
+            m.insert("superseded_by".into(), winner.as_str().into());
+        }
+        if data.get("supersedes").is_some_and(|v| !v.is_empty()) {
+            m.insert("supersedes".into(), safe_json(data.get("supersedes")));
+        }
         m.insert(
             "recall_count".into(),
             data.get("recall_count")

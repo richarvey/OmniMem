@@ -115,7 +115,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 
 | Variable | Default | Description |
 |---|---|---|
-| `HUMAN_APPROVAL` | `human` | Who accepts a skill write. `human`: a person does, through the client (MCP elicitation) or the settings window's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
+| `HUMAN_APPROVAL` | `human` | Who accepts a skill write, or an agent's resolution of a contradiction (`check_contradictions(mode='resolve')`). `human`: a person does, through the client (MCP elicitation) or the settings window's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
 | `OMNIMEM_USER` | `local` | The user part of generated skill names (`{domain}-{user}`) |
 | `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Exact domain matches are never held back |
 | `SKILL_CLUSTER_THRESHOLD` | `0.80` | Similarity at which two lessons count as the same lesson for reinforcement |

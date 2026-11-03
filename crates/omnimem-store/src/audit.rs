@@ -320,7 +320,7 @@ pub struct AuditQuery {
 
 // Fields whose old and new values are kept below `full`: how a memory is
 // classified, filed and in what state, never what it says.
-const KEPT: [&str; 18] = [
+const KEPT: [&str; 20] = [
     "state",
     "surface_score",
     "tags",
@@ -339,6 +339,8 @@ const KEPT: [&str; 18] = [
     "outcome",
     "effort_score",
     "experience_weight",
+    "superseded_by",
+    "supersedes",
 ];
 
 // Never recorded at any level: they change on every touch (or every recall)

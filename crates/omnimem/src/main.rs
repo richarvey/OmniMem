@@ -101,6 +101,16 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Memories linked as contradicting each other: the pairs still in
+    /// dispute and the resolutions waiting for a person. With `resolve`,
+    /// settle one; for a server with no settings window.
+    Contradictions {
+        #[command(subcommand)]
+        action: Option<ContradictionAction>,
+        /// One JSON object instead of the lists.
+        #[arg(long, global = true)]
+        json: bool,
+    },
     /// Record and vector counts per namespace.
     Stats,
     /// Nearest memories to a query by raw similarity, without recall's
@@ -172,6 +182,37 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ContradictionAction {
+    /// Record how a pair was settled. The decision is yours: this is the
+    /// command line's equivalent of a click in the settings window.
+    Resolve {
+        key_a: String,
+        key_b: String,
+        /// supersedes, both_valid, both_wrong, false_positive or reopened.
+        #[arg(long)]
+        outcome: String,
+        /// For supersedes: the key of the memory that is current.
+        #[arg(long)]
+        winner: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        /// Deprioritise the out-of-date memory (both, for both_wrong). Give
+        /// it `archive` to archive instead.
+        #[arg(
+            long,
+            value_name = "deprioritise|archive",
+            num_args = 0..=1,
+            default_missing_value = "deprioritise"
+        )]
+        retire_loser: Option<String>,
+    },
+    /// Write a resolution an agent proposed, as it was proposed.
+    Accept { key_a: String, key_b: String },
+    /// Throw a proposed resolution away.
+    Discard { key_a: String, key_b: String },
+}
+
 fn main() -> Result<()> {
     #[cfg(all(windows, feature = "desktop"))]
     attach_parent_console();
@@ -194,6 +235,7 @@ fn main() -> Result<()> {
             Command::Import { .. }
                 | Command::Export { .. }
                 | Command::Audit { .. }
+                | Command::Contradictions { .. }
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
@@ -260,6 +302,10 @@ fn main() -> Result<()> {
         } => {
             db.must_exist(None)?;
             audit_log(&db.path, key, since, actor, action, limit, json)
+        }
+        Command::Contradictions { action, json } => {
+            db.must_exist(None)?;
+            contradictions(&db.path, action, json)
         }
         Command::Hook { event, project } => {
             // A hook never fails the tool call or session it answers: say why
@@ -654,6 +700,108 @@ fn audit_log(
         );
     }
     Ok(())
+}
+
+/// List the open and pending contradictions, or act on one.
+fn contradictions(db: &Path, action: Option<ContradictionAction>, json: bool) -> Result<()> {
+    let engine = hook::open_engine(db)?;
+    let say = |result: serde_json::Value| {
+        if json {
+            println!("{result}");
+        } else {
+            println!("{}", result["status"].as_str().unwrap_or("done"));
+        }
+    };
+    match action {
+        None => {
+            let open = engine.open_contradictions().map_err(|e| anyhow!("{e}"))?;
+            let pending = engine.pending_resolutions().map_err(|e| anyhow!("{e}"))?;
+            if json {
+                println!("{}", serde_json::json!({"open": open, "pending": pending}));
+                return Ok(());
+            }
+            let snippet = |v: &serde_json::Value| {
+                v.as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .take(70)
+                    .collect::<String>()
+                    .replace('\n', " ")
+            };
+            if open.is_empty() && pending.is_empty() {
+                eprintln!("no contradictions in dispute");
+            }
+            for pair in &open {
+                println!(
+                    "open     {}  {}",
+                    pair["key_a"].as_str().unwrap_or(""),
+                    snippet(&pair["content_a"])
+                );
+                println!(
+                    "         {}  {}",
+                    pair["key_b"].as_str().unwrap_or(""),
+                    snippet(&pair["content_b"])
+                );
+            }
+            for p in &pending {
+                let winner = p["winner"]
+                    .as_str()
+                    .filter(|w| !w.is_empty())
+                    .map_or(String::new(), |w| format!(", {w} is current"));
+                println!(
+                    "pending  {}  {}  {}{winner}",
+                    p["key_a"].as_str().unwrap_or(""),
+                    p["key_b"].as_str().unwrap_or(""),
+                    p["outcome"].as_str().unwrap_or(""),
+                );
+            }
+            Ok(())
+        }
+        Some(ContradictionAction::Resolve {
+            key_a,
+            key_b,
+            outcome,
+            winner,
+            reason,
+            retire_loser,
+        }) => {
+            let retire = omnimem_engine::Retire::parse(retire_loser.as_deref().unwrap_or("no"))
+                .map_err(|e| anyhow!("{e}"))?;
+            let request = omnimem_engine::ResolveRequest::new(
+                &key_a,
+                &key_b,
+                &outcome,
+                winner.as_deref(),
+                reason.as_deref(),
+                retire,
+            )
+            .map_err(|e| anyhow!("{e}"))?;
+            say(engine
+                .resolve_contradiction(&request, "cli")
+                .map_err(|e| anyhow!("{e}"))?);
+            Ok(())
+        }
+        Some(ContradictionAction::Accept { key_a, key_b }) => {
+            match engine
+                .accept_pending_resolution(&key_a, &key_b, "cli")
+                .map_err(|e| anyhow!("{e}"))?
+            {
+                Some(result) => say(result),
+                None => bail!("no pending resolution for that pair (it may have expired)"),
+            }
+            Ok(())
+        }
+        Some(ContradictionAction::Discard { key_a, key_b }) => {
+            if !engine
+                .discard_pending_resolution(&key_a, &key_b)
+                .map_err(|e| anyhow!("{e}"))?
+            {
+                bail!("no pending resolution for that pair");
+            }
+            say(serde_json::json!({"status": "discarded"}));
+            Ok(())
+        }
+    }
 }
 
 fn stats(db: &Path) -> Result<()> {
