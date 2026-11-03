@@ -23,11 +23,13 @@ jobs:
           # it never gets served as a site asset. git + tar are already present
           # (checkout uses them), so no dependency on rsync being installed.
           # tools/ is the page generator and its sources: the pages it writes
-          # are committed, so the site doesn't need it.
+          # are committed, so the site doesn't need it. functions/ is code
+          # Cloudflare runs, not something to serve, and goes to wrangler
+          # separately below.
           rm -rf dist
           mkdir -p dist
           git archive HEAD | tar -x -C dist
-          rm -rf dist/.forgejo dist/.domains dist/.gitignore dist/tools
+          rm -rf dist/.forgejo dist/.domains dist/.gitignore dist/tools dist/functions
 
       - name: Deploy to Cloudflare Pages
         env:
@@ -45,10 +47,14 @@ jobs:
           # .wrangler/tmp scratch dir. Using the :ro mount as cwd caused
           # `ENOENT ... mkdir /site/.wrangler/tmp` — wrangler writes .wrangler
           # into its working directory.
+          #
+          # wrangler takes Pages Functions from ./functions in that working
+          # dir, not from the site folder, so functions/ is mounted there.
           /usr/bin/docker run --rm \
             -e CLOUDFLARE_API_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID \
             -v "$PWD/dist":/site:ro \
+            -v "$PWD/functions":/work/functions:ro \
             -w /work \
             node:20-slim \
             npx --yes wrangler@3 pages deploy /site \
