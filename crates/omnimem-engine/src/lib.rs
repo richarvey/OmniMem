@@ -47,12 +47,13 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use omnimem_core::{LanguageModel, Namespace, TextEmbedder};
+use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
-pub use config::EngineConfig;
+pub use config::{EngineConfig, GraveyardScope};
 pub use dedup::DuplicateMatch;
 pub use error::EngineError;
+pub use experience::AbandonedWarning;
 pub use lifecycle::MemoryState;
 pub use recall::{RecallResult, compute_experience_weight};
 pub use tools::DomainFilter;
@@ -153,18 +154,6 @@ impl Engine {
             vectors.extend(embedded);
         }
         Ok(vectors)
-    }
-
-    /// Record count of a namespace, for the scans that cap how many keys
-    /// they consider and say so when the cap bites.
-    pub(crate) fn warn_if_capped(&self, namespace: Namespace, cap: usize, what: &str) {
-        match self.store.count_records(namespace) {
-            Ok(total) if total > cap => {
-                tracing::warn!(cap, total, "{what} scan capped");
-            }
-            Ok(_) => {}
-            Err(e) => tracing::warn!(error = %e, "could not count {namespace} records"),
-        }
     }
 
     /// Drop the cached abandoned-approach list after a write that may change it.

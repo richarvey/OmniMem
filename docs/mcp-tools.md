@@ -47,7 +47,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 |---|---|
 | `record_experience(key, effort_score, outcome, iterations?, abandoned_approaches?, breakthrough?, gotchas?, lesson?)` | How hard it was (effort 1 to 5), how it ended (`succeeded`, `pivoted`, `abandoned`), what failed, what worked, and the `lesson` that transfers. Abandoned approaches are not suppressed; they come back as a warning when a later session proposes one |
 | `log_abandoned(key, name, type, reason)` | Add one dead end mid-session. `type` is `library`, `approach`, `tool`, `pattern` or `service` |
-| `warn_if_abandoned(query)` | Check the graveyard before suggesting something |
+| `warn_if_abandoned(query)` | Check the graveyard before suggesting something. Looks across every project and names the one each match came from |
 | `experience_summary(project?)` | Effort stats, outcomes, the graveyard and breakthroughs |
 | `get_experience(key)` | Experience data for one memory |
 

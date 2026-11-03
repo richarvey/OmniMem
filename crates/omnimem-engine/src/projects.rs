@@ -26,7 +26,6 @@ const STACK_STOPWORDS: [&str; 28] = [
     "stack", "based", "", "",
 ];
 const MIN_TAG_OCCURRENCES: usize = 2;
-const MAX_SUGGEST_SCAN_KEYS: usize = 5000;
 const PROJECT_NAMESPACES: [Namespace; 4] = [
     Namespace::Episodic,
     Namespace::Project,
@@ -181,17 +180,10 @@ impl Engine {
         }
 
         let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
-        self.warn_if_capped(
-            Namespace::Episodic,
-            MAX_SUGGEST_SCAN_KEYS,
-            "domain suggestion",
-        );
-        // The project's active memories, and only their tags, out of the
-        // capped key range: the state and project tests run in SQL.
-        let filter = MemoryFilter {
-            key_cap: Some(MAX_SUGGEST_SCAN_KEYS),
-            ..active_in_project(name)
-        };
+        // The project's active memories, and only their tags: the state and
+        // project tests run in SQL. Not capped by key, which counted the
+        // oldest episodic memories first and so ignored a project's newest.
+        let filter = active_in_project(name);
         for (_, row) in self
             .store
             .list_memories(Namespace::Episodic, &filter, &["tags"])?

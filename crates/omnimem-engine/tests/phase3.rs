@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use omnimem_core::{EmbeddingError, TextEmbedder, VECTOR_DIM};
-use omnimem_engine::{DomainFilter, Engine, EngineConfig, EngineError};
+use omnimem_engine::{DomainFilter, Engine, EngineConfig, EngineError, GraveyardScope};
 use omnimem_store::{Fields, Store};
 use serde_json::{Map, Value, json};
 
@@ -1098,4 +1098,132 @@ fn recalled_facts_say_when_their_source_was_written() {
         )
         .unwrap();
     assert_eq!(results[0].as_of.as_deref(), Some("2026-01-01"));
+}
+
+const CELERY: &str = r#"[{"name": "Celery", "type": "library", "reason": "needs a broker"}]"#;
+
+/// Two projects with a dead end ("Celery") recorded on `alpha` only.
+fn graveyard_engine(scope: GraveyardScope) -> Engine {
+    let e = engine_with(EngineConfig {
+        graveyard_scope: scope,
+        ..EngineConfig::default()
+    });
+    put(
+        &e,
+        "mem:episodic:01A",
+        "tried a task queue",
+        &[("project", "alpha"), ("abandoned_approaches", CELERY)],
+    );
+    put(
+        &e,
+        "mem:episodic:01B",
+        "wrote a worker loop",
+        &[("project", "beta")],
+    );
+    e
+}
+
+fn warnings(results: &Value) -> Vec<&Value> {
+    results
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["result_type"] == "abandoned_warning")
+        .collect()
+}
+
+#[test]
+fn a_dead_end_recorded_after_the_old_scan_cap_still_warns() {
+    // The scan used to read only the first 5,000 episodic keys, oldest first,
+    // so a dead end recorded after that many memories never warned.
+    let e = engine();
+    for i in 0..5_001 {
+        put(&e, &format!("mem:episodic:{i:05}"), "an ordinary day", &[]);
+    }
+    put(
+        &e,
+        "mem:episodic:99999",
+        "tried a task queue",
+        &[("abandoned_approaches", CELERY)],
+    );
+    let found = e.warn_if_abandoned("should we use celery").unwrap();
+    assert_eq!(found["status"], "warning");
+    assert_eq!(found["matches"][0]["memory_key"], "mem:episodic:99999");
+}
+
+#[test]
+fn project_scope_keeps_dead_ends_to_their_own_project() {
+    let e = graveyard_engine(GraveyardScope::Project);
+    let recall =
+        |query: &str, project: Option<&str>| e.recall(query, 5, None, project, None, None).unwrap();
+
+    let own = recall("celery", Some("alpha"));
+    assert_eq!(warnings(&own).len(), 1);
+    // Same project: 6.x's sentence, with no project label.
+    assert_eq!(
+        warnings(&own)[0]["content"],
+        "Abandoned approach: Celery — needs a broker"
+    );
+    assert!(warnings(&recall("celery", Some("beta"))).is_empty());
+    assert_eq!(
+        warnings(&recall("celery", None)).len(),
+        1,
+        "a recall with no project sees every dead end"
+    );
+
+    let index = e
+        .recall_index("celery", 5, None, Some("beta"), 100, None, None)
+        .unwrap();
+    assert!(
+        index["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["result_type"] != "abandoned_warning")
+    );
+    // warn_if_abandoned takes no project, so it looks everywhere and says where.
+    assert_eq!(
+        e.warn_if_abandoned("celery").unwrap()["matches"][0]["project"],
+        "alpha"
+    );
+}
+
+#[test]
+fn all_scope_crosses_projects_and_names_where_the_dead_end_came_from() {
+    let e = graveyard_engine(GraveyardScope::All);
+    let out = e
+        .recall("celery", 5, None, Some("beta"), None, None)
+        .unwrap();
+    let found = warnings(&out);
+    assert_eq!(found.len(), 1);
+    let content = found[0]["content"].as_str().unwrap();
+    assert!(content.ends_with("Recorded on project alpha"), "{content}");
+
+    let own = e
+        .recall("celery", 5, None, Some("alpha"), None, None)
+        .unwrap();
+    assert_eq!(
+        warnings(&own)[0]["content"],
+        "Abandoned approach: Celery — needs a broker"
+    );
+}
+
+#[test]
+fn a_dead_end_with_no_project_matches_every_project_and_archived_ones_still_warn() {
+    let e = engine();
+    put(
+        &e,
+        "mem:episodic:01A",
+        "tried a task queue",
+        &[("state", "archived"), ("abandoned_approaches", CELERY)],
+    );
+    let out = e
+        .recall("celery", 5, None, Some("beta"), None, None)
+        .unwrap();
+    let found = warnings(&out);
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0]["content"],
+        "Abandoned approach: Celery — needs a broker"
+    );
 }

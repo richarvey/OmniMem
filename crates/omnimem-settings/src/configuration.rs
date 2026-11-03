@@ -299,6 +299,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Above 0, experience nudges a score by at most this much instead of multiplying it, so a loose match can't outrank a close one. Try 0.05. 0 keeps the multiplier.",
             ),
             setting(
+                "GRAVEYARD_SCOPE",
+                "Dead-end warnings",
+                Kind::Choice(&["project", "all"]),
+                "project",
+                "Project keeps a recall's warnings (and the Claude Code hook's refusals) to dead ends from the project you're working in, plus any recorded with no project. A recall with no project still sees them all. All warns about any project's dead ends and says which project each came from.",
+            ),
+            setting(
                 "RECENCY_DECAY_DAYS",
                 "Recency decay after (days)",
                 Kind::Decimal,

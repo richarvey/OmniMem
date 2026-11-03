@@ -5,10 +5,15 @@ Format: [version] - date - description
 ## [7.0.6] - unreleased
 
 ### Added
+- **`GRAVEYARD_SCOPE` chooses whose dead ends warn** ([#13](https://github.com/richarvey/OmniMem/issues/13)). `project` (the default) keeps a scoped `recall` or `recall_index` to dead ends recorded in the projects it searches, and the Claude Code hook to the project it resolves, the way session start does. `all` is the old behaviour, any project's dead end. Either way a dead end with no project recorded counts as everyone's, and a `recall` with no project filter sees them all. It's on the Configuration page's Recall section. `warn_if_abandoned` has no project argument, so it still looks across every project and each match names its own
 
 ### Changed
+- **Dead-end warnings stay in their project by default** ([#13](https://github.com/richarvey/OmniMem/issues/13)). Before, a recall scoped to project B could open with warnings from project A, and the hook could refuse a tool call over one. That's a difference from 6.x, which matched across projects: set `GRAVEYARD_SCOPE=all` to get it back
+- Archived memories' dead ends still warn, as they always did. An archive hides a memory from recall, but what it learned still holds
 
 ### Fixed
+- **Dead ends recorded after the first 5,000 episodic memories warn again** ([#12](https://github.com/richarvey/OmniMem/issues/12)). The scan read only the oldest 5,000 episodic memories, whether or not they held a dead end, so once a store passed that size a new dead end never warned in `recall`, `warn_if_abandoned` or the hook, and the only sign was a line in the log. Every memory that carries `abandoned_approaches` is read now. The domain suggestions for a project (used by `compile_project_context`) had the same cap and skipped a project's newest tags; it's gone there too
+- **Warnings and the hook's refusal say where a dead end came from** ([#13](https://github.com/richarvey/OmniMem/issues/13)). The refusal said "already tried on this project" whichever project recorded it. It still says that for the project's own dead ends. For another project's (under `GRAVEYARD_SCOPE=all`) the warning ends "Recorded on project X" and the refusal names X
 
 ## [7.0.5] - 2026-10-29
 

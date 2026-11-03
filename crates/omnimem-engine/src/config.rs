@@ -5,6 +5,35 @@ use std::time::Duration;
 
 use tracing::warn;
 
+/// Whose dead ends may warn a recall or a hook (`GRAVEYARD_SCOPE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GraveyardScope {
+    /// Only dead ends recorded in the projects the caller is working in (and
+    /// those with no project at all). A caller with no project sees everything.
+    #[default]
+    Project,
+    /// Every dead end, whichever project recorded it, as 6.x did.
+    All,
+}
+
+impl GraveyardScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::All => "all",
+        }
+    }
+
+    /// `project` or `all`, in any case. Anything else is not a scope.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "project" => Some(Self::Project),
+            "all" => Some(Self::All),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
     /// `FACT_EXTRACTION_MODEL`
@@ -29,6 +58,9 @@ pub struct EngineConfig {
     pub recency_decay_days: f64,
     /// `ABANDONED_CACHE_TTL_SECONDS`; zero disables the cache.
     pub abandoned_cache_ttl: Duration,
+    /// `GRAVEYARD_SCOPE`: `project` keeps a scoped recall's and the hook's
+    /// dead-end warnings to their own projects; `all` crosses projects.
+    pub graveyard_scope: GraveyardScope,
     /// `DEPRIORITISED_WEIGHT`
     pub deprioritised_weight: f64,
     /// `DEDUP_SIMILARITY_THRESHOLD`
@@ -96,6 +128,7 @@ impl Default for EngineConfig {
             recall_experience_span: 0.0,
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),
+            graveyard_scope: GraveyardScope::Project,
             deprioritised_weight: 0.2,
             dedup_threshold: 0.92,
             contradiction_threshold: 0.7,
@@ -163,6 +196,18 @@ fn float(name: &str, default: f64, range: std::ops::RangeInclusive<f64>) -> f64 
 const UNIT: std::ops::RangeInclusive<f64> = 0.0..=1.0;
 const NON_NEGATIVE: std::ops::RangeInclusive<f64> = 0.0..=f64::MAX;
 
+/// `GRAVEYARD_SCOPE`, falling back to the default (with a warning) on a value
+/// that is neither `project` nor `all`, like the numeric settings do.
+fn graveyard_scope(default: GraveyardScope) -> GraveyardScope {
+    match text("GRAVEYARD_SCOPE") {
+        None => default,
+        Some(raw) => GraveyardScope::parse(&raw).unwrap_or_else(|| {
+            warn!("GRAVEYARD_SCOPE={raw:?} is not project or all; using the default");
+            default
+        }),
+    }
+}
+
 fn flag(name: &str) -> bool {
     text(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
 }
@@ -188,6 +233,7 @@ impl EngineConfig {
             recall_experience_span: float("RECALL_EXPERIENCE_SPAN", d.recall_experience_span, UNIT),
             recency_decay_days: float("RECENCY_DECAY_DAYS", d.recency_decay_days, NON_NEGATIVE),
             abandoned_cache_ttl: Duration::from_secs(number("ABANDONED_CACHE_TTL_SECONDS", 60)),
+            graveyard_scope: graveyard_scope(d.graveyard_scope),
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
             dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
             contradiction_threshold: float(
@@ -317,5 +363,35 @@ mod tests {
             0.0
         );
         assert_eq!(float("OMNIMEM_TEST_UNSET", 0.25, UNIT), 0.25);
+    }
+
+    #[test]
+    fn graveyard_scope_parses_and_refuses_the_rest() {
+        assert_eq!(
+            EngineConfig::default().graveyard_scope,
+            GraveyardScope::Project
+        );
+        assert_eq!(
+            GraveyardScope::parse("project"),
+            Some(GraveyardScope::Project)
+        );
+        assert_eq!(GraveyardScope::parse(" ALL "), Some(GraveyardScope::All));
+        assert_eq!(GraveyardScope::parse("global"), None);
+        assert_eq!(GraveyardScope::parse(""), None);
+
+        // Through the environment: a good value is taken, a bad one falls
+        // back to the default rather than guessing, and unset is the default.
+        let read = |value: &str| {
+            with_var("GRAVEYARD_SCOPE", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).graveyard_scope
+            })
+        };
+        assert_eq!(read("all"), GraveyardScope::All);
+        assert_eq!(read("Project"), GraveyardScope::Project);
+        assert_eq!(read("everywhere"), GraveyardScope::Project);
+        assert_eq!(
+            EngineConfig::from_env(PathBuf::from("backups")).graveyard_scope,
+            GraveyardScope::Project
+        );
     }
 }

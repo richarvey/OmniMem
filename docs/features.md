@@ -54,6 +54,8 @@ WARNING: previously abandoned approaches match this query
 
 The fast path is a keyword scan of the graveyard, so it doesn't even wait for an embedding. Record dead ends with `record_experience` at the end of some work, or one at a time with `log_abandoned` as you go. Nothing is hidden as a result: abandoning an approach does not suppress anything, it means a later session that proposes the same approach is answered with what happened last time and what worked instead.
 
+By default a recall scoped to a project, and the Claude Code hook working in one, are only warned about dead ends from that project (plus any recorded with no project at all), so one project's lesson doesn't block another's. A recall with no project filter still sees every dead end, and `warn_if_abandoned` always does, naming the project on each match. If you'd rather a dead end followed you everywhere, set `GRAVEYARD_SCOPE=all`: the warning then ends with "Recorded on project X" when it isn't from the project you're in. An archived memory's dead ends keep warning either way.
+
 Dead ends don't get a second chance to waste your afternoon.
 
 ## Experience scoring
