@@ -65,7 +65,9 @@ INDEX = (ROOT / "index.html").read_text()
 def lift(start, end):
     i = INDEX.index(start)
     j = INDEX.index(end, i) + len(end)
-    return INDEX[i:j]
+    # The homepage can use paths relative to /, but these pages live deeper,
+    # so anything relative is made absolute.
+    return re.sub(r'((?:src|href)=")(?!https?:|/|#|mailto:)', r"\1/", INDEX[i:j])
 
 
 def site_header():
