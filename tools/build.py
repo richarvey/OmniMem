@@ -44,6 +44,7 @@ DESCRIPTIONS = {
     "opencode": "Connect OpenCode to OmniMem as a remote MCP server, with an access token or OAuth: the config file, where it lives, and known quirks.",
     "open-design": "Connect Open Design to OmniMem over OAuth 2.1 as a public client: switch on OAuth, add HTTPS, add the server in Open Design and sign in.",
     "docker": "Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.",
+    "windows": "Install OmniMem on Windows 10 or 11 from the MSI: it isn't signed yet, so how to check it and get past SmartScreen, then settings and Claude Code.",
     "macos": "Set up OmniMem on a Mac: install the menu bar app from the DMG, first start, settings, connecting Claude Code, RSS feeds, backups and headless use.",
     "raspberry-pi": "Run OmniMem on a Raspberry Pi: the arm64 .deb and its systemd service, configuration, connecting your agent, RSS feeds and keeping it running.",
     "aws-linux": "Set up OmniMem on an AWS EC2 instance, or any Linux server: install the .deb or .rpm, configure it, add HTTPS with Caddy and connect your agent.",
@@ -53,7 +54,7 @@ DESCRIPTIONS = {
 
 # Which guides point at which: a client guide needs OmniMem running somewhere,
 # a host guide ends with connecting an agent.
-HOSTS = ["macos", "docker", "raspberry-pi", "aws-linux", "gcp-linux", "linux-tailscale"]
+HOSTS = ["macos", "windows", "docker", "raspberry-pi", "aws-linux", "gcp-linux", "linux-tailscale"]
 CLIENTS = ["claude-code", "claude-desktop", "claude-ai", "cursor", "codex", "github-copilot", "gitlab-duo", "kiro", "opencode", "open-design"]
 NEEDS_PUBLIC_HTTPS = {"claude-ai", "open-design"}
 
@@ -402,7 +403,7 @@ def build_guides():
     (out_dir / "index.html").write_text(page(
         path="/guides/",
         title="Setup guides: connect Claude Code, Cursor, Codex and more | OmniMem",
-        description="Guides for connecting Claude Code, Cursor, Codex, Copilot and other agents to OmniMem, and for running it on macOS, a Raspberry Pi, AWS, GCP or Docker.",
+        description="Guides for connecting Claude Code, Cursor, Codex, Copilot and other agents to OmniMem, and for running it on macOS, Windows, a Pi, AWS, GCP or Docker.",
         body=body,
         crumbs=[("Home", "/"), ("Guides", "/guides/")],
         ld={

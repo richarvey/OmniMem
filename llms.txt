@@ -6,7 +6,7 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 
 ## Docs
 
-- [Setup guides](https://omnimem.org/guides/): connecting Claude Code, Claude Desktop, claude.ai, Cursor, Codex, GitHub Copilot, GitLab Duo, Kiro, OpenCode and Open Design, and running OmniMem on macOS, a Raspberry Pi, AWS, Google Cloud, Linux with Tailscale Funnel, or Docker
+- [Setup guides](https://omnimem.org/guides/): connecting Claude Code, Claude Desktop, claude.ai, Cursor, Codex, GitHub Copilot, GitLab Duo, Kiro, OpenCode and Open Design, and running OmniMem on macOS, Windows (the MSI isn't signed yet), a Raspberry Pi, AWS, Google Cloud, Linux with Tailscale Funnel, or Docker
 - [Persistent memory for Claude Code](https://omnimem.org/claude-code-memory/): what CLAUDE.md and auto memory keep between sessions, what they miss, and what OmniMem adds
 - [Source repository](https://code.squarecows.com/ric/omnimem): full README, manual, and deployment guides
 - [GitHub mirror](https://github.com/richarvey/OmniMem) and [Docker Hub image](https://hub.docker.com/r/richarvey/omnimem)
