@@ -435,19 +435,23 @@ fn read_entry(
     let mut file = archive.by_name(name).map_err(|_| unreadable())?;
     let declared = file.size();
     let mut data = Vec::new();
+    // zip 9 stops a stream that runs past its declared size with a read
+    // error, so a header that lies is refused here as often as below.
     (&mut file)
         .take(MAX_ENTRY_UNCOMPRESSED + 1)
         .read_to_end(&mut data)
-        .map_err(|_| unreadable())?;
+        .map_err(|_| mismatch(name))?;
     if data.len() as u64 > MAX_ENTRY_UNCOMPRESSED {
         return Err(format!("Bundle entry {name} is too large"));
     }
     if data.len() as u64 != declared {
-        return Err(format!(
-            "Bundle entry {name} does not match its declared size"
-        ));
+        return Err(mismatch(name));
     }
     Ok(data)
+}
+
+fn mismatch(name: &str) -> String {
+    format!("Bundle entry {name} does not match its declared size")
 }
 
 fn validate_memory(raw: &[u8], entry: &str) -> std::result::Result<(String, Fields), String> {
@@ -626,7 +630,10 @@ pub fn validate_skill_import(data: &[u8]) -> std::result::Result<ValidatedBundle
         if file.is_dir() {
             continue;
         }
-        let name = file.name().to_owned();
+        let name = file
+            .name()
+            .map_err(|_| "Not a valid zip file".to_owned())?
+            .into_owned();
         if file.encrypted() {
             return Err("Encrypted zip entries are not supported".to_owned());
         }
@@ -1003,7 +1010,7 @@ mod tests {
         declare_size(&mut data, "manifest.json", 1024);
         assert_eq!(
             validate_skill_import(&data).unwrap_err(),
-            "Bundle entry manifest.json is too large"
+            "Bundle entry manifest.json does not match its declared size"
         );
 
         // Declares a kilobyte, inflates to four: under the cap, still a lie.

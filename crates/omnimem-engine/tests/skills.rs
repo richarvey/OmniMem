@@ -628,7 +628,7 @@ fn rezip(data: &[u8], replace: &str, with: &[u8]) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
-        let name = file.name().to_owned();
+        let name = file.name().unwrap().into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
         writer

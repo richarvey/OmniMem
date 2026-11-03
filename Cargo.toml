@@ -121,7 +121,7 @@ png = "0.18"
 minijinja = { version = "2.24", features = ["preserve_order"] }
 minijinja-contrib = { version = "2.24", features = ["pycompat"] }
 tower = { version = "0.5", features = ["util"] }
-zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 opt-level = 3
