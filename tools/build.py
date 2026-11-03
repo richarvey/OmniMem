@@ -16,6 +16,7 @@ and the sitemap. Run `git fetch` first so the ref is current.
 """
 
 import datetime
+import hashlib
 import html
 import json
 import re
@@ -185,6 +186,13 @@ HEADER = site_header()
 FOOTER = site_footer()
 
 
+def asset(name):
+    """/assets/<name> with a hash of its content, so a changed file is fetched
+    fresh rather than served from a browser's four-hour cache."""
+    digest = hashlib.sha256((ROOT / "assets" / name).read_bytes()).hexdigest()[:10]
+    return f"/assets/{name}?v={digest}"
+
+
 def page(*, path, title, description, body, crumbs=None, ld=None, robots="index, follow, max-image-preview:large"):
     url = SITE + path
     graph = []
@@ -243,7 +251,7 @@ def page(*, path, title, description, body, crumbs=None, ld=None, robots="index,
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preload" href="/fonts/ubuntu-sans-400-600.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/ubuntu-700.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css">{ld_tag}
+  <link rel="stylesheet" href="{asset('site.css')}">{ld_tag}
 </head>
 <body>
 {HEADER}
@@ -251,7 +259,7 @@ def page(*, path, title, description, body, crumbs=None, ld=None, robots="index,
 {crumb_nav}{body}
 </main>
 {FOOTER}
-<script src="/assets/site.js"></script>
+<script src="{asset('site.js')}"></script>
 </body>
 </html>
 """
