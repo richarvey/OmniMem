@@ -1,0 +1,188 @@
+/* Shared by the guides, the Claude Code memory page and the 404 page.
+   The header and footer rules are copied from index.html, which keeps its
+   own inline copy: change one, change the other. */
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 500;
+  font-display:optional;
+  src: url("/fonts/ubuntu-500.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Ubuntu';
+  font-style: normal;
+  font-weight: 700;
+  font-display:optional;
+  src: url("/fonts/ubuntu-700.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display:optional;
+  src: url("/fonts/ubuntu-mono-400.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display:optional;
+  src: url("/fonts/ubuntu-mono-700.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Ubuntu Sans';
+  font-style: normal;
+  font-weight: 400 600;
+  font-stretch: 100%;
+  font-display:optional;
+  src: url("/fonts/ubuntu-sans-400-600.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#0b0c0e radial-gradient(circle at 1px 1px,rgba(255,255,255,.024) 1px,transparent 0) 0 0/44px 44px;color:#e7e9ec;font-family:'Ubuntu Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:#63bd85;text-decoration:none}
+a:hover{color:#8fd6ab}
+::selection{background:rgba(99,189,133,0.28);color:#fff}
+  /* Site header (a port of the header-2 component): transparent at the top,
+     a floating bar once scrolled, and a full-screen menu below 960px */
+  .omm-header{position:sticky;top:0;z-index:50;margin:0 auto;width:100%;max-width:1200px;border:1px solid transparent;border-width:0 0 1px;border-radius:0;background:transparent;transition:max-width .25s ease-out,top .25s ease-out,border-color .25s ease-out,background-color .25s ease-out,box-shadow .25s ease-out,border-radius .25s ease-out}
+  .omm-header[data-scrolled="true"][data-open="false"]{background:rgba(11,12,14,.95);border-color:rgb(38,42,49)}
+  @supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
+    .omm-header[data-scrolled="true"][data-open="false"]{background:rgba(11,12,14,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  }
+  .omm-header[data-open="true"]{background:rgba(11,12,14,.96);border-color:rgb(38,42,49)}
+  .omm-header-bar{display:flex;align-items:center;justify-content:space-between;gap:24px;height:62px;padding:0 28px;transition:height .25s ease-out,padding .25s ease-out}
+  .omm-wordmark,.omm-wordmark:hover{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:16px;color:#e7e9ec;letter-spacing:-.02em;display:flex;align-items:center;flex:0 0 auto}
+  .omm-wordmark-bracket{color:#63bd85}
+  .omm-wordmark img{height:28px;width:auto;display:block}
+  .omm-footer-wordmark img{height:32px;width:auto;display:block}
+  .omm-header-links{flex:1 1 0%;min-width:0;display:flex;gap:2px;align-items:center;justify-content:center}
+  .omm-nav-link{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#969ca5;padding:7px 10px;border-radius:6px;white-space:nowrap;transition:color .15s,background-color .15s}
+  .omm-nav-link:hover{color:#e7e9ec;background:#16191e}
+  .omm-nav-cta,.omm-nav-cta:hover{font-family:"Ubuntu Mono",monospace;font-size:12.5px;font-weight:500;color:#0b0c0e;background:#63bd85;padding:8px 15px;border-radius:7px;white-space:nowrap;text-align:center;transition:background-color .15s}
+  .omm-nav-cta:hover{background:#7fcb9b}
+  .omm-header-cta{flex:0 0 auto}
+  .omm-nav-link:focus-visible,.omm-nav-cta:focus-visible,.omm-wordmark:focus-visible,.omm-menu-toggle:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
+  .omm-menu-toggle{display:none;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:1px solid rgb(38,42,49);border-radius:8px;background:transparent;color:#e7e9ec;cursor:pointer;flex:0 0 auto;transition:background-color .15s}
+  .omm-menu-toggle:hover{background:#16191e}
+  .omm-menu-icon{transition:transform .3s ease-out}
+  .omm-menu-line{transition:stroke-dasharray .3s ease-out,stroke-dashoffset .3s ease-out}
+  .omm-menu-line-outer{stroke-dasharray:12 63}
+  .omm-header[data-open="true"] .omm-menu-icon{transform:rotate(-45deg)}
+  .omm-header[data-open="true"] .omm-menu-line-outer{stroke-dasharray:20 300;stroke-dashoffset:-32.42}
+  .omm-mobile-menu{position:fixed;top:56px;right:0;bottom:0;left:0;z-index:50;display:flex;flex-direction:column;overflow:hidden;background:rgba(11,12,14,.96);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid rgb(38,42,49)}
+  .omm-mobile-menu[hidden]{display:none}
+  .omm-mobile-menu-inner{display:flex;flex-direction:column;justify-content:space-between;gap:8px;height:100%;width:100%;padding:16px 20px 24px;overflow-y:auto;animation:omm-menu-in .3s ease-out both}
+  @keyframes omm-menu-in{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+  .omm-mobile-links{display:grid;gap:4px}
+  .omm-mobile-links .omm-nav-link{display:block;font-size:15px;padding:12px 14px}
+  .omm-mobile-cta,.omm-mobile-cta:hover{display:block;width:100%;font-size:14px;padding:13px 16px}
+  @media (min-width:961px){
+    .omm-header[data-scrolled="true"][data-open="false"]{top:16px;max-width:1000px;border-width:1px;border-radius:12px;box-shadow:0 12px 32px -14px rgba(0,0,0,.75)}
+    .omm-header[data-scrolled="true"][data-open="false"] .omm-header-bar{height:52px;padding:0 12px}
+    .omm-mobile-menu{display:none!important}
+  }
+  @media (max-width:960px){
+    .omm-header-bar{height:56px;padding:0 20px}
+    .omm-header-links,.omm-header-cta{display:none}
+    .omm-menu-toggle{display:inline-flex}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .omm-header,.omm-header-bar,.omm-menu-icon,.omm-menu-line,.omm-nav-link,.omm-nav-cta,.omm-menu-toggle{transition:none}
+    .omm-mobile-menu-inner{animation:none}
+  }
+  /* Site footer (a port of the footer-section component): rounded top with a
+     soft glow, and columns that fade up once as the footer scrolls into view */
+  .omm-footer{position:relative;width:100%;max-width:1152px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;border-top:1px solid rgb(38,42,49);border-radius:32px 32px 0 0;background:radial-gradient(35% 128px at 50% 0%,rgba(255,255,255,.08),transparent)}
+  .omm-footer-glow{position:absolute;top:0;left:50%;width:33.333%;height:1px;transform:translate(-50%,-50%);border-radius:999px;background:rgba(231,233,236,.2);filter:blur(4px)}
+  .omm-footer-grid{display:grid;width:100%;gap:32px}
+  .omm-footer-brand{display:flex;flex-direction:column;gap:14px}
+  .omm-footer-wordmark{font-family:"Ubuntu Mono",monospace;font-weight:700;font-size:20px;letter-spacing:-.02em;color:#e7e9ec}
+  .omm-footer-blurb{font-size:13.5px;line-height:1.6;color:#868c96;margin:0;max-width:360px}
+  .omm-footer-heart{display:inline-block;width:.95em;height:.95em;vertical-align:-.12em;color:#ef4444}
+  .omm-footer-logo{display:inline-flex;align-self:flex-start;margin-top:2px;border-radius:4px}
+  .omm-footer-logo img{display:block}
+  .omm-footer-logo:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
+  .omm-footer-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:40px}
+  .omm-footer-section-end{justify-self:end}
+  @media (min-width:768px){.omm-footer-section-end{margin-right:clamp(32px,6vw,96px)}}
+  .omm-footer-heading{font-family:"Ubuntu Mono",monospace;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#e7e9ec;margin:0}
+  .omm-footer-links{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:8px}
+  .omm-footer-links a,.omm-footer-links a:hover{display:inline-flex;align-items:flex-start;gap:6px;font-family:"Ubuntu Mono",monospace;font-size:13px;padding:4px 0;transition:color .3s}
+  .omm-footer-links a{color:#969ca5}
+  .omm-footer-links a:hover{color:#e7e9ec}
+  .omm-footer-links a:focus-visible{outline:2px solid #63bd85;outline-offset:2px;border-radius:4px}
+  .omm-footer-links svg{width:16px;height:16px;flex:0 0 auto}
+  .omm-footer[data-animate] .omm-reveal{opacity:0;transform:translateY(-8px);filter:blur(4px)}
+  .omm-footer[data-animate] .omm-reveal.is-visible{opacity:1;transform:none;filter:none;transition:opacity .8s ease,transform .8s ease,filter .8s ease;transition-delay:var(--delay,.1s)}
+  @media (min-width:768px){
+    .omm-footer{border-radius:48px 48px 0 0}
+    .omm-footer-sections{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (min-width:1024px){.omm-footer{padding:64px 24px}}
+  @media (min-width:768px){
+    .omm-footer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .omm-footer-sections{grid-column:span 2/span 2;margin-top:0}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .omm-footer[data-animate] .omm-reveal{opacity:1;transform:none;filter:none;transition:none}
+    .omm-footer-links a{transition:none}
+  }
+/* Article pages */
+.omm-page{max-width:820px;margin:0 auto;padding:48px 28px 88px}
+.omm-crumbs{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#868c96;margin:0 0 28px}
+.omm-crumbs ol{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.omm-crumbs li{display:inline-flex;align-items:center;padding:4px 0}
+.omm-crumbs li+li::before{content:"/";margin-right:6px;color:#4a4f58}
+.omm-crumbs a{color:#969ca5}
+.omm-crumbs a:hover{color:#e7e9ec}
+.omm-eyebrow{display:block;font-family:"Ubuntu Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#63bd85;margin:0 0 14px}
+.omm-prose{font-size:16.5px;line-height:1.75;color:#c9cdd3}
+.omm-prose h1{font-family:Ubuntu,sans-serif;font-weight:700;font-size:40px;line-height:1.12;letter-spacing:-.025em;color:#f2f4f6;margin:0 0 22px}
+.omm-prose h2{font-family:Ubuntu,sans-serif;font-weight:700;font-size:26px;line-height:1.2;letter-spacing:-.015em;color:#f2f4f6;margin:52px 0 14px;scroll-margin-top:80px}
+.omm-prose h3{font-family:Ubuntu,sans-serif;font-weight:500;font-size:19px;line-height:1.3;color:#f2f4f6;margin:34px 0 10px;scroll-margin-top:80px}
+.omm-prose h4{font-family:Ubuntu,sans-serif;font-weight:500;font-size:16.5px;color:#e7e9ec;margin:26px 0 8px}
+.omm-prose p,.omm-prose ul,.omm-prose ol{margin:0 0 18px}
+.omm-prose ul,.omm-prose ol{padding-left:22px}
+.omm-prose li{margin:0 0 6px}
+.omm-prose li>p{margin:0 0 6px}
+.omm-prose strong{color:#e7e9ec;font-weight:600}
+.omm-prose a{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.omm-prose code{font-family:"Ubuntu Mono",monospace;font-size:.9em;background:#16191e;border:1px solid #262a31;border-radius:4px;padding:1px 6px;color:#d6a44a;overflow-wrap:anywhere}
+.omm-prose pre{position:relative;margin:0 0 22px;background:#121418;border:1px solid #262a31;border-radius:10px;padding:16px 18px;overflow-x:auto;line-height:1.65}
+.omm-prose pre code{background:none;border:0;padding:0;font-size:13.5px;color:#e7e9ec;overflow-wrap:normal;white-space:pre}
+.omm-prose blockquote{margin:0 0 20px;padding:4px 0 4px 18px;border-left:3px solid #63bd85;color:#b4b9c0}
+.omm-prose hr{border:0;border-top:1px solid #262a31;margin:40px 0}
+.omm-prose img{max-width:100%;height:auto;border-radius:8px}
+.omm-table{overflow-x:auto;margin:0 0 24px;border:1px solid #262a31;border-radius:10px}
+.omm-prose table{width:100%;border-collapse:collapse;font-size:14.5px;line-height:1.55}
+.omm-prose th,.omm-prose td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid #20242b}
+.omm-prose th{font-family:"Ubuntu Mono",monospace;font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#969ca5;background:#101216}
+.omm-prose tr:last-child td{border-bottom:0}
+.omm-code{position:relative;margin:0 0 22px}
+.omm-code>pre{margin:0;padding-right:76px}
+.omm-copy{position:absolute;top:8px;right:8px;font-family:"Ubuntu Mono",monospace;font-size:11px;color:#969ca5;background:#121418;border:1px solid #262a31;border-radius:5px;padding:6px 11px;cursor:pointer}
+.omm-copy:hover,.omm-copy:focus-visible{color:#e7e9ec;border-color:#63bd85;outline:none}
+.omm-lede{font-size:18px;line-height:1.65;color:#969ca5;margin:0 0 30px}
+.omm-meta{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#868c96;margin:48px 0 0;padding-top:20px;border-top:1px solid #262a31;display:flex;flex-wrap:wrap;gap:8px 20px}
+.omm-meta a{color:#969ca5;text-decoration:underline;text-underline-offset:3px}
+.omm-prose .omm-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 34px;padding:0;list-style:none}
+.omm-prose .omm-cards li{margin:0}
+.omm-prose .omm-card,.omm-prose .omm-card:hover{text-decoration:none;display:flex;flex-direction:column;gap:6px;height:100%;padding:16px 18px;border:1px solid #262a31;border-radius:12px;background:#101216;text-decoration:none;transition:border-color .18s,background .18s}
+.omm-card:hover,.omm-card:focus-visible{border-color:#63bd85;background:#14181c;outline:none}
+.omm-card-title{font-family:Ubuntu,sans-serif;font-weight:500;font-size:17px;color:#f2f4f6}
+.omm-card-text{font-size:14px;line-height:1.55;color:#969ca5}
+.omm-cta{display:inline-block;font-family:"Ubuntu Mono",monospace;font-size:14px;font-weight:500;color:#0b0c0e!important;background:#63bd85;padding:13px 22px;border-radius:8px;text-decoration:none!important}
+.omm-cta:hover{background:#7fcb9b}
+@media (max-width:680px){
+  .omm-page{padding:32px 20px 64px}
+  .omm-prose h1{font-size:30px}
+  .omm-prose h2{font-size:22px;margin-top:40px}
+  .omm-prose .omm-cards{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){.omm-card{transition:none}}

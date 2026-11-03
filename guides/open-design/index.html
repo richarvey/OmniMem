@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connecting OmniMem to Open Design | OmniMem</title>
+  <meta name="description" content="Open Design is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context…">
+  <meta name="author" content="Ric Harvey, SquareCows Ltd">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b0c0e">
+  <link rel="canonical" href="https://omnimem.org/guides/open-design/">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="OmniMem">
+  <meta property="og:url" content="https://omnimem.org/guides/open-design/">
+  <meta property="og:title" content="Connecting OmniMem to Open Design | OmniMem">
+  <meta property="og:description" content="Open Design is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context…">
+  <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_GB">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Connecting OmniMem to Open Design | OmniMem">
+  <meta name="twitter:description" content="Open Design is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context…">
+  <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/ubuntu-sans-400-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/ubuntu-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://omnimem.org/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Guides",
+          "item": "https://omnimem.org/guides/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Open Design",
+          "item": "https://omnimem.org/guides/open-design/"
+        }
+      ]
+    },
+    {
+      "@type": "TechArticle",
+      "headline": "Connecting OmniMem to Open Design",
+      "description": "Open Design is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context…",
+      "url": "https://omnimem.org/guides/open-design/",
+      "dateModified": "2026-10-26",
+      "inLanguage": "en-GB",
+      "author": {
+        "@type": "Person",
+        "name": "Ric Harvey",
+        "url": "https://www.linkedin.com/in/richarvey"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "SquareCows Ltd",
+        "url": "https://squarecows.com"
+      },
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "OmniMem",
+        "url": "https://omnimem.org/"
+      }
+    }
+  ]
+}
+  </script>
+</head>
+<body>
+<header class="omm-header" data-screen-label="Nav" data-scrolled="false" data-open="false">
+  <nav class="omm-header-bar" aria-label="Main">
+    <a href="/" class="omm-wordmark" aria-label="OmniMem home">
+      <img src="/images/omnimem-logo-horizontal-dark-sm.webp" alt="OmniMem" width="143" height="28" decoding="async" fetchpriority="high">
+    </a>
+    <div class="omm-header-links">
+      <a href="/#problem" class="omm-nav-link">Why</a>
+      <a href="/#in-action" class="omm-nav-link">In action</a>
+      <a href="/#features" class="omm-nav-link">Features</a>
+      <a href="/#lifecycle" class="omm-nav-link">Lifecycle</a>
+      <a href="/#skills" class="omm-nav-link">Skills</a>
+      <a href="/#comparison" class="omm-nav-link">Compare</a>
+      <a href="/#architecture" class="omm-nav-link">Architecture</a>
+      <a href="/#quickstart" class="omm-nav-link">Get started</a>
+      <a href="/guides/" class="omm-nav-link">Guides</a>
+    </div>
+    <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-header-cta">Source</a>
+    <button type="button" class="omm-menu-toggle" aria-controls="omm-mobile-menu" aria-expanded="false" aria-label="Open menu">
+      <svg class="omm-menu-icon" viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path class="omm-menu-line omm-menu-line-outer" d="M27 10 13 10C10.8 10 9 8.2 9 6 9 3.5 10.8 2 13 2 15.2 2 17 3.8 17 6L17 26C17 28.2 18.8 30 21 30 23.2 30 25 28.2 25 26 25 23.8 23.2 22 21 22L7 22"></path>
+        <path class="omm-menu-line omm-menu-line-middle" d="M7 16 27 16"></path>
+      </svg>
+    </button>
+  </nav>
+  <div id="omm-mobile-menu" class="omm-mobile-menu" hidden>
+    <div class="omm-mobile-menu-inner">
+      <div class="omm-mobile-links">
+        <a href="/#problem" class="omm-nav-link">Why</a>
+        <a href="/#in-action" class="omm-nav-link">In action</a>
+        <a href="/#features" class="omm-nav-link">Features</a>
+        <a href="/#lifecycle" class="omm-nav-link">Lifecycle</a>
+        <a href="/#skills" class="omm-nav-link">Skills</a>
+        <a href="/#comparison" class="omm-nav-link">Compare</a>
+        <a href="/#architecture" class="omm-nav-link">Architecture</a>
+        <a href="/#quickstart" class="omm-nav-link">Get started</a>
+        <a href="/guides/" class="omm-nav-link">Guides</a>
+      </div>
+      <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-mobile-cta">Source</a>
+    </div>
+  </div>
+</header>
+<main class="omm-page">
+<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Open Design</li></ol></nav>
+<article class="omm-prose">
+<span class="omm-eyebrow">Setup guide</span>
+<h1 id="connecting-omnimem-to-open-design">Connecting OmniMem to Open Design</h1>
+<p><a href="https://open-design.ai">Open Design</a> is a desktop app that can use remote MCP servers over OAuth 2.1. Connect it to OmniMem and its agent shares the same memories, project context and graveyard as the rest of your tools.</p>
+<p>Unlike claude.ai, Open Design is a <strong>native desktop client</strong>, so it signs in as a <em>public</em> OAuth client. It uses PKCE with no client secret, registers a loopback redirect (<code>http://127.0.0.1:&lt;port&gt;/api/mcp/oauth/callback</code>) on a random port, and registers itself afresh every time it connects. OmniMem 7 handles all of that out of the box: public clients get no secret and prove themselves with PKCE alone.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>OmniMem 7</strong> reachable over HTTPS from wherever Open Design runs, through a reverse proxy or a tunnel</li>
+<li><strong>OAuth switched on</strong> (below)</li>
+<li><strong>Open Design</strong> installed</li>
+</ul>
+<h2 id="step-1-switch-on-oauth">Step 1: Switch on OAuth</h2>
+<p>On a headless install, put this in <code>/etc/omnimem/omnimem.env</code> (or pass it to the Docker image as environment variables):</p>
+<pre class="bash"><code>OAUTH_ENABLED=true
+OAUTH_BASE_URL=https://mcp.yourdomain.com
+OAUTH_ADMIN_USER=admin
+OAUTH_ADMIN_PASSWORD=a-strong-password-here</code></pre>
+<p>On the desktop app these live in the <strong>OAuth</strong> section of the Configuration page, with the password kept in your OS keychain.</p>
+<div class="omm-table"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it's for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OAUTH_BASE_URL</code></td>
+<td>The https address Open Design connects to. OmniMem trusts this host and origin automatically</td>
+</tr>
+<tr>
+<td><code>OAUTH_ADMIN_USER</code></td>
+<td>The username the login page asks for</td>
+</tr>
+<tr>
+<td><code>OAUTH_ADMIN_PASSWORD</code></td>
+<td>The password the login page asks for. Make it strong, it guards your whole memory store</td>
+</tr>
+</tbody>
+</table></div>
+<p>Restart OmniMem (<code>sudo systemctl restart omnimem</code> on a server) and check discovery answers:</p>
+<pre class="bash"><code>curl https://mcp.yourdomain.com/.well-known/oauth-authorization-server</code></pre>
+<p>You should get JSON with <code>authorization_endpoint</code>, <code>token_endpoint</code> and <code>registration_endpoint</code>. A <code>421</code> means the hostname isn't trusted, see <a href="#troubleshooting">Troubleshooting</a>.</p>
+<h2 id="step-2-put-it-behind-https">Step 2: Put it behind HTTPS</h2>
+<p>A minimal Caddy config does it:</p>
+<pre><code>mcp.yourdomain.com {
+    reverse_proxy localhost:8765
+}</code></pre>
+<p>A Tailscale Funnel works too. See <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/reverse-proxy.md">the reverse proxy docs</a> for more.</p>
+<p>Most proxies and tunnels terminate TLS and forward to OmniMem over plain http. That's fine: OmniMem accepts a browser origin that matches its own host whatever the scheme, so the login form isn't refused. If you serve under an extra hostname, add it with <code>MCP_ALLOWED_HOSTS</code> and <code>MCP_ALLOWED_ORIGINS</code>.</p>
+<h2 id="step-3-add-omnimem-in-open-design">Step 3: Add OmniMem in Open Design</h2>
+<ol type="1">
+<li><p>Open <strong>Open Design</strong> and go to its <strong>Settings</strong> (the MCP section's label depends on your version)</p></li>
+<li><p>Add a <strong>remote MCP server</strong> or <strong>custom connector</strong></p></li>
+<li><p>Enter your OmniMem URL, including the <code>/mcp</code> path:</p>
+<pre><code>https://mcp.yourdomain.com/mcp</code></pre></li>
+<li><p>Connect</p></li>
+</ol>
+<p>Open Design takes it from there: it discovers the endpoints, registers as a public client, opens the OmniMem login page in your browser, and finishes the PKCE token exchange.</p>
+<h2 id="step-4-sign-in">Step 4: Sign in</h2>
+<ol type="1">
+<li>Enter your admin username and password</li>
+<li>Click <strong>Sign in</strong></li>
+<li>Your browser is sent back to Open Design's local callback and the connection completes</li>
+</ol>
+<p>The OmniMem tools are now available to the Open Design agent.</p>
+<h2 id="how-it-works">How it works</h2>
+<p>The OAuth 2.1 authorisation code flow with PKCE, as a public client with <strong>no client secret</strong>:</p>
+<pre><code>Open Design                  OmniMem
+   |                            |
+   |  GET /.well-known/oauth-   |
+   |  authorization-server      |
+   |---------------------------&gt;|  Discovery
+   |  &lt;metadata&gt;                |
+   |&lt;---------------------------|
+   |                            |
+   |  POST /register            |
+   |  token_endpoint_auth_      |
+   |  method: &quot;none&quot;            |
+   |---------------------------&gt;|  Registration (public client, no secret)
+   |  &lt;client_id&gt;               |
+   |&lt;---------------------------|
+   |                            |
+   |  GET /authorize            |
+   |  ?code_challenge=...       |
+   |  &amp;redirect_uri=            |
+   |   http://127.0.0.1:PORT/.. |
+   |---------------------------&gt;|  Redirect to login page
+   |  302 -&gt; /oauth/login       |
+   |&lt;---------------------------|
+   |                            |
+   |  [You sign in]             |
+   |  POST /oauth/login         |
+   |---------------------------&gt;|  Check credentials
+   |  302 -&gt; 127.0.0.1:PORT?    |
+   |         code=...           |
+   |&lt;---------------------------|
+   |                            |
+   |  POST /token               |
+   |  code + code_verifier      |
+   |  (no client_secret)        |
+   |---------------------------&gt;|  Token exchange, PKCE checked
+   |  &lt;access_token, refresh&gt;   |
+   |&lt;---------------------------|
+   |                            |
+   |  POST /mcp                 |
+   |  Authorization: Bearer ... |
+   |---------------------------&gt;|  MCP requests
+   |  &lt;tool results&gt;            |
+   |&lt;---------------------------|</code></pre>
+<p>Because it's a public client, OmniMem neither issues nor asks for a <code>client_secret</code>. The <code>code_verifier</code> is what proves the token request came from whoever started the flow. Access tokens last an hour and refresh automatically; a refresh chain lasts 30 days by default (<code>OAUTH_REFRESH_MAX_DAYS</code>), with the same rotation grace window claude.ai relies on.</p>
+<h2 id="oauth-and-access-tokens-together">OAuth and access tokens together</h2>
+<p>If you also set <code>MCP_AUTH_TOKEN</code>, local clients like Claude Code keep using the access token while Open Design uses OAuth. <code>/mcp</code> accepts either.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<div class="omm-table"><table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Every request gets <code>421 Misdirected Request</code></td>
+<td>Your public hostname isn't trusted. Check <code>OAUTH_BASE_URL</code> matches it, or add extra names to <code>MCP_ALLOWED_HOSTS</code></td>
+</tr>
+<tr>
+<td><code>403 Forbidden Origin</code> when submitting the login form</td>
+<td>You're serving under an origin OmniMem doesn't know about. Add it to <code>MCP_ALLOWED_ORIGINS</code></td>
+</tr>
+<tr>
+<td>Discovery returns 404</td>
+<td>OAuth isn't on. Set <code>OAUTH_ENABLED=true</code> and restart OmniMem</td>
+</tr>
+<tr>
+<td>OmniMem refuses to start after switching on OAuth</td>
+<td>The base URL, username or password is missing, or the base URL isn't https. The error says which</td>
+</tr>
+<tr>
+<td>The browser can't reach <code>127.0.0.1:&lt;port&gt;</code> after signing in</td>
+<td>Open Design's local callback listener wasn't there. Make sure the app is still running and nothing blocks loopback, then connect again</td>
+</tr>
+<tr>
+<td>"Invalid or expired session" on the login page</td>
+<td>The sign-in took more than five minutes. Reconnect from Open Design</td>
+</tr>
+<tr>
+<td>"Too many failed attempts" on the login page</td>
+<td>The login rate limit tripped (<code>OAUTH_LOGIN_MAX_ATTEMPTS</code> within <code>OAUTH_LOGIN_WINDOW_SECONDS</code>). Wait out the window</td>
+</tr>
+</tbody>
+</table></div>
+
+<p class="omm-meta"><span>Updated <time datetime="2026-10-26">26 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/open-design.md">This guide on Forgejo</a></p>
+</article>
+</main>
+<footer class="omm-footer" data-screen-label="Footer">
+  <div class="omm-footer-glow" aria-hidden="true"></div>
+  <div class="omm-footer-grid">
+    <div class="omm-footer-brand omm-reveal" style="--delay: 0.1s;">
+      <div class="omm-footer-wordmark"><img src="/images/omnimem-logo-horizontal-dark-sm.webp" alt="OmniMem" width="163" height="32" loading="lazy" decoding="async"></div>
+      <p class="omm-footer-blurb">MIT Licensed. Built with <svg class="omm-footer-heart" viewBox="0 0 512 512" role="img" aria-label="love"><title>love</title><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path fill="currentColor" d="M241 87.1l15 20.7 15-20.7C296 52.5 336.2 32 378.9 32 452.4 32 512 91.6 512 165.1l0 2.6c0 112.2-139.9 242.5-212.9 298.2-12.4 9.4-27.6 14.1-43.1 14.1s-30.8-4.6-43.1-14.1C139.9 410.2 0 279.9 0 167.7l0-2.6C0 91.6 59.6 32 133.1 32 175.8 32 216 52.5 241 87.1z"></path></svg> by <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a>.</p>
+      <a href="https://squarecows.com" class="omm-footer-logo"><img src="icons/squarecows-logo.png" alt="SquareCows Ltd" width="89" height="28" loading="lazy" decoding="async"></a>    </div>
+    <div class="omm-footer-sections">
+      <div class="omm-reveal" style="--delay: 0.2s;">
+        <h2 class="omm-footer-heading">Project</h2>
+        <ul class="omm-footer-links">
+          <li><a href="https://code.squarecows.com/ric/omnimem"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M439.6 236.1L244 40.5C238.6 35 231.2 32 223.6 32s-15 3-20.4 8.4l-40.7 40.6 51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.900-56-37.3l-46.3-46.3 0 121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56l0-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4L204.1 471.6c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4L439.6 276.9c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4z"></path></svg>Source</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/issues"><svg viewBox="0 0 576 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M192 96c0-53 43-96 96-96s96 43 96 96l0 3.6c0 15.7-12.7 28.4-28.4 28.4l-135.1 0c-15.7 0-28.4-12.7-28.4-28.4l0-3.6zm345.6 12.8c10.6 14.1 7.7 34.2-6.4 44.8l-97.8 73.3c5.3 8.9 9.3 18.7 11.8 29.1l98.8 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-96 0 0 32c0 2.6-.1 5.3-.2 7.9l83.4 62.5c14.1 10.6 17 30.7 6.4 44.8s-30.7 17-44.8 6.4l-63.1-47.3c-23.2 44.2-66.5 76.2-117.7 83.9L312 280c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 230.2c-51.2-7.7-94.5-39.7-117.7-83.9L83.2 473.6c-14.1 10.6-34.2 7.7-44.8-6.4s-7.7-34.2 6.4-44.8l83.4-62.5c-.1-2.6-.2-5.2-.2-7.9l0-32-96 0c-17.7 0-32-14.3-32-32s14.3-32 32-32l98.8 0c2.5-10.4 6.5-20.2 11.8-29.1L44.8 153.6c-14.1-10.6-17-30.7-6.4-44.8s30.7-17 44.8-6.4L192 184c12.3-5.1 25.8-8 40-8l112 0c14.2 0 27.7 2.8 40 8l108.8-81.6c14.1-10.6 34.2-7.7 44.8 6.4z"></path></svg>Issues</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/releases"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M256 32c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 210.7-41.4-41.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l96 96c12.5 12.5 32.8 12.5 45.3 0l96-96c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L256 242.7 256 32zM64 320c-35.3 0-64 28.7-64 64l0 32c0 35.3 28.7 64 64 64l320 0c35.3 0 64-28.7 64-64l0-32c0-35.3-28.7-64-64-64l-46.9 0-56.6 56.6c-31.2 31.2-81.9 31.2-113.100 0L110.9 320 64 320zm304 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z"></path></svg>Releases</a></li>
+          <li><a href="https://github.com/richarvey/OmniMem"><svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5l0 52C323 491.5 335.5 500 350.5 494 441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5l0-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21z"></path></svg>GitHub mirror</a></li>
+          <li><a href="/guides/"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h4a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 2.5h-4A1.5 1.5 0 0 0 8 4v9.5a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>Setup guides</a></li>
+          <li><a href="/claude-code-memory/"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h4a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 2.5h-4A1.5 1.5 0 0 0 8 4v9.5a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>Claude Code memory</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h4a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 2.5h-4A1.5 1.5 0 0 0 8 4v9.5a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>Docs</a></li>
+          <li><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/CHANGELOG.md"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h4a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 2.5h-4A1.5 1.5 0 0 0 8 4v9.5a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>Changelog</a></li>
+        </ul>
+      </div>
+      <div class="omm-reveal omm-footer-section-end" style="--delay: 0.3s;">
+        <h2 class="omm-footer-heading">Links</h2>
+        <ul class="omm-footer-links">
+          <li><a href="https://dev.to/omnimem" aria-label="The OmniMem blog on DEV"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) --><path d="M120.12 208.29c-3.88-2.9-7.77-4.35-11.65-4.35H91.03v104.47h17.45c3.88 0 7.77-1.45 11.65-4.35 3.88-2.9 5.82-7.25 5.82-13.06v-69.65c-.01-5.8-1.96-10.16-5.83-13.06zM404.1 32H43.9C19.7 32 .06 51.59 0 75.8v360.4C.06 460.41 19.7 480 43.9 480h360.2c24.21 0 43.84-19.59 43.9-43.8V75.8c-.06-24.21-19.7-43.8-43.9-43.8zM154.2 291.19c0 18.81-11.61 47.31-48.36 47.25h-46.4V172.98h47.38c35.44 0 47.36 28.46 47.37 47.28l.01 70.93zm100.68-88.66H201.6v38.42h32.57v29.57H201.6v38.41h53.29v29.57h-62.18c-11.16.29-20.44-8.53-20.72-19.69V193.7c-.27-11.15 8.56-20.41 19.71-20.69h63.19l-.01 29.52zm103.64 115.29c-13.2 30.75-36.85 24.63-47.44 0l-38.53-144.8h32.57l29.71 113.72 29.57-113.72h32.58l-38.46 144.8z"></path></svg>Blog</a></li>
+          <li><a href="https://mastodon.squarecows.com/@Ric" aria-label="@Ric on Mastodon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.268 5.313c-.35-2.578-2.617-4.61-5.304-5.004C17.51.242 15.792 0 11.813 0h-.03c-3.98 0-4.835.242-5.288.309C3.882.692 1.496 2.518.917 5.127.64 6.412.61 7.837.661 9.143c.074 1.874.088 3.745.26 5.611.118 1.24.325 2.47.62 3.68.55 2.237 2.777 4.098 4.96 4.857 2.336.792 4.849.923 7.256.38.265-.061.527-.132.786-.213.585-.184 1.27-.39 1.774-.753a.057.057 0 0 0 .023-.043v-1.809a.052.052 0 0 0-.02-.041.053.053 0 0 0-.046-.01 20.282 20.282 0 0 1-4.709.545c-2.73 0-3.463-1.284-3.674-1.818a5.593 5.593 0 0 1-.319-1.433.053.053 0 0 1 .066-.054c1.517.363 3.072.546 4.632.546.376 0 .75 0 1.125-.01 1.57-.044 3.224-.124 4.768-.422.038-.008.077-.015.11-.024 2.435-.464 4.753-1.920 4.989-5.604.008-.145.03-1.52.03-1.67.002-.512.167-3.63-.024-5.545zm-3.748 9.195h-2.561V8.29c0-1.309-.55-1.976-1.67-1.976-1.230 0-1.846.79-1.846 2.35v3.403h-2.546V8.663c0-1.56-.617-2.35-1.848-2.35-1.112 0-1.668.668-1.670 1.977v6.218H4.822V8.102c0-1.31.337-2.35 1.011-3.12.696-.77 1.608-1.164 2.740-1.164 1.311 0 2.302.5 2.962 1.498l.638 1.06.638-1.06c.66-.999 1.65-1.498 2.96-1.498 1.13 0 2.043.395 2.74 1.164.675.77 1.012 1.81 1.012 3.12z"></path></svg>@Ric</a></li>
+          <li><a href="https://www.linkedin.com/in/richarvey" aria-label="Ric Harvey on LinkedIn"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M416 32L31.9 32C14.3 32 0 46.5 0 64.3L0 447.7C0 465.5 14.3 480 31.9 480L416 480c17.6 0 32-14.5 32-32.3l0-383.4C448 46.5 433.6 32 416 32zM135.4 416l-66.4 0 0-213.8 66.5 0 0 213.8-.1 0zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77zM384.3 416l-66.4 0 0-104c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9l0 105.8-66.4 0 0-213.8 63.7 0 0 29.2 .9 0c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9l0 117.2z"></path></svg>Ric Harvey</a></li>
+          <li><a href="https://www.instagram.com/omnimemai" aria-label="@omnimemai on Instagram"><svg viewBox="0 0 448 512" fill="currentColor" aria-hidden="true"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path d="M224.3 141a115 115 0 1 0 -.6 230 115 115 0 1 0 .6-230zm-.6 40.4a74.6 74.6 0 1 1 .6 149.2 74.6 74.6 0 1 1 -.6-149.2zm93.4-45.1a26.8 26.8 0 1 1 53.6 0 26.8 26.8 0 1 1 -53.6 0zm129.7 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM399 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z"></path></svg>@omnimemai</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+<script src="/assets/site.js"></script>
+</body>
+</html>

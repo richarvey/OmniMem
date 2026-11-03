@@ -22,10 +22,12 @@ jobs:
           # Export the committed tree into dist/, then drop CI/VCS metadata so
           # it never gets served as a site asset. git + tar are already present
           # (checkout uses them), so no dependency on rsync being installed.
+          # tools/ is the page generator and its sources: the pages it writes
+          # are committed, so the site doesn't need it.
           rm -rf dist
           mkdir -p dist
           git archive HEAD | tar -x -C dist
-          rm -rf dist/.forgejo dist/.domains dist/.gitignore
+          rm -rf dist/.forgejo dist/.domains dist/.gitignore dist/tools
 
       - name: Deploy to Cloudflare Pages
         env:

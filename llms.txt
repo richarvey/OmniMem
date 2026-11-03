@@ -6,7 +6,10 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 
 ## Docs
 
+- [Setup guides](https://omnimem.org/guides/): connecting Claude Code, Claude Desktop, claude.ai, Cursor, Codex, GitHub Copilot, GitLab Duo, Kiro, OpenCode and Open Design, and running OmniMem on macOS, a Raspberry Pi, AWS, Google Cloud, Linux with Tailscale Funnel, or Docker
+- [Persistent memory for Claude Code](https://omnimem.org/claude-code-memory/): what CLAUDE.md and auto memory keep between sessions, what they miss, and what OmniMem adds
 - [Source repository](https://code.squarecows.com/ric/omnimem): full README, manual, and deployment guides
+- [GitHub mirror](https://github.com/richarvey/OmniMem) and [Docker Hub image](https://hub.docker.com/r/richarvey/omnimem)
 - [Latest release](https://code.squarecows.com/ric/omnimem/releases/latest): the DMG (macOS 13.4+, Apple silicon), MSI (Windows 10 and 11), Flatpak (Linux desktop), .deb and .rpm (Linux servers)
 - [Install](https://omnimem.org/#quickstart): download the app, or `docker run -d -p 127.0.0.1:8765:8765 -v omnimem-data:/data -e MCP_AUTH_TOKEN=<token> richarvey/omnimem`
 - [Connect Claude Code](https://omnimem.org/#quickstart): `claude mcp add --transport http --scope user omnimem http://127.0.0.1:8765/mcp`
@@ -18,3 +21,5 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 - An Anthropic API key is optional: it turns on Claude Haiku for fact extraction, query expansion, deeper contradiction checks and RSS summaries. Add it on the settings window's Configuration page (kept in the OS keychain) or as ANTHROPIC_API_KEY on a server. Embeddings stay local either way
 - Moving from 6.x: back up with dump_to_file() and import the file; every memory is re-embedded from its text
 - Self-hosted and MIT licensed, with a managed cloud version coming soon; no telemetry to third parties
+- Current version: 7.0.5
+- Compared with Claude Code's built-in memory (CLAUDE.md and auto memory: flat, machine-local files read whole) it adds semantic recall, a lifecycle, contradiction handling and an abandoned-approach graveyard; compared with mem0 (a memory layer for multi-user products, with a managed cloud) it's aimed at one developer's agents on their own hardware
