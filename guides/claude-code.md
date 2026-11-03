@@ -96,8 +96,27 @@ skipped instead, as Claude Code hooks: the project's briefing injected at sessio
 start, a tool call denied when it repeats an approach the project already
 abandoned, and a record written when the session ends.
 
-The settings entry and what each event will and will not do are in
-[the hooks guide](../docs/claude-code-hook.md).
+One command sets them up for every project:
+
+```bash
+omnimem install-hooks
+```
+
+It adds the three hooks to `~/.claude/settings.json`, leaves everything else in
+the file as it was and keeps a copy of the old one beside it. Add `--project` to
+set them up for the current project only (in `./.claude/settings.json`), or
+`--dry-run` to see what it would change. Running it again changes nothing.
+
+With the Mac app, the `omnimem` binary lives inside the app bundle rather than on
+your PATH, so run it from there:
+
+```bash
+/Applications/OmniMem.app/Contents/MacOS/omnimem install-hooks
+```
+
+The Flatpak can't reach Claude Code's settings from its sandbox, so add the hooks
+by hand there. The settings entry, and what each event will and will not do, are
+in [the hooks guide](../docs/claude-code-hook.md).
 
 ## Verifying the connection
 
