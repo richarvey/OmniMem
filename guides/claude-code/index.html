@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Connecting OmniMem to Claude Code | OmniMem</title>
-  <meta name="description" content="Claude Code is Anthropic&#x27;s terminal coding agent, and it&#x27;s the tool I built OmniMem for in the first place. It speaks Streamable HTTP natively, so there&#x27;s no…">
+  <meta name="description" content="Connect Claude Code to OmniMem over HTTP: one CLI command, access tokens, global or project config, and the hooks that brief every session.">
   <meta name="author" content="Ric Harvey, SquareCows Ltd">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0c0e">
@@ -13,14 +13,14 @@
   <meta property="og:site_name" content="OmniMem">
   <meta property="og:url" content="https://omnimem.org/guides/claude-code/">
   <meta property="og:title" content="Connecting OmniMem to Claude Code | OmniMem">
-  <meta property="og:description" content="Claude Code is Anthropic&#x27;s terminal coding agent, and it&#x27;s the tool I built OmniMem for in the first place. It speaks Streamable HTTP natively, so there&#x27;s no…">
+  <meta property="og:description" content="Connect Claude Code to OmniMem over HTTP: one CLI command, access tokens, global or project config, and the hooks that brief every session.">
   <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:locale" content="en_GB">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Connecting OmniMem to Claude Code | OmniMem">
-  <meta name="twitter:description" content="Claude Code is Anthropic&#x27;s terminal coding agent, and it&#x27;s the tool I built OmniMem for in the first place. It speaks Streamable HTTP natively, so there&#x27;s no…">
+  <meta name="twitter:description" content="Connect Claude Code to OmniMem over HTTP: one CLI command, access tokens, global or project config, and the hooks that brief every session.">
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -57,25 +57,37 @@
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/guides/claude-code/#article",
       "headline": "Connecting OmniMem to Claude Code",
-      "description": "Claude Code is Anthropic's terminal coding agent, and it's the tool I built OmniMem for in the first place. It speaks Streamable HTTP natively, so there's no…",
+      "description": "Connect Claude Code to OmniMem over HTTP: one CLI command, access tokens, global or project config, and the hooks that brief every session.",
       "url": "https://omnimem.org/guides/claude-code/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/guides/claude-code/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-03-24",
       "dateModified": "2026-10-19",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -235,7 +247,8 @@
 <li>Reset project MCP approvals with <code>claude mcp reset-project-choices</code></li>
 </ul>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-10-19">19 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>OmniMem needs to be running first:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul><p>Connecting another agent as well:</p><ul><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Why bother? <a href="/claude-code-memory/">Persistent memory for Claude Code, beyond CLAUDE.md</a> covers what Claude Code keeps on its own and what OmniMem adds.</p></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-19">19 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/claude-code.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

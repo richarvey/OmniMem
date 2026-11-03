@@ -51,25 +51,37 @@
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/claude-code-memory/#article",
       "headline": "Persistent memory for Claude Code, beyond CLAUDE.md",
       "description": "What CLAUDE.md and auto memory keep between Claude Code sessions, what they miss, and how OmniMem adds searchable memory across projects and machines.",
       "url": "https://omnimem.org/claude-code-memory/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/claude-code-memory/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-11-03",
       "dateModified": "2026-11-03",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -123,14 +135,14 @@
 <article class="omm-prose">
 <span class="omm-eyebrow">Claude Code memory</span>
 <h1 id="persistent-memory-for-claude-code-beyond-claudemd">Persistent memory for Claude Code, beyond CLAUDE.md</h1>
-<p>Claude Code starts every session knowing nothing it wasn't told at the start of that session. It has two ways to carry things across: <code>CLAUDE.md</code> files that you write, and auto memory, where it writes notes for itself. Both are useful, and both stop short of what a long project needs. This page covers what each one does, where it runs out, and how to give Claude Code memory it can search, across every project and machine you use, with OmniMem.</p>
+<p>Claude Code starts every session with a fresh context window, so nothing carries across sessions unless something puts it there. It has two ways of doing that: <code>CLAUDE.md</code> files that you write, and auto memory, where it writes notes for itself. Both are useful, and both stop short of what a long project needs. This page covers what each one does, where it runs out, and how to give Claude Code memory it can search, across every project and machine you use, with OmniMem.</p>
 <h2 id="what-claude-code-remembers-on-its-own">What Claude Code remembers on its own</h2>
-<p><strong>CLAUDE.md</strong> is a markdown file Claude Code reads at the start of every session. There's one for you in <code>~/.claude/CLAUDE.md</code> that applies everywhere, and one per project in the repository, usually checked into git. It's the right place for rules: how to run the tests, which branch to work on, how you like commits written. You write it and you keep it up to date.</p>
-<p><strong>Auto memory</strong> is Claude Code writing its own notes. It saves markdown files in a folder per project under <code>~/.claude/projects/</code>, with a <code>MEMORY.md</code> index that gets loaded into the next session. Only the first 200 lines of that index are loaded, so it works best as a short list of pointers.</p>
-<p>Both are plain files on one machine, read whole into the context window. That's their strength (you can open them and see exactly what Claude knows) and their limit.</p>
+<p><strong><a href="https://code.claude.com/docs/en/memory#claude-md-files">CLAUDE.md</a></strong> is a markdown file Claude Code reads at the start of every session. There's one for you in <code>~/.claude/CLAUDE.md</code> that applies everywhere, and one per project in the repository, usually checked into git. It's the right place for rules: how to run the tests, which branch to work on, how you like commits written. You write it and you keep it up to date.</p>
+<p><strong><a href="https://code.claude.com/docs/en/memory#auto-memory">Auto memory</a></strong> is Claude Code writing its own notes. It saves markdown files in <code>~/.claude/projects/&lt;project&gt;/memory/</code>, with a <code>MEMORY.md</code> index that gets loaded into the next session. Only the first 200 lines or 25KB of that index are loaded, whichever comes first, so it works best as a short list of pointers. Anthropic's own <a href="https://code.claude.com/docs/en/memory">memory documentation</a> covers both.</p>
+<p>Both are plain files on one machine (Anthropic's docs say of auto memory that "files are not shared across machines"), read whole into the context window. That's their strength (you can open them and see exactly what Claude knows) and their limit.</p>
 <h2 id="where-that-runs-out">Where that runs out</h2>
 <ul>
-<li><strong>Nothing is searched.</strong> A file is either loaded or it isn't. Once a project has hundreds of things worth knowing, they can't all be in the opening context, and there's no way to pull up the one that matters for the task in hand.</li>
+<li><strong>Nothing in CLAUDE.md or auto memory is searched.</strong> A file is either loaded or it isn't. Once a project has hundreds of things worth knowing, they can't all be in the opening context, and there's no way to pull up the one that matters for the task in hand.</li>
 <li><strong>Failures aren't kept.</strong> The most expensive thing to forget is what didn't work: the library that crashed on Alpine, the redirect WebKitGTK ignores. Nothing records that an approach was tried, how much effort it cost, and why it was dropped, so the agent suggests it again next month.</li>
 <li><strong>One machine, one agent.</strong> Notes on your laptop aren't on your desktop or your server, and Cursor or Codex can't read Claude Code's files.</li>
 <li><strong>Nothing tidies up.</strong> Old notes don't fade, contradictions sit side by side, and duplicates pile up until someone edits the file by hand.</li>
@@ -140,25 +152,25 @@
 <ul>
 <li><strong>Semantic recall.</strong> Memories are embedded locally (all-MiniLM-L6-v2, no GPU, no API calls) and searched by meaning, so "markdown editor preferences" finds the note that never used those words. Decisions, project context, preferences and ingested articles are searched together and ranked into one answer.</li>
 <li><strong>A graveyard of dead ends.</strong> When an approach is abandoned, OmniMem records what it was, why it failed and how much effort it took. Propose it again and recall leads with the warning.</li>
-<li><strong>Hooks that don't rely on the agent asking.</strong> On a benchmark with the answer sitting in the store, Claude Code made no memory calls at all in twenty runs: it simply didn't think to ask. So OmniMem also answers Claude Code hooks. It briefs each session with what the project already knows, refuses a tool call that repeats a recorded dead end, and records what the session did when it ends. The details are in the <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">hooks documentation</a>.</li>
+<li><strong>Hooks that don't rely on the agent asking.</strong> On <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md#why-these-exist">a benchmark</a> with the answer sitting in the store, Claude Code made no memory calls at all in twenty runs: it simply didn't think to ask. So OmniMem also answers Claude Code hooks. It briefs each session with what the project already knows, refuses a tool call that repeats a recorded dead end, and records what the session did when it ends. The details are in the <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">hooks documentation</a>.</li>
 <li><strong>One memory for every agent and machine.</strong> Run it on a server and every machine points at the same store. Claude Desktop, claude.ai, Cursor, Codex, Copilot and anything else that speaks MCP share it too.</li>
 <li><strong>It keeps itself in order.</strong> Memories move from active to deprioritised to archived, near-duplicates are caught on write, and contradictions are flagged so you can say which version is true.</li>
 </ul>
 <h2 id="set-it-up-in-two-minutes">Set it up in two minutes</h2>
 <ol type="1">
-<li><p><strong>Install OmniMem.</strong> Download the app for <a href="/#install">macOS, Windows or Linux</a>, or run the server in Docker. It serves MCP at <code>http://127.0.0.1:8765/mcp</code>.</p></li>
+<li><p><strong>Install OmniMem.</strong> Download the app for <a href="/#install">macOS, Windows or Linux</a>, or run the server <a href="/guides/docker/">in Docker</a>. It serves MCP at <code>http://127.0.0.1:8765/mcp</code>.</p></li>
 <li><p><strong>Connect Claude Code.</strong> From the app's tray or menu bar icon, pick <strong>Add to Claude Code</strong>. Or run it yourself:</p>
 <pre class="bash"><code>claude mcp add --transport http --scope user omnimem http://127.0.0.1:8765/mcp</code></pre></li>
 <li><p><strong>Install the hooks</strong>, so every session starts briefed and known dead ends are stopped before they run. This adds them to <code>~/.claude/settings.json</code> and keeps a backup of the old file:</p>
 <pre class="bash"><code>omnimem install-hooks</code></pre>
-<p>With the Mac app, the <code>omnimem</code> binary lives inside the app bundle rather than on your PATH. The <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">hooks documentation</a> covers that, and adding the entries by hand.</p></li>
+<p>With the Mac app, the <code>omnimem</code> binary lives inside the app bundle rather than on your PATH, so run <code>/Applications/OmniMem.app/Contents/MacOS/omnimem install-hooks</code> instead. The <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">hooks documentation</a> covers adding the entries by hand.</p></li>
 </ol>
 <p>The <a href="/guides/claude-code/">Claude Code guide</a> covers access tokens, project-level config and troubleshooting, and the other <a href="/guides/">setup guides</a> cover servers, a Raspberry Pi and the cloud.</p>
 <h2 id="keep-claudemd-as-well">Keep CLAUDE.md as well</h2>
 <p>OmniMem doesn't replace <code>CLAUDE.md</code>, and you shouldn't delete yours. A short file of standing rules, loaded every time, is exactly what it's good at. Let <code>CLAUDE.md</code> say how the project works, and let OmniMem hold what you've learnt while working on it: the decisions, the bugs, the dead ends and the context that's too big to load whole.</p>
 <p>OmniMem is MIT licensed and free. The source is on <a href="https://code.squarecows.com/ric/omnimem">Forgejo</a>, with a <a href="https://github.com/richarvey/OmniMem">mirror on GitHub</a>.</p>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-11-03">3 November 2026</time></span><a href="/guides/">Setup guides</a></p>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-11-03">3 November 2026</time></span><a href="/guides/">Setup guides</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

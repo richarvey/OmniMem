@@ -164,10 +164,19 @@ a:hover{color:#8fd6ab}
 .omm-prose th,.omm-prose td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid #20242b}
 .omm-prose th{font-family:"Ubuntu Mono",monospace;font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#969ca5;background:#101216}
 .omm-prose tr:last-child td{border-bottom:0}
-.omm-code{position:relative;margin:0 0 22px}
-.omm-code>pre{margin:0;padding-right:76px}
-.omm-copy{position:absolute;top:8px;right:8px;font-family:"Ubuntu Mono",monospace;font-size:11px;color:#969ca5;background:#121418;border:1px solid #262a31;border-radius:5px;padding:6px 11px;cursor:pointer}
+.omm-code{margin:0 0 22px;border:1px solid #262a31;border-radius:10px;background:#121418;overflow:hidden}
+.omm-code-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding:4px 6px 4px 14px;border-bottom:1px solid #1b1e24;background:#0f1114}
+.omm-code-lang{font-family:"Ubuntu Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#868c96}
+.omm-prose .omm-code>pre{margin:0;border:0;border-radius:0;background:none}
+.omm-copy{font-family:"Ubuntu Mono",monospace;font-size:12px;color:#969ca5;background:transparent;border:1px solid #262a31;border-radius:6px;min-height:30px;padding:4px 12px;cursor:pointer}
 .omm-copy:hover,.omm-copy:focus-visible{color:#e7e9ec;border-color:#63bd85;outline:none}
+.omm-related{margin:48px 0 0;padding:22px 24px 6px;border:1px solid #262a31;border-radius:12px;background:#101216}
+.omm-prose .omm-related h2{font-size:19px;margin:0 0 12px}
+.omm-related p{margin:0 0 8px;font-size:15px}
+.omm-prose .omm-related ul{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-wrap:wrap;gap:8px}
+.omm-prose .omm-related li{margin:0}
+.omm-prose .omm-related ul a{display:inline-block;font-family:"Ubuntu Mono",monospace;font-size:13px;text-decoration:none;color:#c9cdd3;border:1px solid #262a31;border-radius:100px;padding:7px 13px;background:#14171b}
+.omm-prose .omm-related ul a:hover,.omm-prose .omm-related ul a:focus-visible{border-color:#63bd85;color:#e7e9ec;outline:none}
 .omm-lede{font-size:18px;line-height:1.65;color:#969ca5;margin:0 0 30px}
 .omm-meta{font-family:"Ubuntu Mono",monospace;font-size:12.5px;color:#868c96;margin:48px 0 0;padding-top:20px;border-top:1px solid #262a31;display:flex;flex-wrap:wrap;gap:8px 20px}
 .omm-meta a{color:#969ca5;text-decoration:underline;text-underline-offset:3px}

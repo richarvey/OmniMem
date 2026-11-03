@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Setting Up OmniMem on Google Cloud Platform (Linux) | OmniMem</title>
-  <meta name="description" content="This guide puts OmniMem on a Compute Engine VM. The GCP-specific parts are clearly marked, and the Linux parts work anywhere.">
+  <meta name="description" content="Set up OmniMem on a Google Cloud Compute Engine VM: firewall, the .deb, configuration, HTTPS with Caddy, connecting your agent and RSS feeds.">
   <meta name="author" content="Ric Harvey, SquareCows Ltd">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0c0e">
@@ -13,14 +13,14 @@
   <meta property="og:site_name" content="OmniMem">
   <meta property="og:url" content="https://omnimem.org/guides/gcp-linux/">
   <meta property="og:title" content="Setting Up OmniMem on Google Cloud Platform (Linux) | OmniMem">
-  <meta property="og:description" content="This guide puts OmniMem on a Compute Engine VM. The GCP-specific parts are clearly marked, and the Linux parts work anywhere.">
+  <meta property="og:description" content="Set up OmniMem on a Google Cloud Compute Engine VM: firewall, the .deb, configuration, HTTPS with Caddy, connecting your agent and RSS feeds.">
   <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:locale" content="en_GB">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Setting Up OmniMem on Google Cloud Platform (Linux) | OmniMem">
-  <meta name="twitter:description" content="This guide puts OmniMem on a Compute Engine VM. The GCP-specific parts are clearly marked, and the Linux parts work anywhere.">
+  <meta name="twitter:description" content="Set up OmniMem on a Google Cloud Compute Engine VM: firewall, the .deb, configuration, HTTPS with Caddy, connecting your agent and RSS feeds.">
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -50,32 +50,44 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "Google Cloud Platform (Linux)",
+          "name": "Google Cloud",
           "item": "https://omnimem.org/guides/gcp-linux/"
         }
       ]
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/guides/gcp-linux/#article",
       "headline": "Setting Up OmniMem on Google Cloud Platform (Linux)",
-      "description": "This guide puts OmniMem on a Compute Engine VM. The GCP-specific parts are clearly marked, and the Linux parts work anywhere.",
+      "description": "Set up OmniMem on a Google Cloud Compute Engine VM: firewall, the .deb, configuration, HTTPS with Caddy, connecting your agent and RSS feeds.",
       "url": "https://omnimem.org/guides/gcp-linux/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/guides/gcp-linux/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-07-17",
       "dateModified": "2026-10-21",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -125,7 +137,7 @@
   </div>
 </header>
 <main class="omm-page">
-<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Google Cloud Platform (Linux)</li></ol></nav>
+<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Google Cloud</li></ol></nav>
 <article class="omm-prose">
 <span class="omm-eyebrow">Setup guide</span>
 <h1 id="setting-up-omnimem-on-google-cloud-platform-linux">Setting Up OmniMem on Google Cloud Platform (Linux)</h1>
@@ -333,7 +345,8 @@ sudo systemctl restart omnimem</code></pre>
 <p><strong>External IP changed after a restart</strong>: reserve a static IP (above) and update DNS.</p>
 <p><strong>Let's Encrypt won't issue a certificate</strong>: ports 80 and 443 have to be open and your DNS A record has to point at the VM. <code>journalctl -u caddy</code> explains.</p>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-10-21">21 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-gcp-linux.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>Then connect your agent:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Or run it somewhere else:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-21">21 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-gcp-linux.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

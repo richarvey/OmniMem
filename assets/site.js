@@ -60,25 +60,33 @@
   });
   items.forEach(function(el){ observer.observe(el); });
 })();
-/* Copy buttons on code blocks. */
+/* Code blocks get a header bar with the language and a copy button, so
+   the button never sits on top of the code, however narrow the screen. */
 (function(){
   document.querySelectorAll('.omm-prose pre').forEach(function(pre){
+    var lang = (pre.className || '').split(' ')[0];
+    var bar = document.createElement('div');
+    bar.className = 'omm-code-bar';
+    var label = document.createElement('span');
+    label.className = 'omm-code-lang';
+    label.textContent = lang;
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'omm-copy';
     btn.textContent = 'copy';
-    btn.setAttribute('aria-label', 'Copy this code');
+    btn.setAttribute('aria-label', lang ? 'Copy this ' + lang + ' code' : 'Copy this code');
     btn.addEventListener('click', function(){
       var code = pre.querySelector('code') || pre;
       if (navigator.clipboard) navigator.clipboard.writeText(code.innerText);
       btn.textContent = 'copied \u2713';
       setTimeout(function(){ btn.textContent = 'copy'; }, 1400);
     });
-    // The button sits on a wrapper, so it stays put while a long line scrolls.
     var wrap = document.createElement('div');
     wrap.className = 'omm-code';
     pre.parentNode.insertBefore(wrap, pre);
+    bar.appendChild(label);
+    bar.appendChild(btn);
+    wrap.appendChild(bar);
     wrap.appendChild(pre);
-    wrap.appendChild(btn);
   });
 })();

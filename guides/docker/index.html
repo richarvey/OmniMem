@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Running OmniMem in Docker | OmniMem</title>
-  <meta name="description" content="OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web UI container, no RSS worker, no Compose file with four services and a health…">
+  <meta name="description" content="Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.">
   <meta name="author" content="Ric Harvey, SquareCows Ltd">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0c0e">
@@ -13,14 +13,14 @@
   <meta property="og:site_name" content="OmniMem">
   <meta property="og:url" content="https://omnimem.org/guides/docker/">
   <meta property="og:title" content="Running OmniMem in Docker | OmniMem">
-  <meta property="og:description" content="OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web UI container, no RSS worker, no Compose file with four services and a health…">
+  <meta property="og:description" content="Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.">
   <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:locale" content="en_GB">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Running OmniMem in Docker | OmniMem">
-  <meta name="twitter:description" content="OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web UI container, no RSS worker, no Compose file with four services and a health…">
+  <meta name="twitter:description" content="Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.">
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -50,32 +50,44 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "Running OmniMem in Docker",
+          "name": "Docker",
           "item": "https://omnimem.org/guides/docker/"
         }
       ]
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/guides/docker/#article",
       "headline": "Running OmniMem in Docker",
-      "description": "OmniMem 7 is one binary, so the Docker setup is one container. No Valkey, no web UI container, no RSS worker, no Compose file with four services and a health…",
+      "description": "Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.",
       "url": "https://omnimem.org/guides/docker/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/guides/docker/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-09-15",
       "dateModified": "2026-10-29",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -125,7 +137,7 @@
   </div>
 </header>
 <main class="omm-page">
-<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Running OmniMem in Docker</li></ol></nav>
+<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Docker</li></ol></nav>
 <article class="omm-prose">
 <span class="omm-eyebrow">Setup guide</span>
 <h1 id="running-omnimem-in-docker">Running OmniMem in Docker</h1>
@@ -236,7 +248,8 @@ docker compose up -d</code></pre>
 <p><strong>Clients get 401</strong>: the token after <code>Bearer</code> has to match <code>MCP_AUTH_TOKEN</code> exactly.</p>
 <p><strong>Clients get 421 (403 on 7.0.5 and earlier)</strong>: the Host header isn't trusted. Connecting by the machine's IP counts too. Set <code>OAUTH_BASE_URL</code> or <code>MCP_PUBLIC_URL</code> to the public address, or add names to <code>MCP_ALLOWED_HOSTS</code>.</p>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-10-29">29 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/docker.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>Then connect your agent:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Or run it somewhere else:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-29">29 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/docker.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

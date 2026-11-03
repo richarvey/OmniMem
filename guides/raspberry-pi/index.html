@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Setting Up OmniMem on a Raspberry Pi | OmniMem</title>
-  <meta name="description" content="A Raspberry Pi under the desk is a lovely home for OmniMem. It&#x27;s on all the time, it sips power, and OmniMem 7 is a single arm64 binary that doesn&#x27;t care…">
+  <meta name="description" content="Run OmniMem on a Raspberry Pi: the arm64 .deb and its systemd service, configuration, connecting your agent, RSS feeds and keeping it running.">
   <meta name="author" content="Ric Harvey, SquareCows Ltd">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0c0e">
@@ -13,14 +13,14 @@
   <meta property="og:site_name" content="OmniMem">
   <meta property="og:url" content="https://omnimem.org/guides/raspberry-pi/">
   <meta property="og:title" content="Setting Up OmniMem on a Raspberry Pi | OmniMem">
-  <meta property="og:description" content="A Raspberry Pi under the desk is a lovely home for OmniMem. It&#x27;s on all the time, it sips power, and OmniMem 7 is a single arm64 binary that doesn&#x27;t care…">
+  <meta property="og:description" content="Run OmniMem on a Raspberry Pi: the arm64 .deb and its systemd service, configuration, connecting your agent, RSS feeds and keeping it running.">
   <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:locale" content="en_GB">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Setting Up OmniMem on a Raspberry Pi | OmniMem">
-  <meta name="twitter:description" content="A Raspberry Pi under the desk is a lovely home for OmniMem. It&#x27;s on all the time, it sips power, and OmniMem 7 is a single arm64 binary that doesn&#x27;t care…">
+  <meta name="twitter:description" content="Run OmniMem on a Raspberry Pi: the arm64 .deb and its systemd service, configuration, connecting your agent, RSS feeds and keeping it running.">
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -50,32 +50,44 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "a Raspberry Pi",
+          "name": "Raspberry Pi",
           "item": "https://omnimem.org/guides/raspberry-pi/"
         }
       ]
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/guides/raspberry-pi/#article",
       "headline": "Setting Up OmniMem on a Raspberry Pi",
-      "description": "A Raspberry Pi under the desk is a lovely home for OmniMem. It's on all the time, it sips power, and OmniMem 7 is a single arm64 binary that doesn't care…",
+      "description": "Run OmniMem on a Raspberry Pi: the arm64 .deb and its systemd service, configuration, connecting your agent, RSS feeds and keeping it running.",
       "url": "https://omnimem.org/guides/raspberry-pi/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/guides/raspberry-pi/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-07-17",
       "dateModified": "2026-10-21",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -125,7 +137,7 @@
   </div>
 </header>
 <main class="omm-page">
-<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">a Raspberry Pi</li></ol></nav>
+<nav class="omm-crumbs" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Raspberry Pi</li></ol></nav>
 <article class="omm-prose">
 <span class="omm-eyebrow">Setup guide</span>
 <h1 id="setting-up-omnimem-on-a-raspberry-pi">Setting Up OmniMem on a Raspberry Pi</h1>
@@ -235,7 +247,8 @@ sudo systemctl restart omnimem</code></pre>
 <p><strong>Can't connect from another machine</strong>: check <code>MCP_HOST=0.0.0.0</code> is set, the service was restarted, and your client is sending the token. <code>curl http://&lt;pi-ip&gt;:8765/healthz</code> from the other machine tells you whether the network part works.</p>
 <p><strong>Clients get 401</strong>: the token after <code>Bearer</code> has to match <code>MCP_AUTH_TOKEN</code> exactly.</p>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-10-21">21 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-raspberry-pi.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>Then connect your agent:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Or run it somewhere else:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-21">21 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-raspberry-pi.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

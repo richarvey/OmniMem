@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Connecting OmniMem to Kiro | OmniMem</title>
-  <meta name="description" content="Kiro is AWS&#x27;s AI IDE, built on VS Code, and it plans before it codes. It supports Streamable HTTP MCP servers, and its spec-driven workflow pairs rather…">
+  <meta name="description" content="Connect Kiro, AWS&#x27;s AI IDE, to OmniMem over Streamable HTTP: the MCP config, user or project scope, Kiro&#x27;s MCP panel and known quirks.">
   <meta name="author" content="Ric Harvey, SquareCows Ltd">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0c0e">
@@ -13,14 +13,14 @@
   <meta property="og:site_name" content="OmniMem">
   <meta property="og:url" content="https://omnimem.org/guides/kiro/">
   <meta property="og:title" content="Connecting OmniMem to Kiro | OmniMem">
-  <meta property="og:description" content="Kiro is AWS&#x27;s AI IDE, built on VS Code, and it plans before it codes. It supports Streamable HTTP MCP servers, and its spec-driven workflow pairs rather…">
+  <meta property="og:description" content="Connect Kiro, AWS&#x27;s AI IDE, to OmniMem over Streamable HTTP: the MCP config, user or project scope, Kiro&#x27;s MCP panel and known quirks.">
   <meta property="og:image" content="https://omnimem.org/omnimem-social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:locale" content="en_GB">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Connecting OmniMem to Kiro | OmniMem">
-  <meta name="twitter:description" content="Kiro is AWS&#x27;s AI IDE, built on VS Code, and it plans before it codes. It supports Streamable HTTP MCP servers, and its spec-driven workflow pairs rather…">
+  <meta name="twitter:description" content="Connect Kiro, AWS&#x27;s AI IDE, to OmniMem over Streamable HTTP: the MCP config, user or project scope, Kiro&#x27;s MCP panel and known quirks.">
   <meta name="twitter:image" content="https://omnimem.org/omnimem-social.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -57,25 +57,37 @@
     },
     {
       "@type": "TechArticle",
+      "@id": "https://omnimem.org/guides/kiro/#article",
       "headline": "Connecting OmniMem to Kiro",
-      "description": "Kiro is AWS's AI IDE, built on VS Code, and it plans before it codes. It supports Streamable HTTP MCP servers, and its spec-driven workflow pairs rather…",
+      "description": "Connect Kiro, AWS's AI IDE, to OmniMem over Streamable HTTP: the MCP config, user or project scope, Kiro's MCP panel and known quirks.",
       "url": "https://omnimem.org/guides/kiro/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://omnimem.org/guides/kiro/"
+      },
+      "image": [
+        "https://omnimem.org/omnimem-social.png"
+      ],
+      "datePublished": "2026-03-24",
       "dateModified": "2026-09-15",
       "inLanguage": "en-GB",
       "author": {
+        "@id": "https://omnimem.org/#ric",
         "@type": "Person",
-        "name": "Ric Harvey",
-        "url": "https://www.linkedin.com/in/richarvey"
+        "name": "Ric Harvey"
       },
       "publisher": {
+        "@id": "https://squarecows.com/#org",
         "@type": "Organization",
-        "name": "SquareCows Ltd",
-        "url": "https://squarecows.com"
+        "name": "SquareCows Ltd"
       },
       "about": {
+        "@id": "https://omnimem.org/#software",
         "@type": "SoftwareApplication",
-        "name": "OmniMem",
-        "url": "https://omnimem.org/"
+        "name": "OmniMem"
+      },
+      "isPartOf": {
+        "@id": "https://omnimem.org/#website"
       }
     }
   ]
@@ -212,7 +224,8 @@
 <li>Check the <a href="https://kiro.dev/docs/mcp/configuration/">Kiro documentation</a> for the latest MCP options</li>
 </ul>
 
-<p class="omm-meta"><span>Updated <time datetime="2026-09-15">15 September 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/kiro.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>OmniMem needs to be running first:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-tailscale/">Linux with Tailscale Funnel</a></li></ul><p>Connecting another agent as well:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li></ul></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-09-15">15 September 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/kiro.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

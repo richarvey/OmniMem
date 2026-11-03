@@ -9,6 +9,11 @@
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
+# Pages serves 404.html at /404 with a 200, and _redirects can't change a
+# status to 404. The page already says noindex; this says it in the header too.
+/404
+  X-Robots-Tag: noindex
+
 # Fonts never change under the same name: a new font gets a new file name.
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
