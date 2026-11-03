@@ -88,6 +88,7 @@ pub(crate) async fn handler(
         "contradictions": json_list(data.get("contradictions")),
         "reinstate_hints": json_list(data.get("reinstate_hints")),
         "deprioritised_reason": text("deprioritised_reason"),
+        "archived_reason": text("archived_reason"),
         "source_url": text("source_url"),
         // Linked only when it is a web address; anything else is shown as text.
         "source_is_web": is_web_url(&text("source_url")),

@@ -38,7 +38,7 @@ A field that isn't in these specs (something an old 6.x version wrote, say) surv
 
 ### Everything that isn't a memory
 
-Records that were other Valkey keys in 6.x live in the `kv` table, as a hash, a set or a string with an optional expiry: `meta:*` (maintenance counters, skill proposals, tool metrics, the feed influence mirror, caches), `log:recall:*` (a recall log entry per query, kept for 30 days), `topics:suppressed` (the suppressed topic set) and `qexp:*` (the query expansion cache). An expired row reads as absent. The enrichment queue has its own table (`enrich_queue`), so a queued job survives a crash, and OAuth clients, codes and tokens have theirs.
+Records that were other Valkey keys in 6.x live in the `kv` table, as a hash, a set or a string with an optional expiry: `meta:*` (maintenance counters, skill proposals, tool metrics, the feed influence mirror, caches), `log:recall:*` (a recall log entry per query, kept for 30 days), `topics:suppressed` (the suppressed topic set) and `topics:suppressed:reasons` (why, keyed by topic) and `qexp:*` (the query expansion cache). An expired row reads as absent. The enrichment queue has its own table (`enrich_queue`), so a queued job survives a crash, and OAuth clients, codes and tokens have theirs.
 
 Backups (`dump_to_file()`, or `omnimem export`) write the 6.x JSON format: every memory plus the `topics:`, `log:recall:` and `meta:` records. Vectors aren't in a backup; `omnimem import <file>` and `restore_from_file()` re-embed on the way in.
 
@@ -90,7 +90,7 @@ Allowed transitions:
 - `archived` → `active`, `deleted`
 - `deleted` → nothing (the row is gone)
 
-Deprioritising with a reason writes `deprioritised_reason`. Reinstating sets it back to `""` and resets `surface_score` to 1.0. `reinstate_hints` (a JSON array of keywords) marks a deprioritised memory as a reinstate candidate when a recall query mentions one of them. Deprioritising something with an effort score of 4 or 5 still works, but the result warns you that it was hard-won.
+Deprioritising with a reason writes `deprioritised_reason`. Reinstating sets it back to `""` and resets `surface_score` to 1.0. Archiving with a reason writes `archived_reason` instead, and reinstating empties that too. `reinstate_hints` (a JSON array of keywords) marks a deprioritised memory as a reinstate candidate when a recall query mentions one of them. Deprioritising something with an effort score of 4 or 5 still works, but the result warns you that it was hard-won.
 
 ## Calling the cross-namespace tools
 

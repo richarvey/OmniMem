@@ -614,6 +614,11 @@ impl Engine {
             {
                 updates.insert("deprioritised_reason".to_owned(), r.to_owned());
             }
+            // Nothing here archives, but reinstating brings archived memories
+            // back, and their archive reason goes as `transition` drops it.
+            if new_state == MemoryState::Active {
+                updates.insert("archived_reason".to_owned(), String::new());
+            }
             self.store.set_fields_multi(&to_change, &updates)?
         } else {
             0

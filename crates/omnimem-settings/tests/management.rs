@@ -211,6 +211,22 @@ async fn topics_are_suppressed_and_released() {
 }
 
 #[tokio::test]
+async fn the_suppressions_page_shows_each_topics_reason() {
+    let (panel, engine) = setup();
+    engine
+        .suppress_topic("kubernetes", Some("far too noisy"))
+        .unwrap();
+    engine.suppress_topic("docker", None).unwrap();
+
+    let page = text(&get(&panel, "/suppressions").await);
+    assert!(page.contains("far too noisy"), "{page}");
+    assert!(page.contains("docker"), "{page}");
+
+    let removed = text(&post(&panel, "/suppressions/remove", "topic=kubernetes").await);
+    assert!(!removed.contains("far too noisy"), "{removed}");
+}
+
+#[tokio::test]
 async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
     let (panel, engine) = setup();
     let hot = remember(&engine, "Recalled often", "omnimem");

@@ -22,7 +22,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 | `forget(key_or_query, confirm?)` | Permanent delete. Without `confirm=True` it only previews, and the preview's `hint` says so |
 | `suppress_topic(topic, reason?)` | Filter a topic out of every recall until you lift it |
 | `unsuppress_topic(topic)` | Lift a suppression |
-| `list_suppressions()` | What's currently suppressed |
+| `list_suppressions()` | What's currently suppressed, with a `reasons` map for the topics that were given one |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Clusters of near-identical memories (threshold 0.92 by default) |
 | `check_contradictions(query?, namespace?, project_filter?, use_api?)` | Tier 1 heuristic scan, or tier 2 verification with Claude when `use_api=True` |
 | `briefing(project?, include_knowledge?)` | The session-start call: project context, experience summary, stale memories, new articles, contradictions, reinstate candidates and the skill sections. Runs auto-maintenance and the auto skill scan on their intervals |

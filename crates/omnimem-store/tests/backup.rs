@@ -224,6 +224,34 @@ fn newer_records_in_the_store_win() {
 }
 
 #[test]
+fn suppression_reasons_travel_in_a_backup() {
+    let source = Store::open_in_memory().unwrap();
+    source
+        .hash_set(
+            "topics:suppressed:reasons",
+            &Fields::from([("alpine".to_owned(), "musl trouble".to_owned())]),
+        )
+        .unwrap();
+    let dump = source.dump().unwrap();
+    assert_eq!(
+        dump.data["topics:suppressed:reasons"],
+        json!({"alpine": "musl trouble"})
+    );
+
+    let target = Store::open_in_memory().unwrap();
+    target
+        .restore_backup(&dump, Some(&Fake), &mut |_, _| {})
+        .unwrap();
+    assert_eq!(
+        target
+            .hash_get_all("topics:suppressed:reasons")
+            .unwrap()
+            .unwrap()["alpine"],
+        "musl trouble"
+    );
+}
+
+#[test]
 fn export_then_import_round_trips() {
     let source = Store::open_in_memory().unwrap();
     source

@@ -240,6 +240,13 @@
 </div>
 {% endif %}
 
+{% if memory.archived_reason %}
+<div style="margin-bottom:1.5rem">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Archived Reason</h3>
+  <p style="color:var(--yellow);font-size:0.9rem">{{ memory.archived_reason }}</p>
+</div>
+{% endif %}
+
 <div class="action-bar">
   {% if memory.state == 'active' %}
   <form method="POST" action="/lifecycle/deprioritise" style="display:inline">

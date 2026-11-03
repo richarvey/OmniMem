@@ -891,3 +891,73 @@ fn health_and_version() {
     assert_eq!(h["vectors"]["preference"], json!(1));
     assert!(e.version()["version"].as_str().unwrap().starts_with('7'));
 }
+
+#[test]
+fn an_archive_reason_is_kept_and_cleared_on_reinstate() {
+    let e = engine();
+    put(&e, "mem:episodic:ar", "to be archived", &[]);
+    e.archive("mem:episodic:ar", Some("superseded by the new design"))
+        .unwrap();
+    let stored = e.store().get("mem:episodic:ar").unwrap().unwrap();
+    assert_eq!(stored["state"], "archived");
+    assert_eq!(stored["archived_reason"], "superseded by the new design");
+    assert!(
+        !stored.contains_key("deprioritised_reason"),
+        "6.x's field is left alone"
+    );
+    assert_eq!(
+        e.explain_memory("mem:episodic:ar").unwrap()["archived_reason"],
+        "superseded by the new design"
+    );
+
+    e.reinstate("mem:episodic:ar").unwrap();
+    let stored = e.store().get("mem:episodic:ar").unwrap().unwrap();
+    assert_eq!(stored["state"], "active");
+    assert_eq!(stored["archived_reason"], "");
+
+    // No reason, nothing stored.
+    put(&e, "mem:episodic:bare", "archived bare", &[]);
+    e.archive("mem:episodic:bare", None).unwrap();
+    assert!(
+        !e.store()
+            .get("mem:episodic:bare")
+            .unwrap()
+            .unwrap()
+            .contains_key("archived_reason")
+    );
+}
+
+#[test]
+fn suppression_reasons_are_kept_listed_replaced_and_removed() {
+    let e = engine();
+    assert_eq!(
+        e.suppress_topic("Kubernetes", Some("too noisy")).unwrap(),
+        json!({"topic": "Kubernetes", "reason": "too noisy"})
+    );
+    e.suppress_topic("docker", None).unwrap();
+    assert_eq!(
+        e.list_suppressions().unwrap(),
+        json!({
+            "suppressed_topics": ["docker", "kubernetes"],
+            "reasons": {"kubernetes": "too noisy"},
+        })
+    );
+
+    e.suppress_topic("KUBERNETES", Some("still noisy")).unwrap();
+    assert_eq!(
+        e.list_suppressions().unwrap()["reasons"],
+        json!({"kubernetes": "still noisy"})
+    );
+
+    e.unsuppress_topic("Kubernetes").unwrap();
+    assert_eq!(
+        e.list_suppressions().unwrap(),
+        json!({"suppressed_topics": ["docker"]})
+    );
+    assert!(
+        e.store()
+            .hash_get_all("topics:suppressed:reasons")
+            .unwrap()
+            .is_none()
+    );
+}

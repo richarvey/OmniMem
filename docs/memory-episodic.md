@@ -66,6 +66,7 @@ Recording an `abandoned` outcome with an effort score of 4 or 5 lists the approa
 | Field | Format | Description |
 |-------|--------|-------------|
 | `deprioritised_reason` | string | Why it was deprioritised. Set to `""` on reinstate. |
+| `archived_reason` | string | Why it was archived, including the maintenance pass's "auto-maintenance: duplicate of <key>". Set to `""` on reinstate. |
 | `reinstate_hints` | JSON array of strings | Keywords that make this deprioritised memory a reinstate candidate when a recall query mentions one. |
 | `contradictions` | JSON array | Cross-links from contradiction detection: `{"key", "explanation", "detected_at"}`, written to both memories and de-duplicated by key. |
 | `recall_count` / `last_recalled` | int string / unix seconds string | Recall counters. |

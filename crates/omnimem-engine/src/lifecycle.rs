@@ -11,6 +11,9 @@ use crate::recall::mentions;
 use crate::{Engine, Result};
 
 pub(crate) const SUPPRESSED_KEY: &str = "topics:suppressed";
+/// Why each topic was suppressed: a hash keyed by the lowercased topic. It
+/// sits under `topics:`, so a backup carries it with the set.
+pub(crate) const SUPPRESSED_REASONS_KEY: &str = "topics:suppressed:reasons";
 /// Shortest topic, abandoned-approach name or reinstate hint that may match
 /// against text: anything shorter appears inside most words.
 pub(crate) const MIN_TOPIC_CHARS: usize = 3;
@@ -131,6 +134,17 @@ impl Engine {
                 && let Some(reason) = reason.filter(|r| !r.is_empty())
             {
                 updates.insert("deprioritised_reason".to_owned(), reason.to_owned());
+            }
+            // An archive reason is kept beside, never in, the deprioritised
+            // one (6.x readers know only that). Reinstating empties it, as
+            // it empties `deprioritised_reason`, so it never describes a past
+            // state; an archived memory can only go back to active.
+            if new_state == MemoryState::Archived {
+                if let Some(reason) = reason.filter(|r| !r.is_empty()) {
+                    updates.insert("archived_reason".to_owned(), reason.to_owned());
+                }
+            } else if data.get("archived_reason").is_some_and(|r| !r.is_empty()) {
+                updates.insert("archived_reason".to_owned(), String::new());
             }
             self.store.set_fields(key, &updates)?;
         }

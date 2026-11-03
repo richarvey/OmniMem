@@ -250,16 +250,20 @@ async fn suppressions_page(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let topics = blocking(move || {
+    let listed = blocking(move || {
         change(&engine)?;
-        Ok(engine.list_suppressions()?["suppressed_topics"].clone())
+        engine.list_suppressions()
     })
     .await;
-    match topics {
-        Ok(topics) => page(
+    match listed {
+        Ok(listed) => page(
             state.templates(),
             "suppressions.html",
-            context! { current_page => "suppressions", topics },
+            context! {
+                current_page => "suppressions",
+                topics => listed["suppressed_topics"].clone(),
+                reasons => listed["reasons"].clone(),
+            },
         ),
         Err(failure) => failure,
     }

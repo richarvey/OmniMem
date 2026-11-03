@@ -469,8 +469,18 @@ fn bulk_project_tools_preview_then_apply() {
         Some("active")
     );
 
+    e.archive("mem:episodic:01A", Some("shelved")).unwrap();
+    assert_eq!(
+        field(&e, "mem:episodic:01A", "archived_reason").as_deref(),
+        Some("shelved")
+    );
     let back = e.reinstate_project("gamma", true, false).unwrap();
     assert_eq!(back["total"], 3, "the archived memory comes back too");
+    assert_eq!(
+        field(&e, "mem:episodic:01A", "archived_reason").as_deref(),
+        Some(""),
+        "a project-wide reinstate drops the archive reason"
+    );
 
     let preview = e.delete_project("gamma", false, false).unwrap();
     assert_eq!(preview["total"], 3);
@@ -785,6 +795,10 @@ fn briefing_lists_stale_memories_and_runs_maintenance_on_its_interval() {
     assert_eq!(
         field(&e, "mem:episodic:01C", "state").as_deref(),
         Some("archived")
+    );
+    assert_eq!(
+        field(&e, "mem:episodic:01C", "archived_reason").as_deref(),
+        Some("auto-maintenance: duplicate of mem:episodic:01D")
     );
     let meta = e
         .store()

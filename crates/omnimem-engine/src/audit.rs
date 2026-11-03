@@ -237,6 +237,7 @@ impl Engine {
         m.insert("lesson".into(), opt("lesson"));
         m.insert("gotchas".into(), opt("gotchas"));
         m.insert("deprioritised_reason".into(), opt("deprioritised_reason"));
+        m.insert("archived_reason".into(), opt("archived_reason"));
         m.insert(
             "reinstate_hints".into(),
             safe_json(data.get("reinstate_hints")),

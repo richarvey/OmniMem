@@ -19,7 +19,8 @@ use crate::classification::{classification_fields, licence_for_write, provenance
 use crate::domains::DomainInput;
 use crate::error::invalid;
 use crate::lifecycle::{
-    MAX_TOPIC_CHARS, MIN_TOPIC_CHARS, MemoryState, SUPPRESSED_KEY, validate_reinstate_hints,
+    MAX_TOPIC_CHARS, MIN_TOPIC_CHARS, MemoryState, SUPPRESSED_KEY, SUPPRESSED_REASONS_KEY,
+    validate_reinstate_hints,
 };
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
@@ -980,8 +981,17 @@ impl Engine {
         if let Some(reason) = reason {
             validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
+        let topic_key = trimmed.to_lowercase();
         self.store
-            .set_add(SUPPRESSED_KEY, &[trimmed.to_lowercase()])?;
+            .set_add(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
+        // A new reason replaces the old one; suppressing again without one
+        // leaves what was said before standing.
+        if let Some(reason) = reason.filter(|r| !r.is_empty()) {
+            self.store.hash_set(
+                SUPPRESSED_REASONS_KEY,
+                &Fields::from([(topic_key, reason.to_owned())]),
+            )?;
+        }
         info!(topic, "suppressed topic");
         let mut m = Map::new();
         m.insert("topic".into(), topic.into());
@@ -990,13 +1000,33 @@ impl Engine {
     }
 
     pub fn unsuppress_topic(&self, topic: &str) -> Result<Value> {
+        let topic_key = topic.to_lowercase();
         self.store
-            .set_remove(SUPPRESSED_KEY, &[topic.to_lowercase()])?;
+            .set_remove(SUPPRESSED_KEY, std::slice::from_ref(&topic_key))?;
+        self.store
+            .hash_delete_fields(SUPPRESSED_REASONS_KEY, &[topic_key.as_str()])?;
         Ok(json!({"topic": topic}))
     }
 
     pub fn list_suppressions(&self) -> Result<Value> {
-        Ok(json!({"suppressed_topics": self.suppressed_topics()?}))
+        let topics = self.suppressed_topics()?;
+        let mut m = Map::new();
+        // Added in 7.0.6, and only when a topic has a reason, so the 6.x
+        // shape is untouched until one is given. Keyed by the topics listed.
+        let reasons = self
+            .store
+            .hash_get_all(SUPPRESSED_REASONS_KEY)?
+            .unwrap_or_default();
+        let reasons: Map<String, Value> = reasons
+            .into_iter()
+            .filter(|(topic, reason)| topics.contains(topic) && !reason.is_empty())
+            .map(|(topic, reason)| (topic, reason.into()))
+            .collect();
+        m.insert("suppressed_topics".into(), json!(topics));
+        if !reasons.is_empty() {
+            m.insert("reasons".into(), reasons.into());
+        }
+        Ok(Value::Object(m))
     }
 
     pub fn find_duplicates(
