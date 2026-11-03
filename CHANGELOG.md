@@ -2,6 +2,14 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.6] - unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
 ## [7.0.5] - 2026-10-29
 
 ### Added
