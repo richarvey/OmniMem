@@ -22,6 +22,7 @@ OmniMem speaks MCP over Streamable HTTP at `/mcp`, so anything that can use a re
 | Where | What it uses |
 |-------|--------------|
 | [macOS](omnimem-setup-macos.md) | The menu bar app from the DMG |
+| [Windows](omnimem-setup-windows.md) | The tray app from the MSI (not signed yet) |
 | [Raspberry Pi](omnimem-setup-raspberry-pi.md) | The arm64 `.deb` and its systemd service |
 | [AWS](omnimem-setup-aws-linux.md) | The `.deb` or `.rpm`, with Caddy for HTTPS |
 | [Google Cloud](omnimem-setup-gcp-linux.md) | The `.deb`, with Caddy for HTTPS |
