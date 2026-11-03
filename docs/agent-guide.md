@@ -176,7 +176,7 @@ OmniMem can compile your accumulated experience in a domain into a loadable skil
 
 1. `compile_skill("<domain>")` returns a diff (or a full draft for a new skill) plus a risk-classified change summary
 1. Show the human the changes — additions are low-stakes; rewrites or removals of existing rules deserve individual attention
-1. Only after they accept, call `compile_skill("<domain>", mode="write")` — it commits exactly the proposed draft, nothing else
+1. Only after they accept, call `compile_skill("<domain>", mode="write")` — it commits exactly the proposed draft, nothing else. Your say-so is not the approval: the client asks the human again (MCP elicitation), or you get `awaiting_approval` and they accept it in OmniMem's settings window under Skills. On `declined` or `cancelled`, nothing was written, so don't ask again unless they do
 
 The skill's `description` is the load trigger and is human-owned: the compiler drafts it once at creation, the human approves or edits it (pass `description=` to change it deliberately), and recompiles never clobber it.
 

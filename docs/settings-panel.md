@@ -32,7 +32,7 @@ Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Dock
 | **Search** | Semantic search through the full recall pipeline, weak matches marked |
 | **Projects** | List, create, edit and delete projects, with domain chips, a domain filter, a **Suggest** button that drafts domains from the stack and recurring tags, and bulk deprioritise and reinstate |
 | **Experience** | Effort stats, outcomes, breakthroughs and the most effortful work, with the graveyard on its own page |
-| **Skills** | Compiled skills with their rules, sources and load counts, plus pending proposals. **New Skill** runs the same propose-and-accept gate as `compile_skill`, and refuses a domain that already has a skill (recompiles stay with the MCP tool, which shows the diff). Skills can be deleted but never edited |
+| **Skills** | Compiled skills with their rules, sources and load counts, plus **Pending proposals**: every stashed draft or diff, including ones an agent proposed over MCP, each with Accept and Discard (a count shows beside the Skills link while any wait; `HUMAN_APPROVAL` is on the Configuration page). **New Skill** runs the same propose-and-accept gate as `compile_skill`, and refuses a domain that already has a skill (recompiles stay with the MCP tool, which shows the diff). Skills can be deleted but never edited |
 | **Duplicates** | Scan a namespace for near-identical clusters and archive the extras |
 | **Contradictions** | Each recorded pair once, both sides side by side |
 | **Suppressions** | Add and remove suppressed topics |

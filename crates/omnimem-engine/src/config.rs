@@ -35,8 +35,42 @@ impl GraveyardScope {
     }
 }
 
+/// Who has to say yes before an agent's change takes effect (`HUMAN_APPROVAL`).
+/// Read by every gate that has one: skill writes today, contradiction
+/// resolution next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HumanApproval {
+    /// A person accepts it: through the client (MCP elicitation) or the
+    /// settings window. The agent's say-so is never enough.
+    #[default]
+    Human,
+    /// The agent's call is the approval, as 6.x behaved.
+    Agent,
+}
+
+impl HumanApproval {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Agent => "agent",
+        }
+    }
+
+    /// `human` or `agent`, in any case. Anything else is not a mode.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "human" => Some(Self::Human),
+            "agent" => Some(Self::Agent),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
+    /// `HUMAN_APPROVAL`: `human` (the default) makes an agent's skill write
+    /// wait for a person; `agent` lets the call commit, as 6.x did.
+    pub human_approval: HumanApproval,
     /// `FACT_EXTRACTION_MODEL`
     pub fact_extraction_model: String,
     /// `QUERY_EXPANSION_MODEL`
@@ -127,6 +161,7 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
+            human_approval: HumanApproval::Human,
             fact_extraction_model: "claude-haiku-5-5".to_owned(),
             query_expansion_model: "claude-haiku-5-5".to_owned(),
             contradiction_model: "claude-haiku-5-5".to_owned(),
@@ -220,6 +255,18 @@ fn graveyard_scope(default: GraveyardScope) -> GraveyardScope {
     }
 }
 
+/// `HUMAN_APPROVAL`, falling back to the default (`human`, the safe side)
+/// with a warning on a value that is neither `human` nor `agent`.
+fn human_approval(default: HumanApproval) -> HumanApproval {
+    match text("HUMAN_APPROVAL") {
+        None => default,
+        Some(raw) => HumanApproval::parse(&raw).unwrap_or_else(|| {
+            warn!("HUMAN_APPROVAL={raw:?} is not human or agent; using the default");
+            default
+        }),
+    }
+}
+
 /// `AUDIT_LOG`, falling back to the default (with a warning) on a value that
 /// is not a level. The default is off, so a typo never starts keeping a log.
 pub fn audit_level_from_env() -> AuditLevel {
@@ -247,6 +294,7 @@ impl EngineConfig {
             .filter(|u| crate::domains::is_valid_domain(u))
             .unwrap_or(d.skill_user);
         Self {
+            human_approval: human_approval(d.human_approval),
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
             contradiction_model: text("CONTRADICTION_MODEL").unwrap_or(d.contradiction_model),
@@ -454,5 +502,24 @@ mod tests {
         assert_eq!(days("0"), 0);
         assert_eq!(days("-5"), 90, "not a count of days, so the default");
         assert_eq!(days("soon"), 90);
+    }
+
+    #[test]
+    fn human_approval_parses_and_refuses_the_rest() {
+        assert_eq!(EngineConfig::default().human_approval, HumanApproval::Human);
+        assert_eq!(HumanApproval::parse(" AGENT "), Some(HumanApproval::Agent));
+        assert_eq!(HumanApproval::parse("human"), Some(HumanApproval::Human));
+        assert_eq!(HumanApproval::parse("nobody"), None);
+        assert_eq!(HumanApproval::parse(""), None);
+
+        // A bad value falls back to the safe side, not to the agent.
+        let read = |value: &str| {
+            with_var("HUMAN_APPROVAL", value, || {
+                EngineConfig::from_env(PathBuf::from("backups")).human_approval
+            })
+        };
+        assert_eq!(read("agent"), HumanApproval::Agent);
+        assert_eq!(read("Human"), HumanApproval::Human);
+        assert_eq!(read("robot"), HumanApproval::Human);
     }
 }

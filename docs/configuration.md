@@ -115,11 +115,12 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 
 | Variable | Default | Description |
 |---|---|---|
+| `HUMAN_APPROVAL` | `human` | Who accepts a skill write. `human`: a person does, through the client (MCP elicitation) or the settings window's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
 | `OMNIMEM_USER` | `local` | The user part of generated skill names (`{domain}-{user}`) |
 | `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Exact domain matches are never held back |
 | `SKILL_CLUSTER_THRESHOLD` | `0.80` | Similarity at which two lessons count as the same lesson for reinforcement |
 | `SKILL_DOMAIN_SUGGEST_THRESHOLD` | `0.60` | Floor for the "did you mean" domain suggestion when a compile finds nothing |
-| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill can still be written with `compile_skill(mode='write')` |
+| `SKILL_PROPOSAL_TTL_SECONDS` | `86400` | How long a proposed skill can still be accepted. A person answering a question from the client gets ten minutes, or this long if it's shorter |
 | `SKILL_EXPORT_DIR` | `skills/` inside the backup folder | Where `compile_skill(export_path=...)` writes a copy |
 | `SKILL_FEED_MAX_ARTICLES` | `25` | Cap on a skill's Feed watch section from influencing feeds. `0` leaves it out |
 | `SKILL_KNOWLEDGE_WATCH_DAYS` | `14` | How far back the briefing's knowledge watch looks for articles relevant to a skill. `0` turns it off |

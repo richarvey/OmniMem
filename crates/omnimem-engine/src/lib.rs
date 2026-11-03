@@ -53,7 +53,8 @@ use omnimem_core::{LanguageModel, TextEmbedder};
 use omnimem_store::Store;
 
 pub use audit_log::{change_summary, parse_when};
-pub use config::{EngineConfig, GraveyardScope, audit_level_from_env};
+pub use compiler::{ProposalCheck, SkillReview};
+pub use config::{EngineConfig, GraveyardScope, HumanApproval, audit_level_from_env};
 pub use dedup::DuplicateMatch;
 pub use error::EngineError;
 pub use experience::AbandonedWarning;

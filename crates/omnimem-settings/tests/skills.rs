@@ -331,3 +331,111 @@ async fn a_bundle_exports_to_downloads_and_imports_after_confirming() {
     ));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+const PROPOSAL: &str = "meta:skill:proposal:rust-local";
+const DRAFT: &str = "---\nname: rust-local\n---\n\n# Rust\n\n- Run clippy\n- Run the tests\n";
+
+/// A proposal as `compile_skill(mode="propose")` stashes one, which is all
+/// the panel ever sees of an agent's: no memories behind it are needed.
+fn stash_proposal(engine: &Engine, based_on: &str) {
+    let fields = Fields::from([
+        ("body".to_owned(), DRAFT.to_owned()),
+        ("description".to_owned(), "How rust work is done".to_owned()),
+        ("domain".to_owned(), "rust".to_owned()),
+        ("user".to_owned(), "local".to_owned()),
+        ("based_on".to_owned(), based_on.to_owned()),
+        ("created_at".to_owned(), "1757000000.0".to_owned()),
+        ("rule_manifest".to_owned(), r#"[{"kind": "do"}]"#.to_owned()),
+        ("source_manifest".to_owned(), "[]".to_owned()),
+    ]);
+    engine.store().hash_set(PROPOSAL, &fields).unwrap();
+}
+
+#[tokio::test]
+async fn pending_proposals_list_with_their_draft_and_count() {
+    let (panel, engine, dir) = setup();
+    let none = text(&get(&panel, "/skills").await);
+    assert!(!none.contains("Pending proposals"), "{none}");
+    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+
+    stash_proposal(&engine, "");
+    let list = text(&get(&panel, "/skills").await);
+    assert!(list.contains("Pending proposals"), "{list}");
+    assert!(list.contains("new skill"), "{list}");
+    assert!(list.contains("# Rust"), "the draft is shown: {list}");
+    assert!(list.contains("Accept &amp; Write Skill"));
+    assert!(list.contains(r#"action="/skills/discard""#));
+    // The sidebar loads its count like the version marker.
+    assert!(list.contains(r#"hx-get="/skills/pending-badge""#));
+    let badge = text(&get(&panel, "/skills/pending-badge").await);
+    assert!(badge.contains(">1</span>"), "{badge}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn accepting_a_pending_proposal_commits_the_stash() {
+    let (panel, engine, dir) = setup();
+    stash_proposal(&engine, "");
+
+    let accepted = post(&panel, "/skills/commit", "domain=rust").await;
+    assert_eq!(
+        accepted.headers()["HX-Redirect"],
+        "/skills/mem:skill:gen:rust-local"
+    );
+    let stored = engine
+        .store()
+        .get("mem:skill:gen:rust-local")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["body"], DRAFT, "byte for byte");
+    assert!(engine.store().hash_get_all(PROPOSAL).unwrap().is_none());
+    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn discarding_a_pending_proposal_writes_nothing() {
+    let (panel, engine, dir) = setup();
+    stash_proposal(&engine, "");
+
+    let gone = landed(&post(&panel, "/skills/discard", "domain=rust").await);
+    assert!(gone.starts_with("/skills?message="), "{gone}");
+    assert!(engine.store().hash_get_all(PROPOSAL).unwrap().is_none());
+    assert!(
+        engine
+            .store()
+            .get("mem:skill:gen:rust-local")
+            .unwrap()
+            .is_none()
+    );
+
+    // Discarding what has already gone is said, not an error page.
+    let again = landed(&post(&panel, "/skills/discard", "domain=rust").await);
+    assert!(again.starts_with("/skills?error="), "{again}");
+    let invalid = landed(&post(&panel, "/skills/discard", "domain=Not+Valid!").await);
+    assert!(invalid.starts_with("/skills?error="), "{invalid}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn a_stale_pending_proposal_cannot_be_accepted() {
+    let (panel, engine, dir) = setup();
+    compiled_skill(&engine);
+    // Proposed against a body the stored skill no longer has.
+    stash_proposal(&engine, "0123abcd");
+
+    let list = text(&get(&panel, "/skills").await);
+    assert!(list.contains("changed after this was proposed"), "{list}");
+    assert!(!list.contains("Accept &amp; Write Skill"), "{list}");
+    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+
+    let refused = text(&post(&panel, "/skills/commit", "domain=rust").await);
+    assert!(refused.contains("stored skill changed"), "{refused}");
+    let stored = engine
+        .store()
+        .get("mem:skill:gen:rust-local")
+        .unwrap()
+        .unwrap();
+    assert_ne!(stored["body"], DRAFT);
+    std::fs::remove_dir_all(dir).unwrap();
+}

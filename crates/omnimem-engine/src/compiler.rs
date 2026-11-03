@@ -38,8 +38,122 @@ const HELD_BACK_MAX_CHARS: usize = 500;
 static SAFE_EXPORT_SEGMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_.\-]*$").expect("valid"));
 
+const PROPOSAL_PREFIX: &str = "meta:skill:proposal:";
+
 pub(crate) fn proposal_key(domain: &str, user: &str) -> String {
-    format!("meta:skill:proposal:{domain}-{user}")
+    format!("{PROPOSAL_PREFIX}{domain}-{user}")
+}
+
+/// A stashed proposal as a person sees it: enough to decide on, and a
+/// fingerprint so an approval can only commit the draft that was shown.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkillReview {
+    pub domain: String,
+    pub skill_id: String,
+    /// No skill is stored for this domain yet, so `shown` is the whole draft.
+    pub new_skill: bool,
+    pub description: String,
+    /// The unified diff against the stored skill, or the whole draft for a new one.
+    pub shown: String,
+    /// Lines the diff adds and removes (a new skill's lines all count as added).
+    pub added: usize,
+    pub removed: usize,
+    /// Rule counts by kind, from the proposal's manifest.
+    pub rules: Value,
+    /// When the proposal was made (seconds since the epoch), 0 if unknown.
+    pub created_at: f64,
+    /// SHA-256 of the proposed body: what an approval has to name.
+    pub body_sha: String,
+    /// The stored skill changed after this was proposed, so a commit would be refused.
+    pub stale: bool,
+}
+
+/// What a write would face right now.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProposalCheck {
+    /// A proposal waits to be accepted.
+    Ready(SkillReview),
+    /// A write would end here, with this result (no proposal, stale, refused).
+    Blocked(Value),
+}
+
+fn review_of(stash: &Fields, skill_id: &str, existing: Option<&Fields>) -> SkillReview {
+    let text = |name: &str| stash.get(name).cloned().unwrap_or_default();
+    let body = text("body");
+    let existing_body = existing
+        .and_then(|e| e.get("body"))
+        .filter(|b| !b.is_empty())
+        .cloned()
+        .unwrap_or_default();
+    let new_skill = existing_body.is_empty();
+    let (shown, added, removed) = if new_skill {
+        (body.clone(), body.lines().count(), 0)
+    } else {
+        let diff = render_unified_diff(&existing_body, &body, skill_id);
+        let counted = |sign: char, header: &str| {
+            diff.lines()
+                .filter(|l| l.starts_with(sign) && !l.starts_with(header))
+                .count()
+        };
+        let (added, removed) = (counted('+', "+++"), counted('-', "---"));
+        (diff, added, removed)
+    };
+    let manifest: Vec<Value> = serde_json::from_str::<Value>(&text("rule_manifest"))
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    let mut rules = Map::new();
+    for rule in &manifest {
+        let kind = rule.get("kind").and_then(Value::as_str).unwrap_or("rule");
+        let n = rules.get(kind).and_then(Value::as_i64).unwrap_or(0) + 1;
+        rules.insert(kind.to_owned(), n.into());
+    }
+    let current_sha = if new_skill {
+        String::new()
+    } else {
+        body_sha(&existing_body)
+    };
+    SkillReview {
+        domain: text("domain"),
+        skill_id: skill_id.to_owned(),
+        new_skill,
+        description: text("description"),
+        shown,
+        added,
+        removed,
+        rules: Value::Object(rules),
+        created_at: text("created_at").trim().parse().unwrap_or(0.0),
+        body_sha: body_sha(&body),
+        stale: text("based_on") != current_sha,
+    }
+}
+
+/// A stored object that isn't the compiler's own output is never overwritten.
+fn refusal_for(existing: Option<&Fields>, skill_id: &str) -> Option<Value> {
+    let existing = existing?;
+    (existing.get("generated").map(String::as_str) != Some("true")).then(|| {
+        json!({
+            "status": "refused",
+            "skill_id": skill_id,
+            "reason": "Existing object is not flagged generated:true — the compiler only overwrites its own output.",
+        })
+    })
+}
+
+fn no_proposal(domain: &str) -> Value {
+    json!({
+        "status": "no_proposal",
+        "domain": domain,
+        "note": "Nothing proposed for this domain (or the proposal expired). Run compile_skill(mode='propose') and review the diff first — write only commits an accepted proposal.",
+    })
+}
+
+fn stale_proposal(skill_id: &str) -> Value {
+    json!({
+        "status": "stale_proposal",
+        "skill_id": skill_id,
+        "note": "The stored skill changed after this diff was proposed. Re-run compile_skill(mode='propose') and review again.",
+    })
 }
 
 fn rule_counts(rules: &[Rule]) -> Value {
@@ -214,14 +328,8 @@ impl Engine {
         let skill_id = generated_skill_key(&canonical, &user);
 
         let existing = self.store.get(&skill_id)?;
-        if let Some(existing) = &existing
-            && existing.get("generated").map(String::as_str) != Some("true")
-        {
-            return Ok(json!({
-                "status": "refused",
-                "skill_id": skill_id,
-                "reason": "Existing object is not flagged generated:true — the compiler only overwrites its own output.",
-            }));
+        if let Some(refused) = refusal_for(existing.as_ref(), &skill_id) {
+            return Ok(refused);
         }
 
         if mode == "write" {
@@ -231,6 +339,7 @@ impl Engine {
                 &skill_id,
                 existing.as_ref(),
                 export_path,
+                None,
             );
         }
         let aliased_from = aliased.then(|| normalise_domain(domain));
@@ -244,6 +353,108 @@ impl Engine {
             description,
             aliased_from,
         )
+    }
+
+    /// What a write for `domain` would meet right now: the proposal to put in
+    /// front of a person, or the result a write would end with. Writes
+    /// nothing. The MCP layer reads this before asking for approval.
+    pub fn review_skill_proposal(&self, domain: &str) -> Result<ProposalCheck> {
+        let (canonical, _) = resolve_domain(domain);
+        if !is_valid_domain(&canonical) {
+            return Err(invalid(INVALID_DOMAIN));
+        }
+        let user = self.config.skill_user.clone();
+        let skill_id = generated_skill_key(&canonical, &user);
+        let existing = self.store.get(&skill_id)?;
+        if let Some(refused) = refusal_for(existing.as_ref(), &skill_id) {
+            return Ok(ProposalCheck::Blocked(refused));
+        }
+        let Some(stash) = self.live_proposal(&canonical, &user)? else {
+            return Ok(ProposalCheck::Blocked(no_proposal(&canonical)));
+        };
+        let review = review_of(&stash, &skill_id, existing.as_ref());
+        if review.stale {
+            return Ok(ProposalCheck::Blocked(stale_proposal(&skill_id)));
+        }
+        Ok(ProposalCheck::Ready(review))
+    }
+
+    /// Commit the proposal a person has approved: `compile_skill(mode="write")`
+    /// for a caller that has already got the approval, which it proves by
+    /// naming the body it showed (`reviewed_sha`). If the proposal was
+    /// replaced while the person was deciding, nothing is written.
+    ///
+    /// The engine doesn't know who approved; the MCP layer calls this only
+    /// after elicitation. The settings window uses plain
+    /// `compile_skill(mode="write")`, since a click there is the approval.
+    pub fn commit_approved_skill(
+        &self,
+        domain: &str,
+        export_path: Option<&str>,
+        reviewed_sha: &str,
+    ) -> Result<Value> {
+        let (canonical, _) = resolve_domain(domain);
+        if !is_valid_domain(&canonical) {
+            return Err(invalid(INVALID_DOMAIN));
+        }
+        let user = self.config.skill_user.clone();
+        let skill_id = generated_skill_key(&canonical, &user);
+        let existing = self.store.get(&skill_id)?;
+        if let Some(refused) = refusal_for(existing.as_ref(), &skill_id) {
+            return Ok(refused);
+        }
+        self.commit_proposal(
+            &canonical,
+            &user,
+            &skill_id,
+            existing.as_ref(),
+            export_path,
+            Some(reviewed_sha),
+        )
+    }
+
+    /// Every stashed proposal, any domain and whoever made it, oldest first.
+    /// Proposals live under a TTL, so what is listed can still be committed
+    /// unless it has gone stale.
+    pub fn pending_skill_proposals(&self) -> Result<Vec<SkillReview>> {
+        let mut reviews = Vec::new();
+        for key in self.store.scan_prefix(PROPOSAL_PREFIX)? {
+            let Some(stash) = self
+                .store
+                .hash_get_all(&key)?
+                .filter(|s| s.get("body").is_some_and(|b| !b.is_empty()))
+            else {
+                continue;
+            };
+            let domain = stash.get("domain").cloned().unwrap_or_default();
+            let user = stash
+                .get("user")
+                .cloned()
+                .unwrap_or_else(|| self.config.skill_user.clone());
+            let skill_id = generated_skill_key(&domain, &user);
+            let existing = self.store.get(&skill_id)?;
+            reviews.push(review_of(&stash, &skill_id, existing.as_ref()));
+        }
+        reviews.sort_by(|a, b| a.created_at.total_cmp(&b.created_at));
+        Ok(reviews)
+    }
+
+    /// Throw a stashed proposal away. True if there was one.
+    pub fn discard_skill_proposal(&self, domain: &str) -> Result<bool> {
+        let (canonical, _) = resolve_domain(domain);
+        if !is_valid_domain(&canonical) {
+            return Err(invalid(INVALID_DOMAIN));
+        }
+        let key = proposal_key(&canonical, &self.config.skill_user);
+        Ok(self.store.kv_delete(&key)?)
+    }
+
+    /// The stash for a domain, if it still holds a draft.
+    fn live_proposal(&self, domain: &str, user: &str) -> Result<Option<Fields>> {
+        Ok(self
+            .store
+            .hash_get_all(&proposal_key(domain, user))?
+            .filter(|s| s.get("body").is_some_and(|b| !b.is_empty())))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -467,18 +678,11 @@ impl Engine {
         skill_id: &str,
         existing: Option<&Fields>,
         export_path: Option<&str>,
+        reviewed_sha: Option<&str>,
     ) -> Result<Value> {
         let key = proposal_key(domain, user);
-        let Some(stash) = self
-            .store
-            .hash_get_all(&key)?
-            .filter(|s| s.get("body").is_some_and(|b| !b.is_empty()))
-        else {
-            return Ok(json!({
-                "status": "no_proposal",
-                "domain": domain,
-                "note": "Nothing proposed for this domain (or the proposal expired). Run compile_skill(mode='propose') and review the diff first — write only commits an accepted proposal.",
-            }));
+        let Some(stash) = self.live_proposal(domain, user)? else {
+            return Ok(no_proposal(domain));
         };
 
         let existing_body = existing
@@ -486,10 +690,15 @@ impl Engine {
             .filter(|b| !b.is_empty());
         let current_sha = existing_body.map(|b| body_sha(b)).unwrap_or_default();
         if stash.get("based_on").map_or("", String::as_str) != current_sha {
+            return Ok(stale_proposal(skill_id));
+        }
+        if let Some(reviewed) = reviewed_sha
+            && stash.get("body").map(|b| body_sha(b)).as_deref() != Some(reviewed)
+        {
             return Ok(json!({
-                "status": "stale_proposal",
+                "status": "proposal_changed",
                 "skill_id": skill_id,
-                "note": "The stored skill changed after this diff was proposed. Re-run compile_skill(mode='propose') and review again.",
+                "note": "The proposal was replaced after the person was shown it, so nothing was written. Re-run compile_skill(mode='propose') and ask again.",
             }));
         }
 

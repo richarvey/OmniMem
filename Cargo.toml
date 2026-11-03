@@ -48,7 +48,7 @@ clap = { version = "4.6", features = ["derive", "env"] }
 
 # MCP server
 omnimem-mcp = { path = "crates/omnimem-mcp" }
-rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
+rmcp = { version = "3.3", features = ["transport-streamable-http-server", "elicitation"] }
 axum = "0.8"
 tokio-util = "0.7"
 # OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.

@@ -36,7 +36,7 @@
         <li><a href="/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}">Experience</a></li>
         <li><a href="/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}">Graveyard</a></li>
         <li class="nav-section-label">Skills</li>
-        <li><a href="/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}">Compiled Skills</a></li>
+        <li><a href="/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}">Compiled Skills<span hx-get="/skills/pending-badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
         <li class="nav-section-label">Management</li>
         <li><a href="/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}">Duplicates</a></li>
         <li><a href="/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}">Contradictions</a></li>

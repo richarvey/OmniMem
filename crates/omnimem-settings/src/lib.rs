@@ -228,6 +228,8 @@ impl Panel {
             .route("/skills", get(skills::list))
             .route("/skills/compile", post(skills::compile))
             .route("/skills/commit", post(skills::commit))
+            .route("/skills/discard", post(skills::discard))
+            .route("/skills/pending-badge", get(skills::pending_badge))
             .route("/skills/delete", post(skills::delete))
             .route(
                 "/skills/import",

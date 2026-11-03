@@ -55,7 +55,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 
 | Tool | What it does |
 |---|---|
-| `compile_skill(domain, mode?, min_reinforcement?, include_graveyard?, export_path?, description?)` | Compile a domain's experience into a `SKILL.md`. `propose` (default) returns a reviewable diff and stashes it; `write` commits only that stashed, reviewed draft. `export_path` mirrors the file under `SKILL_EXPORT_DIR` |
+| `compile_skill(domain, mode?, min_reinforcement?, include_graveyard?, export_path?, description?)` | Compile a domain's experience into a `SKILL.md`. `propose` (default) returns a reviewable diff and stashes it; `write` commits only that stashed, reviewed draft, and only once a person accepts it (the client asks them, or the result is `awaiting_approval`; see `HUMAN_APPROVAL`). `export_path` mirrors the file under `SKILL_EXPORT_DIR` |
 | `find_skills(query_or_domain)` | Ranked skills for a domain or a description of the work, above `SKILL_MIN_SCORE` (0.25) |
 | `get_skill(skill_id)` | The whole skill body, by key, name or bare domain |
 | `bless(memory_key)` | Let one strong lesson past the reinforcement gate at the next compile |

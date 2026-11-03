@@ -6,6 +6,7 @@
 //! transport is not carried over. `/mcp` is protected by a shared bearer
 //! token, OAuth 2.1 (the authorisation server lives in `oauth`), or both.
 
+mod approval;
 mod args;
 mod audit_client;
 mod descriptions;
@@ -13,6 +14,7 @@ mod handler;
 mod http;
 mod oauth;
 
+pub use approval::{APPROVAL_TIMEOUT, Answer, ask_human, can_ask};
 pub use handler::OmniMemServer;
 pub use http::{ServerConfig, ServerError, bind_address, router, serve};
 pub use oauth::{OAuthConfig, OAuthSetup};

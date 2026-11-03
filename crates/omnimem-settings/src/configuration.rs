@@ -433,6 +433,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
         "Skills",
         &[
             setting(
+                "HUMAN_APPROVAL",
+                "Who approves changes",
+                Kind::Choice(&["human", "agent"]),
+                "human",
+                "Human means an agent can propose a skill but a person has to accept it: your client asks you, or the proposal waits under Pending proposals on the Skills page. Agent lets the agent's own call commit it, as 6.x did.",
+            ),
+            setting(
                 "OMNIMEM_USER",
                 "Skill owner name",
                 Kind::Text,
@@ -832,6 +839,13 @@ mod tests {
             validate(find("INGEST_MODE"), "sometimes")
                 .unwrap_err()
                 .contains("full, raw")
+        );
+        assert!(validate(find("HUMAN_APPROVAL"), "agent").is_ok());
+        assert!(validate(find("HUMAN_APPROVAL"), "human").is_ok());
+        assert!(
+            validate(find("HUMAN_APPROVAL"), "nobody")
+                .unwrap_err()
+                .contains("human, agent")
         );
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "true").is_ok());
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "yes").is_err());

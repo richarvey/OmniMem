@@ -181,7 +181,7 @@ pub const RECENT_KNOWLEDGE: &str = r"Recent knowledge articles ingested by the R
 
 // Phase 4: skills.
 
-pub const COMPILE_SKILL: &str = r"Compile domain procedure from experience and graveyard memories into a loadable SKILL.md. 'propose' (default) returns a reviewable diff; 'write' commits only a previously proposed and accepted diff — there is no silent-commit path.
+pub const COMPILE_SKILL: &str = r"Compile domain procedure from experience and graveyard memories into a loadable SKILL.md. 'propose' (default) returns a reviewable diff; 'write' commits only a previously proposed diff that a person accepts: the client asks them (MCP elicitation), or, if it can't, the result is `awaiting_approval` and they accept it in OmniMem's settings window. `declined` means nothing was written; don't ask again. There is no silent-commit path.
 
     The compiled skill is build output: derived from raw memories, never
     hand-edited. To change domain guidance, update the underlying memories
