@@ -33,6 +33,7 @@ mod maintenance;
 mod projects;
 pub mod pyfmt;
 mod recall;
+pub mod release;
 mod skill_scan;
 mod skill_tools;
 pub mod skills;

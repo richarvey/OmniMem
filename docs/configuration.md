@@ -148,6 +148,12 @@ The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revisi
 | `HF_HUB_OFFLINE` | off | Never contact Hugging Face. The model must already be in the cache (or `EMBEDDING_MODEL` must be a folder) |
 | `HF_TOKEN` | *(unset)* | Only needed for a private or gated model |
 
+## Updates
+
+| Variable | Default | Description |
+|---|---|---|
+| `UPDATE_CHECK` | `true` | Look at code.squarecows.com for a newer release a little after start and every 12 hours, and say so in the tray, the settings window's sidebar and `briefing()` (as `update_available`). The request sends nothing but itself. `false` stops every update check. A development build never shows a notice either way |
+
 ## Settings panel
 
 Desktop app only.

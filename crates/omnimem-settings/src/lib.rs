@@ -74,7 +74,6 @@ pub struct StaticOverhead {
 #[derive(Default)]
 struct Caches {
     dashboard: Option<(Instant, Value)>,
-    latest_release: Option<(Instant, Option<String>)>,
 }
 
 pub(crate) struct Shared {

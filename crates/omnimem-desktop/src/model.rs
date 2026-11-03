@@ -134,6 +134,19 @@ pub fn status_line(state: &ServiceState) -> String {
     }
 }
 
+/// The menu item that opens the release page.
+pub fn update_item_text(latest: &str) -> String {
+    format!("Update available: {latest}…")
+}
+
+/// The tray icon's tooltip, saying so when a newer release is out.
+pub fn tooltip(update: Option<&str>) -> String {
+    match update {
+        Some(latest) => format!("OmniMem: {latest} is out"),
+        None => "OmniMem".to_owned(),
+    }
+}
+
 /// The MCP URL, once there is one to copy.
 pub fn mcp_url(state: &ServiceState) -> Option<&str> {
     match state {
@@ -208,6 +221,13 @@ pub fn smoke_verdict(body: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tray_announces_a_newer_release() {
+        assert_eq!(update_item_text("7.0.7"), "Update available: 7.0.7…");
+        assert_eq!(tooltip(Some("7.0.7")), "OmniMem: 7.0.7 is out");
+        assert_eq!(tooltip(None), "OmniMem");
+    }
 
     #[test]
     fn the_tray_describes_each_state() {

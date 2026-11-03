@@ -163,6 +163,16 @@ fn serve_until_shutdown(
         })
         .context("starting the RSS scheduler")?;
 
+    // Like the RSS scheduler, left to end with the process: it sleeps in
+    // one-second steps and a request is bounded by its timeout.
+    std::thread::Builder::new()
+        .name("update-check".into())
+        .spawn({
+            let (engine, stop) = (engine.clone(), stop.clone());
+            move || crate::update::run_update_checks(engine.store(), &stop)
+        })
+        .context("starting the update check")?;
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

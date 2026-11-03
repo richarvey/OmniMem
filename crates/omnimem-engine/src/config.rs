@@ -120,6 +120,8 @@ pub struct EngineConfig {
     pub skill_scan_min_pool: i64,
     /// `SKILL_SCAN_CROSS_PROJECT`
     pub skill_scan_cross_project: bool,
+    /// `UPDATE_CHECK`: whether the briefing says a newer release is out.
+    pub update_check: bool,
 }
 
 impl Default for EngineConfig {
@@ -163,6 +165,7 @@ impl Default for EngineConfig {
             skill_scan_max_proposals: 3,
             skill_scan_min_pool: 3,
             skill_scan_cross_project: true,
+            update_check: true,
         }
     }
 }
@@ -323,6 +326,7 @@ impl EngineConfig {
             skill_scan_min_pool: number("SKILL_SCAN_MIN_POOL", d.skill_scan_min_pool).max(1),
             skill_scan_cross_project: text("SKILL_SCAN_CROSS_PROJECT")
                 .is_none_or(|v| !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "no")),
+            update_check: crate::release::update_check_enabled(),
         }
     }
 }

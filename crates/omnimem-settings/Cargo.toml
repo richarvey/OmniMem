@@ -19,7 +19,6 @@ minijinja-contrib.workspace = true
 omnimem-core.workspace = true
 omnimem-engine.workspace = true
 omnimem-store.workspace = true
-reqwest.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
 tokio.workspace = true

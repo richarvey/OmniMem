@@ -25,7 +25,7 @@ Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Dock
 
 | Page | What it does |
 |---|---|
-| **Dashboard** | Namespace counts and state breakdowns, recent activity, the enrichment queue, and a version check. Counts are cached for `DASHBOARD_STATS_TTL` seconds (60) |
+| **Dashboard** | Namespace counts and state breakdowns, recent activity, the enrichment queue, and a version check (a marker in the sidebar, from `UPDATE_CHECK`). Counts are cached for `DASHBOARD_STATS_TTL` seconds (60) |
 | **Memories** | Browse every memory with namespace, state, project, licence and provenance filters. `licence=unknown` is the queue of records nobody has classified. Rows carry deprioritise and delete actions and a recall-heat bar |
 | **Memory detail** | Full content and metadata, experience data and contradictions. Edit tags, set the licence (with an optional note) and the provenance, through the same engine as `retag`, `set_licence` and `set_provenance`, so extracted facts follow and `updated_at` isn't touched |
 | **Create** | Store a memory, with the duplicate check shown inline and the namespace defaults for licence and provenance |

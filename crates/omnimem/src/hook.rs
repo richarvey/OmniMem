@@ -230,11 +230,28 @@ pub(crate) fn render_briefing(project: &str, briefing: &Value) -> String {
          further along.",
     );
 
-    if out.chars().count() > MAX_BRIEFING_CHARS {
-        out = out.chars().take(MAX_BRIEFING_CHARS).collect::<String>();
+    // One line at the very end, and counted in the cap so a long briefing is
+    // cut short of it rather than losing the notice.
+    let update = update_line(briefing.get("update_available"));
+    let room = MAX_BRIEFING_CHARS.saturating_sub(update.chars().count());
+    if out.chars().count() > room {
+        out = out.chars().take(room).collect::<String>();
         out.push_str("\n[briefing truncated]");
     }
+    out.push_str(&update);
     out
+}
+
+/// "OmniMem 7.0.7 is out (you're on 7.0.6): <url>", on its own line, from the
+/// briefing's `update_available`. Empty when there is no update.
+fn update_line(update: Option<&Value>) -> String {
+    let field = |name: &str| update?.get(name)?.as_str().filter(|s| !s.is_empty());
+    match (field("latest"), field("current"), field("url")) {
+        (Some(latest), Some(current), Some(url)) => {
+            format!("\n\nOmniMem {latest} is out (you're on {current}): {url}")
+        }
+        _ => String::new(),
+    }
 }
 
 /// True when a briefing has something worth paying context for.
@@ -813,6 +830,35 @@ mod tests {
             text.contains("can be out of date"),
             "a briefing must invite checking:\n{text}"
         );
+    }
+
+    #[test]
+    fn a_newer_release_is_one_line_at_the_end_and_inside_the_cap() {
+        let update = json!({
+            "current": "7.0.6",
+            "latest": "7.0.7",
+            "url": "https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.7"
+        });
+        let mut briefing = json!({
+            "project_context": {"current_state": "mid rollout"},
+            "update_available": update,
+        });
+        let text = render_briefing("harrier", &briefing);
+        assert!(
+            text.ends_with(
+                "\n\nOmniMem 7.0.7 is out (you're on 7.0.6): https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.7"
+            ),
+            "{text}"
+        );
+
+        // A briefing that hits the cap is cut short of the notice, not past it.
+        briefing["project_context"]["current_state"] = "x".repeat(MAX_BRIEFING_CHARS * 2).into();
+        let long = render_briefing("harrier", &briefing);
+        assert!(long.chars().count() <= MAX_BRIEFING_CHARS + "\n[briefing truncated]".len());
+        assert!(long.contains("is out (you're on 7.0.6)"));
+
+        briefing.as_object_mut().unwrap().remove("update_available");
+        assert!(!render_briefing("harrier", &briefing).contains("is out"));
     }
 
     #[test]

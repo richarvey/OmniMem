@@ -809,6 +809,55 @@ fn briefing_lists_stale_memories_and_runs_maintenance_on_its_interval() {
 }
 
 #[test]
+fn briefing_mentions_a_newer_release_only_when_one_is_known_and_the_check_is_on() {
+    let e = engine();
+    assert!(
+        e.briefing(None, false)
+            .unwrap()
+            .get("update_available")
+            .is_none()
+    );
+
+    // A release that is not newer than this build changes nothing.
+    omnimem_engine::release::record_latest_release(e.store(), "0.0.1").unwrap();
+    assert!(
+        e.briefing(None, false)
+            .unwrap()
+            .get("update_available")
+            .is_none()
+    );
+
+    omnimem_engine::release::record_latest_release(e.store(), "999.0.0").unwrap();
+    let briefing = e.briefing(None, false).unwrap();
+    assert_eq!(
+        briefing["update_available"],
+        json!({
+            "current": env!("CARGO_PKG_VERSION"),
+            "latest": "999.0.0",
+            "url": "https://code.squarecows.com/ric/omnimem/releases/tag/v999.0.0",
+        })
+    );
+    // The hook's read-only briefing carries it too.
+    assert_eq!(
+        e.session_briefing(None, false).unwrap()["update_available"]["latest"],
+        "999.0.0"
+    );
+
+    // UPDATE_CHECK=false: the same store, no mention.
+    let off = engine_with(EngineConfig {
+        update_check: false,
+        ..EngineConfig::default()
+    });
+    omnimem_engine::release::record_latest_release(off.store(), "999.0.0").unwrap();
+    assert!(
+        off.briefing(None, false)
+            .unwrap()
+            .get("update_available")
+            .is_none()
+    );
+}
+
+#[test]
 fn check_contradictions_links_both_sides_once() {
     let e = engine();
     put(

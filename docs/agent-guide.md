@@ -44,6 +44,7 @@ At the beginning of every session:
 - Recent decisions and discovered patterns
 - Abandoned approaches to avoid (graveyard)
 - Stale memories that may need reviewing
+- **Update available** — if the briefing includes `update_available` (`current`, `latest`, `url`), a newer OmniMem release is out. Mention it in one line and move on; it needs nothing from the human now. It is absent when the install is current or `UPDATE_CHECK=false`
 - **Contradiction warnings** — surface these explicitly and ask the human which version reflects current reality before proceeding with any work
 - **Skill suggestions** — if the briefing recommends compiled skills, offer them to the human; on a greenfield project (no context yet) lead with them. Load with `get_skill()` only if agreed — never auto-load
 - **Skill updates** — pending changes to compiled skills. Low-risk additions can be accepted in a batch; rewrites or removals of existing rules must be reviewed individually via `compile_skill(domain, mode="propose")`

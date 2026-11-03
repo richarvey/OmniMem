@@ -517,6 +517,16 @@ const GROUPS: &[(&str, &[Setting])] = &[
         ],
     ),
     (
+        "Updates",
+        &[setting(
+            "UPDATE_CHECK",
+            "Tell me about new releases",
+            Kind::Flag,
+            "on",
+            "Looks at code.squarecows.com for a newer release a little after start and every 12 hours, and says so in the tray, the settings window and the session briefing. It sends nothing but the request itself. false turns every update check off.",
+        )],
+    ),
+    (
         "Settings panel",
         &[
             setting(
@@ -825,5 +835,7 @@ mod tests {
         );
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "true").is_ok());
         assert!(validate(find("RSS_REQUIRE_LICENCE"), "yes").is_err());
+        assert!(validate(find("UPDATE_CHECK"), "false").is_ok());
+        assert!(validate(find("UPDATE_CHECK"), "off").is_err());
     }
 }
