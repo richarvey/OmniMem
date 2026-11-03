@@ -227,6 +227,8 @@
 <p>With the Mac app, the <code>omnimem</code> binary lives inside the app bundle rather than on your PATH, so run it from there:</p>
 <pre class="bash"><code>/Applications/OmniMem.app/Contents/MacOS/omnimem install-hooks</code></pre>
 <p>The Flatpak can't reach Claude Code's settings from its sandbox, so add the hooks by hand there. The settings entry, and what each event will and will not do, are in <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/claude-code-hook.md">the hooks guide</a>.</p>
+<h2 id="accepting-a-skill">Accepting a skill</h2>
+<p>When Claude proposes a skill and then asks to write it, Claude Code shows you a dialog in the terminal with the diff and Accept and Decline. Claude can't answer it for you. If you'd rather not be asked at all, or you run Claude Code non-interactively, see <a href="https://code.squarecows.com/ric/omnimem/src/branch/main/docs/skill-compiler.md#who-accepts">who accepts</a>: a write that nobody can be asked about waits under Pending proposals on the Skills page of OmniMem's settings window.</p>
 <h2 id="verifying-the-connection">Verifying the connection</h2>
 <p>Start Claude Code and run:</p>
 <pre><code>/mcp</code></pre>
