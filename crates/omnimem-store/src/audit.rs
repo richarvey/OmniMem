@@ -748,11 +748,14 @@ impl Store {
                 text("reason").unwrap_or_default(),
             );
             let (from, to) = (changed("from"), changed("to"));
+            // `at` is a float that went through JSON, and serde_json (without
+            // float_roundtrip) can read it back a unit in the last place off,
+            // so the same row is matched within ten microseconds, not exactly.
             let inserted = tx.execute(
                 "INSERT INTO audit (at, actor, client, action, key, changed_from, changed_to, reason)
                  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
                  WHERE NOT EXISTS (
-                    SELECT 1 FROM audit WHERE at = ?1 AND actor = ?2 AND client = ?3
+                    SELECT 1 FROM audit WHERE abs(at - ?1) < 0.00001 AND actor = ?2 AND client = ?3
                       AND action = ?4 AND key = ?5 AND changed_from = ?6
                       AND changed_to = ?7 AND reason = ?8)",
                 params![at, actor, client, action, key, from, to, reason],
@@ -957,6 +960,17 @@ mod tests {
         assert_eq!(other.audit_count().unwrap(), 3);
         // A malformed row is skipped, not fatal.
         assert_eq!(other.merge_audit(&[json!({"at": "soon"})]).unwrap(), (0, 1));
+
+        // A time read back from JSON a unit in the last place off is still the
+        // same row (serde_json's float parsing isn't exact), as CI found when
+        // a restore added a row it already had.
+        let mut nudged = exported.clone();
+        for row in &mut nudged {
+            let at = row["at"].as_f64().unwrap();
+            row["at"] = json!(f64::from_bits(at.to_bits() + 1));
+        }
+        assert_eq!(other.merge_audit(&nudged).unwrap(), (0, 3));
+        assert_eq!(other.audit_count().unwrap(), 3);
     }
 
     #[test]
