@@ -47,7 +47,7 @@ const ICON_SVG: &str = concat!(
 /// a person signs in, `/authorize` and the login form, which keep the Origin
 /// check too.
 pub(crate) fn routes(oauth: Arc<OAuth>) -> (Router, Router) {
-    let resource_path = oauth.resource_metadata_path().to_owned();
+    let resource_paths = oauth.resource_metadata_paths();
     let read = || middleware::from_fn_with_state(READ, cors);
     let write = || middleware::from_fn_with_state(WRITE, cors);
     let server = || get(server_metadata).options(server_metadata).layer(read());
@@ -62,10 +62,15 @@ pub(crate) fn routes(oauth: Arc<OAuth>) -> (Router, Router) {
     let mut public = Router::new()
         .route("/.well-known/oauth-authorization-server", server())
         .route("/.well-known/oauth-authorization-server/", server())
-        .route(&resource_path, resource())
-        .route(&format!("{resource_path}/"), resource());
-    if resource_path != "/.well-known/oauth-protected-resource" {
-        public = public.route("/.well-known/oauth-protected-resource", resource());
+        .route("/.well-known/oauth-protected-resource", resource());
+    // One per listed address with its own path (`https://example.com/omnimem`
+    // serves `/.well-known/oauth-protected-resource/omnimem/mcp`).
+    for path in &resource_paths {
+        if path != "/.well-known/oauth-protected-resource" {
+            public = public
+                .route(path, resource())
+                .route(&format!("{path}/"), resource());
+        }
     }
     let public = public
         .route("/token", post(token).options(token).layer(write()))
@@ -138,9 +143,18 @@ impl Allowlists {
         }
     }
 
+    /// An entry matches its host exactly, `*` matches any, and `*.example.com`
+    /// any name under example.com (not example.com itself), for a tunnel
+    /// whose address changes, such as a Cloudflare quick tunnel.
     fn host_allowed(&self, host: &str) -> bool {
         let host = host_name(host);
-        self.hosts.iter().any(|h| h == "*" || *h == host)
+        self.hosts.iter().any(|h| {
+            h == "*"
+                || *h == host
+                || h.strip_prefix('*')
+                    .filter(|suffix| suffix.starts_with('.'))
+                    .is_some_and(|suffix| host.len() > suffix.len() && host.ends_with(suffix))
+        })
     }
 
     fn origin_allowed(&self, origin: &str, host: &str) -> bool {
@@ -443,24 +457,39 @@ fn client_ip(request: &Request) -> String {
         .map_or_else(|| "unknown".to_owned(), |info| info.0.ip().to_string())
 }
 
-async fn server_metadata(State(oauth): State<Arc<OAuth>>) -> Response {
+/// The `Host` a request was made to, which picks the `OAUTH_BASE_URL` entry
+/// it is answered with.
+pub(crate) fn host_of(headers: &HeaderMap) -> String {
+    headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+// The documents differ by Host, so a shared cache must keep them apart.
+const METADATA_CACHE: &[(&str, &str)] =
+    &[("cache-control", "public, max-age=3600"), ("vary", "Host")];
+
+async fn server_metadata(State(oauth): State<Arc<OAuth>>, headers: HeaderMap) -> Response {
     json_response(
         StatusCode::OK,
-        &oauth.server_metadata(),
-        &[("cache-control", "public, max-age=3600")],
+        &oauth.server_metadata(&host_of(&headers)),
+        METADATA_CACHE,
     )
 }
 
-async fn resource_metadata(State(oauth): State<Arc<OAuth>>) -> Response {
+async fn resource_metadata(State(oauth): State<Arc<OAuth>>, headers: HeaderMap) -> Response {
     json_response(
         StatusCode::OK,
-        &oauth.resource_metadata(),
-        &[("cache-control", "public, max-age=3600")],
+        &oauth.resource_metadata(&host_of(&headers)),
+        METADATA_CACHE,
     )
 }
 
 async fn authorize(State(oauth): State<Arc<OAuth>>, request: Request) -> Response {
     let ip = client_ip(&request);
+    let host = host_of(request.headers());
     let (parts, body) = request.into_parts();
     let params = if parts.method == Method::POST {
         let Ok(body) = axum::body::to_bytes(body, BODY_LIMIT).await else {
@@ -470,7 +499,7 @@ async fn authorize(State(oauth): State<Arc<OAuth>>, request: Request) -> Respons
     } else {
         Params::parse(parts.uri.query().unwrap_or_default().as_bytes())
     };
-    match off_runtime(move || oauth.authorize(&ip, &params)).await {
+    match off_runtime(move || oauth.authorize_at(&ip, &host, &params)).await {
         Ok(Ok(Authorize::Redirect(location))) => found(&location, &[("cache-control", "no-store")]),
         Ok(Ok(Authorize::BadRequest(body))) => json_response(
             StatusCode::BAD_REQUEST,
@@ -622,6 +651,21 @@ mod tests {
         assert!(allow.host_allowed("[::1]:8765"));
         assert!(!allow.host_allowed("evil.example"));
         assert!(!allow.host_allowed(""));
+    }
+
+    #[test]
+    fn a_wildcard_host_matches_the_names_under_it() {
+        let allow = Allowlists::new(&["*.trycloudflare.com".into()], &[]);
+        assert!(allow.host_allowed("convinced-money.trycloudflare.com"));
+        assert!(allow.host_allowed("A.B.TryCloudflare.com:443"));
+        assert!(
+            !allow.host_allowed("trycloudflare.com"),
+            "not the domain itself"
+        );
+        assert!(!allow.host_allowed("eviltrycloudflare.com"));
+        assert!(!allow.host_allowed("trycloudflare.com.evil.example"));
+        let any = Allowlists::new(&["*".into()], &[]);
+        assert!(any.host_allowed("anything.example"));
     }
 
     #[test]

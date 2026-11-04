@@ -362,6 +362,21 @@ async fn allowed_hosts_take_a_port_and_a_wildcard() {
     ));
     shutdown.cancel();
 
+    // `*.example.com`: rmcp has no wildcards, so its own check must stand
+    // aside, or every name under the domain gets its 403.
+    let (base, shutdown) = start_with(Some("s3cret"), vec!["*.trycloudflare.com".into()]).await;
+    assert!(ok(post_as_host(
+        &base,
+        "a-b-c.trycloudflare.com",
+        Some("s3cret")
+    )
+    .await));
+    assert_eq!(
+        post_as_host(&base, "evil.example", Some("s3cret")).await,
+        reqwest::StatusCode::MISDIRECTED_REQUEST
+    );
+    shutdown.cancel();
+
     let (base, shutdown) = start_with(Some("s3cret"), vec!["*".into()]).await;
     assert!(ok(
         post_as_host(&base, "anything.example", Some("s3cret")).await

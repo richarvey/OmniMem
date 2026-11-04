@@ -37,6 +37,25 @@ OAUTH_ADMIN_PASSWORD=a-strong-password-here
 
 `OAUTH_BASE_URL` has to be https (plain http is only accepted for localhost) with no query string or fragment. If OAuth is switched on and any of those four are missing or wrong, OmniMem refuses to start rather than running without OAuth. 6.x logged a warning and carried on, and you found out when claude.ai couldn't connect.
 
+### More than one address
+
+A client checks that the documents it's sent name the address it connected to, and gives up if they don't. So with one `OAUTH_BASE_URL`, only that address can sign in: change it and every client using the old one is cut off. To be reachable by more than one, list them all:
+
+```bash
+OAUTH_BASE_URL=https://box.tailnet.ts.net,https://mcp.yourdomain.com
+```
+
+Each request is answered with the entry for the host it was made to: the documents, the `WWW-Authenticate` challenge and the login page all use that address. A host that matches none gets the first. Every listed host is allowed through the Host check automatically.
+
+This is how claude.ai and Mistral's Le Chat can share one server. Le Chat couldn't reach a Tailscale Funnel address at all (not a single request arrived), while claude.ai can, so a Funnel name for claude.ai and a Cloudflare Tunnel name for Le Chat, both listed, covers both.
+
+`*` answers any host with its own address, `https://` plus the `Host` header (`http://` for localhost). It decides what the documents say, never who gets in: the Host check still refuses a host that isn't allowed, so pair it with `MCP_ALLOWED_HOSTS`. That suits a tunnel whose address changes, such as a Cloudflare quick tunnel, where listing it would mean editing the setting on every restart:
+
+```bash
+OAUTH_BASE_URL=https://box.tailnet.ts.net,*
+MCP_ALLOWED_HOSTS=*.trycloudflare.com
+```
+
 With it on, OmniMem is its own authorisation server:
 
 | Route | What it's for |
@@ -80,7 +99,7 @@ MCP_ALLOWED_HOSTS=mcp.example.com,alt.example.com
 MCP_ALLOWED_ORIGINS=https://alt.example.com
 ```
 
-Each entry is a host name or an IP address. Without a port it matches any port (`10.0.0.5` allows `10.0.0.5:8765` and `10.0.0.5:443`); with one, only that port (`10.0.0.5:8765`). `*` allows any Host at all, which switches the guard's Host check off, so only use it when something in front of OmniMem checks the host for you. Connecting straight to a cloud machine by its IP is the common case that needs this:
+Each entry is a host name or an IP address. Without a port it matches any port (`10.0.0.5` allows `10.0.0.5:8765` and `10.0.0.5:443`); with one, only that port (`10.0.0.5:8765`). `*.example.com` allows any name under example.com (but not example.com itself), which suits a tunnel that hands out a new name each time, like `*.trycloudflare.com`. `*` allows any Host at all, which switches the guard's Host check off, so only use it when something in front of OmniMem checks the host for you. Connecting straight to a cloud machine by its IP is the common case that needs this:
 
 ```bash
 MCP_ALLOWED_HOSTS=203.0.113.10

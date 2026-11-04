@@ -36,9 +36,9 @@ Flags accept `true`, `1` or `yes` (any case); anything else, or leaving it unset
 | `MCP_HOST` | `127.0.0.1` | Address to listen on. Anything other than loopback needs `MCP_AUTH_TOKEN` or OAuth, or OmniMem refuses to start. Use `0.0.0.0` inside Docker |
 | `MCP_PORT` | `8765` | Port. Clients connect to `http://address:port/mcp` |
 | `MCP_AUTH_TOKEN` | *(unset)* | A shared bearer token clients send as `Authorization: Bearer <token>`. Compared in constant time. Works alongside OAuth |
-| `MCP_PUBLIC_URL` | *(unset)* | Where clients reach OmniMem through a proxy or tunnel. Its host and origin are trusted automatically |
-| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host without a port matches any port, `host:port` only that one, and `*` allows any host. A host that isn't allowed gets `421 Misdirected Request`, before any token check |
-| `MCP_ALLOWED_ORIGINS` | *(unset)* | Extra browser origins (`scheme://host[:port]`) to accept, comma separated |
+| `MCP_PUBLIC_URL` | *(unset)* | Where clients reach OmniMem through a proxy or tunnel, comma separated for more than one. Their hosts and origins are trusted automatically. It only names addresses, so `*` here trusts nothing: use `MCP_ALLOWED_HOSTS=*` to accept any host. With OAuth on, `OAUTH_BASE_URL` does this job too |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra `Host` headers to accept, comma separated, on top of localhost, the bind address and the hosts of `MCP_PUBLIC_URL` and `OAUTH_BASE_URL`. A host without a port matches any port, `host:port` only that one, `*.example.com` any name under example.com, and `*` allows any host. A host that isn't allowed gets `421 Misdirected Request`, before any token check |
+| `MCP_ALLOWED_ORIGINS` | *(unset)* | Extra browser origins (`scheme://host[:port]`) to accept on `/mcp` and the login page, comma separated, and `*` for any. Mistral's Le Chat needs `https://chat.mistral.ai` |
 
 See [remote access](remote-access.md) for putting OmniMem behind a reverse proxy, and what 421 and 403 errors mean.
 
@@ -49,7 +49,7 @@ For claude.ai and other clients that sign in rather than send a token. The login
 | Variable | Default | Description |
 |---|---|---|
 | `OAUTH_ENABLED` | off | Turn on the OAuth 2.1 authorisation server. If it's on but the three settings below aren't all set, OmniMem refuses to start and says which is missing |
-| `OAUTH_BASE_URL` | *(unset)* | The address clients reach OmniMem at, such as `https://mcp.example.com`. Must be https, except for localhost. Its host and origin are trusted |
+| `OAUTH_BASE_URL` | *(unset)* | The address clients reach OmniMem at, such as `https://mcp.example.com`. Must be https, except for localhost. List several, comma separated, and each request is answered with the one whose host it was made to (the first answers any other), so one server can sign clients in over a Tailscale name and a Cloudflare one at once. `*` answers any host `MCP_ALLOWED_HOSTS` lets in, with its own address. Listed hosts and origins are trusted; `*` trusts none |
 | `OAUTH_ADMIN_USER` | *(unset)* | The username the login page asks for |
 | `OAUTH_ADMIN_PASSWORD` | *(unset)* | The password it asks for |
 | `OAUTH_REFRESH_MAX_DAYS` | `30` | How long a client stays signed in, however often it refreshes. 1 to 90 |

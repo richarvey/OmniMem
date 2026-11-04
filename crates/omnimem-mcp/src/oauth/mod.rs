@@ -29,7 +29,7 @@ use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 use url::Url;
 
-pub(crate) use routes::{Allowlists, guard, header_text, host_guard, routes};
+pub(crate) use routes::{Allowlists, guard, header_text, host_guard, host_of, routes};
 
 use crate::http::{constant_time_eq, var};
 
@@ -161,7 +161,7 @@ impl OAuthSetup {
                     .into(),
             );
         };
-        if let Err(problem) = Urls::parse(&base_url) {
+        if let Err(problem) = UrlSet::parse(&base_url) {
             return Self::Invalid(format!("OAUTH_BASE_URL={base_url} {problem}"));
         }
         let setting = |name: &str, default: i64, min: i64, max: i64| {
@@ -245,6 +245,119 @@ impl Urls {
             resource_metadata_url,
         })
     }
+}
+
+/// `OAUTH_BASE_URL` as a list: every address clients reach the server at,
+/// and `*` for whichever address a request used. A request is answered with
+/// the entry for its `Host`, so the same server can sign clients in over a
+/// Tailscale Funnel name and a Cloudflare one at once, each seeing documents
+/// that name the address it connected to (a client must refuse a resource
+/// document naming another, RFC 9728 §3.3). The first listed entry answers a
+/// Host that matches none. Which hosts get in at all is still the Host
+/// guard's call, so `*` never widens that.
+#[derive(Debug, Clone)]
+struct UrlSet {
+    /// Each listed entry with the authority a `Host` header must match.
+    listed: Vec<(String, Urls)>,
+    any_host: bool,
+}
+
+impl UrlSet {
+    fn parse(raw: &str) -> Result<Self, String> {
+        let mut listed = Vec::new();
+        let mut any_host = false;
+        for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+            if entry == "*" {
+                any_host = true;
+                continue;
+            }
+            let urls = Urls::parse(entry).map_err(|problem| {
+                if raw.contains(',') {
+                    format!("has an entry {entry} that {problem}")
+                } else {
+                    problem
+                }
+            })?;
+            listed.push((authority(entry), urls));
+        }
+        if listed.is_empty() && !any_host {
+            return Err("is empty".into());
+        }
+        Ok(Self { listed, any_host })
+    }
+
+    /// The URLs to answer a request for `host` with.
+    fn for_host(&self, host: &str) -> Urls {
+        let host = strip_default_port(&host.trim().to_ascii_lowercase());
+        if let Some((_, urls)) = self.listed.iter().find(|(h, _)| *h == host) {
+            return urls.clone();
+        }
+        if self.any_host && !host.is_empty() {
+            let scheme = if is_loopback_authority(&host) {
+                "http"
+            } else {
+                "https"
+            };
+            if let Ok(urls) = Urls::parse(&format!("{scheme}://{host}")) {
+                return urls;
+            }
+        }
+        match self.listed.first() {
+            Some((_, urls)) => urls.clone(),
+            // Only `*`, and a request with no usable Host: nothing to name
+            // but this machine.
+            None => Urls::parse("http://localhost").expect("a valid URL"),
+        }
+    }
+
+    /// Every path the protected-resource document is served at.
+    fn resource_metadata_paths(&self) -> Vec<String> {
+        let mut paths: Vec<String> = self
+            .listed
+            .iter()
+            .map(|(_, urls)| urls.resource_metadata_path.clone())
+            .collect();
+        if self.any_host {
+            paths.push("/.well-known/oauth-protected-resource/mcp".into());
+        }
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+}
+
+/// A URL's authority as a `Host` header carries it: lowercase, with the port
+/// only when it isn't the scheme's default.
+fn authority(url: &str) -> String {
+    Url::parse(url).map_or_else(
+        |_| String::new(),
+        |url| {
+            let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+            match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host,
+            }
+        },
+    )
+}
+
+fn strip_default_port(host: &str) -> String {
+    host.strip_suffix(":443")
+        .or_else(|| host.strip_suffix(":80"))
+        .unwrap_or(host)
+        .to_owned()
+}
+
+fn is_loopback_authority(host: &str) -> bool {
+    let name = if let Some(bracketed) = host.strip_prefix('[') {
+        bracketed.split(']').next().unwrap_or_default()
+    } else {
+        host.split(':').next().unwrap_or_default()
+    };
+    name == "localhost"
+        || name
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn now() -> f64 {
@@ -847,7 +960,7 @@ impl LoginLimiter {
 
 pub(crate) struct OAuth {
     config: OAuthConfig,
-    urls: Urls,
+    urls: UrlSet,
     store: Arc<Store>,
     pending: Mutex<HashMap<String, Pending>>,
     limiter: Mutex<LoginLimiter>,
@@ -855,7 +968,7 @@ pub(crate) struct OAuth {
 
 impl OAuth {
     pub(crate) fn new(config: OAuthConfig, store: Arc<Store>) -> Result<Self, String> {
-        let urls = Urls::parse(&config.base_url)
+        let urls = UrlSet::parse(&config.base_url)
             .map_err(|problem| format!("OAUTH_BASE_URL={} {problem}", config.base_url))?;
         Ok(Self {
             config,
@@ -866,19 +979,21 @@ impl OAuth {
         })
     }
 
-    pub(crate) fn resource_metadata_url(&self) -> &str {
-        &self.urls.resource_metadata_url
+    /// Where `/mcp`'s challenge sends a client that reached it at `host`.
+    pub(crate) fn resource_metadata_url(&self, host: &str) -> String {
+        self.urls.for_host(host).resource_metadata_url
     }
 
-    fn resource_metadata_path(&self) -> &str {
-        &self.urls.resource_metadata_path
+    fn resource_metadata_paths(&self) -> Vec<String> {
+        self.urls.resource_metadata_paths()
     }
 
-    /// RFC 8414 authorisation server metadata.
-    fn server_metadata(&self) -> Value {
-        let prefix = &self.urls.prefix;
+    /// RFC 8414 authorisation server metadata, for a request to `host`.
+    fn server_metadata(&self, host: &str) -> Value {
+        let urls = self.urls.for_host(host);
+        let prefix = &urls.prefix;
         json!({
-            "issuer": self.urls.issuer,
+            "issuer": urls.issuer,
             "authorization_endpoint": format!("{prefix}/authorize"),
             "token_endpoint": format!("{prefix}/token"),
             "registration_endpoint": format!("{prefix}/register"),
@@ -896,10 +1011,11 @@ impl OAuth {
     }
 
     /// RFC 9728 protected resource metadata for `/mcp`.
-    fn resource_metadata(&self) -> Value {
+    fn resource_metadata(&self, host: &str) -> Value {
+        let urls = self.urls.for_host(host);
         json!({
-            "resource": self.urls.resource,
-            "authorization_servers": [self.urls.issuer],
+            "resource": urls.resource,
+            "authorization_servers": [urls.issuer],
             "scopes_supported": [SCOPE],
             "bearer_methods_supported": ["header"],
         })
@@ -1028,7 +1144,15 @@ impl OAuth {
     /// An authorisation request (RFC 6749 §4.1.1): off to the login page, or
     /// an error sent back to the client when its redirect is known, or shown
     /// here when it isn't.
+    /// [`OAuth::authorize_at`] for the first listed address.
+    #[cfg(test)]
     fn authorize(&self, ip: &str, params: &Params) -> Result<Authorize, StoreError> {
+        self.authorize_at(ip, "", params)
+    }
+
+    /// The authorisation request, made to `host`: the login page it sends
+    /// the browser to is on the same address.
+    fn authorize_at(&self, ip: &str, host: &str, params: &Params) -> Result<Authorize, StoreError> {
         let mut errors = Vec::new();
         let mut error = "invalid_request";
         let client_id = params.get("client_id");
@@ -1133,7 +1257,7 @@ impl OAuth {
         });
         Ok(Authorize::Redirect(format!(
             "{}/oauth/login?session={session}",
-            self.urls.prefix
+            self.urls.for_host(host).prefix
         )))
     }
 
@@ -2283,6 +2407,71 @@ mod tests {
         assert!(Urls::parse("https://mcp.example.com/?a=1").is_err());
         assert!(Urls::parse("https://mcp.example.com/#x").is_err());
         assert!(Urls::parse("not a url").is_err());
+    }
+
+    #[test]
+    fn a_listed_base_url_answers_each_host_with_its_own_address() {
+        let set =
+            UrlSet::parse("https://box.tail.ts.net, https://mcp.example.com:8443/omnimem").unwrap();
+        assert_eq!(
+            set.for_host("box.tail.ts.net").issuer,
+            "https://box.tail.ts.net/"
+        );
+        assert_eq!(
+            set.for_host("BOX.tail.ts.net:443").issuer,
+            "https://box.tail.ts.net/"
+        );
+        assert_eq!(
+            set.for_host("mcp.example.com:8443").resource,
+            "https://mcp.example.com:8443/omnimem/mcp"
+        );
+        // A host it doesn't list gets the first entry, as one URL always did.
+        assert_eq!(
+            set.for_host("other.example").issuer,
+            "https://box.tail.ts.net/"
+        );
+        assert_eq!(set.for_host("").issuer, "https://box.tail.ts.net/");
+        assert_eq!(
+            set.resource_metadata_paths(),
+            [
+                "/.well-known/oauth-protected-resource/mcp",
+                "/.well-known/oauth-protected-resource/omnimem/mcp"
+            ]
+        );
+        assert!(
+            UrlSet::parse("https://a.example, http://b.example")
+                .unwrap_err()
+                .contains("http://b.example")
+        );
+        assert!(UrlSet::parse(" , ").is_err());
+    }
+
+    #[test]
+    fn a_star_answers_with_the_address_the_request_used() {
+        let set = UrlSet::parse("*").unwrap();
+        assert_eq!(
+            set.for_host("x.trycloudflare.com").resource,
+            "https://x.trycloudflare.com/mcp"
+        );
+        assert_eq!(
+            set.for_host("localhost:8765").issuer,
+            "http://localhost:8765/"
+        );
+        assert_eq!(
+            set.for_host("127.0.0.1:8765").issuer,
+            "http://127.0.0.1:8765/"
+        );
+        assert_eq!(set.for_host("").issuer, "http://localhost/");
+        // A listed entry still wins over `*` for its own host.
+        let mixed = UrlSet::parse("https://mcp.example.com/omnimem,*").unwrap();
+        assert_eq!(
+            mixed.for_host("mcp.example.com").resource,
+            "https://mcp.example.com/omnimem/mcp"
+        );
+        assert_eq!(
+            mixed.for_host("box.tail.ts.net").issuer,
+            "https://box.tail.ts.net/"
+        );
     }
 
     #[test]

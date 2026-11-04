@@ -146,16 +146,22 @@ impl ServerConfig {
         Ok(())
     }
 
-    /// The public URLs, including the OAuth base URL however it was set.
+    /// The public URLs, including every address `OAUTH_BASE_URL` lists (and
+    /// `MCP_PUBLIC_URL`, which can list several the same way). A `*` names no
+    /// host, so it trusts nothing: the Host guard's list, with
+    /// `MCP_ALLOWED_HOSTS`, still decides which addresses get in.
     fn trusted_urls(&self) -> impl Iterator<Item = (String, String)> + '_ {
         let oauth_base = match &self.oauth {
-            OAuthSetup::On(config) => Some(config.base_url.as_str()),
-            _ => None,
+            OAuthSetup::On(config) => config.base_url.as_str(),
+            _ => "",
         };
         self.public_urls
             .iter()
             .map(String::as_str)
-            .chain(oauth_base)
+            .chain(std::iter::once(oauth_base))
+            .flat_map(|urls| urls.split(','))
+            .map(str::trim)
+            .filter(|url| !url.is_empty() && *url != "*")
             .filter_map(split_url)
     }
 
@@ -289,7 +295,7 @@ async fn require_auth(State(auth): State<McpAuth>, mut request: Request, next: N
         let mut response = StatusCode::UNAUTHORIZED.into_response();
         if let Ok(challenge) = HeaderValue::from_str(&format!(
             r#"Bearer resource_metadata="{}""#,
-            oauth.resource_metadata_url()
+            oauth.resource_metadata_url(&oauth::host_of(request.headers()))
         )) {
             response
                 .headers_mut()
@@ -332,7 +338,7 @@ async fn require_auth(State(auth): State<McpAuth>, mut request: Request, next: N
         format!(r#"{{"error": "invalid_token", "error_description": "{INVALID_TOKEN}"}}"#),
         &format!(
             r#"Bearer error="invalid_token", error_description="{INVALID_TOKEN}", resource_metadata="{}""#,
-            oauth.resource_metadata_url()
+            oauth.resource_metadata_url(&oauth::host_of(request.headers()))
         ),
     )
 }
@@ -355,9 +361,11 @@ pub fn router(
     let server = OmniMemServer::new(engine);
     let hosts = config.allowed_hosts();
     let mut http_config = StreamableHttpServerConfig::default();
-    // `*` accepts any Host. rmcp has no wildcard, so its own check is
-    // switched off (an empty list) and the guard below lets everything by.
-    http_config.allowed_hosts = if hosts.iter().any(|h| h == "*") {
+    // `*` accepts any Host, and `*.example.com` any name under it. rmcp has
+    // no wildcards, so with either its own check is switched off (an empty
+    // list) and the guard below decides alone. That guard ignores ports, so
+    // `host:port` entries then allow the host on any port.
+    http_config.allowed_hosts = if hosts.iter().any(|h| h.starts_with('*')) {
         Vec::new()
     } else {
         hosts.clone()
@@ -476,6 +484,33 @@ mod tests {
         let origins = config.allowed_origins();
         assert!(origins.contains(&"https://mcp.example.com".to_owned()));
         assert!(origins.contains(&"https://ui.example.com".to_owned()));
+    }
+
+    #[test]
+    fn public_urls_and_the_oauth_base_url_can_each_list_several() {
+        let config = ServerConfig {
+            public_urls: vec!["https://a.example.com, https://b.example.com:8443,*".into()],
+            oauth: OAuthSetup::On(OAuthConfig::new(
+                "https://box.tail.ts.net,*,https://mcp.example.com",
+                "admin",
+                "pw",
+            )),
+            ..ServerConfig::default()
+        };
+        let hosts = config.allowed_hosts();
+        for host in [
+            "a.example.com",
+            "b.example.com",
+            "box.tail.ts.net",
+            "mcp.example.com",
+        ] {
+            assert!(hosts.contains(&host.to_owned()), "{host}");
+        }
+        assert!(!hosts.contains(&"*".to_owned()), "a * names no address");
+        let origins = config.allowed_origins();
+        assert!(origins.contains(&"https://b.example.com:8443".to_owned()));
+        assert!(origins.contains(&"https://box.tail.ts.net".to_owned()));
+        assert!(!origins.iter().any(|o| o.contains('*')));
     }
 
     #[test]

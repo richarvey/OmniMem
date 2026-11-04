@@ -804,3 +804,153 @@ async fn a_change_made_with_an_oauth_token_names_the_client_it_was_issued_to() {
     assert_eq!(rows[0].actor, "mcp");
     assert_eq!(rows[0].client, "claude-ai (client-abc)");
 }
+
+/// `OAUTH_BASE_URL` listing two addresses: each Host gets documents, a
+/// challenge and a login page on its own address, so a client that reached
+/// the server by one of them never sees the other. `*` answers any Host the
+/// guard lets in, and the guard still refuses the rest.
+#[tokio::test]
+async fn each_listed_base_url_answers_on_its_own_address() {
+    let engine = || {
+        Arc::new(Engine::new(
+            Arc::new(Store::open_in_memory().unwrap()),
+            Arc::new(Flat),
+            EngineConfig::default(),
+        ))
+    };
+    let with = |base: &str, extra_hosts: Vec<String>| ServerConfig {
+        oauth: OAuthSetup::On(OAuthConfig::new(base, "admin", "secret123")),
+        extra_hosts,
+        ..ServerConfig::default()
+    };
+    let at = |host: &str, request: axum::http::request::Builder| {
+        request
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .unwrap()
+    };
+    let app = router(
+        engine(),
+        &with(
+            "https://box.tail.ts.net,https://mcp.example.com",
+            Vec::new(),
+        ),
+        CancellationToken::new(),
+    )
+    .unwrap();
+    for host in ["box.tail.ts.net", "mcp.example.com"] {
+        let resource = send(
+            &app,
+            at(
+                host,
+                Request::get("/.well-known/oauth-protected-resource/mcp"),
+            ),
+        )
+        .await;
+        assert_eq!(resource.status, StatusCode::OK, "{host}");
+        assert_eq!(resource.json()["resource"], format!("https://{host}/mcp"));
+        assert_eq!(
+            resource.json()["authorization_servers"][0],
+            format!("https://{host}/")
+        );
+        assert_eq!(resource.header("vary"), Some("Host"));
+        let server = send(
+            &app,
+            at(
+                host,
+                Request::get("/.well-known/oauth-authorization-server"),
+            ),
+        )
+        .await
+        .json();
+        assert_eq!(server["issuer"], format!("https://{host}/"));
+        assert_eq!(server["token_endpoint"], format!("https://{host}/token"));
+        let challenge = send(&app, at(host, Request::post("/mcp"))).await;
+        assert_eq!(challenge.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            challenge.header("www-authenticate"),
+            Some(
+                format!(
+                    r#"Bearer resource_metadata="https://{host}/.well-known/oauth-protected-resource/mcp""#
+                )
+                .as_str()
+            )
+        );
+    }
+    // Sign-in sends the browser to the login page on the address it used.
+    let registered = send(
+        &app,
+        Request::post("/register")
+            .header(header::HOST, "mcp.example.com")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                r#"{"redirect_uris": ["https://chat.mistral.ai/cb"], "token_endpoint_auth_method": "none"}"#,
+            ))
+            .unwrap(),
+    )
+    .await;
+    let client_id = registered.json()["client_id"].as_str().unwrap().to_owned();
+    let authorize = format!(
+        "/authorize?response_type=code&client_id={client_id}&redirect_uri=https%3A%2F%2Fchat.mistral.ai%2Fcb&code_challenge={}&code_challenge_method=S256",
+        challenge("verifier-verifier-verifier-verifier-verifier")
+    );
+    let redirect = send(
+        &app,
+        at("mcp.example.com", Request::get(authorize.as_str())),
+    )
+    .await;
+    assert!(
+        redirect
+            .header("location")
+            .unwrap()
+            .starts_with("https://mcp.example.com/oauth/login?session="),
+        "{:?}",
+        redirect.header("location")
+    );
+    // A host that isn't listed is still refused.
+    assert_eq!(
+        send(
+            &app,
+            at(
+                "evil.example",
+                Request::get("/.well-known/oauth-authorization-server")
+            )
+        )
+        .await
+        .status,
+        StatusCode::MISDIRECTED_REQUEST
+    );
+
+    // `*`: the request's own address, for the hosts MCP_ALLOWED_HOSTS lets in.
+    let any = router(
+        engine(),
+        &with("*", vec!["x.trycloudflare.com".into()]),
+        CancellationToken::new(),
+    )
+    .unwrap();
+    let resource = send(
+        &any,
+        at(
+            "x.trycloudflare.com",
+            Request::get("/.well-known/oauth-protected-resource/mcp"),
+        ),
+    )
+    .await;
+    assert_eq!(
+        resource.json()["resource"],
+        "https://x.trycloudflare.com/mcp"
+    );
+    assert_eq!(
+        send(
+            &any,
+            at(
+                "evil.example",
+                Request::get("/.well-known/oauth-protected-resource/mcp")
+            )
+        )
+        .await
+        .status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "* names addresses, it doesn't let hosts in"
+    );
+}
