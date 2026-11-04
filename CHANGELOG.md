@@ -2,7 +2,9 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.7] - Unreleased
+## [7.0.7] - 2026-11-04
+
+This release came out of getting Mistral's Le Chat to connect. Its connector does OAuth discovery from the browser, so OmniMem's origin check stopped it before a sign-in page, and it can't reach a Tailscale Funnel address at all. So OAuth discovery now answers any origin, is less fussy about how it's asked, and logs every request, and one server can now sign clients in on more than one address, so claude.ai on a Funnel name and Le Chat on a Cloudflare one share a store. The rest finishes the Atlas review's audit work: the audit log is on by default for state changes and deletes, a forget now erases a memory's text from the log, a new test suite asserts what every read must never return, and a new page maps each Atlas mark to the code and test behind it.
 
 **Before upgrading**, one default changes: the audit log is on at `lifecycle` ([#18](https://github.com/richarvey/OmniMem/issues/18)). An install with `AUDIT_LOG` unset starts writing rows for state changes and deletes, about 340 bytes each, pruned after `AUDIT_RETENTION_DAYS` (90). Set `AUDIT_LOG=off` to keep the 7.0.6 behaviour.
 
