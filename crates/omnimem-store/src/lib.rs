@@ -30,6 +30,8 @@ pub use backup::{BACKUP_KEY_PREFIXES, BackupFile, ImportReport, read_backup, wri
 pub use error::StoreError;
 pub use migrations::MigrationReport;
 pub use oauth::{OAuthStore, TokenKind, secret_hash};
+pub use schema::{HEURISTIC_EXPLANATION, HEURISTIC_LINK_EXPLANATION};
+pub use store::trust_of;
 pub use store::{
     Fields, MAX_KEY_BYTES, MemoryFilter, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES,
     discovery_text,

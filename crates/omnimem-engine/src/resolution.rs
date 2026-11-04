@@ -30,6 +30,7 @@ use crate::error::{EngineError, invalid};
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{now_str, py_json, take_chars};
 use crate::tools::{MAX_SHORT_TEXT, validate_text, validate_writable_key};
+use crate::trust;
 use crate::{Engine, Result};
 
 /// A proposal waiting for a person lasts a week: long enough to span a
@@ -394,13 +395,25 @@ impl Engine {
         ] {
             let mut links = parse_links(row.get("contradictions"));
             put_resolution(&mut links, other, resolution.clone(), &now);
-            let mut updates = Fields::from([
-                ("contradictions".to_owned(), py_json(&Value::Array(links))),
-                // A newer row is what lets a restore bring this across.
-                ("updated_at".to_owned(), now.clone()),
-            ]);
+            let mut updates = Fields::new();
             let wins = supersedes && request.winner.as_deref() == Some(key.as_str());
             let loses = supersedes && request.winner.as_deref() != Some(key.as_str());
+            // A person's resolution decides what each side is believed to be
+            // (#23): the winner is believed, the loser superseded, both
+            // wrong is rejected, and a dispute ends unless another link
+            // still holds one open.
+            match request.outcome {
+                Outcome::Supersedes if wins => trust::settle(row, trust::ACCEPTED, &mut updates),
+                Outcome::Supersedes => trust::settle(row, trust::SUPERSEDED, &mut updates),
+                Outcome::BothWrong => trust::settle(row, trust::REJECTED, &mut updates),
+                Outcome::BothValid | Outcome::FalsePositive => {
+                    trust::undispute(row, &links, &mut updates);
+                }
+                Outcome::Reopened => trust::dispute(row, &mut updates),
+            }
+            updates.insert("contradictions".to_owned(), py_json(&Value::Array(links)));
+            // A newer row is what lets a restore bring this across.
+            updates.insert("updated_at".to_owned(), now.clone());
             supersession_updates(row, other, wins, loses, &mut updates);
             writes.push((key.clone(), updates));
         }
@@ -722,6 +735,16 @@ impl Engine {
                     py_json(&Value::Array(survivor)),
                 );
             }
+            // The survivor's dispute with the deleted memory is over, and a
+            // memory the deleted one superseded goes back to what it was.
+            if open {
+                trust::undispute(
+                    &row,
+                    &parse_links(updates.get("contradictions")),
+                    &mut updates,
+                );
+            }
+            trust::unsupersede(&row, key, &mut updates);
             supersession_updates(&row, key, false, false, &mut updates);
             if !updates.is_empty() {
                 updates.insert("updated_at".to_owned(), now.clone());

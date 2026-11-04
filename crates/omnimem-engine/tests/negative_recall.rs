@@ -37,6 +37,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use omnimem_core::{EmbeddingError, LanguageModel, LlmError, TextEmbedder, VECTOR_DIM};
+use omnimem_engine::trust::TrustAction;
 use omnimem_engine::{DomainFilter, Engine, EngineConfig, GraveyardScope, ResolveRequest, Retire};
 use omnimem_store::{Fields, Store};
 use serde_json::{Value, json};
@@ -166,6 +167,10 @@ struct Fixture {
     suppressed: String,
     other_project: String,
     below_floor: String,
+    /// Judged wrong by a person (#24).
+    rejected: String,
+    /// Replaced by `control`, which a person said is current (#24).
+    superseded: String,
 }
 
 impl Fixture {
@@ -177,6 +182,8 @@ impl Fixture {
         let deleted_state = remember(&engine, &near_duplicate("tombstone"), "alpha");
         let suppressed = remember(&engine, &near_duplicate(TOPIC), "alpha");
         let other_project = remember(&engine, &near_duplicate("elsewhere"), "beta");
+        let rejected = remember(&engine, &near_duplicate("rejected"), "alpha");
+        let superseded = remember(&engine, &near_duplicate("superseded"), "alpha");
         // Shares one word with the query and the variant ("staging"): a real,
         // nonzero similarity that sits under the floor.
         let below_floor = remember(
@@ -198,6 +205,20 @@ impl Fixture {
             )
             .unwrap();
         engine.suppress_topic(TOPIC, Some("test")).unwrap();
+        engine
+            .set_trust(&rejected, TrustAction::Reject, Some("test"))
+            .unwrap();
+        // What a person's "the control replaces this" resolution leaves.
+        engine
+            .store()
+            .set_fields(
+                &superseded,
+                &Fields::from([
+                    ("trust".to_owned(), "superseded".to_owned()),
+                    ("superseded_by".to_owned(), control.clone()),
+                ]),
+            )
+            .unwrap();
 
         let fixture = Self {
             engine,
@@ -208,6 +229,8 @@ impl Fixture {
             suppressed,
             other_project,
             below_floor,
+            rejected,
+            superseded,
         };
         fixture.assert_close_enough();
         fixture
@@ -231,6 +254,8 @@ impl Fixture {
             &self.deleted_state,
             &self.suppressed,
             &self.other_project,
+            &self.rejected,
+            &self.superseded,
         ] {
             for q in [QUERY, VARIANT] {
                 let sim = cosine(q, &content(key));
@@ -251,6 +276,8 @@ impl Fixture {
             ("state=deleted", &self.deleted_state),
             ("suppressed topic", &self.suppressed),
             ("below the floor", &self.below_floor),
+            ("rejected", &self.rejected),
+            ("superseded (as a hit of its own)", &self.superseded),
         ]
     }
 }
@@ -301,6 +328,43 @@ fn recall_never_returns_excluded_memories() {
     );
     assert_clean(&scoped, &f, "recall scoped");
     assert!(!scoped.contains(&f.other_project), "{scoped:?}");
+}
+
+/// #24: a superseded memory appears in recall only inside the hit of the
+/// memory that replaced it, never as a hit of its own, and a rejected one
+/// not at all. If the winner is gone, the superseded memory comes back
+/// rather than both being lost.
+#[test]
+fn a_superseded_memory_appears_only_inside_its_winner() {
+    let f = Fixture::new(EngineConfig::default());
+    for (channel, results) in [
+        (
+            "recall",
+            f.engine.recall(QUERY, 20, None, None, None, None).unwrap(),
+        ),
+        (
+            "recall_index",
+            f.engine
+                .recall_index(QUERY, 20, None, None, 200, None, None)
+                .unwrap()["results"]
+                .clone(),
+        ),
+    ] {
+        let hits = results.as_array().unwrap();
+        let control = hits
+            .iter()
+            .find(|h| h["key"] == f.control.as_str())
+            .unwrap_or_else(|| panic!("{channel}: control missing"));
+        let replaces = control["replaces"].to_string();
+        assert!(replaces.contains(&f.superseded), "{channel}: {control}");
+        assert!(!replaces.contains(&f.rejected), "{channel}: {control}");
+        assert_eq!(control["trust"], "accepted", "{channel}");
+    }
+    // The winner archived: the superseded memory is the best there is.
+    f.engine.archive(&f.control, Some("test")).unwrap();
+    let keys = keys_of(&f.engine.recall(QUERY, 20, None, None, None, None).unwrap());
+    assert!(keys.contains(&f.superseded), "{keys:?}");
+    assert!(!keys.contains(&f.rejected), "{keys:?}");
 }
 
 #[test]
@@ -389,6 +453,9 @@ struct BriefingFixture {
     archived: String,
     forgotten: String,
     other_project: String,
+    rejected: String,
+    superseded: String,
+    candidate: String,
     resolved_pair: (String, String),
     open_pair: (String, String),
 }
@@ -400,6 +467,31 @@ fn stale_fixture() -> BriefingFixture {
     let archived = remember(&e, "old archived note about the staging cluster", "alpha");
     let forgotten = remember(&e, "old forgotten note about the staging cluster", "alpha");
     let other_project = remember(&e, "old note about the staging cluster", "beta");
+    let rejected = remember(&e, "old rejected note about the staging cluster", "alpha");
+    let superseded = remember(&e, "old superseded note about the staging cluster", "alpha");
+    // An extracted fact no person has confirmed (#24).
+    let candidate = remember(
+        &e,
+        "old unconfirmed note about the staging cluster",
+        "alpha",
+    );
+    e.store()
+        .set_fields(
+            &candidate,
+            &Fields::from([("enriched_from".to_owned(), control.clone())]),
+        )
+        .unwrap();
+    e.set_trust(&rejected, TrustAction::Reject, Some("test"))
+        .unwrap();
+    e.store()
+        .set_fields(
+            &superseded,
+            &Fields::from([
+                ("trust".to_owned(), "superseded".to_owned()),
+                ("superseded_by".to_owned(), control.clone()),
+            ]),
+        )
+        .unwrap();
 
     // Two contradicting pairs, found by the real scan, then one is settled.
     let a = remember(
@@ -438,7 +530,15 @@ fn stale_fixture() -> BriefingFixture {
     e.forget(&forgotten, true).unwrap();
     // Age the stale candidates last: archiving and forgetting bump updated_at.
     let long_ago = (omnimem_now() - 400.0 * 86_400.0).to_string();
-    for key in [&control, &archived, &forgotten, &other_project] {
+    for key in [
+        &control,
+        &archived,
+        &forgotten,
+        &other_project,
+        &rejected,
+        &superseded,
+        &candidate,
+    ] {
         e.store()
             .set_fields(
                 key,
@@ -452,6 +552,9 @@ fn stale_fixture() -> BriefingFixture {
         archived,
         forgotten,
         other_project,
+        rejected,
+        superseded,
+        candidate,
         resolved_pair: (a, b),
         open_pair: (c, d),
     }
@@ -500,6 +603,9 @@ fn briefing_never_surfaces_excluded_memories() {
         ("archived", &f.archived),
         ("forgotten", &f.forgotten),
         ("other project", &f.other_project),
+        ("rejected", &f.rejected),
+        ("superseded", &f.superseded),
+        ("unconfirmed candidate", &f.candidate),
         ("resolved contradiction", &f.resolved_pair.0),
         ("resolved contradiction", &f.resolved_pair.1),
     ] {

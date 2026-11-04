@@ -234,6 +234,14 @@ fn recall_entry(r: &RecallResult) -> Value {
     if let Some(winner) = nonempty(&r.superseded_by) {
         e.insert("superseded_by".into(), winner.into());
     }
+    // Every memory hit says whether OmniMem believes it (#24); a warning
+    // is the graveyard's, which trust doesn't touch.
+    if r.result_type != "abandoned_warning" {
+        e.insert("trust".into(), r.trust.as_str().into());
+    }
+    if !r.replaces.is_empty() {
+        e.insert("replaces".into(), r.replaces.clone().into());
+    }
     if let Some(url) = nonempty(&r.source_url) {
         e.insert("source_url".into(), url.into());
     }
@@ -732,6 +740,13 @@ impl Engine {
             if let Some(p) = nonempty(&r.provenance) {
                 e.insert("provenance".into(), p.into());
             }
+            if r.result_type != "abandoned_warning" {
+                e.insert("trust".into(), r.trust.as_str().into());
+            }
+            if !r.replaces.is_empty() {
+                let keys: Vec<Value> = r.replaces.iter().map(|x| x["key"].clone()).collect();
+                e.insert("replaces".into(), keys.into());
+            }
             index_tokens += snippet.chars().count() / 4 + 10;
             output.push(Value::Object(e));
         }
@@ -786,6 +801,12 @@ impl Engine {
                 "state".into(),
                 data.get("state").map_or("active", String::as_str).into(),
             );
+            // By key is how to look at a rejected or superseded memory
+            // (#24), so it says what it is.
+            e.insert("trust".into(), omnimem_store::trust_of(&data).into());
+            if let Some(winner) = data.get("superseded_by").filter(|w| !w.is_empty()) {
+                e.insert("superseded_by".into(), winner.as_str().into());
+            }
             if let Some(p) = data.get("project").filter(|p| !p.is_empty()) {
                 e.insert("project".into(), p.as_str().into());
             }

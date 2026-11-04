@@ -141,6 +141,7 @@ fn search_orders_filters_and_projects() {
     let live = SearchFilter {
         states: vec!["active".into(), "deprioritised".into()],
         projects: vec![],
+        trusts: Vec::new(),
     };
     let keys: Vec<String> = s
         .search(Namespace::Episodic, &q, 10, &live, None)
@@ -161,6 +162,7 @@ fn search_orders_filters_and_projects() {
     let scoped = SearchFilter {
         states: vec!["active".into()],
         projects: vec!["omnimem".into()],
+        trusts: Vec::new(),
     };
     let keys: Vec<String> = s
         .search(Namespace::Episodic, &q, 10, &scoped, None)
@@ -195,6 +197,7 @@ fn project_filter_matches_project_name_too() {
     let filter = SearchFilter {
         states: vec![],
         projects: vec!["omnimem".into()],
+        trusts: Vec::new(),
     };
     assert_eq!(
         s.search(Namespace::Project, &unit([1.0, 0.0, 0.0]), 5, &filter, None)

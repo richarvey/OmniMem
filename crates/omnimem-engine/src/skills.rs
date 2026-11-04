@@ -60,9 +60,11 @@ fn generated_banner(domain: &str) -> String {
     )
 }
 
-const POOL_FIELDS: [&str; 13] = [
+const POOL_FIELDS: [&str; 15] = [
     "content",
     "state",
+    "trust",
+    "enriched_from",
     "project",
     "tags",
     "effort_score",
@@ -76,10 +78,12 @@ const POOL_FIELDS: [&str; 13] = [
     "updated_at",
 ];
 
-const KNOWLEDGE_POOL_FIELDS: [&str; 10] = [
+const KNOWLEDGE_POOL_FIELDS: [&str; 12] = [
     "content",
     "title",
     "state",
+    "trust",
+    "enriched_from",
     "skill_domains",
     "skill_rules",
     "feed_name",
@@ -148,8 +152,13 @@ fn nonempty(fields: &Fields, name: &str) -> Option<String> {
     fields.get(name).filter(|v| !v.is_empty()).cloned()
 }
 
+/// A memory a skill may compile from: active (or with no state), and
+/// believed (#24). A candidate, disputed, superseded or rejected memory is
+/// left out, so a skill is never built on a conclusion no person confirmed
+/// or on one side of an open contradiction.
 fn active_or_unset(row: &Fields) -> bool {
     matches!(row.get("state").map(String::as_str), None | Some("active"))
+        && omnimem_store::trust_of(row) == crate::trust::ACCEPTED
 }
 
 /// Tags stored as a JSON array (or, from old data, comma-separated text).

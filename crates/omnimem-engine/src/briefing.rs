@@ -61,8 +61,15 @@ impl Engine {
         // Only active and deprioritised rows of the project take part, so
         // the filter runs in SQL and archived memories, other projects'
         // memories and every unread field stay in the database.
+        // Only believed memories make the lists (#24): a rejected,
+        // superseded or unconfirmed one is left out, and a disputed one is
+        // read only for its contradiction warning.
         let filter = MemoryFilter {
             states: vec!["active".to_owned(), "deprioritised".to_owned()],
+            trusts: vec![
+                crate::trust::ACCEPTED.to_owned(),
+                crate::trust::DISPUTED.to_owned(),
+            ],
             project: project.map(str::to_owned),
             ..MemoryFilter::default()
         };
@@ -76,18 +83,21 @@ impl Engine {
                 "contradictions",
                 "reinstate_hints",
                 "deprioritised_reason",
+                "trust",
+                "enriched_from",
             ],
         )?;
         let (mut stale, mut reinstate, mut contradictions) = (Vec::new(), Vec::new(), Vec::new());
         for (key, data) in &rows {
             let content = take_chars(data.get("content").map_or("", String::as_str), 80);
+            let believed = omnimem_store::trust_of(data) == crate::trust::ACCEPTED;
             match data.get("state").map(String::as_str) {
                 Some("active") => {
                     let updated = data
                         .get("updated_at")
                         .and_then(|u| u.parse::<f64>().ok())
                         .unwrap_or(0.0);
-                    if updated < cutoff && !skill_sources.contains(key) {
+                    if believed && updated < cutoff && !skill_sources.contains(key) {
                         stale.push((
                             ((now - updated) / 86_400.0) as i64,
                             json!({
@@ -121,7 +131,7 @@ impl Engine {
                         .get("reinstate_hints")
                         .and_then(|h| serde_json::from_str(h).ok())
                         .unwrap_or_default();
-                    if !hints.is_empty() {
+                    if believed && !hints.is_empty() {
                         reinstate.push(json!({
                             "key": key,
                             "content": content,
@@ -148,6 +158,7 @@ impl Engine {
         // re-checked below because the store's cut is a superset.
         let filter = MemoryFilter {
             states: vec!["active".to_owned()],
+            trusts: vec![crate::trust::ACCEPTED.to_owned()],
             created_at_min: Some(cutoff),
             ..MemoryFilter::default()
         };

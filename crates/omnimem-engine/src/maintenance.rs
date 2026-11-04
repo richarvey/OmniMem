@@ -59,8 +59,17 @@ impl Engine {
         Ok(vectors.into_iter().map(Option::unwrap_or_default).collect())
     }
 
-    /// Cross-reference two memories as contradicting each other.
-    fn link_contradiction(&self, key_a: &str, key_b: &str, explanation: &str) -> Result<()> {
+    /// Cross-reference two memories as contradicting each other. A link
+    /// the model confirmed (`verified`) also disputes both sides (#23); a
+    /// heuristic one only warns, since shared words and a negation aren't
+    /// evidence enough to rank a memory down.
+    fn link_contradiction(
+        &self,
+        key_a: &str,
+        key_b: &str,
+        explanation: &str,
+        verified: bool,
+    ) -> Result<()> {
         let now = now_str();
         for (src, other) in [(key_a, key_b), (key_b, key_a)] {
             let Some(data) = self.store.get(src)? else {
@@ -76,14 +85,21 @@ impl Engine {
             {
                 continue;
             }
-            existing.push(json!({"key": other, "explanation": explanation, "detected_at": now}));
-            let updates = Fields::from([
+            let mut link = json!({"key": other, "explanation": explanation, "detected_at": now});
+            if verified {
+                link["verified"] = true.into();
+            }
+            existing.push(link);
+            let mut updates = Fields::from([
                 (
                     "contradictions".to_owned(),
                     py_json(&Value::Array(existing)),
                 ),
                 ("updated_at".to_owned(), now.clone()),
             ]);
+            if verified {
+                crate::trust::dispute(&data, &mut updates);
+            }
             // The explanation is model output that may quote either memory,
             // so only `full` keeps it.
             let mut detail = json!({"linked_to": other});
@@ -196,7 +212,7 @@ impl Engine {
                     "content_b": take_chars(content_b, 80),
                     "method": "heuristic",
                 });
-                let mut explanation = "Opposing language patterns detected.".to_owned();
+                let mut explanation = omnimem_store::HEURISTIC_LINK_EXPLANATION.to_owned();
                 if use_api {
                     let verdict = self.check_contradiction_api(content_a, content_b);
                     // The verdict is model output: only a JSON `true` confirms,
@@ -215,7 +231,7 @@ impl Engine {
                     entry["confidence"] = json!(clamped_confidence(verdict.get("confidence")));
                     entry["explanation"] = stated;
                 }
-                self.link_contradiction(key_a, key_b, &explanation)?;
+                self.link_contradiction(key_a, key_b, &explanation, use_api)?;
                 found.push(entry);
             }
             if comparisons >= COMPARISON_CAP || found.len() >= RESULTS_CAP {

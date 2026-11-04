@@ -33,6 +33,7 @@ mod render;
 mod search;
 mod skills;
 mod telemetry;
+mod trust;
 mod version;
 
 mod embedded {
@@ -196,6 +197,11 @@ impl Panel {
             .route("/memory/{key}/tags", post(detail::retag))
             .route("/memory/{key}/licence", post(detail::licence))
             .route("/memory/{key}/provenance", post(detail::provenance))
+            .route("/memory/{key}/trust", post(trust::memory_trust))
+            .route("/unconfirmed", get(trust::list))
+            .route("/unconfirmed/act", post(trust::act))
+            .route("/unconfirmed/source", post(trust::confirm_source))
+            .route("/unconfirmed/badge", get(trust::badge))
             .route("/lifecycle/deprioritise", post(lifecycle::deprioritise))
             .route("/lifecycle/archive", post(lifecycle::archive))
             .route("/lifecycle/reinstate", post(lifecycle::reinstate))

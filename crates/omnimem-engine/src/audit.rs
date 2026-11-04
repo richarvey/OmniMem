@@ -65,6 +65,8 @@ impl Engine {
         };
         let mut entries = Vec::new();
         let mut matching = 0usize;
+        // Every memory's trust (#23), whatever its state, project or page.
+        let mut trusts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
         for ns in namespaces {
             let Ok(namespace) = ns.parse::<Namespace>() else {
                 continue;
@@ -82,9 +84,14 @@ impl Engine {
                     "outcome",
                     "project",
                     "project_name",
+                    "trust",
+                    "enriched_from",
                 ],
             )?;
             for (key, data) in &rows {
+                *trusts
+                    .entry(omnimem_store::trust_of(data).to_owned())
+                    .or_insert(0) += 1;
                 let state = data.get("state").map_or("active", String::as_str);
                 if state == "archived" && !include_archived {
                     bump(&mut counts, "archived");
@@ -107,6 +114,7 @@ impl Engine {
                     take_chars(data.get("content").map_or("", String::as_str), 80).into(),
                 );
                 e.insert("state".into(), state.into());
+                e.insert("trust".into(), omnimem_store::trust_of(data).into());
                 e.insert(
                     "effort_score".into(),
                     data.get("effort_score")
@@ -129,6 +137,7 @@ impl Engine {
         Ok(json!({
             "summary": Value::Object(counts.into_iter().map(|(s, n)| (s, n.into())).collect()),
             "total": total,
+            "trust": Value::Object(trusts.into_iter().map(|(t, n)| (t, n.into())).collect()),
             "matching_total": matching,
             "offset": offset,
             "limit": limit,
@@ -214,6 +223,10 @@ impl Engine {
             "state".into(),
             data.get("state").map_or("active", String::as_str).into(),
         );
+        m.insert("trust".into(), omnimem_store::trust_of(&data).into());
+        if let Some(prior) = data.get("trust_prior").filter(|p| !p.is_empty()) {
+            m.insert("trust_prior".into(), prior.as_str().into());
+        }
         m.insert(
             "project".into(),
             doc_project(&data).map_or(Value::Null, Value::from),

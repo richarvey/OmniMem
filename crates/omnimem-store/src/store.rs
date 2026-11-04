@@ -43,11 +43,26 @@ pub struct SearchFilter {
     pub states: Vec<String>,
     /// Allowed projects, matched against `project` or `project_name`.
     pub projects: Vec<String>,
+    /// Allowed `trust` values; a record with none has the one
+    /// [`trust_of`] gives it.
+    pub trusts: Vec<String>,
 }
 
 impl SearchFilter {
     fn is_empty(&self) -> bool {
-        self.states.is_empty() && self.projects.is_empty()
+        self.states.is_empty() && self.projects.is_empty() && self.trusts.is_empty()
+    }
+}
+
+/// A memory's trust (#23): its `trust` field, or for a record with none,
+/// `candidate` when it was extracted by the enrichment worker (it carries
+/// `enriched_from`) and `accepted` otherwise. The generated column in
+/// `schema.rs` spells the same rule for SQL.
+pub fn trust_of(fields: &Fields) -> &str {
+    match fields.get("trust").map(String::as_str) {
+        Some(trust) if !trust.is_empty() => trust,
+        _ if fields.get("enriched_from").is_some_and(|f| !f.is_empty()) => "candidate",
+        _ => "accepted",
     }
 }
 
@@ -63,6 +78,8 @@ pub struct MemoryFilter {
     /// Allowed `state` values. A record with no state counts as `active`;
     /// one with an empty state matches nothing, as the engine reads it.
     pub states: Vec<String>,
+    /// Allowed `trust` values, read as [`trust_of`] reads them.
+    pub trusts: Vec<String>,
     /// The project a memory belongs to: `project` when set and non-empty,
     /// else `project_name`. An empty name matches nothing.
     pub project: Option<String>,
@@ -412,6 +429,7 @@ impl Store {
             args.push(SqlValue::Text(format!("{prefix}\u{10FFFF}")));
         }
         push_state_filter(&mut sql, &mut args, &filter.states);
+        push_trust_filter(&mut sql, &mut args, &filter.trusts);
         if let Some(project) = &filter.project {
             if project.is_empty() {
                 // Neither field can equal a name the engine reads as "none".
@@ -756,6 +774,7 @@ impl Store {
         let mut sql = String::from("SELECT key FROM memories WHERE namespace = ?");
         let mut args: Vec<SqlValue> = vec![SqlValue::Text(namespace.as_str().to_owned())];
         push_state_filter(&mut sql, &mut args, &filter.states);
+        push_trust_filter(&mut sql, &mut args, &filter.trusts);
         if !filter.projects.is_empty() {
             let marks = placeholders(filter.projects.len());
             let _ = write!(
@@ -893,6 +912,15 @@ fn push_state_filter(sql: &mut String, args: &mut Vec<SqlValue>, states: &[Strin
         sql.push_str(" OR state IS NULL");
     }
     sql.push(')');
+}
+
+/// The generated `trust` column always has a value, so this is a plain IN.
+fn push_trust_filter(sql: &mut String, args: &mut Vec<SqlValue>, trusts: &[String]) {
+    if trusts.is_empty() {
+        return;
+    }
+    let _ = write!(sql, " AND trust IN ({})", placeholders(trusts.len()));
+    args.extend(trusts.iter().cloned().map(SqlValue::Text));
 }
 
 pub(crate) fn parse_fields(key: &str, raw: &str) -> Result<Fields> {

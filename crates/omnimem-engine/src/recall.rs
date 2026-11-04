@@ -19,6 +19,7 @@ use crate::config::GraveyardScope;
 use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
 use crate::pyfmt::{now_secs, py_float, py_json, take_chars};
 use crate::temporal::{parse_query_date, temporal_boost};
+use crate::trust;
 use crate::{Engine, Result};
 
 pub const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
@@ -259,6 +260,16 @@ pub struct RecallResult {
     pub licence: Option<String>,
     pub licence_note: Option<String>,
     pub provenance: Option<String>,
+    /// Whether OmniMem believes it (#23): `accepted`, `candidate`,
+    /// `disputed` or, for a superseded memory whose winner is gone,
+    /// `superseded`. Every hit carries it, so an agent can see why
+    /// something ranked lower.
+    pub trust: String,
+    /// The multiplier `trust` put on `adjusted_score` (1.0 when accepted).
+    pub trust_weight: f64,
+    /// Memories this one superseded that the same query matched, folded in
+    /// rather than listed as hits of their own (#24): key and content.
+    pub replaces: Vec<Value>,
 }
 
 /// Effort multiplies success; it never amplifies an abandoned outcome.
@@ -548,6 +559,9 @@ impl Engine {
                 licence: None,
                 licence_note: None,
                 provenance: None,
+                trust: trust::ACCEPTED.to_owned(),
+                trust_weight: 1.0,
+                replaces: Vec::new(),
             });
         }
 
@@ -627,19 +641,28 @@ impl Engine {
             else {
                 continue;
             };
-            let (fact_adjusted, fact_score) = (results[i].adjusted_score, results[i].score);
+            // The fact only shows where its source is relevant, so the
+            // source takes the fact's score as if it were believed: its own
+            // trust, not the fact's, decides how it ranks.
+            let fact_adjusted = if results[i].trust_weight > 0.0 {
+                results[i].adjusted_score / results[i].trust_weight * results[source].trust_weight
+            } else {
+                results[i].adjusted_score
+            };
+            let fact_score = results[i].score;
             if fact_adjusted > results[source].adjusted_score {
                 results[source].adjusted_score = fact_adjusted;
                 results[source].score = results[source].score.max(fact_score);
             }
             dropped[i] = true;
         }
-        let mut results: Vec<RecallResult> = results
+        let results: Vec<RecallResult> = results
             .into_iter()
             .zip(dropped)
             .filter(|(_, d)| !d)
             .map(|(r, _)| r)
             .collect();
+        let mut results = self.fold_superseded(results)?;
         results.sort_by(|a, b| {
             b.adjusted_score
                 .partial_cmp(&a.adjusted_score)
@@ -692,6 +715,47 @@ impl Engine {
         Ok(results)
     }
 
+    /// #24: a superseded memory is not a hit of its own. When its winner is
+    /// among the results it is folded into the winner (listed under
+    /// `replaces`, and the winner takes its score if that was higher, as a
+    /// fact's source does); when the winner exists but this query didn't
+    /// find it, it is dropped. When the winner is gone, archived or rejected,
+    /// the superseded memory comes back, still saying what replaced it,
+    /// rather than losing both.
+    fn fold_superseded(&self, results: Vec<RecallResult>) -> Result<Vec<RecallResult>> {
+        let (superseded, mut kept): (Vec<RecallResult>, Vec<RecallResult>) = results
+            .into_iter()
+            .partition(|r| r.result_type != "abandoned_warning" && r.trust == trust::SUPERSEDED);
+        for old in superseded {
+            let winner = old.superseded_by.clone().unwrap_or_default();
+            if let Some(hit) = kept
+                .iter_mut()
+                .find(|r| r.result_type != "abandoned_warning" && r.key == winner)
+            {
+                if old.adjusted_score > hit.adjusted_score {
+                    hit.adjusted_score = old.adjusted_score;
+                    hit.score = hit.score.max(old.score);
+                }
+                hit.replaces
+                    .push(json!({"key": old.key, "content": take_chars(&old.content, 200)}));
+                continue;
+            }
+            let winner_stands = !winner.is_empty()
+                && self.store.get(&winner)?.is_some_and(|row| {
+                    !row.is_empty()
+                        && !matches!(
+                            row.get("state").map(String::as_str),
+                            Some("archived" | "deleted")
+                        )
+                        && omnimem_store::trust_of(&row) != trust::REJECTED
+                });
+            if !winner_stands {
+                kept.push(old);
+            }
+        }
+        Ok(kept)
+    }
+
     /// Search every namespace for one query vector and score the hits.
     /// `reinstate_query` is the original query, which reinstate candidates
     /// match on; expansion variants pass `None`, as 6.x's `_search_variant`
@@ -702,9 +766,19 @@ impl Engine {
         reinstate_query: Option<&str>,
         scope: &Scope<'_>,
     ) -> Result<Vec<RecallResult>> {
+        // A rejected memory is wrong, so it never comes back (#24); a
+        // superseded one is fetched so it can be folded into its winner.
         let filter = SearchFilter {
             states: vec!["active".into(), "deprioritised".into()],
             projects: scope.projects.to_vec(),
+            trusts: [
+                trust::ACCEPTED,
+                trust::CANDIDATE,
+                trust::DISPUTED,
+                trust::SUPERSEDED,
+            ]
+            .map(str::to_owned)
+            .to_vec(),
         };
         let mut results = Vec::new();
         for ns in scope.namespaces {
@@ -759,6 +833,16 @@ impl Engine {
                 } else {
                     raw_score * surface * recency * exp_weight * temporal
                 };
+                // Belief ranks a memory down without hiding it (#24). An
+                // accepted memory is untouched, so a store with no candidates
+                // and no confirmed disputes scores exactly as before.
+                let trust = omnimem_store::trust_of(doc).to_owned();
+                let trust_weight = match trust.as_str() {
+                    trust::DISPUTED => self.config.trust_disputed_weight,
+                    trust::CANDIDATE => self.config.trust_candidate_weight,
+                    _ => 1.0,
+                };
+                adjusted *= trust_weight;
 
                 let mut reinstate = false;
                 if state == "deprioritised"
@@ -816,6 +900,9 @@ impl Engine {
                     licence: Some(effective_licence(doc, ns).to_owned()),
                     licence_note: doc.get("licence_note").cloned(),
                     provenance: Some(provenance),
+                    trust,
+                    trust_weight,
+                    replaces: Vec::new(),
                 });
             }
         }

@@ -54,7 +54,8 @@ pub(crate) struct ContradictionMatch {
     pub similarity: f64,
 }
 
-pub(crate) const HEURISTIC_EXPLANATION: &str = "These memories discuss the same topic but contain opposing language (negation patterns detected).";
+// The store owns the text, so the v5 migration can recognise a heuristic link.
+pub(crate) use omnimem_store::HEURISTIC_EXPLANATION;
 
 impl Engine {
     pub(crate) fn check_contradiction_heuristic(

@@ -19,6 +19,7 @@ use chrono::TimeZone;
 use clap::{Parser, Subcommand};
 mod hook;
 mod install_hooks;
+mod trust_cli;
 
 use omnimem_app::{data_dir, feeds_path, load_embedder, open_engine, run_services};
 use omnimem_core::env::{install_overlay, parse_settings};
@@ -110,6 +111,13 @@ enum Command {
         /// One JSON object instead of the lists.
         #[arg(long, global = true)]
         json: bool,
+    },
+    /// Facts and preferences OmniMem concluded that nobody has confirmed
+    /// yet: list them, confirm them, or reject a memory that is wrong. Only a
+    /// person can do this, here or in the settings window, never an agent.
+    Trust {
+        #[command(subcommand)]
+        action: trust_cli::TrustCommand,
     },
     /// Record and vector counts per namespace.
     Stats,
@@ -236,6 +244,7 @@ fn main() -> Result<()> {
                 | Command::Export { .. }
                 | Command::Audit { .. }
                 | Command::Contradictions { .. }
+                | Command::Trust { .. }
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
@@ -306,6 +315,10 @@ fn main() -> Result<()> {
         Command::Contradictions { action, json } => {
             db.must_exist(None)?;
             contradictions(&db.path, action, json)
+        }
+        Command::Trust { action } => {
+            db.must_exist(None)?;
+            trust_cli::run(&db.path, action)
         }
         Command::Hook { event, project } => {
             // A hook never fails the tool call or session it answers: say why
@@ -839,6 +852,9 @@ fn search(
             vec!["active".into(), "deprioritised".into()]
         },
         projects,
+        // `omnimem search` is a raw look at the store, so it shows every
+        // trust; each hit says which.
+        trusts: Vec::new(),
     };
     for hit in store.search(namespace, &vector, top_k, &filter, None)? {
         let text = hit

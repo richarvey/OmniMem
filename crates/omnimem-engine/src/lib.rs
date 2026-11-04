@@ -42,6 +42,7 @@ mod tags;
 mod temporal;
 mod tools;
 pub mod transfer;
+pub mod trust;
 
 pub use llm::ExtractedFact;
 pub use projects::{Suggestion, migrate_project_domains};

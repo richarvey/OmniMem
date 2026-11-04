@@ -289,15 +289,28 @@ fn recall_shows_the_resolution_instead_of_a_dispute() {
     e.resolve_contradiction(&request(&a, &b, "supersedes", Some(&b), Retire::No), "mcp")
         .unwrap();
     let after = recalled(&e);
-    let old = hit(&after, &a);
-    assert!(old.get("contradictions").is_none(), "{old}");
-    assert_eq!(old["superseded_by"], b.as_str());
-    assert_eq!(old["resolved_contradictions"][0]["key"], b.as_str());
-    assert_eq!(old["resolved_contradictions"][0]["outcome"], "supersedes");
-    assert_eq!(old["resolved_contradictions"][0]["winner"], b.as_str());
-    assert_eq!(old["resolved_contradictions"][0]["reason"], "we moved on");
+    // #24: the superseded memory is no longer a hit of its own. It is
+    // folded into its winner, which says it replaces it.
+    assert!(after.iter().all(|h| h["key"] != a.as_str()), "{after:?}");
     let current = hit(&after, &b);
     assert!(current.get("superseded_by").is_none());
+    assert_eq!(current["replaces"][0]["key"], a.as_str());
+    assert_eq!(current["trust"], "accepted");
+    assert!(current.get("contradictions").is_none(), "{current}");
+    assert_eq!(current["resolved_contradictions"][0]["key"], a.as_str());
+    assert_eq!(
+        current["resolved_contradictions"][0]["outcome"],
+        "supersedes"
+    );
+    assert_eq!(current["resolved_contradictions"][0]["winner"], b.as_str());
+    assert_eq!(
+        current["resolved_contradictions"][0]["reason"],
+        "we moved on"
+    );
+    // The loser still says so when read by key.
+    let old = e.store().get(&a).unwrap().unwrap();
+    assert_eq!(old["superseded_by"], b.as_str());
+    assert_eq!(old["trust"], "superseded");
     assert_eq!(current["resolved_contradictions"][0]["key"], a.as_str());
 }
 

@@ -320,8 +320,10 @@ pub struct AuditQuery {
 
 // Fields whose old and new values are kept below `full`: how a memory is
 // classified, filed and in what state, never what it says.
-const KEPT: [&str; 20] = [
+const KEPT: [&str; 22] = [
     "state",
+    "trust",
+    "trust_prior",
     "surface_score",
     "tags",
     "project",
@@ -363,8 +365,9 @@ fn wanted(name: &str, full: bool) -> bool {
 // facts that moved, a suppression, a contradiction link's other side, a
 // resolution's choice, a project and the scrub count itself. Everything
 // else in a row that isn't in `KEPT` is a field only `full` records.
-const BOOKKEEPING: [&str; 14] = [
+const BOOKKEEPING: [&str; 15] = [
     "namespace",
+    "trust_action",
     "other_fields",
     "facts",
     "suppressed",
@@ -646,7 +649,11 @@ impl Recorder {
             return Ok(());
         }
         let state_changed = matches!((old, new), (Some(o), Some(n)) if state_of(o) != state_of(n));
-        let lifecycle = new.is_none() || state_changed;
+        // Whether a memory is believed is as much its lifecycle as whether
+        // it is visible (#23).
+        let trust_changed =
+            matches!((old, new), (Some(o), Some(n)) if crate::trust_of(o) != crate::trust_of(n));
+        let lifecycle = new.is_none() || state_changed || trust_changed;
         let explicit = self.op.as_ref().and_then(|o| o.level);
         let required = explicit.unwrap_or(if lifecycle {
             AuditLevel::Lifecycle

@@ -320,6 +320,20 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "How much a deprioritised memory still counts in recall.",
             ),
             setting(
+                "TRUST_CANDIDATE_WEIGHT",
+                "Unconfirmed weight",
+                Kind::Decimal,
+                "0.9",
+                "How much a fact or preference OmniMem extracted, which no one has confirmed yet, counts in recall. 0.9 is about what 90 days of age costs a memory. Confirm them on the Unconfirmed page. 1.0 ranks them like everything else.",
+            ),
+            setting(
+                "TRUST_DISPUTED_WEIGHT",
+                "Disputed weight",
+                Kind::Decimal,
+                "0.8",
+                "How much a memory in an open contradiction the model confirmed counts in recall. A contradiction only the quick check found doesn't lower anything. Resolve it on the Contradictions page and the weight goes.",
+            ),
+            setting(
                 "DEDUP_SIMILARITY_THRESHOLD",
                 "Duplicate similarity",
                 Kind::Decimal,
