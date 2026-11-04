@@ -68,6 +68,12 @@ docker run --rm --privileged \
         fi
 
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+        # The export repo is only where the bundle is made from: what makes a
+        # rebuild quick is the state dir. Kept between runs, it gained a commit
+        # per build and was never pruned, until it filled the arm64 runner
+        # (`min-free-space-percent` at export, 7.0.8). So each run starts it
+        # empty, which frees that space before the export needs it.
+        rm -rf /cache/repo
         # No FUSE in a container, hence --disable-rofiles-fuse.
         flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse \
             --state-dir=/cache/state --repo=/cache/repo --force-clean \
