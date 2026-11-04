@@ -26,7 +26,7 @@ Early versions treated `mode="write"` as the accept, which meant an agent could 
 
 Either way the stale check still applies: if the stored skill changed after the proposal, nothing is written. And if the agent replaces the proposal while you're reading the old one, your yes doesn't carry over to the new one.
 
-`HUMAN_APPROVAL` is deliberately not skill-specific. Resolving contradictions is meant to go through the same switch.
+`HUMAN_APPROVAL` is deliberately not skill-specific. Resolving contradictions goes through the same switch and the same question (see [contradiction detection](features.md#contradiction-detection)), and everything below applies to both.
 
 ### Which clients can ask
 
@@ -42,6 +42,15 @@ This is what each client's own documentation says, checked in November 2026. Eli
 | claude.ai | Not sure, for the same reason. Claude Code's docs mention connecting to claude.ai connectors, but that's Claude Code as the client, not claude.ai | [Build an MCP server for Claude](https://claude.com/docs/connectors/building) |
 
 If a client says nothing, OmniMem sees no `elicitation` capability at connect and answers `awaiting_approval`, so the worst case is a trip to the settings window, never a silent write.
+
+### What the gate rests on
+
+Over MCP the approval is an elicitation, and an elicitation is a question **the client** shows. OmniMem sends it and trusts the client to put it in front of a person. It can't see whether one did, so be clear about what that does and doesn't guarantee:
+
+- **It stops an agent approving its own write.** The agent's `mode="write"` is a request. The answer comes back on a separate channel the agent doesn't speak for, so a model that wants a skill committed can't say yes on your behalf.
+- **It doesn't stop a client that answers for you.** A harness set to accept elicitations automatically, or a client that hands the question to the model instead of showing it to you, turns the gate back into self-approval. OmniMem has no way to tell an automatic yes from yours.
+- **The settings window is the hard boundary.** Pending proposals on the Skills and Contradictions pages are answered inside the desktop app, through routes that are never bound to a socket (the panel runs in-process for the window), so no agent and no remote client can reach them. If you need to be certain a person decided, set `HUMAN_APPROVAL=human` and use a client that can't be asked (it gets `awaiting_approval`), or check proposals there.
+- **The audit log says who answered.** An accepted write is recorded as `mcp`, with the name the client gave when it connected (and the OAuth client id, if it signed in), and the reason "approved by the user via elicitation". A panel click is recorded as `panel`. So afterwards you can see which channel each approval came through, even though you can't see who pressed the button.
 
 ## The flywheel
 

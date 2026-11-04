@@ -179,6 +179,7 @@ The tools, the vectors and your compiled skills behave as they did, so nothing n
 | [Multiple machines](docs/remote-access.md) | Reverse proxies, OAuth 2.1 for claude.ai, troubleshooting |
 | [Settings panel](docs/settings-panel.md) | The desktop app's window, page by page |
 | [Architecture](docs/architecture.md) | The process, the recall pipeline, design decisions |
+| [Atlas evidence](docs/atlas-evidence.md) | Each [Agent Memory Atlas](https://neoneye.github.io/agent-memory-atlas/systems/omnimem/) mark, the code that earns it and the test that fails without it |
 | [Memory type specs](docs/memory-types.md) | The storage model, field by field |
 | [Connection guides](guides/) | Per-agent setup |
 | Deployment guides | [Docker](guides/docker.md) · [macOS](guides/omnimem-setup-macos.md) · [Raspberry Pi](guides/omnimem-setup-raspberry-pi.md) · [AWS](guides/omnimem-setup-aws-linux.md) · [GCP](guides/omnimem-setup-gcp-linux.md) · [Linux + Tailscale Funnel](guides/omnimem-setup-linux-tailscale.md) |

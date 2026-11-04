@@ -25,6 +25,7 @@ These pages describe OmniMem 7, the single Rust binary, first released as 7.0.3.
 ## Internals
 
 - [Architecture](architecture.md): the one process, the recall pipeline and the design decisions behind it
+- [Atlas evidence](atlas-evidence.md): each Agent Memory Atlas mark, the code that earns it, the test that fails without it, and its limits
 - [Memory types overview](memory-types.md): the storage model all five namespaces share
   - [Episodic](memory-episodic.md) · [Project](memory-project.md) · [Knowledge](memory-knowledge.md) · [Preference](memory-preference.md) · [Skill](memory-skill.md)
 - [The Rust port plan](rust-port-plan.md): how 7.0 was built, phase by phase, and what it promises to keep from 6.x
