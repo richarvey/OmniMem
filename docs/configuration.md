@@ -89,6 +89,8 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 | `AUDIT_LOG` | `lifecycle` | Keeps a record of who changed what, and when. `off` writes nothing. `lifecycle`, the default since 7.0.7, records state changes and deletes (deprioritise, archive, reinstate, forget, suppression, skill writes). `writes` adds every other write, such as new memories, tags, licences and restores, without their text. `full` also keeps the text of a memory before and after each change, so it is the one level that stores what your memories say: anyone who can read the database, or a backup made with the audit log, can read it too. See [the audit log](audit-log.md) |
 | `AUDIT_RETENTION_DAYS` | `90` | How long audit rows are kept. The maintenance pass, and starting OmniMem, remove older ones. `0` keeps them for ever |
 | `DEPRIORITISED_WEIGHT` | `0.2` | How much a deprioritised memory still counts |
+| `TRUST_CANDIDATE_WEIGHT` | `0.9` | How much an extracted fact or preference no person has confirmed (trust `candidate`) counts in recall. A multiplier on the final score, about what 90 days of recency costs; the relevance floor reads raw similarity, so nothing drops out. `1.0` ranks them like any other. See [trust](features.md#trust) |
+| `TRUST_DISPUTED_WEIGHT` | `0.8` | The same for a memory in an open contradiction the model confirmed (trust `disputed`). A link only the heuristic found doesn't dispute anything |
 | `DEDUP_SIMILARITY_THRESHOLD` | `0.92` | Similarity at which a new memory is flagged as a duplicate |
 | `CONTRADICTION_SIMILARITY_THRESHOLD` | `0.7` | Similarity at which two memories are checked for contradicting each other |
 | `STALE_MEMORY_DAYS` | `30` | The briefing lists active memories untouched this long |

@@ -136,6 +136,32 @@ omnimem contradictions accept KEY_A KEY_B                # a pending proposal, a
 omnimem contradictions discard KEY_A KEY_B
 ```
 
+## Trust
+
+`state` says whether a memory is visible. Since 7.0.8, `trust` says whether OmniMem believes it.
+
+| Trust | What it means | Recall | Briefing | Skill compiles |
+|---|---|---|---|---|
+| `accepted` | Believed. Anything you or an agent stored, and RSS articles | Ranked as normal | Shown | Used |
+| `candidate` | A fact or preference OmniMem extracted for itself, which no one has confirmed yet | Ranked at `TRUST_CANDIDATE_WEIGHT` (0.9) | Left out | Left out |
+| `disputed` | In an open contradiction the model confirmed | Ranked at `TRUST_DISPUTED_WEIGHT` (0.8) | Only as a contradiction warning | Left out |
+| `superseded` | A resolution named another memory as current (`superseded_by`) | Folded into the winner's hit, under `replaces` | Left out | Left out |
+| `rejected` | A person judged it wrong | Never returned | Left out | Left out |
+
+Every recall hit carries its `trust`, so an agent can see why something ranked lower, and `recall_detail`, `explain_memory` and the memory's page in the settings window show it for any key, including a rejected one.
+
+**The weights only reorder.** They multiply the final score, as the recency decay does: a candidate counts about as much as if it were 90 days older. The relevance floor and the weak band read raw similarity, so a weight never drops a memory out of the results, it only changes the order and which memories make the `top_k` cut. A store where everything is accepted scores exactly as it did before.
+
+**Who moves it.**
+
+- Extracted facts and preferences start as `candidate`. Everything else starts `accepted`.
+- A contradiction the model confirmed (`check_contradictions(use_api=true)`) disputes both memories. One found only by the quick heuristic doesn't, since two memories sharing words and a "not" isn't evidence enough to rank either down. The heuristic link still warns as before.
+- Resolving it moves them on. With `supersedes` the winner is `accepted` and the loser `superseded`. `both_valid` and `false_positive` send each back to what it was before. `both_wrong` rejects both, and `reopened` disputes them again. Forgetting one side ends the other's dispute, and forgetting a winner brings back what it had superseded.
+- Only a person confirms a candidate or rejects a memory: on the **Unconfirmed** page of the settings window (one at a time, or every candidate from one source memory at once), on a memory's own page (Confirm, Reject with a reason, Restore), or with `omnimem trust` from a terminal. No MCP tool can, so an agent can't promote its own conclusions, the same rule as the [skill gate](skill-compiler.md#who-accepts). Promoting knowledge to a skill domain doesn't confirm it either, since an agent can call that.
+- Every change is in the [audit log](audit-log.md) at `lifecycle`, with who made it and why.
+
+Provenance still says who stated a memory and is never scored on. Trust says whether it's believed.
+
 ## Session briefing
 
 Rather than three separate calls at the start of a session, one `briefing(project="myproject")` gives your agent everything it needs:
