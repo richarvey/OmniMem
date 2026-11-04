@@ -829,6 +829,18 @@ fn briefing_mentions_a_newer_release_only_when_one_is_known_and_the_check_is_on(
 
     omnimem_engine::release::record_latest_release(e.store(), "999.0.0").unwrap();
     let briefing = e.briefing(None, false).unwrap();
+    // A development build (`7.0.7-dev`) is never told about a release, so
+    // between releases the branch's own version takes that path.
+    if omnimem_engine::release::parse_version(env!("CARGO_PKG_VERSION")).is_none() {
+        assert!(briefing.get("update_available").is_none());
+        assert!(
+            e.session_briefing(None, false)
+                .unwrap()
+                .get("update_available")
+                .is_none()
+        );
+        return;
+    }
     assert_eq!(
         briefing["update_available"],
         json!({
