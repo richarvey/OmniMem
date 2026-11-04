@@ -130,7 +130,22 @@ fn check_until_stopped(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnimem_engine::release::newer_release;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// `newer_release` reads `UPDATE_CHECK`, which one test here sets for the
+    /// whole process, and tests run in parallel threads: each that reads or
+    /// sets it holds this, or a read can land while it says `false`.
+    static ENV: Mutex<()> = Mutex::new(());
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        ENV.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn newer_release(store: &Store, running: &str) -> Option<String> {
+        let _env = env_lock();
+        omnimem_engine::release::newer_release(store, running)
+    }
 
     fn store() -> Store {
         let store = Store::open_in_memory().unwrap();
@@ -251,7 +266,9 @@ mod tests {
 
     #[test]
     fn update_check_off_returns_before_asking() {
-        // The only test here that touches the environment.
+        // The only test here that touches the environment, so it holds the
+        // lock throughout and reads the store without taking it again.
+        let env = env_lock();
         let store = store();
         // Already stopped, so the loop (if reached) would also return at
         // once; the point is that it returns without waiting 20 seconds.
@@ -263,6 +280,10 @@ mod tests {
         unsafe { std::env::set_var("UPDATE_CHECK", "true") };
         run_update_checks(&store, &stop);
         unsafe { std::env::remove_var("UPDATE_CHECK") };
-        assert_eq!(newer_release(&store, "7.0.5"), None);
+        assert_eq!(
+            omnimem_engine::release::newer_release(&store, "7.0.5"),
+            None
+        );
+        drop(env);
     }
 }
