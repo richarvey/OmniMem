@@ -226,7 +226,6 @@ fn full_holds_the_text_before_and_after() {
     e.store()
         .set_field(&key, "content", "the launch code is correcthorse")
         .unwrap();
-    e.forget(&key, true).unwrap();
 
     let log = rows(&e);
     let created = log.iter().find(|r| r.action == "remember").unwrap();
@@ -234,8 +233,20 @@ fn full_holds_the_text_before_and_after() {
     let edited = log.iter().find(|r| r.action == "update").unwrap();
     assert_eq!(edited.from["content"], "the launch code is hunter2");
     assert_eq!(edited.to["content"], "the launch code is correcthorse");
+
+    // Until it's forgotten (#19): then the history stays and the text goes,
+    // including from the forget's own row.
+    e.forget(&key, true).unwrap();
+    let log = rows(&e);
+    assert_eq!(log.iter().filter(|r| r.key == key).count(), 3);
+    for row in log.iter().filter(|r| r.key == key) {
+        assert!(
+            row.from.get("content").is_none() && row.to.get("content").is_none(),
+            "{row:?}"
+        );
+    }
     let forgotten = log.iter().find(|r| r.action == "forget").unwrap();
-    assert_eq!(forgotten.from["content"], "the launch code is correcthorse");
+    assert_eq!(forgotten.to["scrubbed"], 2);
 }
 
 #[test]
@@ -343,6 +354,81 @@ fn the_cascade_is_one_entry_per_source_listing_the_facts() {
         .find(|r| r.action == "cascade" && r.to["facts"][&facts[1]] == "deleted")
         .expect("forgetting records the facts going with it");
     assert_eq!(gone.key, source);
+}
+
+/// #19 through the engine: at `full`, forgetting a memory scrubs its text
+/// from the log, and its extracted facts' text with it, while every row
+/// still says what happened. `delete_project` goes the same way.
+#[test]
+fn forget_and_delete_project_scrub_text_from_the_log() {
+    let e = engine_at(AuditLevel::Full);
+    let _who = enter(Actor::Mcp, "test");
+    let source = remember(&e, "the build server is at 10.0.0.5", Some("alpha"));
+    let fact = "mem:knowledge:factscrub".to_owned();
+    let f = Fields::from([
+        (
+            "content".to_owned(),
+            "build server address 10.0.0.5".to_owned(),
+        ),
+        ("state".to_owned(), "active".to_owned()),
+        ("surface_score".to_owned(), "1.0".to_owned()),
+        ("enriched_from".to_owned(), source.clone()),
+    ]);
+    e.store()
+        .upsert(&fact, &f, Some(&vector("build server address")))
+        .unwrap();
+    e.retag(&source, None, Some(vec!["infra".into()]), None)
+        .unwrap();
+    let text_in = |e: &Engine, key: &str, text: &str| {
+        e.store()
+            .audit_entries(&AuditQuery {
+                key: Some(key.to_owned()),
+                limit: 100,
+                ..AuditQuery::default()
+            })
+            .unwrap()
+            .iter()
+            .any(|r| format!("{}{}", r.from, r.to).contains(text))
+    };
+    assert!(
+        text_in(&e, &source, "10.0.0.5") && text_in(&e, &fact, "10.0.0.5"),
+        "full keeps text"
+    );
+
+    e.forget(&source, true).unwrap();
+    for key in [&source, &fact] {
+        assert!(
+            !text_in(&e, key, "10.0.0.5"),
+            "{key} still has text in the log"
+        );
+    }
+    let log = rows(&e);
+    assert!(
+        log.iter()
+            .any(|r| r.key == source && r.action == "remember")
+    );
+    let forgot = log
+        .iter()
+        .find(|r| r.key == source && r.action == "forget")
+        .expect("the forget is still recorded");
+    // Its remember held text; the retag only ever held tags.
+    assert_eq!(forgot.to["scrubbed"], 1, "{:?}", forgot.to);
+    let cascade = log
+        .iter()
+        .find(|r| r.action == "cascade" && r.to["facts"][&fact] == "deleted")
+        .unwrap();
+    assert_eq!(cascade.to["scrubbed"], 1, "the fact's own row");
+
+    // A project-wide delete scrubs too.
+    let doomed = remember(&e, "beta knows the vault code 4471", Some("beta"));
+    assert!(text_in(&e, &doomed, "4471"));
+    e.delete_project("beta", true, true).unwrap();
+    assert!(!text_in(&e, &doomed, "4471"));
+    assert!(
+        rows(&e)
+            .iter()
+            .any(|r| r.key == doomed && r.action == "remember")
+    );
 }
 
 #[test]

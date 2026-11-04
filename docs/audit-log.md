@@ -21,7 +21,9 @@ A `lifecycle` row is about 340 bytes on disk, indexes included (measured from 6,
 
 ### Privacy at `full`
 
-`full` is the only level that stores what your memories say. Every edit leaves the old text and the new text in the `audit` table, so deleting or rewriting a memory no longer removes it from the database until its rows age out. Anyone who can read the database file can read them, and so can anyone who has a backup made with the audit log in it. If you keep OmniMem on a shared machine, or you'd be unhappy for a deleted memory to still be on disk, use `writes`.
+`full` is the only level that stores what your memories say. Every edit leaves the old text and the new text in the `audit` table, so rewriting a memory doesn't remove the old version until its rows age out: keeping that history is what `full` is for. Anyone who can read the database file can read them, and so can anyone who has a backup made with the audit log in it. If you keep OmniMem on a shared machine, use `writes`.
+
+Forgetting is different. Since 7.0.7, `forget` (and `delete_project`) scrubs the text from the log in the same transaction as the delete: every earlier row for that memory, and for the facts extracted from it, loses the fields only `full` keeps, and a contradiction link on another memory that points at it loses the model's explanation, which may quote it. The rows stay and still say who did what, when, and why, with the memory's state, tags and project, so the log shows *that* something was forgotten without keeping *what* it said. The forget's own row never holds text at any level, and says how many rows it scrubbed (`scrubbed: 3`). The scrub runs whatever the level is now, because rows written at `full` outlive a move down to `lifecycle` or `off`. A backup made with the audit log before the forget still has the text, so treat those as you would any copy of the database.
 
 The lower levels never hold memory text. They record keys, states, tags, projects, licences and provenance, and the reasons callers gave. A change to a field they don't show is listed by name (`other_fields: ["content"]`), never by value.
 

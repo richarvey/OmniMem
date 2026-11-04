@@ -579,6 +579,11 @@ impl Store {
         let mut removed_memories: Vec<String> = Vec::new();
         let mut audit = self.recorder();
         for chunk in memory_keys.chunks(IN_CHUNK) {
+            // Before the delete's own row is written, so it can say how many
+            // earlier rows lost their text.
+            audit
+                .scrubbed
+                .extend(crate::audit::scrub_forgotten(&tx, chunk)?);
             // The fields come back with the key when the log is on, which is
             // all it needs to say what was deleted.
             let columns = if audit.enabled() {

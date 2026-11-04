@@ -358,6 +358,105 @@ fn wanted(name: &str, full: bool) -> bool {
     !NEVER.contains(&name) && (full || KEPT.contains(&name))
 }
 
+// What a row says about the change rather than the memory, kept when the
+// memory is forgotten: the namespace, which fields changed (by name), the
+// facts that moved, a suppression, a contradiction link's other side, a
+// resolution's choice, a project and the scrub count itself. Everything
+// else in a row that isn't in `KEPT` is a field only `full` records.
+const BOOKKEEPING: [&str; 14] = [
+    "namespace",
+    "other_fields",
+    "facts",
+    "suppressed",
+    "linked_to",
+    "key_a",
+    "key_b",
+    "outcome",
+    "resolved_by",
+    "winner",
+    "retire",
+    "project",
+    "derived_facts",
+    "scrubbed",
+];
+
+fn scrub_map(map: &mut Map<String, Value>) -> bool {
+    let before = map.len();
+    map.retain(|name, _| KEPT.contains(&name.as_str()) || BOOKKEEPING.contains(&name.as_str()));
+    map.len() != before
+}
+
+/// #19: a forget erases what a memory said from the log, not only from the
+/// store. Every row for each key loses the fields only `full` keeps (its
+/// text, and anything else of the memory's), and a contradiction link on
+/// another memory that points at it loses the explanation, which may quote
+/// it. Who, when, the action, the reason and the state stay, so the log
+/// still shows that it happened. Runs whatever the level is now, since
+/// rows written at `full` outlive a change of level, and inside the
+/// delete's own transaction, so it rolls back with it. Returns how many
+/// rows changed for each key.
+pub(crate) fn scrub_forgotten(
+    conn: &Connection,
+    keys: &[&str],
+) -> Result<std::collections::HashMap<String, usize>> {
+    let mut counts = std::collections::HashMap::new();
+    if keys.is_empty() {
+        return Ok(counts);
+    }
+    let marks = std::iter::repeat_n("?", keys.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT id, key, changed_from, changed_to FROM audit
+         WHERE key IN ({marks}) OR json_extract(changed_to, '$.linked_to') IN ({marks})"
+    );
+    let rows: Vec<(i64, String, String, String)> = {
+        let mut stmt = conn.prepare(&sql)?;
+        stmt.query_map(params_from_iter(keys.iter().chain(keys)), |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+    let object = |raw: &str| match serde_json::from_str(raw) {
+        Ok(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    for (id, key, from, to) in rows {
+        let (mut from, mut to) = (object(&from), object(&to));
+        let own = keys.contains(&key.as_str());
+        // A link row is counted against the forgotten memory it points at.
+        let counted = if own {
+            key
+        } else {
+            to_linked(&to).unwrap_or(key)
+        };
+        let changed = if own {
+            scrub_map(&mut from) | scrub_map(&mut to)
+        } else {
+            // Another memory's link to the forgotten one: only the model's
+            // explanation of the conflict can quote it.
+            to.remove("explanation").is_some()
+        };
+        if !changed {
+            continue;
+        }
+        conn.prepare_cached("UPDATE audit SET changed_from = ?1, changed_to = ?2 WHERE id = ?3")?
+            .execute(params![
+                Value::Object(from).to_string(),
+                Value::Object(to).to_string(),
+                id
+            ])?;
+        *counts.entry(counted).or_insert(0) += 1;
+    }
+    Ok(counts)
+}
+
+fn to_linked(to: &Map<String, Value>) -> Option<String> {
+    to.get("linked_to")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
 /// A stored value as JSON: a tag list is the array it spells, anything else
 /// the text.
 fn value_of(name: &str, raw: &str) -> Value {
@@ -461,6 +560,9 @@ pub(crate) struct Recorder {
     /// Memories folded into one entry (see [`Op::fold_into`]): key, old
     /// state, new state.
     folded: Vec<(String, Value, Value)>,
+    /// Rows [`scrub_forgotten`] emptied, per deleted key, for the delete's
+    /// own entry to say.
+    pub(crate) scrubbed: std::collections::HashMap<String, usize>,
 }
 
 impl Store {
@@ -479,6 +581,7 @@ impl Store {
             op: ambient.op,
             at: now(),
             folded: Vec::new(),
+            scrubbed: std::collections::HashMap::new(),
         }
     }
 
@@ -553,7 +656,15 @@ impl Recorder {
         if self.level < required {
             return Ok(());
         }
-        let (from, mut to) = diff(key, old, new, self.level == AuditLevel::Full);
+        // A delete's own row keeps no text even at `full`: the point of a
+        // forget is that what the memory said goes (#19).
+        let keep_text = self.level == AuditLevel::Full && new.is_some();
+        let (from, mut to) = diff(key, old, new, keep_text);
+        if new.is_none()
+            && let Some(&n) = self.scrubbed.get(key)
+        {
+            to.insert("scrubbed".into(), n.into());
+        }
         let created = old.is_none();
         if !created && new.is_some() && from.is_empty() && to.is_empty() {
             // Nothing moved but the fields that change on every touch.
@@ -629,7 +740,15 @@ impl Recorder {
             after.insert(key.clone(), is.clone());
         }
         let from = Map::from_iter([("facts".to_owned(), Value::Object(before))]);
-        let to = Map::from_iter([("facts".to_owned(), Value::Object(after))]);
+        let mut to = Map::from_iter([("facts".to_owned(), Value::Object(after))]);
+        let scrubbed: usize = self
+            .folded
+            .iter()
+            .filter_map(|(key, _, _)| self.scrubbed.get(key))
+            .sum();
+        if scrubbed > 0 {
+            to.insert("scrubbed".into(), scrubbed.into());
+        }
         let action = self.op.as_ref().map_or("cascade", |o| o.action);
         self.insert(conn, action, &source, &from, &to)
     }
@@ -780,6 +899,145 @@ mod tests {
             .iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
             .collect()
+    }
+
+    /// Every row's from and to for `key`, as text, oldest first.
+    fn logged(store: &Store, key: &str) -> Vec<(String, Value, Value)> {
+        let mut rows = store
+            .audit_entries(&AuditQuery {
+                key: Some(key.to_owned()),
+                limit: 100,
+                ..AuditQuery::default()
+            })
+            .unwrap();
+        rows.reverse();
+        rows.into_iter().map(|r| (r.action, r.from, r.to)).collect()
+    }
+
+    fn full_store() -> Store {
+        let store = Store::open_in_memory().unwrap();
+        store.set_audit_level(AuditLevel::Full);
+        store
+    }
+
+    const KEY: &str = "mem:episodic:01SCRUB";
+
+    /// #19: at `full`, remember, update, then forget. The rows are all still
+    /// there and still say who did what, but none holds what it said.
+    #[test]
+    fn a_forget_scrubs_the_text_from_every_earlier_row() {
+        let store = full_store();
+        let _who = enter(Actor::Mcp, "claude-code");
+        store
+            .set_fields(
+                KEY,
+                &fields(&[
+                    ("content", "the launch code is 7291"),
+                    ("project", "apollo"),
+                ]),
+            )
+            .unwrap();
+        store
+            .set_fields(KEY, &fields(&[("content", "the launch code is 8302")]))
+            .unwrap();
+        let before = logged(&store, KEY);
+        assert_eq!(before.len(), 2);
+        assert!(
+            before[1].1.to_string().contains("7291"),
+            "full keeps the text: {before:?}"
+        );
+
+        assert_eq!(store.delete_many(&[KEY.to_owned()]).unwrap(), 1);
+        let after = logged(&store, KEY);
+        assert_eq!(after.len(), 3, "the rows stay, and the forget adds one");
+        for (action, from, to) in &after {
+            let text = format!("{from}{to}");
+            assert!(
+                !text.contains("7291") && !text.contains("8302"),
+                "{action}: {text}"
+            );
+        }
+        assert_eq!(after[0].0, "remember");
+        assert_eq!(after[0].2["project"], "apollo", "where it was filed stays");
+        assert_eq!(after[2].0, "delete");
+        assert_eq!(after[2].2["state"], "deleted");
+        assert_eq!(after[2].2["scrubbed"], 2);
+    }
+
+    #[test]
+    fn the_scrub_rolls_back_with_a_delete_that_fails() {
+        let store = full_store();
+        let _who = enter(Actor::Mcp, "claude-code");
+        store
+            .set_fields(KEY, &fields(&[("content", "the launch code is 7291")]))
+            .unwrap();
+        // The delete fails inside its transaction, after the scrub ran.
+        store
+            .conn()
+            .execute_batch(
+                "CREATE TRIGGER refuse BEFORE DELETE ON memories
+                 BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+            )
+            .unwrap();
+        assert!(store.delete_many(&[KEY.to_owned()]).is_err());
+        let rows = logged(&store, KEY);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].2.to_string().contains("7291"),
+            "nothing was scrubbed"
+        );
+        assert!(store.get(KEY).unwrap().is_some(), "nor deleted");
+    }
+
+    /// A contradiction link on another memory keeps the model's explanation
+    /// at `full`, which may quote the one being forgotten.
+    #[test]
+    fn a_link_explanation_that_may_quote_the_forgotten_memory_goes_too() {
+        let store = full_store();
+        let _who = enter(Actor::Mcp, "claude-code");
+        let other = "mem:episodic:01OTHER";
+        store
+            .set_fields(KEY, &fields(&[("content", "port 9000")]))
+            .unwrap();
+        store
+            .set_fields(other, &fields(&[("content", "port 8000")]))
+            .unwrap();
+        {
+            let _op = op(Op::new("contradiction_link").detail(json!({
+                "linked_to": KEY,
+                "explanation": "one says port 9000, the other 8000",
+            })));
+            store
+                .set_fields(other, &fields(&[("contradictions", r#"[{"key": "x"}]"#)]))
+                .unwrap();
+        }
+        store.delete_many(&[KEY.to_owned()]).unwrap();
+        let link = logged(&store, other)
+            .into_iter()
+            .find(|(action, _, _)| action == "contradiction_link")
+            .unwrap();
+        assert_eq!(link.2["linked_to"], KEY);
+        assert!(link.2.get("explanation").is_none(), "{:?}", link.2);
+        // The other memory's own text is its own business, until it goes.
+        assert!(logged(&store, other)[0].2.to_string().contains("port 8000"));
+        let forgot = logged(&store, KEY).pop().unwrap();
+        assert_eq!(forgot.2["scrubbed"], 2, "its own remember and the link");
+    }
+
+    /// Rows written at `full` outlive a move to a lower level, so the scrub
+    /// runs whatever the level is now, even off.
+    #[test]
+    fn the_scrub_runs_at_every_level() {
+        let store = full_store();
+        let _who = enter(Actor::Mcp, "claude-code");
+        store
+            .set_fields(KEY, &fields(&[("content", "the launch code is 7291")]))
+            .unwrap();
+        store.set_audit_level(AuditLevel::Off);
+        store.delete_many(&[KEY.to_owned()]).unwrap();
+        let rows = logged(&store, KEY);
+        assert_eq!(rows.len(), 1, "off writes no row for the forget");
+        assert!(!rows[0].2.to_string().contains("7291"));
     }
 
     #[test]
