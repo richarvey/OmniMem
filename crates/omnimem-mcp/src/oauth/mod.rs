@@ -29,7 +29,7 @@ use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 use url::Url;
 
-pub(crate) use routes::{Allowlists, guard, routes};
+pub(crate) use routes::{Allowlists, guard, header_text, host_guard, routes};
 
 use crate::http::{constant_time_eq, var};
 
@@ -504,19 +504,23 @@ impl Client {
         }
     }
 
-    fn validate_scope(&self, requested: Option<&str>) -> Result<Option<Vec<String>>, String> {
-        let Some(requested) = requested else {
-            return Ok(None);
-        };
+    /// The scopes a sign-in grants: those asked for that the client was
+    /// registered with. RFC 6749 §3.3 lets a server ignore the rest, so an
+    /// `openid offline_access` request signs in for `omnimem` instead of
+    /// failing, as it did in 6.x and 7.0.6. Asking for none of them is the
+    /// same as asking for nothing.
+    fn granted_scopes(&self, requested: Option<&str>) -> Option<Vec<String>> {
         let allowed: Vec<&str> = self
             .text("scope")
             .map(|s| s.split(' ').collect())
             .unwrap_or_default();
-        let scopes: Vec<String> = requested.split(' ').map(str::to_owned).collect();
-        if let Some(scope) = scopes.iter().find(|s| !allowed.contains(&s.as_str())) {
-            return Err(format!("Client was not registered with scope {scope}"));
+        let mut scopes: Vec<String> = Vec::new();
+        for scope in requested?.split_whitespace() {
+            if allowed.contains(&scope) && !scopes.iter().any(|s| s == scope) {
+                scopes.push(scope.to_owned());
+            }
         }
-        Ok(Some(scopes))
+        (!scopes.is_empty()).then_some(scopes)
     }
 }
 
@@ -881,7 +885,10 @@ impl OAuth {
             "scopes_supported": [SCOPE],
             "response_types_supported": ["code"],
             "grant_types_supported": DEFAULT_GRANT_TYPES,
-            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+            // `none` is a public client proving itself with PKCE alone, which
+            // registration has always accepted; 6.x didn't say so, and a client
+            // that registers as one reads this list before it tries.
+            "token_endpoint_auth_methods_supported": ["none", "client_secret_post", "client_secret_basic"],
             "revocation_endpoint": format!("{prefix}/revoke"),
             "revocation_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
             "code_challenge_methods_supported": ["S256"],
@@ -944,24 +951,25 @@ impl OAuth {
                 "token_endpoint_auth_method 'private_key_jwt' is not supported".into(),
             ));
         }
-        let scope = match &metadata.scope {
-            None => SCOPE.to_owned(),
-            Some(requested) => {
-                let mut refused: Vec<&str> = requested
-                    .split_whitespace()
-                    .filter(|s| *s != SCOPE)
-                    .collect();
-                refused.sort_unstable();
-                refused.dedup();
-                if !refused.is_empty() {
-                    return Err(invalid(format!(
-                        "Requested scopes are not valid: {}",
-                        refused.join(", ")
-                    )));
-                }
-                requested.clone()
+        // RFC 7591 §2 lets a server replace requested metadata, and the one
+        // scope there is is the only one worth having, so a client asking for
+        // `openid profile` or `offline_access` is registered for `omnimem`
+        // rather than refused (6.x refused it, and so did 7.0.6).
+        if let Some(requested) = &metadata.scope {
+            let mut ignored: Vec<&str> = requested
+                .split_whitespace()
+                .filter(|s| *s != SCOPE)
+                .collect();
+            ignored.sort_unstable();
+            ignored.dedup();
+            if !ignored.is_empty() {
+                info!(
+                    ignored = ignored.join(" "),
+                    "registered an OAuth client for the omnimem scope, ignoring the others it asked for"
+                );
             }
-        };
+        }
+        let scope = SCOPE.to_owned();
         if !metadata
             .grant_types
             .iter()
@@ -1100,19 +1108,7 @@ impl OAuth {
                 );
             }
         };
-        let scopes = match client.validate_scope(params.get("scope")) {
-            Ok(scopes) => scopes,
-            Err(message) => {
-                return self.authorize_error(
-                    params,
-                    Some(client),
-                    Some(redirect),
-                    "invalid_scope",
-                    message,
-                    true,
-                );
-            }
-        };
+        let scopes = client.granted_scopes(params.get("scope"));
         if self.unauthenticated_flood(ip) {
             warn!(ip, "OAuth authorisation rate limit hit");
             return self.authorize_error(

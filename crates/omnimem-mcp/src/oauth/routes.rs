@@ -39,32 +39,80 @@ const ICON_SVG: &str = concat!(
     r##"</svg>"##,
 );
 
-pub(crate) fn routes(oauth: Arc<OAuth>) -> Router {
+/// The OAuth routes in two parts. The first is what a client calls without a
+/// person in a browser: discovery, registration, the token exchange and
+/// revocation. These carry no cookie and answer CORS to any origin, so they
+/// get only the Host check: refusing a foreign Origin there stopped browser
+/// based clients such as Mistral's Le Chat at discovery. The second is where
+/// a person signs in, `/authorize` and the login form, which keep the Origin
+/// check too.
+pub(crate) fn routes(oauth: Arc<OAuth>) -> (Router, Router) {
     let resource_path = oauth.resource_metadata_path().to_owned();
     let read = || middleware::from_fn_with_state(READ, cors);
     let write = || middleware::from_fn_with_state(WRITE, cors);
-    Router::new()
-        .route(
-            "/.well-known/oauth-authorization-server",
-            get(server_metadata).options(server_metadata).layer(read()),
-        )
-        .route(
-            &resource_path,
-            get(resource_metadata)
-                .options(resource_metadata)
-                .layer(read()),
-        )
-        .route("/authorize", get(authorize).post(authorize))
+    let server = || get(server_metadata).options(server_metadata).layer(read());
+    let resource = || {
+        get(resource_metadata)
+            .options(resource_metadata)
+            .layer(read())
+    };
+    // The issuer ends in a slash, so a client that builds the metadata URL
+    // from it naively asks for the slashed path; RFC 9728 clients that don't
+    // find the path form try the root one.
+    let mut public = Router::new()
+        .route("/.well-known/oauth-authorization-server", server())
+        .route("/.well-known/oauth-authorization-server/", server())
+        .route(&resource_path, resource())
+        .route(&format!("{resource_path}/"), resource());
+    if resource_path != "/.well-known/oauth-protected-resource" {
+        public = public.route("/.well-known/oauth-protected-resource", resource());
+    }
+    let public = public
         .route("/token", post(token).options(token).layer(write()))
         .route("/register", post(register).options(register).layer(write()))
         .route("/revoke", post(revoke).options(revoke).layer(write()))
-        .route("/oauth/login", get(login_page).post(login_submit))
         .route("/icon.svg", get(icon))
         .route("/favicon.svg", get(icon))
         .route("/favicon.ico", get(icon))
         .route("/oauth/icon.svg", get(icon))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .with_state(oauth)
+        .layer(middleware::from_fn(log_request))
+        .with_state(oauth.clone());
+    let sign_in = Router::new()
+        .route("/authorize", get(authorize).post(authorize))
+        .route("/oauth/login", get(login_page).post(login_submit))
+        .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(log_request))
+        .with_state(oauth);
+    (public, sign_in)
+}
+
+/// One line per OAuth request, so a client that gives up during discovery
+/// leaves a trail of what it asked for and what it got back. Nothing secret
+/// is in it: no query string, no body, no headers but the two below.
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let origin = header_text(request.headers(), header::ORIGIN);
+    let agent = header_text(request.headers(), header::USER_AGENT);
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+    if response.status().is_client_error() || response.status().is_server_error() {
+        warn!(%method, path, status, origin, agent, "OAuth request refused");
+    } else {
+        info!(%method, path, status, origin, agent, "OAuth request");
+    }
+    response
+}
+
+pub(crate) fn header_text(headers: &HeaderMap, name: HeaderName) -> String {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("-")
+        .chars()
+        .take(200)
+        .collect()
 }
 
 /// The hosts and origins `/mcp` and the OAuth routes accept. 6.x's FastMCP guard sat in
@@ -129,12 +177,8 @@ fn is_loopback(host: &str) -> bool {
     host == "localhost" || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
-pub(crate) async fn guard(
-    State(allow): State<Allowlists>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let host = request
+fn request_host(request: &Request) -> String {
+    request
         .headers()
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
@@ -145,13 +189,38 @@ pub(crate) async fn guard(
                 .authority()
                 .map(std::string::ToString::to_string)
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+fn misdirected(host: &str) -> Response {
+    warn!(
+        host,
+        "refused a request for a Host that isn't allowed: set MCP_PUBLIC_URL to the address clients use, or add the host to MCP_ALLOWED_HOSTS"
+    );
+    (StatusCode::MISDIRECTED_REQUEST, "Misdirected Request").into_response()
+}
+
+/// The Host check alone, for the OAuth routes any origin may call.
+pub(crate) async fn host_guard(
+    State(allow): State<Allowlists>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let host = request_host(&request);
     if !allow.host_allowed(&host) {
-        warn!(
-            host,
-            "refused a request for a Host that isn't allowed: set MCP_PUBLIC_URL to the address clients use, or add the host to MCP_ALLOWED_HOSTS"
-        );
-        return (StatusCode::MISDIRECTED_REQUEST, "Misdirected Request").into_response();
+        return misdirected(&host);
+    }
+    next.run(request).await
+}
+
+pub(crate) async fn guard(
+    State(allow): State<Allowlists>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let host = request_host(&request);
+    if !allow.host_allowed(&host) {
+        return misdirected(&host);
     }
     if let Some(origin) = request.headers().get(header::ORIGIN)
         && !allow.origin_allowed(origin.to_str().unwrap_or_default(), &host)
@@ -273,11 +342,14 @@ fn failure_response(failure: Failure, extra: &[(&'static str, &'static str)]) ->
             status,
             error,
             description,
-        } => json_response(
-            status,
-            &json!({"error": error, "error_description": description}),
-            extra,
-        ),
+        } => {
+            warn!(error, description, "OAuth error sent to the client");
+            json_response(
+                status,
+                &json!({"error": error, "error_description": description}),
+                extra,
+            )
+        }
         Failure::Store(e) => server_error(&e),
     }
 }

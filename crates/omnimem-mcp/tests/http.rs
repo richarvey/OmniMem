@@ -368,3 +368,56 @@ async fn allowed_hosts_take_a_port_and_a_wildcard() {
     ));
     shutdown.cancel();
 }
+
+/// `MCP_ALLOWED_ORIGINS` reaches both origin checks in front of `/mcp`, the
+/// guard and rmcp's own: an initialize from a browser on chat.mistral.ai is
+/// refused without it and answered with it.
+#[tokio::test]
+async fn an_allowed_origin_reaches_mcp_through_both_checks() {
+    async fn initialize_from_mistral(extra_origins: Vec<String>) -> (u16, String) {
+        let engine = Arc::new(Engine::new(
+            Arc::new(Store::open_in_memory().unwrap()),
+            Arc::new(Words),
+            EngineConfig::default(),
+        ));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let config = ServerConfig {
+            port,
+            auth_token: Some("s3cret".into()),
+            extra_origins,
+            ..ServerConfig::default()
+        };
+        let shutdown = CancellationToken::new();
+        tokio::spawn(serve(engine, config, Some(listener), shutdown.clone()));
+        let response = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/mcp"))
+            .header("content-type", "application/json")
+            .header("accept", "application/json, text/event-stream")
+            .header("authorization", "Bearer s3cret")
+            .header("origin", "https://chat.mistral.ai")
+            .body(
+                json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "lechat", "version": "1"}}})
+                    .to_string(),
+            )
+            .send()
+            .await
+            .unwrap();
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap();
+        shutdown.cancel();
+        (status, body)
+    }
+
+    let (status, body) = initialize_from_mistral(Vec::new()).await;
+    assert_eq!(status, 403, "{body}");
+    for allowed in ["https://chat.mistral.ai", "HTTPS://Chat.Mistral.ai/"] {
+        let (status, body) = initialize_from_mistral(vec![allowed.into()]).await;
+        assert_eq!(status, 200, "{allowed}: {body}");
+        assert_eq!(
+            message(&body)["result"]["serverInfo"]["name"],
+            "omnimem",
+            "{allowed}"
+        );
+    }
+}

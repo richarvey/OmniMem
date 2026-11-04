@@ -280,6 +280,12 @@ async fn require_auth(State(auth): State<McpAuth>, mut request: Request, next: N
     let Some(value) = presented_header else {
         // RFC 6750 §3.1: a request with no credentials gets no error
         // attribute, only where to find out how to get some.
+        info!(
+            method = %request.method(),
+            origin = oauth::header_text(request.headers(), header::ORIGIN),
+            agent = oauth::header_text(request.headers(), header::USER_AGENT),
+            "MCP request without credentials, pointing the client at OAuth sign-in"
+        );
         let mut response = StatusCode::UNAUTHORIZED.into_response();
         if let Ok(challenge) = HeaderValue::from_str(&format!(
             r#"Bearer resource_metadata="{}""#,
@@ -382,8 +388,13 @@ pub fn router(
     app = app.layer(middleware::from_fn_with_state(allow.clone(), oauth::guard));
     app = app.route("/healthz", get(|| async { r#"{"status": "ok"}"# }));
     if let Some(oauth) = oauth {
+        let (public, sign_in) = oauth::routes(oauth);
         app = app
-            .merge(oauth::routes(oauth).layer(middleware::from_fn_with_state(allow, oauth::guard)));
+            .merge(public.layer(middleware::from_fn_with_state(
+                allow.clone(),
+                oauth::host_guard,
+            )))
+            .merge(sign_in.layer(middleware::from_fn_with_state(allow, oauth::guard)));
     }
     Ok(app)
 }

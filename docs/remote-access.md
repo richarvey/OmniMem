@@ -41,16 +41,18 @@ With it on, OmniMem is its own authorisation server:
 
 | Route | What it's for |
 |---|---|
-| `/.well-known/oauth-authorization-server` | Server metadata (RFC 8414) |
-| `/.well-known/oauth-protected-resource/mcp` | Where `/mcp` says to get a token (RFC 9728) |
-| `/register` | Dynamic client registration (RFC 7591). Public clients get no secret and use PKCE alone |
+| `/.well-known/oauth-authorization-server` | Server metadata (RFC 8414), also answered with a trailing slash |
+| `/.well-known/oauth-protected-resource/mcp` | Where `/mcp` says to get a token (RFC 9728), also answered with a trailing slash and at `/.well-known/oauth-protected-resource` |
+| `/register` | Dynamic client registration (RFC 7591). Public clients get no secret and use PKCE alone. A client asking for scopes other than `omnimem` (`openid`, `offline_access`) is registered for `omnimem` rather than refused |
 | `/authorize` | The authorisation code flow, PKCE with S256 only |
 | `/oauth/login` | The login page |
 | `/token` | Code exchange and refresh |
 | `/revoke` | Token revocation (RFC 7009) |
 | `/icon.svg`, `/favicon.svg`, `/favicon.ico`, `/oauth/icon.svg` | The icon claude.ai shows for the connector |
 
-Add the connector in claude.ai with your `https://mcp.yourdomain.com/mcp` URL and it does the rest: discovery, registration, the browser login and the tokens.
+Add the connector in claude.ai with your `https://mcp.yourdomain.com/mcp` URL and it does the rest: discovery, registration, the browser login and the tokens. Mistral's Le Chat (Intelligence, Connectors, Custom MCP Connector, OAuth 2.1) works the same way.
+
+Every OAuth request is logged with its path, status, `Origin` and `User-Agent`, and so is a call to `/mcp` with no credentials, so when a client says it can't connect, the log shows how far it got. A `curl -X POST .../mcp` that prints nothing is fine: add `-i` and you'll see the `401` and the `WWW-Authenticate` header that sends a client to sign in.
 
 ### Staying signed in
 
@@ -64,7 +66,7 @@ The login page allows `OAUTH_LOGIN_MAX_ATTEMPTS` (10) failed logins per address 
 
 ## `421 Misdirected Request` or `403 Forbidden Origin`
 
-These look like OAuth or token failures. They aren't. They're the Host and Origin guard, which stops a hostile web page from talking to your server through someone's browser (DNS rebinding and friends). It sits in front of `/mcp` and the OAuth routes, ahead of the token check, so a request for a host that isn't allowed gets 421 whether or not it carries a token. A probe without a token that gets 401 has therefore passed the Host check. The server logs each refusal with the setting to change, and warns at startup when it listens on `0.0.0.0` with no public URL or allowed hosts set, since every remote client would be refused.
+These look like OAuth or token failures. They aren't. They're the Host and Origin guard, which stops a hostile web page from talking to your server through someone's browser (DNS rebinding and friends). It sits in front of `/mcp` and the OAuth routes, ahead of the token check, so a request for a host that isn't allowed gets 421 whether or not it carries a token. The Origin half applies only to `/mcp`, `/authorize` and the login page: discovery, `/register`, `/token` and `/revoke` carry no cookie and answer any origin, since a client that runs them from its own web page (Le Chat does, from `https://chat.mistral.ai`) was refused there until 7.0.7. A probe without a token that gets 401 has therefore passed the Host check. The server logs each refusal with the setting to change, and warns at startup when it listens on `0.0.0.0` with no public URL or allowed hosts set, since every remote client would be refused.
 
 - **`421 Misdirected Request`** means the `Host` header isn't on the allowed list. The list is localhost, `127.0.0.1`, `::1`, the listen address, the hosts of `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`, and anything in `MCP_ALLOWED_HOSTS`. A `curl` to localhost still works, which is what makes this one confusing. 7.0.4 and earlier answered `/mcp` with `403 Forbidden: Host header is not allowed` instead; it's the same problem.
 - **`403 Forbidden Origin`** means a browser sent an `Origin` that isn't allowed. An origin is allowed when it's on the list (the origins of `OAUTH_BASE_URL` and `MCP_PUBLIC_URL`, `http://localhost:<port>`, `http://127.0.0.1:<port>`, and `MCP_ALLOWED_ORIGINS`), when it's loopback talking to loopback, or when it's the server's own host.

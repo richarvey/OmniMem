@@ -163,7 +163,28 @@ fn mask(text: &str) -> String {
 
 /// Status, the captured headers and the body, masked, as 6.x sent them.
 fn assert_as_6x(reply: &Reply, case: &str) {
-    let golden = golden();
+    assert_as_6x_except(reply, case, &[]);
+}
+
+/// The metadata 7.0.7 sends: 6.x's, plus `none` among the token endpoint's
+/// auth methods, which registration accepted all along.
+const ADVERTISES_NONE: &[(&str, &str)] = &[(
+    r#""token_endpoint_auth_methods_supported":["client_secret_post""#,
+    r#""token_endpoint_auth_methods_supported":["none","client_secret_post""#,
+)];
+
+/// As `assert_as_6x`, with the captured body edited by each deliberate
+/// difference first, so the fixture stays exactly what 6.x sent.
+fn assert_as_6x_except(reply: &Reply, case: &str, differences: &[(&str, &str)]) {
+    let mut golden = golden();
+    let body = differences.iter().fold(
+        golden[case]["body"].as_str().unwrap_or_default().to_owned(),
+        |body, (from, to)| {
+            assert!(body.contains(from), "{case}: the 6.x body has no {from}");
+            body.replace(from, to)
+        },
+    );
+    golden[case]["body"] = body.into();
     let expected = &golden[case];
     assert!(expected.is_object(), "no golden case {case}");
     assert_eq!(
@@ -193,25 +214,27 @@ async fn the_http_surface_matches_6x() {
     let golden = golden();
     assert_eq!(golden["versions"]["fastmcp"], "4.0.3");
 
-    // Discovery, and nothing where 6.x had nothing.
-    assert_as_6x(
-        &send(&app, get("/.well-known/oauth-authorization-server")).await,
-        "as_metadata",
-    );
-    assert_as_6x(
-        &send(&app, get("/.well-known/oauth-protected-resource/mcp")).await,
-        "pr_metadata",
-    );
+    // Discovery. 7.0.7 also answers where a client derives the address from
+    // the slashed issuer, or falls back to the root resource document.
     for path in [
-        "/.well-known/oauth-protected-resource",
-        "/.well-known/openid-configuration",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-authorization-server/",
     ] {
-        assert_eq!(
-            send(&app, get(path)).await.status,
-            StatusCode::NOT_FOUND,
-            "{path}"
-        );
+        assert_as_6x_except(&send(&app, get(path)).await, "as_metadata", ADVERTISES_NONE);
     }
+    for path in [
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-protected-resource/mcp/",
+        "/.well-known/oauth-protected-resource",
+    ] {
+        assert_as_6x(&send(&app, get(path)).await, "pr_metadata");
+    }
+    assert_eq!(
+        send(&app, get("/.well-known/openid-configuration"))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
 
     // The challenges /mcp sends.
     let no_credentials = send(&app, mcp_post(None)).await;
@@ -241,7 +264,11 @@ async fn the_http_surface_matches_6x() {
         .header(header::ORIGIN, "https://mcp.example.com")
         .body(Body::empty())
         .unwrap();
-    assert_as_6x(&send(&app, with_origin).await, "metadata_with_origin");
+    assert_as_6x_except(
+        &send(&app, with_origin).await,
+        "metadata_with_origin",
+        ADVERTISES_NONE,
+    );
 
     // Registration.
     let registered = send(
@@ -265,17 +292,18 @@ async fn the_http_surface_matches_6x() {
     )
     .await;
     assert_as_6x(&public, "register_public");
-    assert_as_6x(
-        &send(
-            &app,
-            json_post(
-                "/register",
-                r#"{"redirect_uris": ["https://a.example/cb"], "scope": "admin"}"#,
-            ),
-        )
-        .await,
-        "register_bad_scope",
-    );
+    // 6.x refused a scope it didn't know ("register_bad_scope"); 7.0.7
+    // registers the client for the one it has.
+    let other_scopes = send(
+        &app,
+        json_post(
+            "/register",
+            r#"{"redirect_uris": ["https://a.example/cb"], "scope": "openid admin omnimem"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(other_scopes.status, StatusCode::CREATED);
+    assert_eq!(other_scopes.json()["scope"], "omnimem");
     assert_as_6x(
         &send(&app, json_post("/register", r#"{"client_name": "x"}"#)).await,
         "register_no_redirects",
@@ -329,10 +357,22 @@ async fn the_http_surface_matches_6x() {
             "authorize_bad_redirect",
             vec![("redirect_uri", Some("https://evil.example/cb"))],
         ),
-        ("authorize_bad_scope", vec![("scope", Some("admin"))]),
         ("authorize_no_challenge", vec![("code_challenge", None)]),
     ] {
         assert_as_6x(&send(&app, get(&query(&overrides))).await, case);
+    }
+    // 6.x sent a scope it didn't know back as invalid_scope
+    // ("authorize_bad_scope"); 7.0.7 signs in for the scopes it does know.
+    for scope in ["admin", "openid offline_access omnimem"] {
+        let reply = send(&app, get(&query(&[("scope", Some(scope))]))).await;
+        assert_eq!(reply.status, StatusCode::FOUND, "{scope}");
+        assert!(
+            reply
+                .header("location")
+                .unwrap()
+                .contains("/oauth/login?session="),
+            "{scope}"
+        );
     }
 
     // Signing in.
@@ -547,6 +587,89 @@ async fn the_oauth_routes_refuse_foreign_hosts_and_origins() {
         StatusCode::OK,
         "the health check needs nothing"
     );
+}
+
+/// Discovery, registration and the token exchange answer a browser on any
+/// origin (Mistral's Le Chat makes them from chat.mistral.ai, and stopped at
+/// a 403 in 7.0.6), while the Host check still applies and `/authorize`, the
+/// login form and `/mcp` still want an allowed origin.
+#[tokio::test]
+async fn any_origin_reaches_the_public_oauth_routes_but_not_sign_in() {
+    let app = app();
+    let with_origin = |method: &str, uri: &str, host: &str, body: &str| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::HOST, host)
+            .header(header::ORIGIN, "https://chat.mistral.ai")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_owned()))
+            .unwrap()
+    };
+    for path in [
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource/mcp",
+    ] {
+        assert_eq!(
+            send(&app, with_origin("GET", path, HOST, "")).await.status,
+            StatusCode::OK,
+            "{path}"
+        );
+    }
+    let registered = send(
+        &app,
+        with_origin(
+            "POST",
+            "/register",
+            HOST,
+            r#"{"redirect_uris": ["https://chat.mistral.ai/cb"], "token_endpoint_auth_method": "none"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(registered.status, StatusCode::CREATED);
+    assert_eq!(
+        registered.header("access-control-allow-origin"),
+        Some("*"),
+        "a browser may read the reply"
+    );
+    let client_id = registered.json()["client_id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        send(&app, with_origin("POST", "/token", HOST, ""))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED,
+        "reaches the token endpoint, which asks who the client is"
+    );
+    assert_eq!(
+        send(
+            &app,
+            with_origin(
+                "GET",
+                "/.well-known/oauth-authorization-server",
+                "evil.example",
+                ""
+            )
+        )
+        .await
+        .status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "the Host check still applies"
+    );
+    let authorize = format!(
+        "/authorize?response_type=code&client_id={client_id}&redirect_uri=https%3A%2F%2Fchat.mistral.ai%2Fcb&code_challenge={}&code_challenge_method=S256",
+        challenge("verifier-verifier-verifier-verifier-verifier")
+    );
+    for (method, uri) in [
+        ("GET", authorize.as_str()),
+        ("POST", "/oauth/login"),
+        ("POST", "/mcp"),
+    ] {
+        assert_eq!(
+            send(&app, with_origin(method, uri, HOST, "")).await.status,
+            StatusCode::FORBIDDEN,
+            "{uri}"
+        );
+    }
 }
 
 #[tokio::test]

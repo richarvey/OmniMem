@@ -2,6 +2,16 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.7] - Unreleased
+
+### Fixed
+- **Mistral's Le Chat couldn't connect: OAuth discovery refused a browser's origin.** The Host and Origin guard covered every OAuth route, so a client that runs discovery and registration from its own page (Le Chat does, from `https://chat.mistral.ai`) got `403 Forbidden Origin` on the metadata, `/register` and `/token`, and Le Chat called the server incompatible before showing a sign-in page. Those routes carry no cookie and their CORS already answered any origin, so they now get only the Host check. `/mcp`, `/authorize` and the login page keep the Origin check, so a browser-based client still needs its origin in `MCP_ALLOWED_ORIGINS` for `/mcp`
+- **OAuth discovery is less fussy about how it's asked.** The authorisation server metadata and the protected resource metadata are also served with a trailing slash (the issuer ends in one, so a client building the address from it asks for `/.well-known/oauth-authorization-server/`), and the resource metadata at the root `/.well-known/oauth-protected-resource` too, where RFC 9728 clients look next. The metadata lists `none` among `token_endpoint_auth_methods_supported`: public clients with PKCE were always accepted, but a client that reads the list before registering saw only the two secret methods
+- **A scope other than `omnimem` no longer fails sign-in.** Registration with `scope: "openid profile"` was refused with `invalid_client_metadata`, and an authorisation request with `scope=openid offline_access` was sent back as `invalid_scope`, as 6.x did. Plenty of clients ask for those by default. Registration now records `omnimem` and sign-in grants the scopes the client is registered for, both of which RFC 7591 and RFC 6749 allow. A refresh asking for more than it was granted is still refused
+
+### Added
+- **OAuth requests are logged.** Each one gets a line with its method, path, status, `Origin` and `User-Agent` (a warning when refused, with the error sent back), and so does a call to `/mcp` with no credentials. Nothing secret is logged: no query string, body or token. When a client says it can't reach the server, the log shows the last thing it asked for
+
 ## [7.0.6] - 2026-11-03
 
 This release comes out of an independent code review of 7.0.5 (the [Agent Memory Atlas](https://neoneye.github.io/agent-memory-atlas/systems/omnimem/)), which read the code and checked it against what OmniMem says it does. It found three bugs, now fixed: dead ends stopped warning once a store passed 5,000 episodic memories, dead-end warnings crossed projects while saying "this project", and two tools threw away the reason you gave them. It also pointed at things a person should decide that an agent could decide for itself, so skill writes and contradiction resolutions now wait for your yes, asked through your MCP client or the settings window, and there's an optional audit log of who changed what. And OmniMem now tells you when a newer release is out, in the tray and in `briefing()`.
