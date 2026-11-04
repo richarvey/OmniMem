@@ -21,5 +21,5 @@ OmniMem stores episodic memories, project context, knowledge articles, preferenc
 - An Anthropic API key is optional: it turns on Claude Haiku for fact extraction, query expansion, deeper contradiction checks and RSS summaries. Add it on the settings window's Configuration page (kept in the OS keychain) or as ANTHROPIC_API_KEY on a server. Embeddings stay local either way
 - Moving from 6.x: back up with dump_to_file() and import the file; every memory is re-embedded from its text
 - Self-hosted and MIT licensed, with a managed cloud version coming soon; no telemetry to third parties
-- Current version: 7.0.7
+- Current version: 7.0.8
 - Compared with Claude Code's built-in memory (CLAUDE.md and auto memory: flat, machine-local files read whole) it adds semantic recall, a lifecycle, contradiction handling and an abandoned-approach graveyard; compared with mem0 (a memory layer for multi-user products, with a managed cloud) it's aimed at one developer's agents on their own hardware
