@@ -84,6 +84,7 @@ html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
   body{margin:0;background:#0b0c0e;color:#e7e9ec;font-family:'Ubuntu Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   a{color:#63bd85;text-decoration:none}
   a:hover{color:#8fd6ab}
+  .omm-review{transition:border-color .15s,background .15s}.omm-review:hover{border-color:rgba(99,189,133,.8)!important;background:rgba(99,189,133,.11)!important}
   ::selection{background:rgba(99,189,133,0.28);color:#fff}
   @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
   @keyframes caret{0%,100%{opacity:1}50%{opacity:0.15}}
@@ -905,6 +906,14 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
       <p style="font-size: 16.5px; line-height: 1.7; color: rgb(150, 156, 165); margin: 0px;">Claude Code's built-in memory (CLAUDE.md, plus the newer auto-memory that writes markdown notes for itself) is still flat, machine-local files with keyword recall, as <a href="/claude-code-memory/" style="text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;">persistent memory for Claude Code</a> explains in more detail. No semantic search, no lifecycle, no contradiction handling. OmniMem goes quite a bit further. mem0 is the other name you'll hear. It's a good product aimed at a different job, a memory layer for products serving many users with a managed cloud behind it, and the table includes the things it does that OmniMem doesn't.</p>
     </div>
 
+    <a class="omm-review" href="https://neoneye.github.io/agent-memory-atlas/systems/omnimem/" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px; margin: 0px 0px 28px; padding: 22px 24px; border: 1px solid rgba(99, 189, 133, 0.45); border-radius: 12px; background: rgba(99, 189, 133, 0.07); text-decoration: none;">
+      <div style="flex: 1 1 420px; min-width: 0px;">
+        <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Independent review</span>
+        <p style="font-family: Ubuntu, sans-serif; font-weight: 700; font-size: 19px; line-height: 1.35; margin: 8px 0px 6px; color: rgb(242, 244, 246);">Don't just take our word for it</p>
+        <p style="font-size: 15px; line-height: 1.65; color: rgb(150, 156, 165); margin: 0px;">The table below is ours, so read it with that in mind. The Agent Memory Atlas is written by someone with no stake in OmniMem, and it reads each system's code rather than its marketing. Its OmniMem entry, on 7.0.8, marks five of its seven mechanisms as present and says plainly which two aren't. An outside reading is worth more than anything we say about ourselves.</p>
+      </div>
+      <span style="flex: 0 0 auto; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(99, 189, 133); white-space: nowrap;">Read the Atlas entry <span aria-hidden="true">&rarr;</span></span>
+    </a>
     <div style="border: 1px solid rgb(27, 30, 36); border-radius: 12px; overflow: hidden;">
       <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.2fr; background: rgb(15, 17, 20); border-bottom: 1px solid rgb(27, 30, 36);">
         <div style="padding: 15px 20px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(134, 140, 150);">Capability</div>
