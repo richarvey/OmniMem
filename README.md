@@ -93,14 +93,15 @@ It isn't a key-value store with an MCP wrapper. OmniMem tries to behave the way 
 - **[The skill compiler](docs/skill-compiler.md)**: turns reinforced lessons and dead ends into loadable skills, behind a propose-and-accept gate so a one-off opinion can't quietly become policy.
 - **[Auto-maintenance](docs/features.md#automatic-maintenance)**: duplicates archived, contradictions flagged, expired articles tidied, all in the background.
 - **[Licence and provenance](docs/memory-types.md#common-fields)**: every memory records whether it can be redistributed and who's speaking (you, the agent, or a source it retrieved), so a later session can tell evidence from inference.
+- **[Trust](docs/features.md#trust)**: whether OmniMem believes a memory, not just whether it shows it. A fact it extracted for itself waits for you to confirm it, one side of a confirmed contradiction is marked disputed, a memory a newer one replaced folds into it, and one you've judged wrong never comes back. Only you can confirm or reject, in the settings window or the terminal, never an agent.
 
 The ranking behind every recall:
 
 ```
-score = similarity x surface_score x recency x experience_weight x date_boost
+score = similarity x surface_score x recency x experience_weight x date_boost x trust
 ```
 
-Similarity on its own isn't enough, so lifecycle state, age, how hard a lesson was to learn and whether it happened on the date you asked about all get a say. What gets dropped as irrelevant is decided on similarity alone.
+Similarity on its own isn't enough, so lifecycle state, age, how hard a lesson was to learn, whether it happened on the date you asked about and whether it's believed all get a say. What gets dropped as irrelevant is decided on similarity alone.
 
 ---
 
@@ -151,6 +152,23 @@ No SaaS. No vendor lock-in. No context shipped off to someone else's servers.
 - **Local embeddings**: no API calls to turn text into vectors, and no GPU needed.
 - **Linux on x86_64 and arm64**, so it's as happy on a Raspberry Pi or a Graviton box as on your laptop, plus Windows on x64 and Macs on Apple silicon.
 - **MIT licensed**: fork it, extend it, run it wherever you like.
+
+---
+
+## Upgrading to 7.0.8
+
+7.0.8 adds [trust](docs/features.md#trust). The first start moves the database to schema version 5, and 7.0.7 can't open it afterwards, so take a backup first if you might go back.
+
+After the upgrade, every fact and preference OmniMem has extracted from your notes is a `candidate`: still recalled, ranked at 0.9 until you confirm it, and left out of the briefing and skill compiles. Your own notes, agents' memories and RSS articles are all `accepted` and don't move. On a real store with thousands of candidates, 58 of 60 top-five results stayed exactly where they were.
+
+You can leave them as they are, confirm them on the settings window's **Unconfirmed** page (one at a time, or everything extracted from one note), or confirm them all from a terminal:
+
+```bash
+omnimem trust list --limit 100000 --json | python3 -c 'import sys,json; print("\n".join(sorted({json.loads(l)["enriched_from"] for l in sys.stdin if json.loads(l).get("enriched_from")})))' > sources.txt
+while read -r s; do omnimem trust confirm-source "$s" --reason "confirmed in bulk"; done < sources.txt
+```
+
+On a server install, run each `omnimem` as the service's user with its database: `sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db trust ...`. To have new extractions believed from the start instead, set `TRUST_ENRICHMENT=accepted` on the Configuration page or in `omnimem.env`. It only affects what's extracted from then on.
 
 ---
 

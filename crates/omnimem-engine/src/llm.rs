@@ -483,6 +483,12 @@ impl Engine {
                 ("source_doc_id".to_owned(), source_doc_id.clone()),
                 ("enriched_from".to_owned(), key.clone()),
             ]);
+            // With no `trust`, an extraction is a candidate a person
+            // confirms; TRUST_ENRICHMENT=accepted is that person's standing
+            // yes, so it is written as believed from the start.
+            if self.config.trust_enrichment == crate::config::EnrichmentTrust::Accepted {
+                fields.insert("trust".to_owned(), crate::trust::ACCEPTED.to_owned());
+            }
             if let Some(as_of) = &source_created_at {
                 fields.insert("as_of".to_owned(), as_of.clone());
             }

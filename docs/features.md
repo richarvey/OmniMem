@@ -154,11 +154,13 @@ Every recall hit carries its `trust`, so an agent can see why something ranked l
 
 **Who moves it.**
 
-- Extracted facts and preferences start as `candidate`. Everything else starts `accepted`.
+- Extracted facts and preferences start as `candidate`. Everything else starts `accepted`, including RSS articles: an article's summary stands in for its source, while an extracted fact sits beside a note you already have. `TRUST_ENRICHMENT=accepted` makes new extractions start `accepted` too: your standing decision that you trust the extraction, made once on the Configuration page rather than per fact. It doesn't change what's already stored.
 - A contradiction the model confirmed (`check_contradictions(use_api=true)`) disputes both memories. One found only by the quick heuristic doesn't, since two memories sharing words and a "not" isn't evidence enough to rank either down. The heuristic link still warns as before.
 - Resolving it moves them on. With `supersedes` the winner is `accepted` and the loser `superseded`. `both_valid` and `false_positive` send each back to what it was before. `both_wrong` rejects both, and `reopened` disputes them again. Forgetting one side ends the other's dispute, and forgetting a winner brings back what it had superseded.
 - Only a person confirms a candidate or rejects a memory: on the **Unconfirmed** page of the settings window (one at a time, or every candidate from one source memory at once), on a memory's own page (Confirm, Reject with a reason, Restore), or with `omnimem trust` from a terminal. No MCP tool can, so an agent can't promote its own conclusions, the same rule as the [skill gate](skill-compiler.md#who-accepts). Promoting knowledge to a skill domain doesn't confirm it either, since an agent can call that.
 - Every change is in the [audit log](audit-log.md) at `lifecycle`, with who made it and why.
+
+**Confirming in bulk.** `omnimem trust list --json` prints every candidate with the memory it came from, and `omnimem trust confirm-source <key>` confirms everything extracted from one memory, so a loop over the sources confirms the lot (the [README](../README.md#upgrading-to-708) has it as two lines). Each confirmation gets its own audit row. A confirmed fact can be put back with `omnimem trust reject` then `restore`.
 
 Provenance still says who stated a memory and is never scored on. Trust says whether it's believed.
 

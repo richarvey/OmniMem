@@ -320,6 +320,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "How much a deprioritised memory still counts in recall.",
             ),
             setting(
+                "TRUST_ENRICHMENT",
+                "Extracted facts start as",
+                Kind::Choice(&["candidate", "accepted"]),
+                "candidate",
+                "What a fact or preference OmniMem extracts from your notes starts as. Candidate waits for you to confirm it on the Unconfirmed page and ranks a little lower until then. Accepted means you trust the extraction: new ones are believed from the start. Only new extractions change; ones already stored keep their trust.",
+            ),
+            setting(
                 "TRUST_CANDIDATE_WEIGHT",
                 "Unconfirmed weight",
                 Kind::Decimal,

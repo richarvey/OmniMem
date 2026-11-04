@@ -543,3 +543,54 @@ fn the_enrichment_worker_is_who_the_audit_log_names_for_the_facts_it_writes() {
         ("mcp", "an-agent")
     );
 }
+
+/// TRUST_ENRICHMENT: what the worker extracts starts as a candidate a
+/// person confirms, or, with `accepted`, believed from the start. Either
+/// way the source note itself is untouched and accepted.
+#[test]
+fn trust_enrichment_decides_what_an_extraction_starts_as() {
+    for (setting, expected) in [
+        (omnimem_engine::EnrichmentTrust::Candidate, "candidate"),
+        (omnimem_engine::EnrichmentTrust::Accepted, "accepted"),
+    ] {
+        let model = Arc::new(Scripted::default());
+        let e = engine_with(
+            EngineConfig {
+                trust_enrichment: setting,
+                ..EngineConfig::default()
+            },
+            Some(model.clone()),
+        );
+        let stored = e
+            .remember(
+                "The team prefers tabs, and the API moved to v2",
+                Some("alpha"),
+                None,
+                "episodic",
+                false,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let source = stored["key"].as_str().unwrap().to_owned();
+        model.reply(
+            r#"[{"text": "The team prefers tabs", "kind": "preference"}, {"text": "The API moved to v2"}]"#,
+        );
+        assert!(e.process_next_enrichment().unwrap());
+        let extracted: Vec<Fields> = memories(&e, "mem:preference:")
+            .into_iter()
+            .chain(memories(&e, "mem:knowledge:"))
+            .collect();
+        assert_eq!(extracted.len(), 2, "{extracted:?}");
+        for row in &extracted {
+            assert_eq!(
+                omnimem_store::trust_of(row),
+                expected,
+                "{setting:?}: {row:?}"
+            );
+        }
+        let note = e.store().get(&source).unwrap().unwrap();
+        assert_eq!(omnimem_store::trust_of(&note), "accepted");
+    }
+}

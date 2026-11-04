@@ -66,11 +66,43 @@ impl HumanApproval {
     }
 }
 
+/// `TRUST_ENRICHMENT`: the trust a fact or preference the enrichment worker
+/// extracts starts with. `candidate` (the default) waits for a person to
+/// confirm it; `accepted` is that person deciding once, as a standing
+/// policy, that extractions are believed from the start. Only new
+/// extractions follow it: what is already stored keeps its trust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EnrichmentTrust {
+    #[default]
+    Candidate,
+    Accepted,
+}
+
+impl EnrichmentTrust {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Candidate => "candidate",
+            Self::Accepted => "accepted",
+        }
+    }
+
+    /// `candidate` or `accepted`, in any case. Anything else isn't a value.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "candidate" => Some(Self::Candidate),
+            "accepted" => Some(Self::Accepted),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
     /// `HUMAN_APPROVAL`: `human` (the default) makes an agent's skill write
     /// wait for a person; `agent` lets the call commit, as 6.x did.
     pub human_approval: HumanApproval,
+    /// `TRUST_ENRICHMENT`: what an extracted fact or preference starts as.
+    pub trust_enrichment: EnrichmentTrust,
     /// `FACT_EXTRACTION_MODEL`
     pub fact_extraction_model: String,
     /// `QUERY_EXPANSION_MODEL`
@@ -170,6 +202,7 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             human_approval: HumanApproval::Human,
+            trust_enrichment: EnrichmentTrust::Candidate,
             fact_extraction_model: "claude-haiku-5-5".to_owned(),
             query_expansion_model: "claude-haiku-5-5".to_owned(),
             contradiction_model: "claude-haiku-5-5".to_owned(),
@@ -277,6 +310,18 @@ fn human_approval(default: HumanApproval) -> HumanApproval {
     }
 }
 
+/// `TRUST_ENRICHMENT`, falling back to the default (`candidate`, the side
+/// that asks a person) with a warning on a value that isn't one.
+fn trust_enrichment(default: EnrichmentTrust) -> EnrichmentTrust {
+    match text("TRUST_ENRICHMENT") {
+        None => default,
+        Some(raw) => EnrichmentTrust::parse(&raw).unwrap_or_else(|| {
+            warn!("TRUST_ENRICHMENT={raw:?} is not candidate or accepted; using candidate");
+            default
+        }),
+    }
+}
+
 /// `AUDIT_LOG`, falling back to the default (with a warning) on a value that
 /// is not a level. The default is `lifecycle` (#18): state changes and
 /// deletes, never memory text, so a typo never stops a log. `off` is still
@@ -307,6 +352,7 @@ impl EngineConfig {
             .unwrap_or(d.skill_user);
         Self {
             human_approval: human_approval(d.human_approval),
+            trust_enrichment: trust_enrichment(d.trust_enrichment),
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
             contradiction_model: text("CONTRADICTION_MODEL").unwrap_or(d.contradiction_model),
@@ -517,6 +563,23 @@ mod tests {
         assert_eq!(days("0"), 0);
         assert_eq!(days("-5"), 90, "not a count of days, so the default");
         assert_eq!(days("soon"), 90);
+    }
+
+    #[test]
+    fn trust_enrichment_parses_and_a_bad_value_asks_a_person() {
+        assert_eq!(
+            EngineConfig::default().trust_enrichment,
+            EnrichmentTrust::Candidate
+        );
+        let value = |raw: &str| {
+            with_var("TRUST_ENRICHMENT", raw, || {
+                EngineConfig::from_env(PathBuf::from("backups")).trust_enrichment
+            })
+        };
+        assert_eq!(value("accepted"), EnrichmentTrust::Accepted);
+        assert_eq!(value(" Accepted "), EnrichmentTrust::Accepted);
+        assert_eq!(value("candidate"), EnrichmentTrust::Candidate);
+        assert_eq!(value("yes"), EnrichmentTrust::Candidate);
     }
 
     #[test]

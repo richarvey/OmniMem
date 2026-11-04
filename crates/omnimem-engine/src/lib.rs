@@ -56,7 +56,9 @@ use omnimem_store::Store;
 
 pub use audit_log::{change_summary, parse_when};
 pub use compiler::{ProposalCheck, SkillReview};
-pub use config::{EngineConfig, GraveyardScope, HumanApproval, audit_level_from_env};
+pub use config::{
+    EngineConfig, EnrichmentTrust, GraveyardScope, HumanApproval, audit_level_from_env,
+};
 pub use dedup::DuplicateMatch;
 pub use error::EngineError;
 pub use experience::AbandonedWarning;
