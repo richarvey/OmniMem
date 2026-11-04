@@ -197,11 +197,12 @@ impl Engine {
         limit: usize,
     ) -> Result<Vec<(String, Fields)>> {
         let mut out = Vec::new();
-        for namespace in [
-            Namespace::Knowledge,
-            Namespace::Preference,
-            Namespace::Episodic,
-        ] {
+        // Every namespace a fact can be filed in: project context gets
+        // extracted facts too. Skills are compiled output and never are.
+        for namespace in Namespace::ALL
+            .into_iter()
+            .filter(|ns| *ns != Namespace::Skill)
+        {
             let filter = MemoryFilter {
                 trusts: vec![CANDIDATE.to_owned()],
                 states: vec!["active".to_owned(), "deprioritised".to_owned()],

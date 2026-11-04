@@ -292,10 +292,39 @@ fn a_person_confirms_rejects_and_restores_and_the_log_says_so() {
         "recorded at the default level"
     );
 
+    // A fact filed as project context is listed too (it was missed).
+    e.store()
+        .upsert(
+            "mem:project:01FACTPROJECT",
+            &Fields::from([
+                (
+                    "content".to_owned(),
+                    "the board is made in house".to_owned(),
+                ),
+                ("enriched_from".to_owned(), own.clone()),
+            ]),
+            Some(&vector("the board is made in house")),
+        )
+        .unwrap();
+    let listed: Vec<String> = e
+        .unconfirmed_from(None, 100)
+        .unwrap()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    assert!(
+        listed.contains(&"mem:project:01FACTPROJECT".to_owned()),
+        "{listed:?}"
+    );
+
     // Confirm all from one source moves only that source's candidates.
     let other = remember(&e, "a different source");
     fact(&e, "mem:knowledge:f3", "something else", &other);
-    assert_eq!(e.confirm_from_source(&own, None).unwrap(), 1);
+    assert_eq!(
+        e.confirm_from_source(&own, None).unwrap(),
+        2,
+        "f2 and the project fact"
+    );
     assert_eq!(trust(&e, "mem:knowledge:f2"), "accepted");
     assert_eq!(trust(&e, "mem:knowledge:f3"), "candidate");
 }
