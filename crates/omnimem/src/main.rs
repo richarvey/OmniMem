@@ -667,7 +667,7 @@ fn audit_log(
         let level = omnimem_engine::audit_level_from_env();
         if level == omnimem_engine::AuditLevel::Off && store.audit_count()? == 0 {
             eprintln!(
-                "the audit log is empty, and AUDIT_LOG is off: set it to lifecycle, writes or full to start keeping one"
+                "the audit log is empty, and AUDIT_LOG is off: set it to lifecycle (the default, by leaving it unset), writes or full to start keeping one"
             );
         } else {
             eprintln!("no audit rows match");

@@ -173,7 +173,7 @@ impl Default for EngineConfig {
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),
             graveyard_scope: GraveyardScope::Project,
-            audit_log: AuditLevel::Off,
+            audit_log: AuditLevel::Lifecycle,
             audit_retention_days: 90,
             deprioritised_weight: 0.2,
             dedup_threshold: 0.92,
@@ -268,13 +268,15 @@ fn human_approval(default: HumanApproval) -> HumanApproval {
 }
 
 /// `AUDIT_LOG`, falling back to the default (with a warning) on a value that
-/// is not a level. The default is off, so a typo never starts keeping a log.
+/// is not a level. The default is `lifecycle` (#18): state changes and
+/// deletes, never memory text, so a typo never stops a log. `off` is still
+/// there for anyone who wants nothing kept.
 pub fn audit_level_from_env() -> AuditLevel {
     match text("AUDIT_LOG") {
-        None => AuditLevel::Off,
+        None => AuditLevel::Lifecycle,
         Some(raw) => AuditLevel::parse(&raw).unwrap_or_else(|| {
-            warn!("AUDIT_LOG={raw:?} is not off, lifecycle, writes or full; using off");
-            AuditLevel::Off
+            warn!("AUDIT_LOG={raw:?} is not off, lifecycle, writes or full; using lifecycle");
+            AuditLevel::Lifecycle
         }),
     }
 }
@@ -471,9 +473,9 @@ mod tests {
     }
 
     #[test]
-    fn audit_settings_parse_and_a_bad_level_leaves_the_log_off() {
+    fn audit_settings_parse_and_a_bad_level_keeps_the_lifecycle_log() {
         let d = EngineConfig::default();
-        assert_eq!(d.audit_log, AuditLevel::Off);
+        assert_eq!(d.audit_log, AuditLevel::Lifecycle);
         assert_eq!(d.audit_retention_days, 90);
 
         let level = |value: &str| {
@@ -485,12 +487,13 @@ mod tests {
         assert_eq!(level("Writes"), AuditLevel::Writes);
         assert_eq!(level(" FULL "), AuditLevel::Full);
         assert_eq!(level("off"), AuditLevel::Off);
-        // A typo never starts keeping a log, least of all one with text in it.
-        assert_eq!(level("everything"), AuditLevel::Off);
-        assert_eq!(level("true"), AuditLevel::Off);
+        // A typo never stops the log, and never starts one with text in it:
+        // it gets the default, lifecycle, as unset does.
+        assert_eq!(level("everything"), AuditLevel::Lifecycle);
+        assert_eq!(level("true"), AuditLevel::Lifecycle);
         assert_eq!(
             EngineConfig::from_env(PathBuf::from("backups")).audit_log,
-            AuditLevel::Off
+            AuditLevel::Lifecycle
         );
 
         let days = |value: &str| {

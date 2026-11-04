@@ -204,7 +204,7 @@ Every memory records two things about where it came from, and neither ever chang
 
 ## The audit log
 
-Switch on `AUDIT_LOG` and OmniMem keeps a record of every change: who made it (an agent, the settings window, a hook, the maintenance pass), when, and what moved from what to what. You choose how much, from just state changes and deletes up to the full text of every edit. It's off by default. See [the audit log](audit-log.md).
+OmniMem keeps a record of changes: who made each one (an agent, the settings window, a hook, the maintenance pass), when, and what moved from what to what. `AUDIT_LOG` chooses how much, from nothing up to the full text of every edit. The default, `lifecycle`, records state changes and deletes with their reasons and never memory text. See [the audit log](audit-log.md).
 
 ## See also
 

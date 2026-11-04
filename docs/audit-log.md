@@ -2,20 +2,22 @@
 
 Memories change. An agent archives one, a feed expires another, you retag a third from the settings window, and a week later you want to know who did that. Until 7.0.6 the answer was "nobody wrote it down": a change bumped `updated_at` and left a line in the process log, and once a memory was deleted there was nothing to look at.
 
-The audit log is an opt-in record of every change, held in the same database. It's off by default, so the store behaves and weighs exactly as it did.
+The audit log is a record of changes, held in the same database. Since 7.0.7 it's on by default at `lifecycle`: who deprioritised, archived, reinstated or forgot what, and why, with no memory text. 7.0.6 shipped it off; an install that set `AUDIT_LOG=off` keeps it off, and only an unset value changed.
 
-## Turning it on
+## Choosing a level
 
-Set `AUDIT_LOG` on the Configuration page, in `omnimem.env`, or in the environment. It takes four levels.
+Set `AUDIT_LOG` on the Configuration page, in `omnimem.env`, or in the environment. It takes four levels, and a value that isn't one of them is treated as `lifecycle`, with a warning in the log, so a typo never switches the log off and never starts one that holds text.
 
 | Level | What it records |
 |---|---|
-| `off` | Nothing. The default |
-| `lifecycle` | State changes and deletes: deprioritise, archive, reinstate, forget, the project-wide versions of those, maintenance archives, suppressing and unsuppressing a topic, resolving a contradiction (the choice and the winner, never the memories' text), and skill writes. When a memory's state changes, the facts extracted from it follow it, and that is one entry against the source listing the facts that moved |
+| `off` | Nothing |
+| `lifecycle` | The default. State changes and deletes: deprioritise, archive, reinstate, forget, the project-wide versions of those, maintenance archives, suppressing and unsuppressing a topic, resolving a contradiction (the choice and the winner, never the memories' text), and skill writes. When a memory's state changes, the facts extracted from it follow it, and that is one entry against the source listing the facts that moved |
 | `writes` | Everything in `lifecycle`, plus every other write: new memories (key, namespace, project and tags, but not what they say), retags, licence and provenance changes, contradiction links, extracted facts, feed items, restores, project context edits, experience records |
 | `full` | Everything in `writes`, plus the text of a memory before and after each change |
 
 `AUDIT_RETENTION_DAYS` says how long rows are kept. The default is 90, and 0 keeps them for ever. The maintenance pass prunes the old ones, and so does starting OmniMem, so a log you've switched off still ages out.
+
+A `lifecycle` row is about 340 bytes on disk, indexes included (measured from 6,000 deprioritise and archive rows). A busy store that sees 50 state changes a day writes about 6 MB a year, and with the default 90 days it holds about 1.5 MB at any time. A plain `remember` writes no `lifecycle` row, so the log grows with what happens to memories, not with how many you store.
 
 ### Privacy at `full`
 

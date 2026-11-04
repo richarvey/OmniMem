@@ -23,15 +23,20 @@ impl Scratch {
     }
 
     fn run(&self, db: &Path, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_omnimem"))
+        self.run_with(db, args, None)
+    }
+
+    /// With `AUDIT_LOG` set to `level`, or unset for `None`.
+    fn run_with(&self, db: &Path, args: &[&str], level: Option<&str>) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_omnimem"));
+        command
             .env("OMNIMEM_ENV_FILE", self.path("empty.env"))
             .env_remove("AUDIT_LOG")
-            .env_remove("OMNIMEM_DB")
-            .arg("--db")
-            .arg(db)
-            .args(args)
-            .output()
-            .unwrap()
+            .env_remove("OMNIMEM_DB");
+        if let Some(level) = level {
+            command.env("AUDIT_LOG", level);
+        }
+        command.arg("--db").arg(db).args(args).output().unwrap()
     }
 }
 
@@ -153,9 +158,14 @@ fn an_empty_log_says_how_to_start_one() {
     let scratch = Scratch::new("empty");
     let db = scratch.path("e.db");
     drop(Store::open(&db).unwrap());
-    let out = scratch.run(&db, &["audit"]);
-    assert!(out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("AUDIT_LOG is off"));
+    let off = scratch.run_with(&db, &["audit"], Some("off"));
+    assert!(off.status.success());
+    assert!(String::from_utf8_lossy(&off.stderr).contains("AUDIT_LOG is off"));
+    // Unset is lifecycle now, so an empty log is just one with nothing in it.
+    let unset = scratch.run(&db, &["audit"]);
+    assert!(unset.status.success());
+    let said = String::from_utf8_lossy(&unset.stderr).into_owned();
+    assert!(said.contains("no audit rows match"), "{said}");
 }
 
 #[test]

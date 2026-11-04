@@ -119,6 +119,29 @@ fn exercise(e: &Engine) -> String {
     key
 }
 
+/// #18: with `AUDIT_LOG` unset the log keeps lifecycle rows. An archive is
+/// recorded, with its reason and no memory text; a plain remember is not.
+#[test]
+fn the_default_keeps_a_lifecycle_log() {
+    let e = engine_with(EngineConfig::default());
+    assert_eq!(e.audit_level(), AuditLevel::Lifecycle);
+    let _who = enter(Actor::Mcp, "test-client");
+    let key = remember(&e, "the staging server runs on port 9000", None);
+    assert_eq!(
+        e.store().audit_count().unwrap(),
+        0,
+        "a remember is a write, not a lifecycle change"
+    );
+    e.archive(&key, Some("superseded")).unwrap();
+    let logged = rows(&e);
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert_eq!(logged[0].action, "transition");
+    assert_eq!(logged[0].key, key);
+    assert_eq!(logged[0].reason, "superseded");
+    let written = serde_json::to_string(&logged[0].to_json()).unwrap();
+    assert!(!written.contains("port 9000"), "no memory text: {written}");
+}
+
 #[test]
 fn off_writes_nothing() {
     let e = engine_at(AuditLevel::Off);
@@ -449,7 +472,10 @@ fn retention_prunes_old_rows_and_zero_keeps_them() {
         );
     }
     // The log can be off and still age out.
-    let e = engine_with(EngineConfig::default());
+    let e = engine_with(EngineConfig {
+        audit_log: AuditLevel::Off,
+        ..EngineConfig::default()
+    });
     assert_eq!(e.audit_level(), AuditLevel::Off);
     e.store()
         .merge_audit(&[old_row(120.0, "mem:episodic:old")])
