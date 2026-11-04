@@ -75,22 +75,41 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()>
 /// keep using that database.
 fn base_command(db: Option<&Path>) -> Result<String> {
     let exe = std::env::current_exe().context("finding this program")?;
-    let exe = exe.canonicalize().unwrap_or(exe);
+    let exe = exe.canonicalize().map_or(exe, |c| without_verbatim(&c));
     let on_path = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
             .map(|dir| dir.join(format!("omnimem{}", std::env::consts::EXE_SUFFIX)))
             .find(|candidate| candidate.is_file())
     });
-    let mut command = match on_path.and_then(|found| found.canonicalize().ok()) {
-        Some(found) if found == exe => "omnimem".to_owned(),
-        _ => quoted(&exe.to_string_lossy()),
-    };
+    let mut command =
+        match on_path.and_then(|found| found.canonicalize().ok().map(|c| without_verbatim(&c))) {
+            Some(found) if found == exe => "omnimem".to_owned(),
+            _ => quoted(&exe.to_string_lossy()),
+        };
     if let Some(db) = db {
         let db = std::path::absolute(db).unwrap_or_else(|_| db.to_path_buf());
         command.push_str(" --db ");
         command.push_str(&quoted(&db.to_string_lossy()));
     }
     Ok(command)
+}
+
+/// A canonical path as a shell can run it. On Windows `canonicalize` returns
+/// the verbatim form, `\\?\C:\Users\...`, which no shell accepts as a command, so
+/// every hook `install-hooks` wrote there failed to start. The prefix comes
+/// off (`\\?\UNC\server\share` becomes `\\server\share`); a path without one is
+/// returned as it was, so this is a no-op elsewhere.
+fn without_verbatim(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{share}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        // Only a drive path: other verbatim forms (`\\?\Volume{...}`) have no
+        // plainer spelling, so they're left for the shell to refuse loudly.
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
 }
 
 /// Double-quoted for the shell Claude Code runs hooks in, when it needs to be.
@@ -256,6 +275,35 @@ mod tests {
         assert!(merge(&mut json!([]), "omnimem").is_err());
         assert!(merge(&mut json!({ "hooks": [] }), "omnimem").is_err());
         assert!(merge(&mut json!({ "hooks": { "SessionStart": {} } }), "omnimem").is_err());
+    }
+
+    #[test]
+    fn a_windows_verbatim_path_loses_its_prefix() {
+        let plain = |raw: &str| {
+            without_verbatim(Path::new(raw))
+                .to_string_lossy()
+                .into_owned()
+        };
+        assert_eq!(
+            plain(r"\\?\C:\Users\ric\AppData\Local\Programs\OmniMem\omnimem.exe"),
+            r"C:\Users\ric\AppData\Local\Programs\OmniMem\omnimem.exe"
+        );
+        assert_eq!(
+            plain(r"\\?\UNC\nas\tools\omnimem.exe"),
+            r"\\nas\tools\omnimem.exe"
+        );
+        // Nothing to take off, or no plainer spelling: left as it was.
+        assert_eq!(plain("/usr/bin/omnimem"), "/usr/bin/omnimem");
+        assert_eq!(plain(r"C:\bin\omnimem.exe"), r"C:\bin\omnimem.exe");
+        assert_eq!(
+            plain(r"\\?\Volume{1234}\omnimem.exe"),
+            r"\\?\Volume{1234}\omnimem.exe"
+        );
+        // And what lands in settings.json is a command a shell can run.
+        assert_eq!(
+            quoted(&plain(r"\\?\C:\Program Files\OmniMem\omnimem.exe")),
+            "\"C:\\\\Program Files\\\\OmniMem\\\\omnimem.exe\""
+        );
     }
 
     #[test]
