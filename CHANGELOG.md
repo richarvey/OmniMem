@@ -2,7 +2,7 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.9] - Unreleased
+## [7.0.9] - 2026-11-05
 
 Fixes from the OmniMem test harness's 7.0.8 findings (`omnimem-test-harness/docs/findings-7.0.8.md`): the contradiction scan now sees new memories on a full store, a forget takes the recall log entries that found the memory, a person can settle a contradiction no scan linked, and the keyless heuristic recognises a changed value as well as a negation.
 

@@ -155,6 +155,10 @@ No SaaS. No vendor lock-in. No context shipped off to someone else's servers.
 
 ---
 
+## Upgrading to 7.0.9
+
+There's no schema change in 7.0.9, so you can go back to 7.0.8 without a backup. One default moves: `RECALL_WEAK_SCORE` is now 0.40, up from 0.35, so a few more hits come back marked `weak_match`. Nothing is dropped or reordered by it. Set `RECALL_WEAK_SCORE=0.35` if you want the old band back.
+
 ## Upgrading to 7.0.8
 
 7.0.8 adds [trust](docs/features.md#trust). The first start moves the database to schema version 5, and 7.0.7 can't open it afterwards, so take a backup first if you might go back.

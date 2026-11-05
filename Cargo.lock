@@ -3217,7 +3217,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3242,7 +3242,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-app"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "anyhow",
  "directories",
@@ -3261,7 +3261,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-core"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "serde",
  "serde_json",
@@ -3273,7 +3273,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-desktop"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3298,7 +3298,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-embed"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "omnimem-core",
  "ort",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-engine"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "chrono",
  "omnimem-core",
@@ -3333,7 +3333,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-llm"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "omnimem-core",
  "reqwest",
@@ -3344,7 +3344,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-mcp"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-rss"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "chrono",
  "feed-rs",
@@ -3385,7 +3385,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-settings"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "axum",
  "chrono",
@@ -3405,7 +3405,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-store"
-version = "7.0.9-dev"
+version = "7.0.9"
 dependencies = [
  "omnimem-core",
  "rusqlite",
