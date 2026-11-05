@@ -44,6 +44,99 @@ pub(crate) const MAX_ENRICHED_CHUNKS: usize = 50;
 /// similarity, not the adjusted score: experience and temporal multipliers
 /// can lift a loosely related memory past any threshold.
 const QUERY_TARGET_MIN_SCORE: f64 = 0.85;
+/// At most this many memories one identifier in a query can reach.
+const MAX_IDENTIFIER_TARGETS: usize = 50;
+
+/// A memory a key-or-query lifecycle call acts on.
+struct QueryTarget {
+    key: String,
+    state: String,
+    content: String,
+}
+
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF   // hiragana, katakana
+        | 0x3400..=0x4DBF // CJK extension A
+        | 0x4E00..=0x9FFF // CJK unified
+        | 0xAC00..=0xD7AF // hangul
+        | 0xF900..=0xFAFF)
+}
+
+/// A character that continues an identifier: "bob@example.com" is not the
+/// whole of "bob@example.com.uk", nor "api_key_v1" of "api_key_v10".
+fn continues_identifier(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '@' | '_' | '-' | '.')
+}
+
+/// The exact identifiers in a lifecycle query, lowercased: tokens with an
+/// `@` or `_`, letters mixed with digits, or five digits or more with only
+/// number punctuation between them (a code, a phone or case number, not a
+/// year), at least four characters long; and runs of two or more CJK
+/// characters, which carry a name without spaces. Plain words never count,
+/// so a query of ordinary words still needs the similarity bar.
+pub(crate) fn query_identifiers(query: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |t: String| {
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    };
+    for raw in query.split_whitespace() {
+        let token: String = raw
+            .trim_matches(|c: char| !(c.is_alphanumeric() || matches!(c, '@' | '_')))
+            .trim_start_matches('+')
+            .to_lowercase();
+        let cjk: String = token.chars().filter(|c| is_cjk(*c)).collect();
+        if cjk.chars().count() >= 2 && cjk.chars().count() == token.chars().count() {
+            push(token);
+            continue;
+        }
+        if token.chars().count() < 4 {
+            continue;
+        }
+        let digits = token.chars().filter(char::is_ascii_digit).count();
+        let letters = token.chars().filter(|c| c.is_alphabetic()).count();
+        if token.contains('@')
+            || token.contains('_')
+            || (digits > 0 && letters > 0)
+            || (digits >= 5
+                && token
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || matches!(c, '-' | '.' | '/' | '(' | ')')))
+        {
+            push(token);
+        }
+    }
+    out
+}
+
+/// `content` holds `ident` as a whole token, ignoring case. A trailing `.`
+/// ends a token only when no identifier character follows it.
+pub(crate) fn contains_token(content: &str, ident: &str) -> bool {
+    let hay = content.to_lowercase();
+    let cjk = ident.chars().all(is_cjk);
+    let mut from = 0;
+    while let Some(at) = hay[from..].find(ident) {
+        let start = from + at;
+        let end = start + ident.len();
+        let before = hay[..start].chars().next_back();
+        let mut rest = hay[end..].chars();
+        let after = rest.next();
+        let ok_before = cjk || before.is_none_or(|c| !continues_identifier(c));
+        let ok_after = cjk
+            || match after {
+                None => true,
+                Some('.') => rest.next().is_none_or(|c| !continues_identifier(c)),
+                Some(c) => !continues_identifier(c),
+            };
+        if ok_before && ok_after {
+            return true;
+        }
+        from = start + hay[start..].chars().next().map_or(1, char::len_utf8);
+    }
+    false
+}
 const MAX_BACKUP_FILE_SIZE: u64 = 100 * 1024 * 1024;
 const BACKUP_PREFIXES: [&str; 4] = ["mem:", "topics:", "log:recall:", "meta:"];
 const WRITABLE: [&str; 4] = ["episodic", "knowledge", "preference", "project"];
@@ -847,12 +940,51 @@ impl Engine {
     /// an abandoned warning carries the key of the memory that logged it and
     /// a reinstate candidate a synthetic score, and neither was chosen by
     /// similarity to the query.
-    fn query_targets(&self, query: &str) -> Result<Vec<RecallResult>> {
-        Ok(self
+    ///
+    /// An exact identifier in the query (an email, a key, a code, a name
+    /// in a CJK script) is also near-exact text, however little else of the
+    /// memory the query repeats: every memory containing one as a whole
+    /// token is a target too, ignoring case. So "alice@acme.io" reaches
+    /// "Customer ALICE@ACME.IO subscribed" but not "alice@acme.io.uk".
+    fn query_targets(&self, query: &str) -> Result<Vec<QueryTarget>> {
+        let mut targets: Vec<QueryTarget> = self
             .query_hits(query)?
             .into_iter()
             .filter(|r| !r.reinstate_candidate && r.score > QUERY_TARGET_MIN_SCORE)
-            .collect())
+            .map(|r| QueryTarget {
+                key: r.key,
+                state: r.state,
+                content: r.content,
+            })
+            .collect();
+        // Every identifier the query names must be in the memory, so
+        // "case_id 12345" doesn't also reach "case_id 123456" through the
+        // shared "case_id". The rarest-looking (longest) one finds the rows.
+        let mut idents = query_identifiers(query);
+        idents.sort_by_key(|i| std::cmp::Reverse(i.chars().count()));
+        if let Some(first) = idents.first() {
+            for key in self
+                .store
+                .keys_containing(&WRITABLE, first, MAX_IDENTIFIER_TARGETS)?
+            {
+                if targets.iter().any(|t| t.key == key) {
+                    continue;
+                }
+                let Some(row) = self.store.get(&key)?.filter(|d| !d.is_empty()) else {
+                    continue;
+                };
+                let content = row.get("content").cloned().unwrap_or_default();
+                if !idents.iter().all(|i| contains_token(&content, i)) {
+                    continue;
+                }
+                targets.push(QueryTarget {
+                    key,
+                    state: row.get("state").cloned().unwrap_or_else(|| "active".into()),
+                    content,
+                });
+            }
+        }
+        Ok(targets)
     }
 
     /// The top recall hits for a query with abandoned warnings removed: they
@@ -863,6 +995,37 @@ impl Engine {
             .into_iter()
             .filter(|r| r.result_type != "abandoned_warning")
             .collect())
+    }
+
+    /// When query mode matched nothing, the closest memory and its raw
+    /// similarity, so an agent can confirm it is the one meant and retry by
+    /// key in one step rather than lowering a bar that protects against
+    /// acting on the wrong memory.
+    fn nearest_miss(&self, query: &str) -> Option<Value> {
+        let hit = self
+            .query_hits(query)
+            .ok()?
+            .into_iter()
+            .find(|r| !r.reinstate_candidate)?;
+        Some(json!({
+            "key": hit.key,
+            "content": take_chars(&hit.content, 80),
+            "similarity": (hit.score * 1000.0).round() / 1000.0,
+            "needed": QUERY_TARGET_MIN_SCORE,
+            "hint": "Nothing was close enough to act on by query. If this is the memory you mean, call again with its key.",
+        }))
+    }
+
+    /// `{"affected": [...]}`, with the nearest miss when a query matched nothing.
+    fn affected_reply(&self, key_or_query: &str, affected: Vec<Value>) -> Value {
+        let mut reply = json!({"affected": affected});
+        if reply["affected"].as_array().is_some_and(Vec::is_empty)
+            && !key_or_query.starts_with("mem:")
+            && let Some(nearest) = self.nearest_miss(key_or_query)
+        {
+            reply["nearest"] = nearest;
+        }
+        reply
     }
 
     pub fn deprioritise(
@@ -906,7 +1069,7 @@ impl Engine {
                 }
             }
         }
-        Ok(json!({"affected": affected}))
+        Ok(self.affected_reply(key_or_query, affected))
     }
 
     pub fn archive(&self, key_or_query: &str, reason: Option<&str>) -> Result<Value> {
@@ -932,7 +1095,7 @@ impl Engine {
                 }
             }
         }
-        Ok(json!({"affected": affected}))
+        Ok(self.affected_reply(key_or_query, affected))
     }
 
     fn clear_deprioritisation(&self, key: &str) -> Result<()> {
@@ -987,7 +1150,13 @@ impl Engine {
             }
         }
         if targets.is_empty() {
-            return Ok(json!({"status": "not_found"}));
+            let mut reply = json!({"status": "not_found"});
+            if !key_or_query.starts_with("mem:")
+                && let Some(nearest) = self.nearest_miss(key_or_query)
+            {
+                reply["nearest"] = nearest;
+            }
+            return Ok(reply);
         }
         if !confirm {
             let preview: Vec<Value> = targets
@@ -1400,4 +1569,51 @@ fn classification_payload(licence: &Fields, provenance: &str) -> Value {
     }
     m.insert("provenance".into(), provenance.into());
     Value::Object(m)
+}
+
+#[cfg(test)]
+mod identifier_tests {
+    use super::{contains_token, query_identifiers};
+
+    #[test]
+    fn identifiers_are_emails_keys_codes_and_cjk_names() {
+        assert_eq!(query_identifiers("alice@acme.io"), ["alice@acme.io"]);
+        assert_eq!(
+            query_identifiers("purge api_key_v1_abc123."),
+            ["api_key_v1_abc123"]
+        );
+        assert_eq!(query_identifiers("verification code 12345"), ["12345"]);
+        assert_eq!(query_identifiers("customer Zhang Wei aka 张伟"), ["张伟"]);
+        assert!(query_identifiers("my 2024 plans for the garden").is_empty());
+        assert_eq!(query_identifiers("+1-555-123-4567"), ["1-555-123-4567"]);
+        assert_eq!(query_identifiers("case 2024-1001"), ["2024-1001"]);
+        assert!(query_identifiers("everything about Frank the engineer").is_empty());
+    }
+
+    #[test]
+    fn a_token_match_respects_identifier_boundaries() {
+        assert!(contains_token(
+            "Customer ALICE@ACME.IO subscribed.",
+            "alice@acme.io"
+        ));
+        assert!(contains_token("Ends with alice@acme.io.", "alice@acme.io"));
+        assert!(!contains_token(
+            "Customer alice.smith@acme.io",
+            "alice@acme.io"
+        ));
+        assert!(!contains_token(
+            "User bob@example.com.uk sent",
+            "bob@example.com"
+        ));
+        assert!(!contains_token("key api_key_v10 rotated", "api_key_v1"));
+        assert!(contains_token("Customer 张伟 placed an order", "张伟"));
+        assert!(contains_token(
+            "Phone +1-555-123-4567 on file",
+            "1-555-123-4567"
+        ));
+        assert!(!contains_token(
+            "Case number 2024-10012 opened",
+            "2024-1001"
+        ));
+    }
 }

@@ -209,7 +209,7 @@ impl Default for EngineConfig {
             recall_expand_count: 3,
             recall_top_k: 5,
             recall_min_score: 0.15,
-            recall_weak_score: 0.35,
+            recall_weak_score: 0.40,
             recall_experience_span: 0.0,
             recency_decay_days: 90.0,
             abandoned_cache_ttl: Duration::from_secs(60),

@@ -602,6 +602,7 @@ impl Store {
             audit
                 .scrubbed
                 .extend(crate::audit::scrub_forgotten(&tx, chunk)?);
+            scrub_recall_log(&tx, chunk)?;
             // The fields come back with the key when the log is on, which is
             // all it needs to say what was deleted.
             let columns = if audit.enabled() {
@@ -723,6 +724,45 @@ impl Store {
         keys.iter()
             .map(|k| memory_namespace(k).ok().and_then(|ns| index.get(ns, k)))
             .collect()
+    }
+
+    /// Keys of live (not deleted) memories in `namespaces` whose content
+    /// contains `needle`, ignoring ASCII case, oldest first, at most `limit`.
+    /// A plain substring scan: the caller checks token boundaries. Used by
+    /// the lifecycle tools' query mode to find an exact identifier (an
+    /// email, a key) that semantic similarity can't pin down.
+    pub fn keys_containing(
+        &self,
+        namespaces: &[&str],
+        needle: &str,
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        if needle.is_empty() || namespaces.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.sync_external_writes();
+        let conn = self.conn();
+        let sql = format!(
+            "SELECT key FROM memories
+             WHERE namespace IN ({})
+               AND coalesce(state, 'active') != 'deleted'
+               AND instr(lower(coalesce(json_extract(fields, '$.content'), '')), lower(?)) > 0
+             ORDER BY key LIMIT ?",
+            placeholders(namespaces.len())
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut args: Vec<SqlValue> = namespaces
+            .iter()
+            .map(|n| SqlValue::Text((*n).to_owned()))
+            .collect();
+        args.push(SqlValue::Text(needle.to_owned()));
+        args.push(SqlValue::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+        let rows = stmt.query_map(params_from_iter(args), |r| r.get::<_, String>(0))?;
+        let mut keys = Vec::new();
+        for key in rows {
+            keys.push(key?);
+        }
+        Ok(keys)
     }
 
     /// The nearest memories in a namespace. `top_k` is clamped to 1..=100 as
@@ -1043,6 +1083,25 @@ pub(crate) fn write_vector(conn: &Connection, key: &str, vector: &[f32]) -> Resu
 
 fn data_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA data_version", [], |row| row.get(0))?)
+}
+
+/// A forget takes the recall log with it: every `log:recall:*` entry whose
+/// results named a forgotten memory is deleted, since its `query` is the
+/// text someone searched for that memory with and would otherwise survive
+/// in exports and backups for the log's 30 days. Runs inside the delete's
+/// transaction, so it rolls back with it.
+fn scrub_recall_log(tx: &rusqlite::Transaction<'_>, keys: &[&str]) -> Result<usize> {
+    let mut removed = 0;
+    let mut stmt = tx.prepare_cached(
+        "DELETE FROM kv WHERE key >= 'log:recall:' AND key < 'log:recall;'
+           AND instr(coalesce(json_extract(value, '$.result_keys'), ''), ?1) > 0",
+    )?;
+    for key in keys {
+        // result_keys is a JSON array held as a string; match the quoted key
+        // so one key can't match another it is a prefix of.
+        removed += stmt.execute(params![format!("\"{key}\"")])?;
+    }
+    Ok(removed)
 }
 
 #[cfg(test)]

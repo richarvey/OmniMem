@@ -288,7 +288,7 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "RECALL_WEAK_SCORE",
                 "Weak match below",
                 Kind::Decimal,
-                "0.35",
+                "0.40",
                 "Results under this are marked as weak matches. 0 turns the marker off.",
             ),
             setting(

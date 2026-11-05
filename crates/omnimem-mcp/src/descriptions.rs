@@ -39,17 +39,15 @@ set is a real answer.";
 
 pub const RECALL_DETAIL: &str = r"Fetch full content for specific memory keys. Use after recall_index() to expand only the entries you need.";
 
-pub const DEPRIORITISE: &str =
-    r"Reduce a memory's visibility without deleting. Accepts a key or natural language query.";
+pub const DEPRIORITISE: &str = r"Reduce a memory's visibility without deleting. This is what a person usually means by 'forget that'. Accepts a key or a query; a query acts only on near-exact text (similarity above 0.85), and when nothing is that close the reply names the nearest memory so you can confirm it and call again with its key.";
 
-pub const ARCHIVE: &str = r"Archive a memory — excluded from recall but still stored.";
+pub const ARCHIVE: &str = r"Archive a memory — excluded from recall but still stored. Accepts a key or a query; a query acts only on near-exact text, and when nothing is that close the reply names the nearest memory to retry by key.";
 
 pub const REINSTATE: &str = r"Reinstate a deprioritised/archived memory to active state.";
 
 pub const RETAG: &str = r"Replace or adjust the tags on a memory without re-embedding it.";
 
-pub const FORGET: &str =
-    r"Permanently delete a memory. Requires confirm=True; returns preview otherwise.";
+pub const FORGET: &str = r"Permanently delete a memory. Only for when a person asks for permanent deletion ('permanently delete', 'wipe'); 'forget that' usually means deprioritise. Requires confirm=True; returns preview otherwise. A query acts only on near-exact text; when nothing is that close the reply names the nearest memory to retry by key.";
 
 pub const SUPPRESS_TOPIC: &str = r"Suppress a topic — matching memories filtered from recall.";
 
@@ -169,7 +167,7 @@ pub const SET_PROVENANCE: &str = r"Record where one or more memories came from.
     ('concluded'). Facts extracted from a reclassified memory follow it.
     Provenance is reported on recall and never changes ranking.";
 
-pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification. mode='resolve' (key_a, key_b, outcome, winner, reason, retire_loser) records how a linked pair was settled: a person confirms it, and the pair stops warning.";
+pub const CHECK_CONTRADICTIONS: &str = r"Scan for contradictions. Tier 1 (default): fast heuristic. Tier 2 (use_api=True): Claude API verification. mode='resolve' (key_a, key_b, outcome, winner, reason, retire_loser) records how a pair was settled: a person confirms it, and the pair stops warning. supersedes and both_wrong also work on a pair no scan linked, such as a changed value the heuristic can't see (lives in Berlin, then moved to Lisbon).";
 
 pub const BRIEFING: &str = r"Session-start briefing: project context, experience summary, stale memories, knowledge, contradictions, reinstate candidates.";
 

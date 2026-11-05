@@ -41,6 +41,36 @@ static COMPILED: LazyLock<Vec<(Regex, Regex)>> = LazyLock::new(|| {
         .collect()
 });
 
+/// Words that say a statement replaces an earlier one: a change of value
+/// rather than a negation. "Lives in Berlin" and "moved to Lisbon" share no
+/// negation pair, so without these the keyless heuristic never links a
+/// changed fact, and the old one keeps outranking the new.
+const STATE_CHANGE_PATTERN: &str = r"(?x)
+    \bno\ longer\b | \bnot\ any\ ?more\b | \bany\ ?more\b
+  | \bmoved\ (?:from|to|back|away|out|in)\b | \brelocated\b
+  | \bswitched\ (?:to|from|over|back)\b | \bchanged\ (?:to|from)\b
+  | \bnow\b | \binstead\b | \bused\ to\b | \bstopped\b | \bquit\b
+  | \bmisspoke\b | \bwas\ wrong\b | \bcorrection\b
+  | \bnot\ true\b | \bthere\ is\ no\b | \bturned\ out\b";
+
+static STATE_CHANGE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(STATE_CHANGE_PATTERN).expect("valid"));
+
+/// One of two different statements says it changes or corrects something.
+/// Only meaningful between memories already found similar: the caller
+/// gates on similarity, as it does for a negation pair.
+pub(crate) fn has_state_change(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim().to_lowercase(), b.trim().to_lowercase());
+    a != b && (STATE_CHANGE.is_match(&a) || STATE_CHANGE.is_match(&b))
+}
+
+/// What the keyless heuristic links between two similar memories: a
+/// negation pair, or a statement of change. Skills use the narrower
+/// [`has_negation_pair`], since a skill saying "now" changes nothing.
+pub(crate) fn signals_conflict(a: &str, b: &str) -> bool {
+    has_negation_pair(a, b) || has_state_change(a, b)
+}
+
 pub(crate) fn has_negation_pair(a: &str, b: &str) -> bool {
     let (a, b) = (a.to_lowercase(), b.to_lowercase());
     COMPILED.iter().any(|(neg, pos)| {
@@ -88,7 +118,7 @@ impl Engine {
                 continue;
             }
             let existing = hit.fields.get("content").map_or("", String::as_str);
-            if has_negation_pair(content, existing) {
+            if signals_conflict(content, existing) {
                 return Ok(Some(ContradictionMatch {
                     existing_key: hit.key,
                     existing_content: take_chars(existing, 200),
@@ -103,6 +133,38 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_of_value_is_a_conflict() {
+        assert!(signals_conflict(
+            "The user lives in Berlin.",
+            "The user moved from Berlin to Lisbon."
+        ));
+        assert!(signals_conflict(
+            "Sam loves coriander.",
+            "Sam can't stand coriander any more."
+        ));
+        assert!(signals_conflict(
+            "Sam has a sister who is a doctor.",
+            "I misspoke: there is no sister."
+        ));
+        assert!(signals_conflict(
+            "User works at Google.",
+            "User now works at Anthropic."
+        ));
+        assert!(!signals_conflict(
+            "User works at Google.",
+            "User works at Google."
+        ));
+        assert!(!signals_conflict(
+            "User works at Google.",
+            "User likes tea."
+        ));
+        assert!(
+            !has_state_change("knowledge", "snowfall"),
+            "word boundaries"
+        );
+    }
 
     #[test]
     fn negation_pairs_either_way() {

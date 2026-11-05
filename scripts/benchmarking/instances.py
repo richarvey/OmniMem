@@ -134,7 +134,22 @@ class V7Instance:
         env.pop("ANTHROPIC_API_KEY", None)
         return env
 
+    def _port_answers(self) -> bool:
+        try:
+            httpx.get(f"{self.base_url}/healthz", timeout=1)
+        except httpx.HTTPError:
+            return False
+        return True
+
     def start(self) -> Instance:
+        # Something already on the port would answer /healthz for us, and the
+        # new server would fail to bind and exit: the run would then use the
+        # other server's database and config without any error.
+        if self._port_answers():
+            raise InstanceError(
+                f"port {self.port} already answers; stop whatever is there "
+                "(a server left by a crashed run?) or pick another port"
+            )
         shutil.rmtree(self.data_dir, ignore_errors=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "no-feeds.yml").write_text("feeds: []\n")
@@ -158,6 +173,12 @@ class V7Instance:
                 raise InstanceError(f"v7 exited during startup, rc={self._proc.returncode}")
             try:
                 if httpx.get(f"{self.base_url}/healthz", timeout=2).status_code == 200:
+                    # Ours, not a server that won the port while ours died.
+                    if self._proc and self._proc.poll() is not None:
+                        raise InstanceError(
+                            f"v7 exited during startup, rc={self._proc.returncode}, "
+                            f"but port {self.port} answers: another server holds it"
+                        )
                     return
             except httpx.HTTPError:
                 pass

@@ -329,9 +329,19 @@ impl Engine {
                 .find(|l| l.get("key").and_then(Value::as_str) == Some(other))
         };
         let (link_a, link_b) = (find(&row_a, &r.key_b), find(&row_b, &r.key_a));
-        if link_a.is_none() && link_b.is_none() {
+        // A person saying one memory replaces another, or that both are
+        // wrong, is the strongest evidence of a conflict there is, so those
+        // outcomes link the pair themselves (marked as recorded by a
+        // person) when no scan did. The keyless heuristic only sees
+        // negation pairs, so a change of value ("lives in Berlin" / "moved
+        // to Lisbon") is never linked and could otherwise never be settled.
+        // The other outcomes judge an existing link and still need one.
+        if link_a.is_none()
+            && link_b.is_none()
+            && !matches!(r.outcome, Outcome::Supersedes | Outcome::BothWrong)
+        {
             return Err(invalid(
-                "These two memories aren't linked as contradicting each other. check_contradictions links the pairs it finds.",
+                "These two memories aren't linked as contradicting each other. check_contradictions links the pairs it finds; supersedes and both_wrong can also be recorded on an unlinked pair.",
             ));
         }
         if r.outcome == Outcome::Reopened && !link_a.iter().chain(&link_b).any(link_is_resolved) {

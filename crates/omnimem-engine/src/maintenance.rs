@@ -6,7 +6,7 @@ use omnimem_store::{AuditLevel, Fields, Op, SearchFilter, op as audit_op};
 use serde_json::{Value, json};
 use tracing::{debug, error, info};
 
-use crate::contradiction::has_negation_pair;
+use crate::contradiction::signals_conflict;
 use crate::error::invalid;
 use crate::lifecycle::MemoryState;
 use crate::pyfmt::{now_secs, now_str, py_json, take_chars};
@@ -146,8 +146,12 @@ impl Engine {
                 .map(|h| (h.key, h.fields))
                 .collect()
         } else {
+            // Keys come back in ULID (creation) order. Filter by scope first,
+            // then keep the newest SCAN_CAP: a new memory is the one most
+            // likely to contradict something, and capping before the project
+            // filter would compare only the store's oldest slice.
             let mut keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
-            keys.truncate(SCAN_CAP);
+            keys.reverse();
             let rows = self.store.get_fields_multi(
                 &keys,
                 &[
@@ -162,6 +166,7 @@ impl Engine {
                 .zip(rows)
                 .filter_map(|(k, r)| r.map(|r| (k, r)))
                 .filter(|(_, r)| in_scope(r))
+                .take(SCAN_CAP)
                 .collect()
         };
         if entries.is_empty() {
@@ -201,7 +206,7 @@ impl Engine {
                 }
                 comparisons += 1;
                 if dot(&vectors[i], &vectors[j]) < SIMILARITY_THRESHOLD
-                    || !has_negation_pair(content_a, content_b)
+                    || !signals_conflict(content_a, content_b)
                 {
                     continue;
                 }
@@ -326,7 +331,9 @@ impl Engine {
 
         let mut contradictions = Vec::new();
         let mut scan = || -> Result<()> {
-            let keys = self.store.scan_prefix("mem:episodic:")?;
+            // Newest first, so a busy project's latest memories are compared.
+            let mut keys = self.store.scan_prefix("mem:episodic:")?;
+            keys.reverse();
             let rows = self.store.get_fields_multi(
                 &keys,
                 &[
@@ -368,7 +375,7 @@ impl Engine {
                     }
                     let a = entries[i].1.get("content").map_or("", String::as_str);
                     let b = entries[j].1.get("content").map_or("", String::as_str);
-                    if has_negation_pair(a, b) {
+                    if signals_conflict(a, b) {
                         contradictions.push(json!({
                             "key_a": entries[i].0,
                             "key_b": entries[j].0,

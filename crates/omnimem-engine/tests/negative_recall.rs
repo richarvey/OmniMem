@@ -148,7 +148,7 @@ const QUERY: &str = "deploy the staging cluster with helm charts nightly";
 const VARIANT: &str = "deploy staging cluster helm charts every night";
 const TOPIC: &str = "zebrafish";
 const FLOOR: f32 = 0.15;
-/// Every excluded target must beat this, which is well above the weak band (0.35).
+/// Every excluded target must beat this, which is well above the weak band (0.40).
 const NEAR_DUPLICATE_MIN: f32 = 0.5;
 
 /// A target is the query plus one distinguishing word: cosine about 0.94.

@@ -554,3 +554,162 @@ fn a_backup_carries_resolutions_and_a_restore_keeps_the_newer_row() {
         format!("[\"{a}\"]")
     );
 }
+
+fn remember_in(e: &Engine, content: &str, project: &str) -> String {
+    e.remember(
+        content,
+        Some(project),
+        None,
+        "episodic",
+        true,
+        Some("raw"),
+        None,
+        None,
+    )
+    .unwrap()["key"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// 7.0.9 (F1): the scan's cap used to keep the store's 200 oldest keys and
+/// filter by project afterwards, so a busy store never compared new pairs.
+#[test]
+fn a_project_scan_sees_new_pairs_behind_a_full_store() {
+    let e = engine();
+    for i in 0..250 {
+        remember_in(
+            &e,
+            &format!("old note {i} about gardening topic {i}"),
+            "old",
+        );
+    }
+    let a = remember_in(&e, "always run the migrations before each deploy", "p");
+    let b = remember_in(&e, "never run the migrations before each deploy", "p");
+    let found = e
+        .check_contradictions(None, "episodic", Some("p"), false)
+        .unwrap();
+    let pairs = found["contradictions"].as_array().unwrap();
+    assert!(
+        pairs.iter().any(|c| {
+            let ks = [c["key_a"].as_str().unwrap(), c["key_b"].as_str().unwrap()];
+            ks.contains(&a.as_str()) && ks.contains(&b.as_str())
+        }),
+        "{found}"
+    );
+}
+
+/// 7.0.9 (F3): a change of value is linked by the keyless heuristic.
+#[test]
+fn the_scan_links_a_changed_value() {
+    let e = engine();
+    remember(&e, "the user lives in Berlin near the river");
+    remember(
+        &e,
+        "the user moved from Berlin and lives in Lisbon near the river",
+    );
+    let found = e
+        .check_contradictions(None, "episodic", Some("alpha"), false)
+        .unwrap();
+    assert_eq!(
+        found["contradictions"].as_array().unwrap().len(),
+        1,
+        "{found}"
+    );
+}
+
+/// 7.0.9 (F3): a person can settle a pair no scan linked; the link is
+/// recorded as theirs, and only supersedes and both_wrong may do that.
+#[test]
+fn a_person_can_supersede_an_unlinked_pair() {
+    let e = engine();
+    let old = remember(&e, "Sam's favourite colour is blue");
+    let new = remember(&e, "something about gardening tools and sheds");
+    assert!(links_or_empty(&e, &old).is_empty());
+    let r = e
+        .resolve_contradiction(
+            &request(&old, &new, "supersedes", Some(&new), Retire::No),
+            "cli",
+        )
+        .unwrap();
+    assert_eq!(r["status"], "resolved");
+    let link = &links(&e, &old)[0];
+    assert_eq!(link["key"], new.as_str());
+    assert_eq!(link["explanation"], "Recorded by a person.");
+    assert_eq!(e.store().get(&old).unwrap().unwrap()["superseded_by"], new);
+}
+
+fn links_or_empty(e: &Engine, key: &str) -> Vec<Value> {
+    e.store()
+        .get(key)
+        .unwrap()
+        .unwrap()
+        .get("contradictions")
+        .and_then(|c| serde_json::from_str(c).ok())
+        .unwrap_or_default()
+}
+
+/// 7.0.9 (F2): a forget takes the recall log entries that found the memory.
+#[test]
+fn forget_scrubs_the_recall_log() {
+    let e = engine();
+    let secret = remember(&e, "the locker code is 4471 for the gym");
+    let other = remember(&e, "the bike shed opens at nine");
+    e.recall("locker code 4471", 5, None, None, None, None)
+        .unwrap();
+    e.recall("bike shed opens", 5, None, None, None, None)
+        .unwrap();
+    let logged = |e: &Engine| -> Vec<String> {
+        e.store()
+            .scan_prefix("log:recall:")
+            .unwrap()
+            .into_iter()
+            .filter_map(|k| e.store().get(&k).unwrap())
+            .map(|f| f.get("query").cloned().unwrap_or_default())
+            .collect()
+    };
+    assert!(logged(&e).iter().any(|q| q.contains("4471")));
+    let out = e.forget(&secret, true).unwrap();
+    assert!(out.to_string().contains(&secret), "{out}");
+    let left = logged(&e);
+    assert!(!left.iter().any(|q| q.contains("4471")), "{left:?}");
+    assert!(left.iter().any(|q| q.contains("bike shed")), "{left:?}");
+    assert!(e.store().get(&other).unwrap().is_some());
+}
+
+/// 7.0.9 (F4): a query that matches nothing closely names the nearest memory.
+#[test]
+fn a_query_miss_names_the_nearest_memory() {
+    let e = engine();
+    let key = remember(&e, "temporary verification code 12345 for the bank login");
+    for reply in [
+        e.forget("verification code bank", true).unwrap(),
+        e.archive("verification code bank", None).unwrap(),
+        e.deprioritise("verification code bank", "test", None)
+            .unwrap(),
+    ] {
+        assert_eq!(reply["nearest"]["key"], key.as_str(), "{reply}");
+        assert!(reply["nearest"]["similarity"].as_f64().unwrap() < 0.85);
+    }
+    assert_eq!(state(&e, &key), "active", "nothing was acted on");
+}
+
+/// 7.0.9: an exact identifier in a query reaches every memory naming it,
+/// and nothing that only shares a prefix.
+#[test]
+fn forget_by_identifier_takes_every_mention_and_no_lookalike() {
+    let e = engine();
+    let upper = remember(&e, "Customer ALICE@ACME.IO subscribed to Plan A.");
+    let lower = remember(&e, "Customer alice@acme.io is the same person.");
+    let other = remember(&e, "Customer alice.smith@acme.io subscribed in 2023.");
+    let uk = remember(&e, "Customer alice@acme.io.uk filed an NDA.");
+    let out = e.forget("alice@acme.io", true).unwrap();
+    let text = out.to_string();
+    assert!(text.contains(&upper) && text.contains(&lower), "{out}");
+    for kept in [&other, &uk] {
+        assert!(
+            e.store().get(kept).unwrap().is_some(),
+            "{kept} survived: {out}"
+        );
+    }
+}

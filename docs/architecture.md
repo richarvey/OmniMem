@@ -113,7 +113,7 @@ score = similarity x surface_score x recency x experience_weight x date_boost
 - **Experience weight** rewards hard-won lessons, up to 1.8x for effort 5. [Features in depth](features.md#experience-scoring) has the table.
 - **Date boost** (up to 1.5x) applies when the query mentions a date and the memory has an `event_date` close to it.
 
-A deprioritised memory whose reinstate hints match the query comes back as a reinstate candidate with a fixed score of 0.6. Results whose raw similarity falls below `RECALL_MIN_SCORE` (0.15) are dropped, and ones under `RECALL_WEAK_SCORE` (0.35) are flagged `weak_match`, so `top_k` is a ceiling rather than a quota. When an extracted fact and its verbatim source both make the cut, the source wins.
+A deprioritised memory whose reinstate hints match the query comes back as a reinstate candidate with a fixed score of 0.6. Results whose raw similarity falls below `RECALL_MIN_SCORE` (0.15) are dropped, and ones under `RECALL_WEAK_SCORE` (0.40) are flagged `weak_match`, so `top_k` is a ceiling rather than a quota. When an extracted fact and its verbatim source both make the cut, the source wins.
 
 ## Design decisions that still hold
 
