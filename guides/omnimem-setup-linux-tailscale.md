@@ -299,4 +299,4 @@ The import re-embeds every memory at roughly 8 ms each. OAuth clients registered
 
 **Signed out after a month**: that's `OAUTH_REFRESH_MAX_DAYS` doing its job. Raise it, up to 90, if you'd rather sign in less often.
 
-**Want a custom domain instead of ts.net?** Funnel only does TLS for `ts.net` names, so you'd need your own proxy, Caddy for instance, in front. At that point the [AWS guide](omnimem-setup-aws-linux.md)'s Caddy section is the better fit.
+**Want a custom domain instead of ts.net?** Funnel only does TLS for `ts.net` names, so you'd need something else in front. A [Cloudflare Tunnel](omnimem-setup-linux-cloudflare.md) gives you a custom domain with no open ports, or the [AWS guide](omnimem-setup-aws-linux.md)'s Caddy section does it on your own box.
