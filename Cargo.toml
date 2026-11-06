@@ -17,7 +17,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "7.0.9"
+version = "7.1.0-dev"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -92,12 +92,9 @@ feed-rs = "2.4"
 serde_yaml_ng = "0.10"
 
 # Desktop: per-platform data folders, and (omnimem-desktop only) the event
-# loop, settings webview, tray and menu, clipboard and start at login.
+# loop, tray and menu, clipboard and start at login.
 directories = "6.0"
 tao = "0.37"
-# linux-body: WebKitGTK 2.40+ hands POST bodies to the custom scheme, which
-# the panel's forms need; without it every POST arrives empty.
-wry = { version = "0.57", features = ["linux-body"] }
 # Without muda-libxdo: libxdo only fakes key presses for the predefined Copy,
 # Paste and Select All menu items, which the tray menu doesn't use, and it
 # isn't in the GNOME runtime the Flatpak builds on.

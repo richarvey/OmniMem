@@ -357,7 +357,7 @@ async fn a_declined_question_writes_nothing_and_keeps_the_stash() {
         assert_eq!(result["status"], status, "{result}");
         assert_eq!(questions.len(), 1);
         assert!(stored_body(&engine).is_none(), "nothing is written");
-        // Kept, so the person can still accept it from the settings window.
+        // Kept, so the person can still accept it from the settings panel.
         assert!(proposal_waits(&engine));
     }
     stop.cancel();
@@ -376,7 +376,7 @@ async fn a_client_that_cannot_be_asked_gets_awaiting_approval() {
     assert!(questions.is_empty());
     let note = result["note"].as_str().unwrap();
     assert!(note.contains("Pending proposals"), "{note}");
-    assert!(note.contains("headless"), "{note}");
+    assert!(note.contains("/admin"), "{note}");
     assert!(stored_body(&engine).is_none());
     assert!(proposal_waits(&engine));
     stop.cancel();

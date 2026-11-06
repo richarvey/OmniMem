@@ -1,6 +1,6 @@
 //! The HTTP side: streamable HTTP at `/mcp`, bearer and OAuth authentication,
-//! the OAuth routes, Host and Origin allowlists, and the fail-closed rule for
-//! public binds.
+//! the OAuth routes, the settings panel's `/admin` when the app mounts it,
+//! Host and Origin allowlists, and the fail-closed rule for public binds.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -351,6 +351,18 @@ pub fn router(
     config: &ServerConfig,
     shutdown: CancellationToken,
 ) -> Result<Router, ServerError> {
+    router_with(engine, config, shutdown, None)
+}
+
+/// [`router`] with the settings panel's routes beside `/mcp`. They sit
+/// behind the Host and Origin guard but not the MCP authentication: the panel
+/// signs people in itself, and an MCP token must never open it.
+pub fn router_with(
+    engine: Arc<Engine>,
+    config: &ServerConfig,
+    shutdown: CancellationToken,
+    admin: Option<Router>,
+) -> Result<Router, ServerError> {
     config.validate()?;
     let oauth = match &config.oauth {
         OAuthSetup::On(settings) => Some(Arc::new(
@@ -388,6 +400,9 @@ pub fn router(
             require_auth,
         ));
     }
+    if let Some(admin) = admin {
+        app = app.merge(admin);
+    }
     // The Host and Origin guard sits outside authentication, so a refused
     // host gets 421 even without a token: a probe that only sees 401 looks
     // healthy while every real client is refused. rmcp's own check (403)
@@ -415,7 +430,19 @@ pub async fn serve(
     listener: Option<TcpListener>,
     shutdown: CancellationToken,
 ) -> Result<(), ServerError> {
-    let app = router(engine, &config, shutdown.clone())?;
+    serve_with(engine, config, listener, shutdown, None).await
+}
+
+/// [`serve`] with the settings panel mounted, as [`router_with`] does.
+pub async fn serve_with(
+    engine: Arc<Engine>,
+    config: ServerConfig,
+    listener: Option<TcpListener>,
+    shutdown: CancellationToken,
+    admin: Option<Router>,
+) -> Result<(), ServerError> {
+    let has_admin = admin.is_some();
+    let app = router_with(engine, &config, shutdown.clone(), admin)?;
     let listener = if let Some(l) = listener {
         l
     } else {
@@ -435,6 +462,9 @@ pub async fn serve(
         (false, false) => "none (loopback)",
     };
     info!(address = %local, auth, "OmniMem MCP server listening on /mcp");
+    if has_admin {
+        info!(address = %local, "settings panel at /admin");
+    }
     if let Some(hint) = config.remote_host_hint() {
         warn!("{hint}");
     }

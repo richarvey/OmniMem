@@ -18,16 +18,12 @@ finish-args:
   - --share=network
   - --socket=wayland
   - --socket=fallback-x11
-  # WebKitGTK's GPU rendering for the settings window.
-  - --device=dri
   # The tray icon: the desktop's StatusNotifierItem host, and the
   # org.kde.StatusNotifierItem-* name libayatana registers under.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.kde.*
   # Secrets go to the desktop's keyring (the Secret Service).
   - --talk-name=org.freedesktop.secrets
-  # Exports and backups are saved to Downloads.
-  - --filesystem=xdg-download
   # Start at login: the menu's entry in ~/.config/autostart, which runs the
   # app through `flatpak run`.
   - --filesystem=xdg-config/autostart:create

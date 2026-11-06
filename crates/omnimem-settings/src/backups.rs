@@ -3,7 +3,7 @@
 //!
 //! Create and restore go through `dump_to_file` and `restore_from_file`, the
 //! MCP tools' own paths, so a restore runs every migration and re-embeds what
-//! it brings back. Downloads are saved into the Downloads folder.
+//! it brings back. A download goes to the browser as an attachment.
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use tracing::{error, info};
 
 use crate::PanelState;
-use crate::files::{read_upload, save_download};
+use crate::files::{attachment, read_upload};
 use crate::pages::{blocking, off_runtime, quote, see_other, starting};
 use crate::render::page;
 
@@ -364,16 +364,10 @@ pub(crate) async fn download(
         Ok(path) => path,
         Err(response) => return *response,
     };
-    let downloads = state.downloads_dir();
-    let saved = off_runtime(move || {
-        std::fs::read(&path)
-            .map_err(|e| format!("Could not read {filename}: {e}"))
-            .and_then(|data| save_download(downloads, &filename, &data))
-    })
-    .await;
-    match saved {
-        Ok(Ok(saved)) => with_message(false, &format!("Saved a copy to {}.", saved.display())),
-        Ok(Err(problem)) => with_message(true, &problem),
+    let read = off_runtime(move || std::fs::read(&path)).await;
+    match read {
+        Ok(Ok(data)) => attachment(&filename, "application/json", data),
+        Ok(Err(e)) => with_message(true, &format!("Could not read {filename}: {e}")),
         Err(failure) => failure,
     }
 }

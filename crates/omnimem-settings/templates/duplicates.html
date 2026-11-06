@@ -26,7 +26,7 @@
   </div>
   <div class="form-group" style="align-self:end">
     <button class="btn btn-primary"
-            hx-get="/duplicates/scan"
+            hx-get="{{ admin }}/duplicates/scan"
             hx-include="#dup-namespace"
             hx-target="#dup-results"
             hx-indicator="#dup-spinner">

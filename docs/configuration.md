@@ -4,7 +4,7 @@ OmniMem runs happily with no configuration at all: it listens on `127.0.0.1:8765
 
 ## Where settings live
 
-**The desktop app** has a **Configuration** page in its settings window (**Settings… → Configuration**). Ordinary settings are saved to `omnimem.env` in the [data folder](quick-start.md#install-the-desktop-app). Secrets go to your operating system's keychain (Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux) and are never shown again once saved. Those are:
+**The settings panel** has a **Configuration** page (**Settings… → Configuration** on a desktop, `/admin/configuration` on a server; see [the settings panel](settings-panel.md)). On a desktop, ordinary settings are saved to `omnimem.env` in the [data folder](quick-start.md#install-the-desktop-app) and secrets go to your operating system's keychain (Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux). On a server, both go into the settings file it loaded, if OmniMem may write it. Secrets are never shown again once saved. Those are:
 
 - `MCP_AUTH_TOKEN`
 - `OAUTH_ADMIN_PASSWORD`
@@ -44,17 +44,17 @@ See [remote access](remote-access.md) for putting OmniMem behind a reverse proxy
 
 ## OAuth
 
-For claude.ai and other clients that sign in rather than send a token. The login page is the only HTML OmniMem serves over the network.
+For claude.ai and other clients that sign in rather than send a token. The admin username and password also sign you in to the [settings panel](settings-panel.md), whether or not OAuth is on.
 
 | Variable | Default | Description |
 |---|---|---|
 | `OAUTH_ENABLED` | off | Turn on the OAuth 2.1 authorisation server. If it's on but the three settings below aren't all set, OmniMem refuses to start and says which is missing |
 | `OAUTH_BASE_URL` | *(unset)* | The address clients reach OmniMem at, such as `https://mcp.example.com`. Must be https, except for localhost. List several, comma separated, and each request is answered with the one whose host it was made to (the first answers any other), so one server can sign clients in over a Tailscale name and a Cloudflare one at once. `*` answers any host `MCP_ALLOWED_HOSTS` lets in, with its own address. Listed hosts and origins are trusted; `*` trusts none |
-| `OAUTH_ADMIN_USER` | *(unset)* | The username the login page asks for |
-| `OAUTH_ADMIN_PASSWORD` | *(unset)* | The password it asks for |
+| `OAUTH_ADMIN_USER` | *(unset)* | The username the OAuth login page and the settings panel ask for |
+| `OAUTH_ADMIN_PASSWORD` | *(unset)* | The password they ask for. Without the pair, the settings panel opens through sign-in links only |
 | `OAUTH_REFRESH_MAX_DAYS` | `30` | How long a client stays signed in, however often it refreshes. 1 to 90 |
 | `OAUTH_REFRESH_GRACE_SECONDS` | `120` | How long a replaced refresh token keeps working, returning the same new tokens, so clients refreshing at once (claude.ai does) aren't signed out. Up to 3600; `0` makes refresh tokens strictly single use |
-| `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed logins from one address before the login page refuses it for a while. `0` turns the limit off |
+| `OAUTH_LOGIN_MAX_ATTEMPTS` | `10` | Failed logins from one address before the login page refuses it for a while. `0` turns the limit off. The settings panel's login uses the same number, with its own count |
 | `OAUTH_LOGIN_WINDOW_SECONDS` | `900` | How long a failed login counts towards that limit |
 
 Clients, codes and tokens are kept in the database (tokens only as hashes), so a restart signs nobody out.
@@ -118,7 +118,7 @@ Everything here is optional. Without `ANTHROPIC_API_KEY`, OmniMem stores memorie
 
 | Variable | Default | Description |
 |---|---|---|
-| `HUMAN_APPROVAL` | `human` | Who accepts a skill write, or an agent's resolution of a contradiction (`check_contradictions(mode='resolve')`). `human`: a person does, through the client (MCP elicitation) or the settings window's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
+| `HUMAN_APPROVAL` | `human` | Who accepts a skill write, or an agent's resolution of a contradiction (`check_contradictions(mode='resolve')`). `human`: a person does, through the client (MCP elicitation) or the settings panel's Pending proposals; the agent's `compile_skill(mode='write')` alone writes nothing. `agent`: the agent's call commits, as in 6.x. Anything else falls back to `human`. See [who accepts](skill-compiler.md#who-accepts) |
 | `OMNIMEM_USER` | `local` | The user part of generated skill names (`{domain}-{user}`) |
 | `SKILL_MIN_SCORE` | `0.25` | Relevance floor for `find_skills()`. Exact domain matches are never held back |
 | `SKILL_CLUSTER_THRESHOLD` | `0.80` | Similarity at which two lessons count as the same lesson for reinforcement |
@@ -156,14 +156,17 @@ The default model is all-MiniLM-L6-v2 on ONNX Runtime, pinned to the same revisi
 
 | Variable | Default | Description |
 |---|---|---|
-| `UPDATE_CHECK` | `true` | Look at code.squarecows.com for a newer release a little after start and every 12 hours, and say so in the tray, the settings window's sidebar and `briefing()` (as `update_available`). The request sends nothing but itself. `false` stops every update check. A development build never shows a notice either way |
+| `UPDATE_CHECK` | `true` | Look at code.squarecows.com for a newer release a little after start and every 12 hours, and say so in the tray, the settings panel's sidebar and `briefing()` (as `update_available`). The request sends nothing but itself. `false` stops every update check. A development build never shows a notice either way |
 
 ## Settings panel
 
-Desktop app only.
+The pages at `/admin`. See [the settings panel](settings-panel.md) for how sign-in works.
 
 | Variable | Default | Description |
 |---|---|---|
+| `ADMIN_PANEL` | `true` | Serve the settings panel at `/admin`. `false` leaves the HTTP surface as `/mcp`, the OAuth routes and `/healthz`, as OmniMem Cloud runs it. Turning it off from the panel closes the panel, so change it back in the settings file |
+| `ADMIN_SESSION_HOURS` | `12` | How long a browser stays signed in to the panel. 1 to 2160 |
+| `ADMIN_ALLOW_HTTP` | off | Open the panel over plain HTTP to other machines. It normally needs HTTPS through a proxy (`X-Forwarded-Proto: https`) or a browser on the same machine. For a network that's private already, such as WireGuard, Tailscale or a container port published to localhost only |
 | `DASHBOARD_STATS_TTL` | `60` | Seconds the dashboard caches its counts. `0` recounts on every visit |
 | `TELEMETRY_COLD_DAYS` | `60` | Days without a recall before the Telemetry page calls a memory gone cold |
 
@@ -174,8 +177,8 @@ These did something in 6.x and are ignored now, mostly because the thing they co
 | Settings | Why |
 |---|---|
 | `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_PASSWORD`, `VALKEY_MAX_CONNECTIONS`, `VALKEY_RAW_MAX_CONNECTIONS`, `OAUTH_VALKEY_MAX_CONNECTIONS` | Valkey is gone; everything is in the SQLite file |
-| `WEB_PORT`, `WEB_UI_AUTH_TOKEN`, `WEB_UI_LOGIN_ENABLED`, `WEB_UI_SESSION_HOURS` | There's no web UI over HTTP; its pages are in the desktop app's settings panel |
-| `METRICS_CACHE_TTL` | `/metrics` is gone with the web UI; the Telemetry page shows the same numbers |
+| `WEB_PORT`, `WEB_UI_AUTH_TOKEN`, `WEB_UI_LOGIN_ENABLED`, `WEB_UI_SESSION_HOURS` | The 6.x web UI is gone; its pages are in the settings panel at `/admin` on the MCP port, with `ADMIN_SESSION_HOURS` and `ADMIN_PANEL` |
+| `METRICS_CACHE_TTL` | `/metrics` is gone with the 6.x web UI; the Telemetry page shows the same numbers |
 | `MCP_TRANSPORT`, `FASTMCP_HTTP_ALLOWED_HOSTS`, `FASTMCP_HTTP_ALLOWED_ORIGINS` | Streamable HTTP is the only transport, and FastMCP isn't involved. Use `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` |
 | `EMBEDDING_BACKEND` | ONNX Runtime is the only backend; the PyTorch rollback is gone |
 | `INDEX_DRIFT_CHECK` | There's no separate search index to drift from the data |

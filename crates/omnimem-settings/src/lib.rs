@@ -1,16 +1,16 @@
-//! The settings panel: everything the 6.x web UI showed, rendered in-process
-//! for the desktop app's window.
+//! The settings panel: everything the 6.x web UI showed, served at
+//! `$baseURL/admin` on the MCP server.
 //!
-//! The panel is an axum router that is never bound to a socket. The desktop
-//! window's `omnimem://` scheme hands each request, page loads and htmx calls
-//! alike, to [`Panel::handle`], so the pages keep their routes and templates
-//! and nothing about them is reachable over a network. Pages that need the
-//! engine show a starting page until the services hand it over with
-//! [`Panel::set_engine`].
+//! The panel is an axum router whose routes are panel paths (`/memories`).
+//! [`Panel::admin_router`] puts it behind sign-in at [`ADMIN_ROOT`] for the
+//! server to mount (see `access.rs`); [`Panel::handle`] runs it bare, for
+//! tests. Pages that need the engine show a starting page until the services
+//! hand it over with [`Panel::set_engine`].
 //!
 //! The pages move across from `web_ui/` in slices; a route not ported yet
 //! renders a page saying so.
 
+mod access;
 mod assets;
 mod audit_log;
 mod backups;
@@ -54,7 +54,16 @@ use omnimem_engine::Engine;
 use serde_json::Value;
 use tower::ServiceExt;
 
-pub use configuration::{SecretStore, secret_settings};
+pub use access::{
+    AccessConfig, PRINTED_CODE_LIFETIME, TRAY_CODE_LIFETIME, admin_panel_enabled,
+    mint_sign_in_code, sign_in_url,
+};
+pub use configuration::{SecretStore, SettingsFileSecrets, secret_settings};
+
+/// Where the panel is served on the HTTP server, `$baseURL/admin`. Routes
+/// and the redirects handlers build are panel paths ("/memories"); links in
+/// templates and the `Location` of a redirect add this in front.
+pub const ADMIN_ROOT: &str = "/admin";
 
 /// The largest response body the panel hands back (a backup download).
 const MAX_RESPONSE_BYTES: usize = 512 * 1024 * 1024;
@@ -81,7 +90,6 @@ pub(crate) struct Shared {
     engine: RwLock<Option<Arc<Engine>>>,
     failure: RwLock<Option<String>>,
     feeds_path: RwLock<Option<PathBuf>>,
-    downloads_dir: RwLock<Option<PathBuf>>,
     static_overhead: RwLock<StaticOverhead>,
     settings_path: RwLock<Option<PathBuf>>,
     secret_store: RwLock<Option<Arc<dyn SecretStore>>>,
@@ -107,18 +115,6 @@ impl PanelState {
     /// The reading list, once the app has said where it is.
     pub(crate) fn feeds_path(&self) -> Option<PathBuf> {
         self.0.feeds_path.read().ok().and_then(|p| p.clone())
-    }
-
-    /// Where exports are saved: the one set, or the user's Downloads folder.
-    pub(crate) fn downloads_dir(&self) -> Option<PathBuf> {
-        self.0
-            .downloads_dir
-            .read()
-            .ok()
-            .and_then(|d| d.clone())
-            .or_else(|| {
-                directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(PathBuf::from))
-            })
     }
 
     pub(crate) fn static_overhead(&self) -> StaticOverhead {
@@ -165,23 +161,11 @@ impl Default for Panel {
 
 impl Panel {
     pub fn new() -> Self {
-        Self::build(false)
-    }
-
-    /// A panel that also answers the desktop smoke test's `/_panel/*` routes.
-    /// They echo request bodies and redirect wherever a form asks, so they
-    /// exist only while the smoke test is running.
-    pub fn with_smoke_routes() -> Self {
-        Self::build(true)
-    }
-
-    fn build(smoke_routes: bool) -> Self {
         let notice = Arc::new(RwLock::new(None));
         let state = PanelState(Arc::new(Shared {
             engine: RwLock::new(None),
             failure: RwLock::new(None),
             feeds_path: RwLock::new(None),
-            downloads_dir: RwLock::new(None),
             static_overhead: RwLock::new(StaticOverhead::default()),
             settings_path: RwLock::new(None),
             secret_store: RwLock::new(None),
@@ -304,14 +288,6 @@ impl Panel {
                 get(configuration::form).post(configuration::save),
             )
             .route("/static/{*path}", get(assets::serve));
-        let router = if smoke_routes {
-            router
-                .route("/_panel/echo", post(pages::echo))
-                .route("/_panel/redirect", post(pages::redirect))
-                .route("/_panel/landed", get(pages::landed))
-        } else {
-            router
-        };
         let router = router.fallback(pages::pending).with_state(state.clone());
         Self { state, router }
     }
@@ -327,13 +303,6 @@ impl Panel {
     pub fn set_feeds_path(&self, path: PathBuf) {
         if let Ok(mut slot) = self.state.0.feeds_path.write() {
             *slot = Some(path);
-        }
-    }
-
-    /// Save exports here instead of the user's Downloads folder.
-    pub fn set_downloads_dir(&self, dir: PathBuf) {
-        if let Ok(mut slot) = self.state.0.downloads_dir.write() {
-            *slot = Some(dir);
         }
     }
 
@@ -375,7 +344,14 @@ impl Panel {
         }
     }
 
-    /// Answer one request from the window.
+    /// The panel as the HTTP server mounts it: `/admin` and everything under
+    /// it, behind sign-in. `store` keeps the sessions and sign-in codes.
+    pub fn admin_router(&self, store: Arc<omnimem_store::Store>, access: AccessConfig) -> Router {
+        access::router(self.router.clone(), self.state.clone(), store, access)
+    }
+
+    /// Answer one request with the panel's routes and no sign-in, as the
+    /// tests call it.
     pub async fn handle(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         let request = request.map(Body::from);
         let response = match self.router.clone().oneshot(request).await {

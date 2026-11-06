@@ -43,7 +43,6 @@ fn setup() -> (Panel, Arc<Engine>, PathBuf) {
     let panel = Panel::new();
     panel.set_engine(engine.clone());
     let dir = scratch("skills");
-    panel.set_downloads_dir(dir.join("Downloads"));
     panel.set_feeds_path(dir.join("feeds.yml"));
     (panel, engine, dir)
 }
@@ -91,7 +90,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn landed(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -165,7 +164,7 @@ async fn the_new_skill_modal_refuses_what_it_should() {
     );
     let exists = text(&post(&panel, "/skills/compile", "domain=rust").await);
     assert!(exists.contains("already exists"), "{exists}");
-    assert!(exists.contains(r#"<a href="/skills/mem:skill:gen:rust-local">rust-local</a>"#));
+    assert!(exists.contains(r#"<a href="/admin/skills/mem:skill:gen:rust-local">rust-local</a>"#));
 
     // An alias resolves first: golang is reported as go.
     let aliased = text(&post(&panel, "/skills/compile", "domain=golang").await);
@@ -200,7 +199,7 @@ async fn skills_list_show_and_delete() {
         "{list}"
     );
     assert!(list.contains(&format!(
-        r#"<a href="/skills/{key}" class="project-name">rust-local</a>"#
+        r#"<a href="/admin/skills/{key}" class="project-name">rust-local</a>"#
     )));
     assert!(list.contains("1 active"));
     assert!(list.contains("class=\"nav-link active\">Compiled Skills"));
@@ -215,7 +214,7 @@ async fn skills_list_show_and_delete() {
             || detail.contains("(1 do · 0 watch · 0 don't)"),
         "{detail}"
     );
-    assert!(detail.contains(&format!(r#"<a href="/memory/{source}""#)));
+    assert!(detail.contains(&format!(r#"<a href="/admin/memory/{source}""#)));
     assert!(detail.contains("# Rust"));
     assert_eq!(
         get(&panel, "/skills/mem:skill:gen:nothing").await.status(),
@@ -242,28 +241,19 @@ async fn skills_list_show_and_delete() {
 }
 
 #[tokio::test]
-async fn a_bundle_exports_to_downloads_and_imports_after_confirming() {
+async fn a_bundle_downloads_and_imports_after_confirming() {
     let (panel, engine, dir) = setup();
     let (key, source) = compiled_skill(&engine);
 
-    let exported = landed(&get(&panel, &format!("/skills/export/{key}")).await);
+    let exported = get(&panel, &format!("/skills/export/{key}")).await;
+    assert_eq!(exported.status(), 200);
+    assert_eq!(exported.headers()["content-type"], "application/zip");
+    let disposition = exported.headers()["content-disposition"].to_str().unwrap();
     assert!(
-        exported.starts_with("/skills?message=Exported%20to%20"),
-        "{exported}"
+        disposition.starts_with("attachment; filename=\"") && disposition.ends_with(".zip\""),
+        "{disposition}"
     );
-    let downloads = dir.join("Downloads");
-    let files: Vec<PathBuf> = std::fs::read_dir(&downloads)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    assert_eq!(files.len(), 1, "{files:?}");
-    let bundle = std::fs::read(&files[0]).unwrap();
-    landed(&get(&panel, &format!("/skills/export/{key}")).await);
-    assert_eq!(
-        std::fs::read_dir(&downloads).unwrap().count(),
-        2,
-        "a second export doesn't overwrite"
-    );
+    let bundle = exported.body().clone();
     assert_eq!(
         get(&panel, "/skills/export/mem:skill:gen:nothing")
             .await
@@ -364,9 +354,9 @@ async fn pending_proposals_list_with_their_draft_and_count() {
     assert!(list.contains("new skill"), "{list}");
     assert!(list.contains("# Rust"), "the draft is shown: {list}");
     assert!(list.contains("Accept &amp; Write Skill"));
-    assert!(list.contains(r#"action="/skills/discard""#));
+    assert!(list.contains(r#"action="/admin/skills/discard""#));
     // The sidebar loads its count like the version marker.
-    assert!(list.contains(r#"hx-get="/skills/pending-badge""#));
+    assert!(list.contains(r#"hx-get="/admin/skills/pending-badge""#));
     let badge = text(&get(&panel, "/skills/pending-badge").await);
     assert!(badge.contains(">1</span>"), "{badge}");
     std::fs::remove_dir_all(dir).unwrap();

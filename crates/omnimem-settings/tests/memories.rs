@@ -82,7 +82,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn location(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()

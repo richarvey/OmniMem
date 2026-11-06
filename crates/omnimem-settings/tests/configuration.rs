@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::http::{Request, Response};
-use omnimem_settings::{Panel, SecretStore};
+use omnimem_settings::{Panel, SecretStore, SettingsFileSecrets};
 
 #[derive(Default)]
 struct MemoryKeychain(Mutex<HashMap<String, String>>);
@@ -82,7 +82,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn landed(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -90,10 +90,10 @@ fn landed(response: &Response<Vec<u8>>) -> String {
 }
 
 #[tokio::test]
-async fn without_the_desktop_app_there_is_nothing_to_configure() {
+async fn without_a_settings_file_there_is_nothing_to_configure() {
     let panel = Panel::new();
     let page = text(&get(&panel, "/configuration").await);
-    assert!(page.contains("only available in the desktop app"), "{page}");
+    assert!(page.contains("no settings file to edit"), "{page}");
     assert!(page.contains("class=\"nav-link active\">Configuration"));
 }
 
@@ -121,7 +121,8 @@ async fn settings_go_to_the_file_and_secrets_to_the_keychain() {
         "defaults are placeholders"
     );
     assert!(page.contains("Not set"));
-    assert!(!page.contains("keychain isn&#39;t available"));
+    assert!(page.contains("secrets\n  to the system keychain"), "{page}");
+    assert!(!page.contains("Secrets can&#39;t be saved"));
 
     let saved = landed(&post(&panel, "MCP_PORT=9000&INGEST_MODE=raw&RSS_REQUIRE_LICENCE=true&ANTHROPIC_API_KEY=sk-ant-test&MCP_HOST=").await);
     assert!(
@@ -147,7 +148,7 @@ async fn settings_go_to_the_file_and_secrets_to_the_keychain() {
     );
 
     let page = text(&get(&panel, "/configuration").await);
-    assert!(page.contains("Stored in the keychain"), "{page}");
+    assert!(page.contains("Saved. Type to replace it"), "{page}");
     assert!(
         !page.contains("sk-ant-test"),
         "a stored secret is never shown"
@@ -188,7 +189,7 @@ async fn a_missing_keychain_is_explained_and_the_file_still_saves() {
     assert!(page.contains("disabled"));
 
     let answer = landed(&post(&panel, "MCP_PORT=9100&HF_TOKEN=hf_x").await);
-    assert!(answer.contains("keychain%20refused"), "{answer}");
+    assert!(answer.contains("not%20every%20secret"), "{answer}");
     assert!(
         std::fs::read_to_string(&file)
             .unwrap()
@@ -237,5 +238,54 @@ async fn the_audit_settings_are_on_the_page_and_the_choice_is_checked() {
         std::fs::read_to_string(&file)
             .unwrap()
             .contains("AUDIT_LOG=writes")
+    );
+}
+
+#[tokio::test]
+async fn on_a_server_secrets_go_into_the_settings_file_and_stay_hidden() {
+    let dir = scratch();
+    let file = dir.0.join("omnimem.env");
+    std::fs::write(&file, "MCP_PORT=9100\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    let panel = Panel::new();
+    panel.set_settings_path(file.clone());
+    panel.set_secret_store(Arc::new(SettingsFileSecrets::new(file.clone())));
+
+    let page = text(&get(&panel, "/configuration").await);
+    assert!(page.contains("secrets\n  to the settings file"), "{page}");
+
+    let saved = landed(&post(&panel, "MCP_PORT=9100&OAUTH_ADMIN_PASSWORD=s3cret").await);
+    assert!(
+        saved.starts_with("/configuration?message=Saved."),
+        "{saved}"
+    );
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("OAUTH_ADMIN_PASSWORD=s3cret"), "{written}");
+    assert!(written.contains("MCP_PORT=9100"), "{written}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o640, "the rewrite keeps the file's permissions");
+    }
+
+    let page = text(&get(&panel, "/configuration").await);
+    assert!(!page.contains("s3cret"), "a saved secret is never shown");
+    assert!(page.contains("Saved. Type to replace it"));
+
+    // Saving ordinary settings again leaves the secret in place.
+    landed(&post(&panel, "MCP_PORT=9200").await);
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("OAUTH_ADMIN_PASSWORD=s3cret") && written.contains("MCP_PORT=9200"));
+
+    landed(&post(&panel, "MCP_PORT=9200&clear:OAUTH_ADMIN_PASSWORD=on").await);
+    assert!(
+        !std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("OAUTH_ADMIN_PASSWORD")
     );
 }

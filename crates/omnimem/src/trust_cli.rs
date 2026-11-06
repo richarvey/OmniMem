@@ -1,5 +1,5 @@
 //! `omnimem trust`: a person confirms or rejects what OmniMem concluded
-//! (#23). Like the settings window, and unlike every MCP tool, this can
+//! (#23). Like the settings panel, and unlike every MCP tool, this can
 //! change a memory's trust, so an agent can't vouch for its own conclusions.
 
 use std::path::Path;

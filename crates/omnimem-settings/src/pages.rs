@@ -1,10 +1,10 @@
-//! The starting page, pages not ported yet, and the window's POST check.
+//! The starting page, pages not ported yet, and redirects.
 
 use std::fmt::Write as _;
 
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use minijinja::context;
 
 use crate::PanelState;
@@ -100,109 +100,59 @@ pub(crate) async fn pending(State(state): State<PanelState>, method: Method, uri
     )
 }
 
-/// Echoes a POST body: the desktop smoke test uses it to prove request
-/// bodies cross the window's custom scheme, which every htmx form relies on.
-pub(crate) async fn echo(body: String) -> String {
-    body
-}
-
-/// The header carrying where [`see_other`] sends the window.
+/// The header carrying where [`see_other`] sends the browser, as a panel
+/// path without [`crate::ADMIN_ROOT`], for tests.
 pub const REDIRECT_HEADER: &str = "x-omnimem-redirect";
 
-/// Send the window to a panel page after a form acts.
-///
-/// A plain 303 would be right on the web, but WebKitGTK doesn't follow
-/// redirects from a custom scheme: the form's POST would complete and the
-/// window would stay where it was. So the answer is a page that replaces
-/// itself with the target, which also keeps the POST out of the history.
-/// The target travels in [`REDIRECT_HEADER`] too, for tests.
-///
-/// The target can carry form data (`next`, a key, a name), so it is written
-/// as a JavaScript string literal with every character that could end the
-/// script or the attribute escaped: `<` alone would let `</script>` in a
-/// target start writing HTML.
+/// Send the browser to a panel page after a form acts: a 303, so the POST
+/// stays out of the history. `location` is a panel path ("/memories"); the
+/// `Location` header puts it under [`crate::ADMIN_ROOT`], where the panel is
+/// served. Every caller builds `location` from a fixed path or a checked
+/// `next`, so it can't name another site.
 pub(crate) fn see_other(location: &str) -> Response {
-    let script_target = js_string_literal(location);
-    let attribute_target = location
-        .replace('&', "&amp;")
-        .replace('"', "&#34;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;");
-    let body = format!(
-        "<!doctype html><meta http-equiv=\"refresh\" content=\"0;url={attribute_target}\">\
-         <script>location.replace({script_target})</script>"
-    );
-    (
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            (header::CACHE_CONTROL, "no-store"),
-        ],
-        [(REDIRECT_HEADER, location)],
-        body,
-    )
-        .into_response()
-}
-
-/// A JavaScript string literal for `text`, safe inside an HTML `<script>`:
-/// JSON escaping, then `<`, `>` and `&` as `\uXXXX` so no HTML tag or entity
-/// can form, and U+2028 and U+2029, which JSON allows raw but which end a
-/// JavaScript line.
-fn js_string_literal(text: &str) -> String {
-    let json = serde_json::to_string(text).unwrap_or_else(|_| "\"/\"".to_owned());
-    let mut out = String::with_capacity(json.len());
-    for c in json.chars() {
-        match c {
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c => out.push(c),
+    let target = format!("{}{location}", crate::ADMIN_ROOT);
+    let mut response =
+        (StatusCode::SEE_OTHER, [(header::CACHE_CONTROL, "no-store")]).into_response();
+    let headers = response.headers_mut();
+    for (name, value) in [
+        (header::LOCATION, target.as_str()),
+        (header::HeaderName::from_static(REDIRECT_HEADER), location),
+    ] {
+        match header::HeaderValue::from_str(value) {
+            Ok(value) => {
+                headers.insert(name, value);
+            }
+            // A control character can't reach a header; the dashboard can.
+            Err(_) => {
+                headers.insert(name, header::HeaderValue::from_static("/admin/"));
+            }
         }
     }
-    out
-}
-
-/// The smoke test's form target: redirects to `/_panel/landed` carrying the
-/// submitted fields, proving a form body arrived and the 303 was followed.
-/// Routed only by [`crate::Panel::with_smoke_routes`].
-pub(crate) async fn redirect(body: String) -> Response {
-    see_other(&format!("/_panel/landed?{body}"))
-}
-
-pub(crate) async fn landed() -> Html<&'static str> {
-    Html(
-        "<!doctype html><title>Landed</title><script>\
-         const report = Object.fromEntries(new URLSearchParams(location.search));\
-         window.ipc.postMessage(JSON.stringify({ ...report, cmd: 'smoke', landed: location.pathname }));\
-         </script>",
-    )
+    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn a_redirect_target_cannot_break_out_of_the_script() {
-        let response = see_other("/memory/</script><img src=x onerror=alert(1)>&x=\u{2028}");
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(!body.contains("</script><img"), "{body}");
-        assert!(
-            body.contains(
-                r#"location.replace("/memory/\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e\u0026x=\u2028")"#
-            ),
-            "{body}"
+    #[test]
+    fn a_redirect_lands_under_the_admin_root() {
+        let response = see_other("/memory/mem:episodic:01ABC?message=Saved");
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response.headers()[header::LOCATION],
+            "/admin/memory/mem:episodic:01ABC?message=Saved"
         );
-        assert!(
-            body.contains("url=/memory/&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;&amp;x="),
-            "{body}"
+        assert_eq!(
+            response.headers()[REDIRECT_HEADER],
+            "/memory/mem:episodic:01ABC?message=Saved"
         );
-        assert_eq!(js_string_literal("plain/path?a=1"), r#""plain/path?a=1""#);
+    }
+
+    #[test]
+    fn a_target_no_header_can_carry_goes_to_the_dashboard() {
+        let response = see_other("/memory/a\r\nSet-Cookie: x=1");
+        assert_eq!(response.headers()[header::LOCATION], "/admin/");
     }
 
     #[test]

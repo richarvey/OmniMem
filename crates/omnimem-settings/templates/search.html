@@ -7,7 +7,7 @@
   <h2>Semantic Search</h2>
 </header>
 
-<form class="filter-bar" hx-get="/search/results" hx-target="#search-results" hx-indicator="#search-spinner">
+<form class="filter-bar" hx-get="{{ admin }}/search/results" hx-target="#search-results" hx-indicator="#search-spinner">
   <div class="form-group" style="flex:1;min-width:250px">
     <label>Query</label>
     <input type="text" name="query" class="form-input" placeholder="Describe what you're looking for..."

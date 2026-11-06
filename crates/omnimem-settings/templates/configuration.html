@@ -9,8 +9,9 @@
 
 {% if not available %}
 <p class="empty-state">
-  Configuration is only available in the desktop app. A headless install is
-  configured with environment variables.
+  There's no settings file to edit: this OmniMem is configured with
+  environment variables. Point <span class="mono">OMNIMEM_ENV_FILE</span> at a
+  file to edit its settings here.
 </p>
 {% else %}
 
@@ -30,20 +31,20 @@
 
 <p class="section-note">
   Settings are saved to <span class="mono">{{ settings_path }}</span> and secrets
-  to the system keychain. They apply the next time OmniMem starts. Leave a field
+  to {{ secret_place }}. They apply the next time OmniMem starts. Leave a field
   empty to use the default. An environment variable of the same name always wins.
 </p>
 
 {% if not secrets_available %}
 <div class="flash flash-warning">
   <span>
-    The system keychain isn't available{% if keychain_error %} ({{ keychain_error }}){% endif %},
+    Secrets can't be saved to {{ secret_place }}{% if keychain_error %} ({{ keychain_error }}){% endif %},
     so secrets can only come from environment variables for now.
   </span>
 </div>
 {% endif %}
 
-<form method="POST" action="/configuration" style="max-width:760px">
+<form method="POST" action="{{ admin }}/configuration" style="max-width:760px">
   {% for group in groups %}
   <section style="margin-bottom:2rem">
     <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:0.75rem">{{ group.title }}</h3>
@@ -60,7 +61,7 @@
       <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
         <input type="password" id="setting-{{ s.name }}" name="{{ s.name }}" class="form-input" style="flex:1;min-width:14rem"
                autocomplete="off" {% if not secrets_available %}disabled{% endif %}
-               placeholder="{% if s.stored %}Stored in the keychain. Type to replace it{% else %}Not set{% endif %}">
+               placeholder="{% if s.stored %}Saved. Type to replace it{% else %}Not set{% endif %}">
         {% if s.stored %}
         <label style="display:flex;align-items:center;gap:0.35rem;margin:0;text-transform:none;letter-spacing:0;font-size:0.8rem;color:var(--text)">
           <input type="checkbox" name="clear:{{ s.name }}" {% if not secrets_available %}disabled{% endif %}> Remove

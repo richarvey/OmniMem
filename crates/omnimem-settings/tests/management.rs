@@ -242,7 +242,7 @@ async fn the_page_offers_resolve_actions_in_place_of_the_archive_buttons() {
     ] {
         assert!(page.contains(label), "{label} missing: {page}");
     }
-    assert!(page.contains("action=\"/contradictions/resolve\""));
+    assert!(page.contains("action=\"/admin/contradictions/resolve\""));
     assert!(page.contains("name=\"reason\""));
     assert!(page.contains("name=\"retire_loser\""));
     assert!(!page.contains("Archive A") && !page.contains("/lifecycle/archive"));
@@ -325,8 +325,8 @@ async fn pending_resolutions_are_listed_to_accept_or_discard() {
         page.contains("Pending") && page.contains("agent says so"),
         "{page}"
     );
-    assert!(page.contains("action=\"/contradictions/accept\""));
-    assert!(page.contains("action=\"/contradictions/discard\""));
+    assert!(page.contains("action=\"/admin/contradictions/accept\""));
+    assert!(page.contains("action=\"/admin/contradictions/discard\""));
 
     // Discard writes nothing.
     let response = post(&panel, "/contradictions/discard", &form_keys(&a, &b)).await;

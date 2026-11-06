@@ -61,7 +61,7 @@ The first time it runs, OmniMem downloads the embedding model (all-MiniLM-L6-v2)
 Click the tray icon and you'll see:
 
 - **A status line**: whether it's running and how many memories it holds
-- **Settings…**: opens the settings window
+- **Settings…**: opens the settings panel
 - **Copy MCP URL**: puts `http://127.0.0.1:8765/mcp` on your clipboard for your client config
 - **Add to Claude Desktop** and **Add to Claude Code**: does the setup for you. Each one checks the client's settings first, so OmniMem is never added twice: once it's there the item reads **✓ In Claude Desktop**, and if the client already has an `omnimem` server pointing somewhere else (your old 6.x server, say) it offers to switch it here instead. Restart the client afterwards so it connects
 - **Start at login**: tick it and OmniMem comes up whenever you sign in
@@ -69,7 +69,7 @@ Click the tray icon and you'll see:
 
 Tick **Start at login**. You want your memory there before you start work, not after you've remembered to open it.
 
-Only one copy runs at a time. Open OmniMem again while it's running and it just brings the settings window forward.
+Only one copy runs at a time. Open OmniMem again while it's running and it just brings the settings panel forward.
 
 ---
 
@@ -174,7 +174,7 @@ Backups don't carry vectors, so every memory gets re-embedded, at roughly 8 ms e
 
 **The installer stops about the Visual C++ Redistributable**: install it from [Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe), then run the OmniMem installer again.
 
-**No tray icon**: look under the **^** arrow by the clock. If it's not there either, open OmniMem from the Start menu again to bring up the settings window and see what the status says.
+**No tray icon**: look under the **^** arrow by the clock. If it's not there either, open OmniMem from the Start menu again to bring up the settings panel and see what the status says.
 
 **The status line says OmniMem failed**: it gives the reason. The usual suspects are the port being in use (change **Port**) or a non-local **Listen address** with no access token.
 
@@ -182,4 +182,4 @@ Backups don't carry vectors, so every memory gets re-embedded, at roughly 8 ms e
 
 **The first start sits at "starting"**: it's downloading the embedding model. Give it a minute on a slow connection, and check a proxy or firewall isn't blocking huggingface.co.
 
-**The settings window is blank**: it needs Microsoft Edge WebView2. Windows 11 has it built in; on Windows 10, install the **Evergreen Runtime** from Microsoft's [WebView2 page](https://developer.microsoft.com/microsoft-edge/webview2/), then restart OmniMem.
+**Settings doesn't open a browser**: OmniMem opens the panel in your default browser once the services are running. If nothing appears, check Windows has a default browser set, then choose Settings… again.

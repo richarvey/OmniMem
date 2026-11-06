@@ -34,7 +34,7 @@ That warning came from memory, not luck. A mistake you've already paid for doesn
 
 OmniMem 7 is a single binary. The MCP server, the memory engine, the embedding model, RSS ingestion and the database all live in one process, with your memories in one SQLite file. No containers to wrangle, no database server to babysit.
 
-- **On your desktop** it sits in the tray (or the menu bar on a Mac). The icon tells you it's running, copies the MCP address for you, and opens a settings window where you can browse memories, review skills, edit your feeds, take backups and change settings.
+- **On your desktop** it sits in the tray (or the menu bar on a Mac). The icon tells you it's running, copies the MCP address for you, and opens a settings panel where you can browse memories, review skills, edit your feeds, take backups and change settings.
 - **On a server** it's `omnimem serve`: a systemd service from the `.deb` or `.rpm`, or a container, configured with environment variables (one `.env` file for the service), with nothing graphical anywhere near it.
 
 The embedding model (all-MiniLM-L6-v2 on ONNX Runtime) runs locally. Nothing leaves the machine unless you add an Anthropic API key for the optional Claude Haiku features: fact extraction, query expansion, deeper contradiction checks and RSS summaries.
@@ -49,7 +49,7 @@ Everything is on the [releases page](https://code.squarecows.com/ric/omnimem/rel
 |---|---|---|
 | Windows 10 and 11 (x64) | `OmniMem-<version>-x64.msi` | The tray app, installed for you alone with no administrator needed. Not signed yet, so SmartScreen asks first: **More info**, then **Run anyway** |
 | macOS 13.4 or later (Apple silicon) | `OmniMem-<version>-arm64.dmg` | The menu bar app: drag it to Applications. There's no Intel build. `omnimem-<version>-macos-arm64.tar.gz` is the bare binary |
-| Linux desktop (amd64, arm64) | `omnimem-desktop-<version>-linux-<arch>.flatpak` | The tray app with everything it needs: `flatpak install --user` the file. `omnimem-desktop-<version>-linux-<arch>.tar.gz` is the same app for systems without Flatpak, needing GTK 3, WebKitGTK 4.1 and libayatana-appindicator3 |
+| Linux desktop (amd64, arm64) | `omnimem-desktop-<version>-linux-<arch>.flatpak` | The tray app with everything it needs: `flatpak install --user` the file. `omnimem-desktop-<version>-linux-<arch>.tar.gz` is the same app for systems without Flatpak, needing GTK 3 and libayatana-appindicator3 |
 | Linux server (amd64, arm64) | `omnimem_<version>_<arch>.deb`, `omnimem-<version>-1.<x86_64\|aarch64>.rpm` | The headless server as the `omnimem` systemd service, configured in `/etc/omnimem/omnimem.env`, with its data in `/var/lib/omnimem`. `omnimem-<version>-linux-<arch>.tar.gz` has an `install.sh` for other distributions |
 | Docker (amd64, arm64) | `richarvey/omnimem:<version>` | The same server as a container, with one `/data` volume. See [the Docker guide](guides/docker.md) |
 
@@ -93,7 +93,7 @@ It isn't a key-value store with an MCP wrapper. OmniMem tries to behave the way 
 - **[The skill compiler](docs/skill-compiler.md)**: turns reinforced lessons and dead ends into loadable skills, behind a propose-and-accept gate so a one-off opinion can't quietly become policy.
 - **[Auto-maintenance](docs/features.md#automatic-maintenance)**: duplicates archived, contradictions flagged, expired articles tidied, all in the background.
 - **[Licence and provenance](docs/memory-types.md#common-fields)**: every memory records whether it can be redistributed and who's speaking (you, the agent, or a source it retrieved), so a later session can tell evidence from inference.
-- **[Trust](docs/features.md#trust)**: whether OmniMem believes a memory, not just whether it shows it. A fact it extracted for itself waits for you to confirm it, one side of a confirmed contradiction is marked disputed, a memory a newer one replaced folds into it, and one you've judged wrong never comes back. Only you can confirm or reject, in the settings window or the terminal, never an agent.
+- **[Trust](docs/features.md#trust)**: whether OmniMem believes a memory, not just whether it shows it. A fact it extracted for itself waits for you to confirm it, one side of a confirmed contradiction is marked disputed, a memory a newer one replaced folds into it, and one you've judged wrong never comes back. Only you can confirm or reject, in the settings panel or the terminal, never an agent.
 
 The ranking behind every recall:
 
@@ -118,7 +118,7 @@ Run it on one machine and put it behind a reverse proxy, and every laptop and ag
 ```mermaid
 flowchart LR
     agent["AI agent<br/>Claude Code · claude.ai · Cursor · ..."]
-    user["You, in the settings window"]
+    user["You, in the settings panel"]
 
     subgraph omnimem["omnimem (one process)"]
         mcp["MCP server<br/>streamable HTTP · token · OAuth 2.1"]
@@ -140,7 +140,7 @@ flowchart LR
     engine --> store
 ```
 
-Over the network it answers `/mcp`, the OAuth routes and `/healthz`, and that's the whole list. The settings window talks to the process directly, so there's no dashboard port for anyone else to find. More in [the architecture doc](docs/architecture.md).
+Over the network it answers `/mcp`, the OAuth routes, `/healthz` and the settings panel at `/admin`, and that's the whole list. The panel signs people in itself (an MCP token never opens it), wants HTTPS from anywhere but the same machine, and `ADMIN_PANEL=false` turns it off. More in [the architecture doc](docs/architecture.md) and [the settings panel](docs/settings-panel.md).
 
 ---
 
@@ -165,7 +165,7 @@ There's no schema change in 7.0.9, so you can go back to 7.0.8 without a backup.
 
 After the upgrade, every fact and preference OmniMem has extracted from your notes is a `candidate`: still recalled, ranked at 0.9 until you confirm it, and left out of the briefing and skill compiles. Your own notes, agents' memories and RSS articles are all `accepted` and don't move. On a real store with thousands of candidates, 58 of 60 top-five results stayed exactly where they were.
 
-You can leave them as they are, confirm them on the settings window's **Unconfirmed** page (one at a time, or everything extracted from one note), or confirm them all from a terminal:
+You can leave them as they are, confirm them on the settings panel's **Unconfirmed** page (one at a time, or everything extracted from one note), or confirm them all from a terminal:
 
 ```bash
 omnimem trust list --limit 100000 --json | python3 -c 'import sys,json; print("\n".join(sorted({json.loads(l)["enriched_from"] for l in sys.stdin if json.loads(l).get("enriched_from")})))' > sources.txt
@@ -181,7 +181,7 @@ On a server install, run each `omnimem` as the service's user with its database:
 OmniMem 6 was a Docker Compose stack: Valkey, a Python MCP server, a web UI and an RSS worker. Version 7 does the same job as one program, and your memories come with you:
 
 1. Take a backup on 6.x with `dump_to_file()`.
-2. Import it with `omnimem import <file>`, or restore it from the settings window's Backups page. Every memory gets re-embedded from its text (roughly 8 ms each), which also brings back any memory 6.x had stopped finding.
+2. Import it with `omnimem import <file>`, or restore it from the settings panel's Backups page. Every memory gets re-embedded from its text (roughly 8 ms each), which also brings back any memory 6.x had stopped finding.
 
 The tools, the vectors and your compiled skills behave as they did, so nothing needs retuning. Recall scoring has three deliberate changes since 6.x: recency declines from day one rather than staying flat for 90 days (older memories rank a little lower; nothing extra is dropped), an abandoned outcome no longer scores 0.1, and recording an abandonment no longer suppresses anything. Your agents just need their URL changing from `/sse` to `/mcp`. 3.x backups import the same way. If your 6.x install is a clone of this repository, run `git checkout v6.7.x` in it before you next `git pull`: `main` is 7 now and has no Compose file. The [quick start](docs/quick-start.md) has the details, and 6.x itself carries on in the `v6.7.x` branch.
 

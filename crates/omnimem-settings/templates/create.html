@@ -20,13 +20,13 @@
     <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
     <button class="flash-close" data-dismiss>&times;</button>
   </div>
-  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="/memory/{{ duplicate.key }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
+  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="{{ admin }}/memory/{{ duplicate.key }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
   <p style="margin:0;font-size:0.85rem;color:var(--text-dim)">{{ duplicate.content }}</p>
   <p style="margin:0.5rem 0 0;font-size:0.8rem">Check "Force save" below and submit again to store anyway.</p>
 </div>
 {% endif %}
 
-<form method="POST" action="/create" style="max-width:700px">
+<form method="POST" action="{{ admin }}/create" style="max-width:700px">
   <div class="form-group">
     <label>Content</label>
     <textarea name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>

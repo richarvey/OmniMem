@@ -2,6 +2,30 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.0] - unreleased
+
+The settings panel moves out of the desktop app's window and onto HTTP, at `/admin` on the MCP address, so a server and a Docker container get it too. The desktop app's **Settings…** now opens it in your browser, already signed in. The pages are redesigned in the OmniMem design system.
+
+**Before upgrading**, if your OmniMem is reachable from other machines: `/admin` is on by default. It needs a sign-in, and only opens over HTTPS (or from the same machine), but if you'd rather it wasn't there, set `ADMIN_PANEL=false`.
+
+### Added
+- **The settings panel at `/admin`.** Every page the desktop window had, served beside `/mcp` by `omnimem serve`, the packages, the Docker image and the desktop app alike. One panel to maintain instead of a webview per platform, and one that works on a headless install
+- **Sign-in for the panel.** With `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD` set (OAuth itself needn't be on) the login page takes them. Without them, a sign-in link does: the tray's Settings… makes one that works once, within a minute, and `omnimem admin-link` prints one that works once, within five minutes, for a server or `docker exec`. Either way the browser gets a session stored on the server (as a hash, for `ADMIN_SESSION_HOURS`, 12), which **Sign out** ends everywhere
+- **`ADMIN_PANEL`, `ADMIN_SESSION_HOURS` and `ADMIN_ALLOW_HTTP`**, on the Configuration page under Settings panel. `ADMIN_PANEL=false` leaves the HTTP surface as `/mcp`, the OAuth routes and `/healthz`, which is how OmniMem Cloud runs
+- **Server secrets on the Configuration page.** A server has no keychain, so the admin password, MCP token and API keys go into the settings file it loaded, keeping the file's permissions. A file OmniMem may not write (the packages' `/etc/omnimem/omnimem.env`) says so instead of saving
+
+### Security
+- **Only a panel session opens `/admin`.** The MCP bearer token and OAuth access tokens are never read there, so an agent can't reach the pages where a person accepts its skill proposals, settles contradictions or confirms trust
+- **Plain HTTP from another machine is refused**, so the password and the session never cross a network in the clear: the panel needs a proxy that says `X-Forwarded-Proto: https`, or a browser on the same machine. `ADMIN_ALLOW_HTTP=true` is for networks that are private already
+- **Changes must come from the panel's own pages**: every non-GET needs `Sec-Fetch-Site: same-origin`, or a matching `Origin` from a browser too old to send it, on top of a `SameSite=Strict`, `HttpOnly` cookie scoped to `/admin` (and `Secure` behind HTTPS). Failed logins are limited per address by `OAUTH_LOGIN_MAX_ATTEMPTS` and `OAUTH_LOGIN_WINDOW_SECONDS`, counted separately from OAuth's
+- Every panel response carries the Content Security Policy as a header as well as in the page, with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`
+
+### Changed
+- **The pages use the OmniMem design system**: the dark ground and single green, Onest for reading and Geist Mono for anything you click, the `<omnimem>` logo in the sidebar and on the login page, and namespace colours as tags beside their names (episodic green, knowledge blue, preference amber, project violet, skills teal). Fields have edges at 3:1 contrast or better, and body text clears 4.5:1 everywhere. The light theme and its toggle are gone, as the design system is dark only
+- **Downloads are real downloads.** Skill exports, backups and `feeds.yml` come to the browser as attachments instead of being written into the Downloads folder of the machine running OmniMem
+- **Forms redirect with a 303**, now that no webview stands in the way
+- **The desktop app no longer embeds a webview.** wry, WebKitGTK, WebView2 and the `omnimem://` scheme are gone, so the Linux tray app needs only GTK 3 and libayatana-appindicator3, and the Flatpak drops its GPU and Downloads permissions. Opening OmniMem a second time opens the panel; on GNOME without a tray it opens as soon as the services are running. The smoke test signs in to the panel over HTTP instead of driving a window
+
 ## [7.0.9] - 2026-11-05
 
 Fixes from the OmniMem test harness's 7.0.8 findings (`omnimem-test-harness/docs/findings-7.0.8.md`): the contradiction scan now sees new memories on a full store, a forget takes the recall log entries that found the memory, a person can settle a contradiction no scan linked, and the keyless heuristic recognises a changed value as well as a negation.

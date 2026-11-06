@@ -28,25 +28,6 @@
     apply(root.classList.contains('sidebar-collapsed'));
   })();
 
-  // Light and dark theme, remembered per browser.
-  (function () {
-    var KEY = 'omnimem-theme';
-    var btn = document.querySelector('[data-theme-toggle]');
-    if (!btn) return;
-    function label() {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      btn.textContent = next === 'light' ? 'Light theme' : 'Dark theme';
-      btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
-    }
-    btn.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem(KEY, next); } catch (e) {}
-      label();
-    });
-    label();
-  })();
-
   // Clicks: dismiss a flash, open or close a modal, proxy a click to a
   // hidden file input, add a skill row, or fill the domains field from a
   // suggestion. Delegated, so rows htmx swaps in later work too.

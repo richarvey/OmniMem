@@ -1,15 +1,16 @@
-//! `/configuration`: the settings a headless install sets as environment
-//! variables, for the desktop app, which has no shell to set them in.
+//! `/configuration`: the settings file, edited in the browser.
 //!
-//! Ordinary settings are written to `omnimem.env` in the data folder;
-//! secrets (the Anthropic key, the MCP token, a Hugging Face token) go to the
-//! OS keychain through a [`SecretStore`] the app provides, and are never
-//! shown again once saved. The app reads both at start into the overlay
-//! `omnimem_core::env` consults, so a change applies at the next start, and a
-//! real environment variable of the same name still wins.
+//! Ordinary settings are written to the settings file (`omnimem.env` in the
+//! desktop app's data folder, or the server's own); secrets (the Anthropic
+//! key, the MCP token, the admin password, a Hugging Face token) go through a
+//! [`SecretStore`] the app provides: the OS keychain on a desktop, the
+//! settings file itself on a server ([`SettingsFileSecrets`]). Either way a
+//! secret is never shown again once saved. OmniMem reads them at start, so a
+//! change applies at the next start, and a real environment variable of the
+//! same name still wins.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use axum::Form;
 use axum::extract::{Query, State};
@@ -30,6 +31,49 @@ pub trait SecretStore: Send + Sync {
     fn set(&self, name: &str, value: &str) -> Result<(), String>;
     /// Remove the value. Removing one that isn't there is not an error.
     fn delete(&self, name: &str) -> Result<(), String>;
+    /// Where the secrets go, as the page says it: "the system keychain".
+    fn place(&self) -> &'static str {
+        "the system keychain"
+    }
+}
+
+/// Secrets kept in the settings file beside everything else, for a server,
+/// which has no keychain. The file is rewritten with the permissions it had,
+/// or readable by its owner alone when this creates it.
+pub struct SettingsFileSecrets {
+    path: PathBuf,
+}
+
+impl SettingsFileSecrets {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl SecretStore for SettingsFileSecrets {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        Ok(read_file(&self.path)?
+            .remove(name)
+            .filter(|value| !value.is_empty()))
+    }
+
+    fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        let mut values = read_file(&self.path)?;
+        values.insert(name.to_owned(), value.to_owned());
+        write_file(&self.path, &values)
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        let mut values = read_file(&self.path)?;
+        if values.remove(name).is_some() {
+            write_file(&self.path, &values)?;
+        }
+        Ok(())
+    }
+
+    fn place(&self) -> &'static str {
+        "the settings file"
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,14 +196,14 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Username",
                 Kind::Text,
                 "",
-                "The username the login page asks for.",
+                "The username the OAuth login page and the settings panel ask for.",
             ),
             setting(
                 "OAUTH_ADMIN_PASSWORD",
                 "Password",
                 Kind::Secret,
                 "",
-                "The password the login page asks for.",
+                "The password the OAuth login page and the settings panel ask for. Without one, the settings panel opens through sign-in links only.",
             ),
             setting(
                 "OAUTH_REFRESH_MAX_DAYS",
@@ -188,6 +232,32 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 Kind::Integer,
                 "900",
                 "How long a failed login counts towards that limit.",
+            ),
+        ],
+    ),
+    (
+        "Settings panel",
+        &[
+            setting(
+                "ADMIN_PANEL",
+                "Serve the settings panel",
+                Kind::Flag,
+                "true",
+                "This panel, at /admin on the MCP address. Turning it off closes it until the setting is changed back in the settings file.",
+            ),
+            setting(
+                "ADMIN_SESSION_HOURS",
+                "Stay signed in for (hours)",
+                Kind::Integer,
+                "12",
+                "How long a browser stays signed in to the panel. At most 2160 (90 days).",
+            ),
+            setting(
+                "ADMIN_ALLOW_HTTP",
+                "Allow plain HTTP from other machines",
+                Kind::Flag,
+                "false",
+                "The panel only opens over HTTPS or from this machine. Turn this on for a network that is already private, such as WireGuard or Tailscale, or a container whose port is published to localhost only.",
             ),
         ],
     ),
@@ -551,7 +621,7 @@ const GROUPS: &[(&str, &[Setting])] = &[
             "Tell me about new releases",
             Kind::Flag,
             "on",
-            "Looks at code.squarecows.com for a newer release a little after start and every 12 hours, and says so in the tray, the settings window and the session briefing. It sends nothing but the request itself. false turns every update check off.",
+            "Looks at code.squarecows.com for a newer release a little after start and every 12 hours, and says so in the tray, the settings panel and the session briefing. It sends nothing but the request itself. false turns every update check off.",
         )],
     ),
     (
@@ -579,7 +649,7 @@ fn settings() -> impl Iterator<Item = &'static Setting> {
     GROUPS.iter().flat_map(|(_, group)| group.iter())
 }
 
-/// The settings kept in the keychain rather than the settings file.
+/// The settings a [`SecretStore`] keeps, never shown once saved.
 pub fn secret_settings() -> Vec<&'static str> {
     settings()
         .filter(|s| s.kind == Kind::Secret)
@@ -601,9 +671,39 @@ fn write_file(path: &Path, values: &BTreeMap<String, String>) -> Result<(), Stri
             .map_err(|e| format!("Could not create {}: {e}", parent.display()))?;
     }
     let partial = path.with_extension("env.partial");
+    // The file can hold secrets: keep whatever permissions it has, or give
+    // a new one to its owner alone.
+    let permissions = std::fs::metadata(path).ok().map(|m| m.permissions());
     std::fs::write(&partial, render_settings(values))
+        .and_then(|()| match permissions {
+            Some(permissions) => std::fs::set_permissions(&partial, permissions),
+            None => owner_only(&partial),
+        })
         .and_then(|()| std::fs::rename(&partial, path))
-        .map_err(|e| format!("Could not write {}: {e}", path.display()))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&partial);
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                format!(
+                    "OmniMem isn't allowed to change {} ({e}). Edit it as an administrator, \
+                     such as with sudo, then restart OmniMem",
+                    path.display()
+                )
+            } else {
+                format!("Could not write {}: {e}", path.display())
+            }
+        })
+}
+
+#[cfg(unix)]
+fn owner_only(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+}
+
+/// Windows keeps a new file to its owner by the folder's ACL.
+#[cfg(not(unix))]
+fn owner_only(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// The check a value must pass before it's written. Empty means "use the
@@ -719,6 +819,7 @@ pub(crate) async fn form(
             settings_path => path.display().to_string(),
             secrets_available => store.is_some() && keychain_error.is_none(),
             keychain_error,
+            secret_place => store.as_ref().map_or("the system keychain", |s| s.place()),
             message => query.get("message"),
             error => file_error.or_else(|| query.get("error").cloned()),
         },
@@ -794,7 +895,9 @@ fn save_blocking(
             continue;
         }
         let Some(store) = store else {
-            problems.push(format!("{name} wasn't saved: the keychain isn't available"));
+            problems.push(format!(
+                "{name} wasn't saved: there's nowhere to keep secrets"
+            ));
             continue;
         };
         let result = if clear {
@@ -803,7 +906,12 @@ fn save_blocking(
             store.set(name, value.as_deref().unwrap_or(""))
         };
         if let Err(problem) = result {
-            warn!(setting = name, problem, "could not update the keychain");
+            warn!(
+                setting = name,
+                problem,
+                place = store.place(),
+                "could not save a secret"
+            );
             problems.push(format!("{name}: {problem}"));
         }
     }
@@ -811,7 +919,7 @@ fn save_blocking(
         Ok(())
     } else {
         Err(format!(
-            "The settings file was saved, but the keychain refused: {}.",
+            "The settings were saved, but not every secret: {}.",
             problems.join("; ")
         ))
     }

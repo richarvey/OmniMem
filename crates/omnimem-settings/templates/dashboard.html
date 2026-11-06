@@ -17,7 +17,7 @@
 
 {% if stats_age is not none %}
 <p class="stats-meta">
-  Stats updated {{ stats_age }}s ago · <a href="/?refresh=1">refresh now</a>
+  Stats updated {{ stats_age }}s ago · <a href="{{ admin }}/?refresh=1">refresh now</a>
 </p>
 {% endif %}
 
@@ -29,7 +29,7 @@
 } %}
 {% if total > 0 %}
 <section class="composition" aria-label="Memory composition by namespace">
-  <a class="composition-total" href="/memories">
+  <a class="composition-total" href="{{ admin }}/memories">
     <span class="composition-num">{{ total }}</span>
     <span class="composition-label">memories across all namespaces</span>
   </a>
@@ -50,7 +50,7 @@
 {% endif %}
 <section class="stats-grid">
   {% for ns, stats in ns_stats.items() %}
-  <a class="stat-card" href="{{ ns_links[ns] }}">
+  <a class="stat-card" href="{{ admin }}{{ ns_links[ns] }}">
     <h3 class="stat-ns">{{ "projects" if ns == "project" else ns }}</h3>
     {% if ns == "project" %}
     <div class="stat-total">{{ stats.distinct }}</div>
@@ -69,7 +69,7 @@
     {% endif %}
   </a>
   {% endfor %}
-  <a class="stat-card" href="/skills">
+  <a class="stat-card" href="{{ admin }}/skills">
     <h3 class="stat-ns">skills</h3>
     <div class="stat-total">{{ skills.total }}</div>
     <div class="stat-breakdown">
@@ -100,7 +100,7 @@
       {% for mem in recent %}
       <tr>
         <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-        <td class="content-cell"><a href="{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key }}">{{ mem.content }}</a></td>
+        <td class="content-cell"><a href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key }}">{{ mem.content }}</a></td>
         <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
         <td class="content-cell">{{ mem.project or "—" }}</td>
         <td class="date-cell">
@@ -112,7 +112,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No memories yet — <a href="/create">create one</a>, or connect a Claude session and it will start remembering.</p>
+  <p class="empty-state">No memories yet — <a href="{{ admin }}/create">create one</a>, or connect a Claude session and it will start remembering.</p>
   {% endif %}
 </section>
 {% endblock %}

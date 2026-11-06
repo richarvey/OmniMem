@@ -15,7 +15,7 @@
 //!
 //! Who moves it: a confirmed contradiction disputes both sides and its
 //! resolution moves them on; only a person confirms a candidate or rejects a
-//! memory, through the settings window or the CLI ([`Engine::set_trust`]),
+//! memory, through the settings panel or the CLI ([`Engine::set_trust`]),
 //! never an MCP call, the same rule as the skill gate.
 
 use omnimem_core::Namespace;
@@ -130,7 +130,7 @@ impl TrustAction {
 }
 
 impl Engine {
-    /// A person changes a memory's trust. The settings window and the CLI
+    /// A person changes a memory's trust. The settings panel and the CLI
     /// call this; no MCP tool does, so an agent can't confirm its own
     /// conclusions. Recorded in the audit log at `lifecycle` with the
     /// reason, and `updated_at` is left alone (the skill compiler reads a

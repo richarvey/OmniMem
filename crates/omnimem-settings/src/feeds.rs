@@ -26,7 +26,7 @@ use tracing::{error, info};
 use crate::PanelState;
 use crate::choices::LICENCE_CHOICES;
 use crate::feeds_file;
-use crate::files::{read_upload, save_download};
+use crate::files::{attachment, read_upload};
 use crate::pages::{blocking, off_runtime, quote, see_other};
 use crate::render::page;
 
@@ -431,25 +431,14 @@ pub(crate) async fn delete(State(state): State<PanelState>, Path(index): Path<us
     }
 }
 
-/// GET `/feeds/download`: save a copy of `feeds.yml` into Downloads.
+/// GET `/feeds/download`: `feeds.yml` as a download.
 pub(crate) async fn download(State(state): State<PanelState>) -> Response {
     let Some(path) = state.feeds_path() else {
         return no_reading_list();
     };
-    let downloads = state.downloads_dir();
-    let saved = off_runtime(move || {
-        let Ok(data) = std::fs::read(&path) else {
-            return Err("No feeds.yml file found".to_owned());
-        };
-        save_download(downloads, "feeds.yml", &data)
-    })
-    .await;
-    match saved {
-        Ok(Ok(saved)) => see_other(&format!(
-            "/feeds?message={}",
-            quote(&format!("Saved a copy to {}.", saved.display()))
-        )),
-        Ok(Err(problem)) => with_error("/feeds", &problem),
+    match off_runtime(move || std::fs::read(&path)).await {
+        Ok(Ok(data)) => attachment("feeds.yml", "application/yaml", data),
+        Ok(Err(_)) => with_error("/feeds", "No feeds.yml file found"),
         Err(failure) => failure,
     }
 }

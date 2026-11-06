@@ -19,7 +19,7 @@
   {% for h in result.held_back %}<li>{{ h.rule }}</li>{% endfor %}
 </ul>
 {% endif %}
-<form hx-post="/skills/commit" hx-target="#compile-result" style="margin-top:0.75rem;text-align:right">
+<form hx-post="{{ admin }}/skills/commit" hx-target="#compile-result" style="margin-top:0.75rem;text-align:right">
   <input type="hidden" name="domain" value="{{ result.domain }}">
   <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
 </form>
@@ -28,7 +28,7 @@
 <div class="flash flash-warning">
   <span>
     A skill for <strong>{{ result.domain }}</strong> already exists:
-    <a href="/skills/{{ result.skill_id }}">{{ result.name }}</a>.
+    <a href="{{ admin }}/skills/{{ result.skill_id }}">{{ result.name }}</a>.
     Skills can't be edited — update the underlying memories and recompile via
     <code>compile_skill('{{ result.domain }}')</code>, or delete the skill first.
   </span>

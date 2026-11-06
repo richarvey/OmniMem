@@ -4,9 +4,9 @@ OmniMem 7 is one program. Pick how you want to run it, point your agent at it, a
 
 ## Choose how to run it
 
-**On the machine you code on**, use the desktop app. It lives in the tray (or the menu bar on a Mac), starts at login if you want it to, and gives you a settings window for everything.
+**On the machine you code on**, use the desktop app. It lives in the tray (or the menu bar on a Mac), starts at login if you want it to, and gives you a settings panel for everything.
 
-**On a server, a Pi or a cloud box**, run it headless: `omnimem serve` under systemd, or the Docker image. There's no window, so you configure it with environment variables.
+**On a server, a Pi or a cloud box**, run it headless: `omnimem serve` under systemd, or the Docker image. You configure it with environment variables, and the settings panel is at `/admin` on the same port: `omnimem admin-link` prints a sign-in link.
 
 Both run exactly the same memory engine.
 
@@ -17,20 +17,20 @@ Both run exactly the same memory engine.
 | Windows 10 and 11 | `OmniMem-<version>-x64.msi` | Installs for you alone (no administrator) with a Start menu entry. Unsigned for now, so SmartScreen asks first: **More info**, then **Run anyway**. Windows on Arm runs it through x64 emulation |
 | macOS | `OmniMem-<version>-arm64.dmg` | Apple silicon, macOS 13.4 or later (there's no Intel build). Drag it to Applications; it lives in the menu bar with no Dock icon |
 | Linux | `omnimem-desktop-<version>-linux-<arch>.flatpak` | amd64 and arm64. `flatpak install --user omnimem-desktop-<version>-linux-<arch>.flatpak` installs it and fetches the GNOME runtime from Flathub, then it's in your applications as OmniMem (or run `flatpak run com.squarecows.OmniMem`). Its data lives in `~/.var/app/com.squarecows.OmniMem`. The sandbox can't see Claude Code, so instead of the menu's Add to Claude Code, run the `claude mcp add` line in [Connect your agent](#connect-your-agent) |
-| Linux, without Flatpak | `omnimem-desktop-<version>-linux-<arch>.tar.gz` | The same app as a bare binary: amd64 and arm64, glibc 2.38 or newer, with GTK 3, WebKitGTK 4.1 and libayatana-appindicator3 installed |
+| Linux, without Flatpak | `omnimem-desktop-<version>-linux-<arch>.tar.gz` | The same app as a bare binary: amd64 and arm64, glibc 2.38 or newer, with GTK 3 and libayatana-appindicator3 installed |
 
-On GNOME you'll want the AppIndicator extension to see the tray icon, Flatpak or not: without it the settings window opens instead and tells you so.
+On GNOME you'll want the AppIndicator extension to see the tray icon, Flatpak or not: without it the settings panel opens instead and tells you so.
 
 Start OmniMem and the icon appears. The first start downloads the embedding model (about 90 MB, once) and the menu says **Starting** until it's ready. After that the menu shows:
 
 - the status line: whether it is running, and how many memories it holds
-- **Settings…**: the settings window
+- **Settings…**: the settings panel
 - **Copy MCP URL**: for pasting into your agent's config
 - **Add to Claude Desktop** and **Add to Claude Code**: sets either up for you, checking first so it's never added twice, and offering to switch an `omnimem` entry that points at another server (a 6.x install) to this one
 - **Start at login**
 - **Quit OmniMem**
 
-Closing the settings window leaves OmniMem running. Launching it a second time just brings the window forward.
+Closing the settings panel leaves OmniMem running. Launching it a second time just brings the window forward.
 
 Everything lives in one data folder:
 
@@ -116,12 +116,12 @@ cargo build --release -p omnimem --features desktop
 ./target/release/omnimem            # no command runs the desktop app
 ```
 
-On a Mac the app lives in the menu bar, uses WKWebView for the settings window and keeps secrets in the Keychain. That build has had less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
+On a Mac the app lives in the menu bar, opens the settings panel in your browser and keeps secrets in the Keychain. That build has had less exercise than the Linux one, so if it misbehaves, [an issue on GitHub](https://github.com/richarvey/OmniMem/issues) with the error text is welcome. To get the installable app rather than a bare binary, `scripts/macos-package.sh` builds `OmniMem.app` and puts it in a DMG under `dist/macos`, which is what CI does. It needs the `aarch64-apple-darwin` target, and a Homebrew Rust only has its host's.
 
-On Linux you also need the GTK, WebKitGTK (2.40 or newer) and AppIndicator development packages first. On Debian or Ubuntu:
+On Linux you also need the GTK and AppIndicator development packages first. On Debian or Ubuntu:
 
 ```bash
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+sudo apt install libgtk-3-dev libayatana-appindicator3-dev
 ```
 
 The first start downloads the embedding model into your Hugging Face cache (`~/.cache/huggingface/hub` unless `HF_HOME` says otherwise). If you already ran 6.7, it's probably there.

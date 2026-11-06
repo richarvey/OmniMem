@@ -5,7 +5,7 @@
 {% block content %}
 <header class="page-header">
   <h2>Experience Tracking</h2>
-  <a href="/experience/graveyard" class="btn btn-secondary btn-sm">Graveyard</a>
+  <a href="{{ admin }}/experience/graveyard" class="btn btn-secondary btn-sm">Graveyard</a>
 </header>
 
 <section class="stats-grid">
@@ -37,7 +37,7 @@
       <span class="badge active">{{ b.outcome }}</span>
     </div>
     <div style="color:var(--green);font-size:0.9rem;margin-bottom:0.25rem">{{ b.breakthrough }}</div>
-    <div class="search-result-content"><a href="/memory/{{ b.key }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
+    <div class="search-result-content"><a href="{{ admin }}/memory/{{ b.key }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
   </div>
   {% endfor %}
 </section>
@@ -51,7 +51,7 @@
       Outcome
       <input type="hidden" name="project" value="{{ project }}">
       <select class="form-select" name="outcome" style="width:auto"
-              hx-get="/experience" hx-target="#results" hx-push-url="true"
+              hx-get="{{ admin }}/experience" hx-target="#results" hx-push-url="true"
               hx-include="[name='project']">
         <option value="">All</option>
         <option value="succeeded"{% if outcome_filter == 'succeeded' %} selected{% endif %}>Succeeded</option>

@@ -1,6 +1,6 @@
 # Architecture
 
-OmniMem 7 is one binary. In 6.x it was four containers (Valkey, the Python MCP server, a web UI and an RSS worker) and a Compose file holding them together. Now it's a single process that keeps its own database, serves MCP, runs the RSS scheduler and, on a desktop, draws its own tray icon and settings window.
+OmniMem 7 is one binary. In 6.x it was four containers (Valkey, the Python MCP server, a web UI and an RSS worker) and a Compose file holding them together. Now it's a single process that keeps its own database, serves MCP, runs the RSS scheduler and, on a desktop, draws its own tray icon and settings panel.
 
 Nothing leaves your machine unless you ask it to. Embeddings are computed locally, and the Anthropic API is only called for the optional extras.
 
@@ -11,7 +11,7 @@ flowchart LR
 
     subgraph omnimem["omnimem (one process)"]
         mcp["MCP server<br/>streamable HTTP at /mcp<br/>bearer token or OAuth 2.1"]
-        panel["Settings panel<br/>omnimem:// + IPC, no HTTP"]
+        panel["Settings panel<br/>/admin, behind its own sign-in"]
         rss["RSS scheduler"]
         enrich["Enrichment worker"]
         engine["Memory engine<br/>recall · lifecycle · skills"]
@@ -39,7 +39,7 @@ One embedder serves every caller. In 6.x each Python service loaded its own copy
 
 `omnimem serve` runs headless: the engine, the enrichment worker, the RSS scheduler and the MCP server, configured by environment variables. That's what the Linux packages and the Docker image run.
 
-`omnimem` with no command (on a build with the `desktop` feature) runs the desktop app: the same services on background threads, with the platform event loop on the main thread driving a tray or menu bar icon and the settings window. See [the settings panel](settings-panel.md).
+`omnimem` with no command (on a build with the `desktop` feature) runs the desktop app: the same services on background threads, with the platform event loop on the main thread driving a tray or menu bar icon and the settings panel. See [the settings panel](settings-panel.md).
 
 The other commands are for moving data and poking at a store: `import` (a 6.x backup), `export`, `stats`, `search`, `embed` and `rss` (one ingestion cycle by hand, or `--dry-run` to see what it would fetch). `hook` answers a Claude Code hook, reading the store directly rather than over MCP; see [the hooks guide](claude-code-hook.md).
 
@@ -56,7 +56,7 @@ The other commands are for moving data and poking at a store: `import` (a 6.x ba
 | `omnimem-rss` | Feed fetching and parsing, summary and digest modes, the licence gate, the scheduler |
 | `omnimem-settings` | The settings panel's pages, rendered in-process. No HTTP routes |
 | `omnimem-app` | What the server and the desktop app share: opening the engine, running the services, the data folder, the single-instance lock |
-| `omnimem-desktop` | The tray or menu bar icon, the settings window, start at login |
+| `omnimem-desktop` | The tray or menu bar icon, the settings panel, start at login |
 | `omnimem` | The binary and its subcommands |
 
 The GUI crate sits outside the workspace's default members, so a plain `cargo build` needs no GTK or WebKitGTK.
@@ -123,7 +123,7 @@ A deprioritised memory whose reinstate hints match the query comes back as a rei
 - **Skill writes are gated** behind propose and accept. Experience and graveyard writes aren't. That asymmetry is the whole point
 - **Domains route, they never label memories.** A project declares its kinds of work; the memories inside don't inherit them
 - **Fail closed.** A non-loopback `MCP_HOST` with no token and no OAuth refuses to start, and so does OAuth that's switched on but incomplete
-- **The settings panel is never served over HTTP.** Nothing else on the machine or the network can reach it
+- **The settings panel signs people in itself.** It sits at `/admin` beside `/mcp`, but only a panel session opens it: an MCP token or OAuth access token never does, so an agent can't reach the pages where a person approves its work. It wants HTTPS (or this machine) and a same-origin request for every change, and `ADMIN_PANEL=false` takes it off the network altogether
 
 ## Compared with 6.x
 

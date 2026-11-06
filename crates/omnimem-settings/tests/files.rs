@@ -53,7 +53,6 @@ fn setup() -> Fixture {
     let panel = Panel::new();
     panel.set_engine(engine.clone());
     panel.set_feeds_path(dir.join("feeds.yml"));
-    panel.set_downloads_dir(dir.join("Downloads"));
     Fixture { panel, engine, dir }
 }
 
@@ -100,7 +99,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn landed(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -165,12 +164,12 @@ async fn the_reading_list_is_edited_mirrored_and_replaced() {
         "{written}"
     );
 
-    let saved = landed(&get(&f.panel, "/feeds/download").await);
-    assert!(
-        saved.starts_with("/feeds?message=Saved%20a%20copy%20to%20"),
-        "{saved}"
+    let saved = get(&f.panel, "/feeds/download").await;
+    assert_eq!(
+        saved.headers()["content-disposition"],
+        "attachment; filename=\"feeds.yml\""
     );
-    assert!(f.dir.join("Downloads").join("feeds.yml").is_file());
+    assert_eq!(saved.body(), written.as_bytes());
 
     assert!(
         landed(&upload(&f.panel, "/feeds/upload", "feeds.txt", b"feeds: []").await)
@@ -272,9 +271,12 @@ async fn backups_are_made_previewed_restored_and_removed() {
         "the memory came back"
     );
 
-    let saved = landed(&get(&f.panel, &format!("/backups/{filename}/download")).await);
-    assert!(saved.contains("Saved%20a%20copy"), "{saved}");
-    assert!(f.dir.join("Downloads").join(&filename).is_file());
+    let saved = get(&f.panel, &format!("/backups/{filename}/download")).await;
+    assert_eq!(
+        saved.headers()["content-disposition"],
+        format!("attachment; filename=\"{filename}\"").as_str()
+    );
+    assert!(saved.body().starts_with(b"{"), "a backup is JSON");
 
     assert!(
         landed(&upload(&f.panel, "/backups/upload", "notes.txt", b"{}").await)

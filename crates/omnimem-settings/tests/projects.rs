@@ -75,7 +75,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn landed(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -155,7 +155,7 @@ async fn projects_are_created_listed_filtered_and_edited() {
 
     let list = text(&get(&panel, "/projects").await);
     assert!(
-        list.contains(r#"<a href="/projects/omnimem" class="project-name">omnimem</a>"#),
+        list.contains(r#"<a href="/admin/projects/omnimem" class="project-name">omnimem</a>"#),
         "{list}"
     );
     assert!(
@@ -182,7 +182,10 @@ async fn projects_are_created_listed_filtered_and_edited() {
 
     let detail = text(&get(&panel, "/projects/omnimem").await);
     assert!(detail.contains("Memory for agents"), "{detail}");
-    assert!(detail.contains(r#"<a href="/projects?domain=docker" class="domain-pill">docker</a>"#));
+    assert!(
+        detail
+            .contains(r#"<a href="/admin/projects?domain=docker" class="domain-pill">docker</a>"#)
+    );
     assert_eq!(get(&panel, "/projects/nothing").await.status(), 404);
 
     let edit = text(&get(&panel, "/projects/omnimem/edit").await);

@@ -1,38 +1,14 @@
-//! The parts of the desktop app with no GUI in them: what the tray says,
-//! which addresses belong to the panel, and what the window reports back.
+//! The parts of the desktop app with no GUI in them: what the tray says and
+//! where the settings panel is.
 
 use omnimem_app::ServiceState;
-use serde_json::Value;
 
 use crate::clients::{Client, Presence, host_of};
 
-/// The scheme the settings panel is served on. Nothing is served over a
-/// network: the webview asks the process for each page.
-pub const SCHEME: &str = "omnimem";
-
-/// Where the webview starts. Windows' WebView2 reaches custom schemes
-/// through `http://<scheme>.localhost`; everywhere else the scheme is used
-/// directly.
-pub fn start_url() -> String {
-    if cfg!(windows) {
-        format!("http://{SCHEME}.localhost/")
-    } else {
-        format!("{SCHEME}://localhost/")
-    }
-}
-
-/// True for the panel's own pages. Anything else (a footer link, a source
-/// URL on an article) opens in the system browser instead.
-pub fn is_panel_url(url: &str) -> bool {
-    let origins = [
-        format!("{SCHEME}://localhost"),
-        format!("http://{SCHEME}.localhost"),
-    ];
-    url == "about:blank"
-        || origins.iter().any(|origin| {
-            url.strip_prefix(origin.as_str())
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
-        })
+/// The server's address, which the settings panel sits under at `/admin`,
+/// from the MCP URL the services report.
+pub fn server_base(mcp_url: &str) -> &str {
+    mcp_url.strip_suffix("/mcp").unwrap_or(mcp_url)
 }
 
 /// Where the tray icon's file goes inside a Flatpak: the one part of the
@@ -66,12 +42,12 @@ pub fn login_command(flatpak_id: Option<&str>, exe: &str) -> (String, Vec<String
 /// `claude` installed outside the sandbox.
 pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpak)";
 
-/// What the window says when nothing on the desktop shows tray icons.
+/// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
     KStatusNotifierItem Support\" extension (gnome-shell-extension-appindicator) and \
-    restart OmniMem. Until then this window is OmniMem: closing it leaves OmniMem \
-    running, and opening OmniMem again brings it back.";
+    restart OmniMem. Until then OmniMem keeps running without an icon, and opening \
+    OmniMem again brings this panel back.";
 
 /// A client's menu item, its text and whether it can be clicked, from what
 /// the client's settings hold (`None` until the services are running),
@@ -115,12 +91,6 @@ fn clip(text: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// True for the smoke test's own pages (`/_panel/…`), where its check
-/// mustn't start again.
-pub fn is_smoke_page(url: &str) -> bool {
-    url.contains("/_panel/")
-}
-
 /// The tray's status line.
 pub fn status_line(state: &ServiceState) -> String {
     match state {
@@ -155,69 +125,6 @@ pub fn mcp_url(state: &ServiceState) -> Option<&str> {
     }
 }
 
-/// The smoke test's check, run in the loaded panel: a fetch POST through the
-/// scheme (what htmx does) and the stylesheet, then a real form submission
-/// (what the lifecycle and edit forms do). The panel's redirect after the
-/// form lands on a page that reports everything over IPC, so a redirect the
-/// webview won't follow fails the test by never reporting. (A plain 303 is
-/// one: WebKitGTK ignores redirects from a custom scheme.)
-///
-/// A failure is reported three seconds late. The starting page reloads
-/// itself every two seconds, and a reload that lands mid-check fails its
-/// fetches with "Load failed"; the reload takes the pending report with it
-/// and the next page load runs the check again. A failure no reload explains
-/// still arrives.
-pub const SMOKE_SCRIPT: &str = r#"
-Promise.all([
-  fetch('/_panel/echo', { method: 'POST', body: 'panel-post-ok' }).then(r => r.text()),
-  fetch('/static/style.css').then(r => r.ok ? r.text().then(t => t.length) : 0),
-]).then(([echo, css]) => {
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/_panel/redirect';
-  for (const [name, value] of Object.entries({ echo, css, title: document.title })) {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
-}).catch(e => setTimeout(() => window.ipc.postMessage(JSON.stringify({ cmd: 'smoke', echo: 'error: ' + e, css: 0, title: document.title })), 3000));
-"#;
-
-/// What the smoke script found, or why it failed.
-pub fn smoke_verdict(body: &str) -> Result<String, String> {
-    let report: Value =
-        serde_json::from_str(body).map_err(|e| format!("unreadable report: {e}"))?;
-    if report["cmd"] != "smoke" {
-        return Err(format!("unexpected message: {body}"));
-    }
-    let echo = report["echo"].as_str().unwrap_or("");
-    // A number from the fetch, or a string once it has been through the form.
-    let css = report["css"]
-        .as_u64()
-        .or_else(|| report["css"].as_str().and_then(|c| c.parse().ok()))
-        .unwrap_or(0);
-    let title = report["title"].as_str().unwrap_or("");
-    if echo != "panel-post-ok" {
-        return Err(format!("POST through the scheme came back as {echo:?}"));
-    }
-    if report["landed"] != "/_panel/landed" {
-        return Err("the form POST's redirect was not followed".to_owned());
-    }
-    if css < 1000 {
-        return Err(format!("the stylesheet came back with {css} bytes"));
-    }
-    if !title.contains("OmniMem") {
-        return Err(format!("the panel page's title was {title:?}"));
-    }
-    Ok(format!(
-        "page {title:?}, POST echoed, stylesheet {css} bytes, form redirect followed"
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,16 +149,12 @@ mod tests {
     }
 
     #[test]
-    fn only_panel_addresses_stay_in_the_window() {
-        assert!(is_panel_url("omnimem://localhost/memories"));
-        assert!(is_panel_url("http://omnimem.localhost/skills"));
-        assert!(!is_panel_url("https://omnimem.org"));
-        assert!(
-            !is_panel_url("http://omnimem.localhost.evil.example"),
-            "a lookalike host"
+    fn the_panel_sits_beside_the_mcp_endpoint() {
+        assert_eq!(
+            server_base("http://127.0.0.1:8765/mcp"),
+            "http://127.0.0.1:8765"
         );
-        assert!(!is_panel_url("omnimem://localhost.evil.example/"));
-        assert!(!is_panel_url("about:srcdoc"));
+        assert_eq!(server_base("http://[::1]:9000/mcp"), "http://[::1]:9000");
     }
 
     #[test]
@@ -338,26 +241,5 @@ mod tests {
                 ("/usr/bin/omnimem".to_owned(), vec!["desktop".to_owned()])
             );
         }
-    }
-
-    #[test]
-    fn the_smoke_check_restarts_on_every_page_but_its_own() {
-        assert!(!is_smoke_page("omnimem://localhost/"));
-        assert!(!is_smoke_page("http://omnimem.localhost/memories"));
-        assert!(is_smoke_page("omnimem://localhost/_panel/redirect"));
-        assert!(is_smoke_page(
-            "omnimem://localhost/_panel/landed?echo=panel-post-ok"
-        ));
-    }
-
-    #[test]
-    fn the_smoke_report_is_checked() {
-        let good = r#"{"echo":"panel-post-ok","css":"42265","title":"Starting — OmniMem","cmd":"smoke","landed":"/_panel/landed"}"#;
-        assert!(smoke_verdict(good).is_ok());
-        let bad = r#"{"cmd":"smoke","echo":"","css":42265,"title":"Starting — OmniMem"}"#;
-        assert!(smoke_verdict(bad).unwrap_err().contains("POST"));
-        let stuck =
-            r#"{"cmd":"smoke","echo":"panel-post-ok","css":42265,"title":"Starting — OmniMem"}"#;
-        assert!(smoke_verdict(stuck).unwrap_err().contains("redirect"));
     }
 }

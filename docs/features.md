@@ -148,7 +148,7 @@ omnimem contradictions discard KEY_A KEY_B
 | `superseded` | A resolution named another memory as current (`superseded_by`) | Folded into the winner's hit, under `replaces` | Left out | Left out |
 | `rejected` | A person judged it wrong | Never returned | Left out | Left out |
 
-Every recall hit carries its `trust`, so an agent can see why something ranked lower, and `recall_detail`, `explain_memory` and the memory's page in the settings window show it for any key, including a rejected one.
+Every recall hit carries its `trust`, so an agent can see why something ranked lower, and `recall_detail`, `explain_memory` and the memory's page in the settings panel show it for any key, including a rejected one.
 
 **The weights only reorder.** They multiply the final score, as the recency decay does: a candidate counts about as much as if it were 90 days older. The relevance floor and the weak band read raw similarity, so a weight never drops a memory out of the results, it only changes the order and which memories make the `top_k` cut. A store where everything is accepted scores exactly as it did before.
 
@@ -157,7 +157,7 @@ Every recall hit carries its `trust`, so an agent can see why something ranked l
 - Extracted facts and preferences start as `candidate`. Everything else starts `accepted`, including RSS articles: an article's summary stands in for its source, while an extracted fact sits beside a note you already have. `TRUST_ENRICHMENT=accepted` makes new extractions start `accepted` too: your standing decision that you trust the extraction, made once on the Configuration page rather than per fact. It doesn't change what's already stored.
 - A contradiction the model confirmed (`check_contradictions(use_api=true)`) disputes both memories. One found only by the quick heuristic doesn't, since two memories sharing words and a "not" isn't evidence enough to rank either down. The heuristic link still warns as before.
 - Resolving it moves them on. With `supersedes` the winner is `accepted` and the loser `superseded`. `both_valid` and `false_positive` send each back to what it was before. `both_wrong` rejects both, and `reopened` disputes them again. Forgetting one side ends the other's dispute, and forgetting a winner brings back what it had superseded.
-- Only a person confirms a candidate or rejects a memory: on the **Unconfirmed** page of the settings window (one at a time, or every candidate from one source memory at once), on a memory's own page (Confirm, Reject with a reason, Restore), or with `omnimem trust` from a terminal. No MCP tool can, so an agent can't promote its own conclusions, the same rule as the [skill gate](skill-compiler.md#who-accepts). Promoting knowledge to a skill domain doesn't confirm it either, since an agent can call that.
+- Only a person confirms a candidate or rejects a memory: on the **Unconfirmed** page of the settings panel (one at a time, or every candidate from one source memory at once), on a memory's own page (Confirm, Reject with a reason, Restore), or with `omnimem trust` from a terminal. No MCP tool can, so an agent can't promote its own conclusions, the same rule as the [skill gate](skill-compiler.md#who-accepts). Promoting knowledge to a skill domain doesn't confirm it either, since an agent can call that.
 - Every change is in the [audit log](audit-log.md) at `lifecycle`, with who made it and why.
 
 **Confirming in bulk.** `omnimem trust list --json` prints every candidate with the memory it came from, and `omnimem trust confirm-source <key>` confirms everything extracted from one memory, so a loop over the sources confirms the lot (the [README](../README.md#upgrading-to-708) has it as two lines). Each confirmation gets its own audit row. A confirmed fact can be put back with `omnimem trust reject` then `restore`.
@@ -232,7 +232,7 @@ Every memory records two things about where it came from, and neither ever chang
 
 ## The audit log
 
-OmniMem keeps a record of changes: who made each one (an agent, the settings window, a hook, the maintenance pass), when, and what moved from what to what. `AUDIT_LOG` chooses how much, from nothing up to the full text of every edit. The default, `lifecycle`, records state changes and deletes with their reasons and never memory text. See [the audit log](audit-log.md).
+OmniMem keeps a record of changes: who made each one (an agent, the settings panel, a hook, the maintenance pass), when, and what moved from what to what. `AUDIT_LOG` chooses how much, from nothing up to the full text of every edit. The default, `lifecycle`, records state changes and deletes with their reasons and never memory text. See [the audit log](audit-log.md).
 
 ## See also
 

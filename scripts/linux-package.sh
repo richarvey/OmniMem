@@ -23,7 +23,7 @@
 # links its C++ runtime in (CXXSTDLIB=static=stdc++), so glibc is all it
 # needs, and it's run in an Ubuntu 24.04 container before it's packaged, to
 # prove it; the .deb is installed and removed in a Debian 13 one. The tray app
-# also needs GTK 3, WebKitGTK 4.1 (2.40 or newer) and libayatana-appindicator3.
+# also needs GTK 3 and libayatana-appindicator3.
 # The builds use desktop-check.sh's cache folder ($OMNIMEM_DESKTOP_CACHE,
 # default ~/.cache/omnimem-desktop), the headless one in a target directory
 # of its own.

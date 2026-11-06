@@ -120,7 +120,7 @@ in [the hooks guide](../docs/claude-code-hook.md).
 
 ## Accepting a skill
 
-When Claude proposes a skill and then asks to write it, Claude Code shows you a dialog in the terminal with the diff and Accept and Decline. Claude can't answer it for you. If you'd rather not be asked at all, or you run Claude Code non-interactively, see [who accepts](../docs/skill-compiler.md#who-accepts): a write that nobody can be asked about waits under Pending proposals on the Skills page of OmniMem's settings window.
+When Claude proposes a skill and then asks to write it, Claude Code shows you a dialog in the terminal with the diff and Accept and Decline. Claude can't answer it for you. If you'd rather not be asked at all, or you run Claude Code non-interactively, see [who accepts](../docs/skill-compiler.md#who-accepts): a write that nobody can be asked about waits under Pending proposals on the Skills page of OmniMem's settings panel.
 
 ## Verifying the connection
 

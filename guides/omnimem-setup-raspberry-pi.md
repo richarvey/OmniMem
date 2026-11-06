@@ -30,7 +30,7 @@ That gives you:
 - configuration in `/etc/omnimem/omnimem.env`
 - data in `/var/lib/omnimem`: the database, `feeds.yml`, backups and the model cache
 
-It's the headless build: no desktop libraries, no tray icon, no settings window. You configure it with the environment file and talk to it through your agent and the CLI.
+It's the headless build: no desktop libraries and no tray icon. You configure it with the environment file, talk to it through your agent and the CLI, and open the settings panel at `/admin` in a browser: run `omnimem admin-link` on the Pi for a sign-in link, or set `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD`. From another machine it wants HTTPS, or `ADMIN_ALLOW_HTTP=true` on a private network (see [the settings panel](../docs/settings-panel.md)).
 
 ---
 

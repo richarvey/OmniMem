@@ -17,6 +17,7 @@ omnimem-engine.workspace = true
 omnimem-llm.workspace = true
 omnimem-mcp.workspace = true
 omnimem-rss.workspace = true
+omnimem-settings.workspace = true
 omnimem-store.workspace = true
 # blocking: the update check runs on a thread of its own, like the RSS scheduler.
 reqwest.workspace = true

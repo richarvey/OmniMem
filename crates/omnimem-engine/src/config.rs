@@ -41,7 +41,7 @@ impl GraveyardScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HumanApproval {
     /// A person accepts it: through the client (MCP elicitation) or the
-    /// settings window. The agent's say-so is never enough.
+    /// settings panel. The agent's say-so is never enough.
     #[default]
     Human,
     /// The agent's call is the approval, as 6.x behaved.

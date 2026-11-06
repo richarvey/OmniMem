@@ -39,7 +39,7 @@
       SKILL.md. You review the draft here first — nothing is written until you
       accept it.
     </p>
-    <form hx-post="/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+    <form hx-post="{{ admin }}/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
       <input type="text" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
       <button type="submit" class="btn btn-primary btn-sm">Compile Draft</button>
     </form>
@@ -60,7 +60,7 @@
       what would be added — existing skills and memories are never
       overwritten.
     </p>
-    <form hx-post="/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+    <form hx-post="{{ admin }}/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
       <input type="file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
       <button type="submit" class="btn btn-primary btn-sm">Validate Bundle</button>
     </form>
@@ -101,12 +101,12 @@
     {% endif %}
     <div id="pending-result-{{ loop.index }}"></div>
     <div class="pending-actions">
-      <form method="POST" action="/skills/discard" style="display:inline">
+      <form method="POST" action="{{ admin }}/skills/discard" style="display:inline">
         <input type="hidden" name="domain" value="{{ p.domain }}">
         <button type="submit" class="btn btn-secondary btn-sm">Discard</button>
       </form>
       {% if not p.stale %}
-      <form hx-post="/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
+      <form hx-post="{{ admin }}/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
         <input type="hidden" name="domain" value="{{ p.domain }}">
         <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
       </form>
@@ -134,7 +134,7 @@
     {% for s in skills %}
     <tr>
       <td class="name-cell">
-        <a href="/skills/{{ s.key }}" class="project-name">{{ s.name }}</a>
+        <a href="{{ admin }}/skills/{{ s.key }}" class="project-name">{{ s.name }}</a>
         {% if s.generated %}<span class="badge generated" title="Compiler output — never hand-edited">gen</span>{% endif %}
       </td>
       <td><span class="badge ns-skill">{{ s.domain or "—" }}</span></td>
@@ -143,8 +143,8 @@
       <td class="mono">{{ s.compiled_at }}</td>
       <td><span class="recall-badge">{{ s.recall_count }}</span></td>
       <td class="skill-actions">
-        <a href="/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
-        <form method="POST" action="/skills/delete" style="display:inline" data-confirm="Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.">
+        <a href="{{ admin }}/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
+        <form method="POST" action="{{ admin }}/skills/delete" style="display:inline" data-confirm="Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.">
           <input type="hidden" name="key" value="{{ s.key }}">
           <button type="submit" class="btn btn-danger btn-sm">Delete</button>
         </form>

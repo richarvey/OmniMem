@@ -4,11 +4,11 @@
 
 {% block content %}
 <header class="detail-header">
-  <a href="/projects" class="btn btn-secondary btn-sm">&larr; Back</a>
+  <a href="{{ admin }}/projects" class="btn btn-secondary btn-sm">&larr; Back</a>
   <h2 style="font-size:1.2rem">{{ project.name }}</h2>
   <div style="display:flex;gap:0.5rem">
-    <a href="/projects/{{ project.name }}/edit" class="btn btn-secondary btn-sm">Edit</a>
-    <form method="POST" action="/projects/{{ project.name }}/delete" style="display:inline" data-confirm="Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.">
+    <a href="{{ admin }}/projects/{{ project.name }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+    <form method="POST" action="{{ admin }}/projects/{{ project.name }}/delete" style="display:inline" data-confirm="Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.">
       <button type="submit" class="btn btn-danger btn-sm">Delete</button>
     </form>
   </div>
@@ -16,7 +16,7 @@
 
 {% if project.description %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Description</h3>
+  <h3 class="eyebrow-heading">Description</h3>
   <div class="detail-content">{{ project.description }}</div>
 </div>
 {% endif %}
@@ -35,9 +35,9 @@
       {% if project.domains %}
       <div class="domain-pill-row">
         {% for d in project.domains %}
-        <a href="/projects?domain={{ d.name }}" class="domain-pill">{{ d.name }}</a>
+        <a href="{{ admin }}/projects?domain={{ d.name }}" class="domain-pill">{{ d.name }}</a>
         {% if d.has_skill %}
-        <a href="/skills/mem:skill:gen:{{ d.name }}-{{ skill_user }}" class="domain-skill-link" title="Compiled skill for {{ d.name }}">skill &rarr;</a>
+        <a href="{{ admin }}/skills/mem:skill:gen:{{ d.name }}-{{ skill_user }}" class="domain-skill-link" title="Compiled skill for {{ d.name }}">skill &rarr;</a>
         {% endif %}
         {% endfor %}
       </div>
@@ -51,7 +51,7 @@
       <p class="meta-hint">
         Declaring domains lets recall search across every project doing the
         same kind of work. Add them on the
-        <a href="/projects/{{ project.name }}/edit">edit page</a> &mdash; it can
+        <a href="{{ admin }}/projects/{{ project.name }}/edit">edit page</a> &mdash; it can
         suggest them from the stack and this project's own memories.
       </p>
       {% endif %}

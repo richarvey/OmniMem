@@ -1,6 +1,6 @@
 # Authentication and Reverse Proxies
 
-OmniMem serves one thing worth putting behind a proxy: the MCP endpoint on port 8765 (plus the OAuth routes when OAuth is on). There's no web dashboard to protect any more; that moved into the desktop app's [settings panel](settings-panel.md), which is never served over HTTP.
+OmniMem serves everything on port 8765: the MCP endpoint, the OAuth routes when OAuth is on, and the [settings panel](settings-panel.md) at `/admin`. The panel signs people in itself and only opens over HTTPS (or from the same machine), so a proxy that terminates TLS needs to send `X-Forwarded-Proto: https`, which Caddy, Traefik and nginx's usual configs do. `ADMIN_PANEL=false` keeps `/admin` off the network if all you want to expose is MCP.
 
 This page covers the bearer token and some proxy configs. [Using it from multiple machines](remote-access.md) covers OAuth for claude.ai and the 421 and 403 errors.
 

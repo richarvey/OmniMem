@@ -1,25 +1,39 @@
 # The Settings Panel
 
-In 6.x you managed OmniMem from a web dashboard on port 8080, with its own login page. That's gone. Everything it showed now lives in the desktop app's settings window, and there's no HTTP version at all.
+OmniMem's settings panel is a set of web pages at `/admin` on the same address as the MCP server: `http://127.0.0.1:8765/admin` on a desktop, `https://mcp.example.com/admin` behind a proxy. The desktop app opens it in your browser, and a server or a Docker container serves it the same way, so there's one panel everywhere instead of a settings panel per operating system.
 
-That's deliberate. A dashboard on a port is something else on your machine (or your network) can reach, so it needs a login, sessions and a rate limit, and all of that is attack surface for a page only you should ever see. The settings window gets its pages straight from the OmniMem process through a custom `omnimem://` protocol and talks back over IPC. No socket, no session, no login.
+From 7.0 to 7.0.9 the panel lived only in the desktop app's window, served over a private `omnimem://` scheme so no socket could reach it. That kept it safe, but a server had no panel at all. 7.1 puts it on HTTP and pays for that properly: a sign-in, server-side sessions, CSRF checks and HTTPS. `ADMIN_PANEL=false` turns it off for an install that should only ever speak MCP, which is how OmniMem Cloud runs.
 
 ## Opening it
 
-The desktop app (the Windows MSI, the macOS DMG or the Flatpak) puts an icon in your tray or menu bar while it runs. Its menu has:
+**On a desktop**, the app (the Windows MSI, the macOS DMG or the Flatpak) puts an icon in your tray or menu bar while it runs. Its menu has:
 
 - a status line with the memory count
-- **Settings…**, which opens the window
+- **Settings…**, which opens the panel in your browser, already signed in
 - **Copy MCP URL**, for pasting into a client's config
 - **Add to Claude Desktop** and **Add to Claude Code**, which check the client's settings and add OmniMem, or switch an `omnimem` entry pointing elsewhere to this server, but never add it twice
 - **Start at login**
 - **Quit OmniMem**
 
-Closing the window leaves OmniMem running in the tray. Launching the app a second time brings the window forward instead of starting another server. On GNOME without the AppIndicator extension there's no tray, so the app opens the window instead.
+Settings… signs you in with a link that works once, within a minute, so there's no password to set up on your own machine. Launching the app a second time opens the panel instead of starting another server. On GNOME without the AppIndicator extension there's no tray, so the app opens the panel as soon as it starts, with a note at the top saying what to install.
+
+**On a server**, sign in one of two ways:
+
+- **With the admin password.** Set `OAUTH_ADMIN_USER` and `OAUTH_ADMIN_PASSWORD`, the same pair the OAuth login page uses (OAuth itself doesn't have to be on), and `/admin` asks for them.
+- **With a sign-in link.** Run `omnimem admin-link` on the server and open the link it prints. It works once, within five minutes. In Docker that's `docker exec <container> omnimem admin-link`.
 
 While the engine loads (and on first start, downloads the embedding model) the pages show a starting screen, then fill in.
 
-Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Docker image) have no panel. Configure those with environment variables and manage memories through the MCP tools.
+## Who gets in
+
+The panel is where a person accepts a skill an agent proposed, settles a contradiction and confirms what OmniMem believes, so it has to stay a person's:
+
+- **Only a panel session opens it.** The MCP bearer token (`MCP_AUTH_TOKEN`) and OAuth access tokens are never read on `/admin`, so an agent connected over MCP can't reach the pages it would need to approve its own work.
+- **Sessions live on the server**, as hashes in the store, for `ADMIN_SESSION_HOURS` (12). **Sign out**, in the footer, ends a session everywhere, and a restart keeps you signed in. The cookie is `HttpOnly`, `SameSite=Strict`, scoped to `/admin`, and `Secure` behind HTTPS.
+- **Changes must come from the panel's own pages.** A form post or an htmx request has to carry `Sec-Fetch-Site: same-origin` (or, from an older browser, an `Origin` matching the server). With the strict cookie, no other site can make your browser change anything.
+- **HTTPS, or this machine.** The panel only opens to a browser on the same machine or through a proxy that says it used HTTPS (`X-Forwarded-Proto: https`). Anything else would send the password and the session in the clear. If the network is private already (WireGuard, Tailscale, a container port published to localhost only), `ADMIN_ALLOW_HTTP=true` lifts the rule.
+- **Failed logins are limited** per address with the OAuth login's settings, `OAUTH_LOGIN_MAX_ATTEMPTS` (10) in `OAUTH_LOGIN_WINDOW_SECONDS` (900). The panel keeps its own count.
+- **The pages run no inline script** and every response carries the same Content Security Policy, plus `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`, so a sign-in link can't leak in a referrer.
 
 ## Pages
 
@@ -49,16 +63,17 @@ Headless installs (`omnimem serve`, the `.deb`, `.rpm` and tarball, and the Dock
 
 ### Downloads
 
-A webview can't be relied on to save a download (WebKitGTK does it silently, macOS won't tell you), so skill exports, backups and `feeds.yml` are written straight into your Downloads folder, never over an existing file, and the page tells you where it went.
+Skill exports, backups and `feeds.yml` download through the browser like any other file, so they land wherever your browser puts downloads, on whichever machine you're browsing from.
 
 ## Configuration
 
-The Configuration page covers the settings a headless install would put in the environment, grouped as MCP server, OAuth, Claude, recall, RSS, skills, embeddings and the panel itself. Each shows its default, and a note when a real environment variable is overriding it. The [configuration reference](configuration.md) lists them all.
+The Configuration page edits the settings file, grouped as MCP server, OAuth, the settings panel, Claude, recall, RSS, skills, embeddings and the panel's pages. Each shows its default, and a note when a real environment variable is overriding it. The [configuration reference](configuration.md) lists them all.
 
-- **Ordinary settings** are validated together and written to `omnimem.env` in the data folder. Nothing is written if any value is refused, and hand-written lines the page doesn't know about are kept.
-- **Secrets** (`MCP_AUTH_TOKEN`, `OAUTH_ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` and `HF_TOKEN`) go to the OS keychain: Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux. Once saved they're never shown again; you can replace or clear them.
-- **Changes apply at the next start.** The app reads the file and the keychain before anything else runs.
+- **Ordinary settings** are validated together and written to the settings file: `omnimem.env` in the data folder on a desktop, or whichever file the server loaded (`OMNIMEM_ENV_FILE`). Nothing is written if any value is refused, and hand-written lines the page doesn't know about are kept.
+- **Secrets** (`MCP_AUTH_TOKEN`, `OAUTH_ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` and `HF_TOKEN`) go to the OS keychain on a desktop: Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux. A server has no keychain, so they go into the settings file beside everything else, which keeps its permissions (and is readable by its owner alone if the page creates it). Either way they're never shown again once saved; you can replace or clear them.
+- **Changes apply at the next start.** OmniMem reads the file (and the keychain) before anything else runs.
 - **A real environment variable always wins** over both.
+- **A file OmniMem can't write stays read-only.** The Linux packages keep `/etc/omnimem/omnimem.env` owned by root, and the Docker image too, so there the page explains it can't save and you edit the file as an administrator. A server with no settings file at all (configured purely by environment variables) shows nothing to edit.
 
 The data folder is `%APPDATA%\squarecows\OmniMem\data` on Windows, `~/Library/Application Support/com.squarecows.OmniMem` on macOS and `$XDG_DATA_HOME/omnimem` on Linux. The database, `omnimem.env`, `feeds.yml` and `backups/` all live there.
 

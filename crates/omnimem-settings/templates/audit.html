@@ -11,7 +11,7 @@
 <div class="flash flash-warning" role="status">
   The audit log is off, so nothing new is being recorded{% if total %} (what is below was kept from before){% endif %}.
   Set <code>AUDIT_LOG</code> to <code>lifecycle</code>, <code>writes</code> or <code>full</code> on the
-  <a href="/configuration">Configuration</a> page to start.
+  <a href="{{ admin }}/configuration">Configuration</a> page to start.
 </div>
 {% else %}
 <p style="color:var(--text-dim);margin-bottom:1rem">Recording at the <strong>{{ level }}</strong> level.{% if level == 'full' %} At this level the log holds the text of memories, before and after each change.{% endif %}</p>
@@ -21,7 +21,7 @@
 <div class="flash flash-error" role="alert">{{ problem }}</div>
 {% endfor %}
 
-<form method="GET" action="/audit" class="filter-bar">
+<form method="GET" action="{{ admin }}/audit" class="filter-bar">
   <div class="form-group">
     <label for="audit-key">Key contains</label>
     <input id="audit-key" type="text" class="form-input" name="key" value="{{ key }}" placeholder="mem:episodic:...">
@@ -70,7 +70,7 @@
       <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
       <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
       <td>{{ e.action }}</td>
-      <td class="mono">{% if e.key.startswith('mem:') %}<a href="/memory/{{ e.key }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
+      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
       <td>{{ e.summary }}</td>
       <td style="color:var(--text-dim)">{{ e.reason }}</td>
     </tr>
@@ -79,11 +79,11 @@
 </table>
 <nav class="pagination">
   {% if page > 1 %}
-  <a href="/audit?page={{ page - 1 }}{{ extra_params }}" class="page-link">Newer</a>
+  <a href="{{ admin }}/audit?page={{ page - 1 }}{{ extra_params }}" class="page-link">Newer</a>
   {% endif %}
   <span class="page-link current">{{ page }}</span>
   {% if has_next %}
-  <a href="/audit?page={{ page + 1 }}{{ extra_params }}" class="page-link">Older</a>
+  <a href="{{ admin }}/audit?page={{ page + 1 }}{{ extra_params }}" class="page-link">Older</a>
   {% endif %}
 </nav>
 {% else %}

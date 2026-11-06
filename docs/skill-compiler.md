@@ -20,8 +20,8 @@ The premise is simple. A bad memory is noise: recall ranks it, dilutes it, and y
 
 Early versions treated `mode="write"` as the accept, which meant an agent could propose a skill and then approve it itself. From 7.0.6 it can't. `compile_skill(mode="propose")` is still open to the agent, but `mode="write"` over MCP is a request: OmniMem asks you, and only your answer commits it. This is the `HUMAN_APPROVAL` setting, and its default is `human`.
 
-- **Your client asks you.** If the client supports MCP elicitation, you get a question with the domain, the line counts, the rule counts and the start of the diff (or the draft, for a new skill), with Accept and Decline. Accept writes exactly the stashed draft. Decline or dismiss writes nothing and the call returns `declined` or `cancelled`; the proposal stays stashed, so you can still accept it from the settings window. You get ten minutes to answer, or the proposal's lifetime if that's shorter.
-- **Your client can't ask.** The call returns `awaiting_approval` and the proposal waits. Open OmniMem's settings window, go to Skills, and accept it under **Pending proposals**, which lists every stashed proposal with its diff or draft. The Skills link in the sidebar shows how many are waiting. A headless `omnimem serve` has no window, so there you need a client that supports elicitation.
+- **Your client asks you.** If the client supports MCP elicitation, you get a question with the domain, the line counts, the rule counts and the start of the diff (or the draft, for a new skill), with Accept and Decline. Accept writes exactly the stashed draft. Decline or dismiss writes nothing and the call returns `declined` or `cancelled`; the proposal stays stashed, so you can still accept it from the settings panel. You get ten minutes to answer, or the proposal's lifetime if that's shorter.
+- **Your client can't ask.** The call returns `awaiting_approval` and the proposal waits. Open OmniMem's settings panel, go to Skills, and accept it under **Pending proposals**, which lists every stashed proposal with its diff or draft. The Skills link in the sidebar shows how many are waiting. A headless `omnimem serve` has no window, so there you need a client that supports elicitation.
 - **You'd rather not be asked.** `HUMAN_APPROVAL=agent` restores the 6.x behaviour, where the agent's `mode="write"` commits.
 
 Either way the stale check still applies: if the stored skill changed after the proposal, nothing is written. And if the agent replaces the proposal while you're reading the old one, your yes doesn't carry over to the new one.
@@ -41,7 +41,7 @@ This is what each client's own documentation says, checked in November 2026. Eli
 | Claude Desktop | Not sure. Anthropic's connector documentation says what Claude doesn't support (resource subscriptions, sampling, draft capabilities) and doesn't mention elicitation either way | [Build an MCP server for Claude](https://claude.com/docs/connectors/building) |
 | claude.ai | Not sure, for the same reason. Claude Code's docs mention connecting to claude.ai connectors, but that's Claude Code as the client, not claude.ai | [Build an MCP server for Claude](https://claude.com/docs/connectors/building) |
 
-If a client says nothing, OmniMem sees no `elicitation` capability at connect and answers `awaiting_approval`, so the worst case is a trip to the settings window, never a silent write.
+If a client says nothing, OmniMem sees no `elicitation` capability at connect and answers `awaiting_approval`, so the worst case is a trip to the settings panel, never a silent write.
 
 ### What the gate rests on
 
@@ -49,7 +49,7 @@ Over MCP the approval is an elicitation, and an elicitation is a question **the 
 
 - **It stops an agent approving its own write.** The agent's `mode="write"` is a request. The answer comes back on a separate channel the agent doesn't speak for, so a model that wants a skill committed can't say yes on your behalf.
 - **It doesn't stop a client that answers for you.** A harness set to accept elicitations automatically, or a client that hands the question to the model instead of showing it to you, turns the gate back into self-approval. OmniMem has no way to tell an automatic yes from yours.
-- **The settings window is the hard boundary.** Pending proposals on the Skills and Contradictions pages are answered inside the desktop app, through routes that are never bound to a socket (the panel runs in-process for the window), so no agent and no remote client can reach them. If you need to be certain a person decided, set `HUMAN_APPROVAL=human` and use a client that can't be asked (it gets `awaiting_approval`), or check proposals there.
+- **The settings panel is the hard boundary.** Pending proposals on the Skills and Contradictions pages are answered in the panel at `/admin`, which only a signed-in browser session opens: the MCP token and OAuth access tokens never get in, so an agent can't accept its own proposal there. If you need to be certain a person decided, set `HUMAN_APPROVAL=human` and use a client that can't be asked (it gets `awaiting_approval`), or check proposals there.
 - **The audit log says who answered.** An accepted write is recorded as `mcp`, with the name the client gave when it connected (and the OAuth client id, if it signed in), and the reason "approved by the user via elicitation". A panel click is recorded as `panel`. So afterwards you can see which channel each approval came through, even though you can't see who pressed the button.
 
 ## The flywheel

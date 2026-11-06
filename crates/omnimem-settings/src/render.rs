@@ -47,6 +47,11 @@ fn markupsafe_escape(text: &str, out: &mut String) {
     }
 }
 
+/// The panel's Content Security Policy: scripts only from its own files, so
+/// a value a template writes can never run. Sent as a header and declared in
+/// `base.html` too.
+pub(crate) const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'";
+
 pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'static> {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| AutoEscape::Html);
@@ -64,6 +69,8 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
     // For a value going into a query string, before HTML escaping.
     env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
     env.add_global("version", env!("CARGO_PKG_VERSION"));
+    // Where the panel is served: every link a template writes starts here.
+    env.add_global("admin", crate::ADMIN_ROOT);
     // Read at render time, so a note set after start-up reaches every page.
     env.add_function("panel_notice", move || {
         notice

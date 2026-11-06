@@ -3,15 +3,12 @@
 //!
 //! Skills are build output, so there is no edit path: creating one runs the
 //! same propose-and-accept gate as `compile_skill`, and changing one means
-//! changing its memories and recompiling. Export writes a checksummed zip of
-//! the skill and its sources into the Downloads folder (the window can't hand
-//! a download to the person the same way on every platform). Import validates
+//! changing its memories and recompiling. Export downloads a checksummed zip
+//! of the skill and its sources. Import validates
 //! an uploaded bundle, previews exactly what it would add under a one-shot
 //! token, and writes only on confirm, never overwriting anything.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write as _;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use axum::Form;
@@ -29,7 +26,7 @@ use tracing::{info, warn};
 
 use crate::PanelState;
 use crate::feeds_file;
-use crate::files::{read_upload, save_download};
+use crate::files::{attachment, read_upload};
 use crate::format::{minutes, timestamp};
 use crate::pages::{blocking, quote, see_other, starting};
 use crate::render::page;
@@ -401,51 +398,32 @@ pub(crate) async fn delete(
 }
 
 enum Exported {
-    Saved(PathBuf, usize, usize),
+    Bundle(String, Vec<u8>),
     NotExportable(String),
-    NotSaved(String),
 }
 
-/// GET `/skills/export/{key}`: save the bundle and say where it went.
+/// GET `/skills/export/{key}`: the bundle as a download.
 pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<String>) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let downloads = state.downloads_dir();
-    let saved = blocking(move || {
-        let bundle = match engine.build_skill_export(&key)? {
-            Ok(bundle) => bundle,
-            Err(reason) => return Ok(Exported::NotExportable(reason)),
-        };
-        Ok(
-            match save_download(downloads, &bundle.filename, &bundle.data) {
-                Ok(path) => {
-                    info!(skill = key, path = %path.display(), memories = bundle.memory_count, "exported a skill bundle");
-                    Exported::Saved(path, bundle.memory_count, bundle.missing_sources.len())
-                }
-                Err(problem) => Exported::NotSaved(problem),
-            },
-        )
+    let built = blocking(move || {
+        Ok(match engine.build_skill_export(&key)? {
+            Ok(bundle) => {
+                info!(
+                    skill = key,
+                    memories = bundle.memory_count,
+                    missing = bundle.missing_sources.len(),
+                    "exported a skill bundle"
+                );
+                Exported::Bundle(bundle.filename, bundle.data)
+            }
+            Err(reason) => Exported::NotExportable(reason),
+        })
     })
     .await;
-    match saved {
-        Ok(Exported::NotSaved(problem)) => see_other(&format!("/skills?error={}", quote(&problem))),
-        Ok(Exported::Saved(path, memories, missing)) => {
-            let mut message = format!(
-                "Exported to {} with {memories} source memor{}.",
-                path.display(),
-                if memories == 1 { "y" } else { "ies" }
-            );
-            if missing > 0 {
-                // Writing into a String cannot fail.
-                let _ = write!(
-                    message,
-                    " {missing} source{} no longer stored here and left out.",
-                    if missing == 1 { " is" } else { "s are" }
-                );
-            }
-            see_other(&format!("/skills?message={}", quote(&message)))
-        }
+    match built {
+        Ok(Exported::Bundle(filename, data)) => attachment(&filename, "application/zip", data),
         Ok(Exported::NotExportable(reason)) => (
             StatusCode::NOT_FOUND,
             Html(format!(

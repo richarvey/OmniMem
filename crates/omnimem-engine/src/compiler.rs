@@ -385,7 +385,7 @@ impl Engine {
     /// replaced while the person was deciding, nothing is written.
     ///
     /// The engine doesn't know who approved; the MCP layer calls this only
-    /// after elicitation. The settings window uses plain
+    /// after elicitation. The settings panel uses plain
     /// `compile_skill(mode="write")`, since a click there is the approval.
     pub fn commit_approved_skill(
         &self,

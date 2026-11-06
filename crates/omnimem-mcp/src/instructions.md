@@ -77,7 +77,7 @@ Compiled procedure for a domain. `briefing()` suggests them and
 human agrees, never silently. Build and change them through
 `compile_skill(domain, mode="propose")`, then `mode="write"` once they accept.
 A person must accept the write: the client asks them, or the result is
-`awaiting_approval` and they accept it in OmniMem's settings window. On
+`awaiting_approval` and they accept it in OmniMem's settings panel. On
 `declined`, leave it alone.
 Skills are derived output: update the underlying memories, never edit a skill
 by hand. See `docs/agent-guide.md` for promotion, blessing and feed influence.

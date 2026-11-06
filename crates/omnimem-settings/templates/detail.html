@@ -4,7 +4,7 @@
 
 {% block content %}
 <header class="detail-header">
-  <a href="/memories" class="btn btn-secondary btn-sm">&larr; Back</a>
+  <a href="{{ admin }}/memories" class="btn btn-secondary btn-sm">&larr; Back</a>
   <span class="badge ns-{{ memory.namespace }}">{{ memory.namespace }}</span>
   <span class="badge {{ memory.state }}">{{ memory.state }}</span>
   <span class="badge {{ 'deprioritised' if memory.trust != 'accepted' else 'active' }}" title="Whether OmniMem believes this memory" data-trust="{{ memory.trust }}">trust: {{ memory.trust }}</span>
@@ -96,12 +96,12 @@
 
 {% if memory.namespace != 'skill' %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Redistribution rights</h3>
+  <h3 class="eyebrow-heading">Redistribution rights</h3>
   <p style="font-size:0.85rem;color:var(--text-dim);margin:0 0 0.5rem">
     May this content be redistributed outside this instance? Own work and open-licensed
     sources can; paywalled or all-rights-reserved sources cannot. Unknown means nobody has said yet.
   </p>
-  <form method="POST" action="/memory/{{ memory.key }}/licence" style="max-width:40rem">
+  <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/licence" style="max-width:40rem">
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
       <label for="licence-select" class="visually-hidden">Licence</label>
       <select id="licence-select" name="licence" class="form-select" style="flex:0 1 16rem">
@@ -124,12 +124,12 @@
 </div>
 
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Provenance</h3>
+  <h3 class="eyebrow-heading">Provenance</h3>
   <p style="font-size:0.85rem;color:var(--text-dim);margin:0 0 0.5rem">
     Where did this come from? Retrieved from an external source, concluded by the system's
     own reasoning, or asserted by you. Mark a memory you vouch for as asserted.
   </p>
-  <form method="POST" action="/memory/{{ memory.key }}/provenance" style="max-width:40rem">
+  <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/provenance" style="max-width:40rem">
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
       <label for="provenance-select" class="visually-hidden">Provenance</label>
       <select id="provenance-select" name="provenance" class="form-select" style="flex:0 1 16rem">
@@ -151,7 +151,7 @@
 
 {% if memory.namespace != 'skill' %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Tags</h3>
+  <h3 class="eyebrow-heading">Tags</h3>
   {% if memory.tags %}
   <div style="margin-bottom:0.5rem">
     {% for tag in memory.tags %}
@@ -159,7 +159,7 @@
     {% endfor %}
   </div>
   {% endif %}
-  <form method="POST" action="/memory/{{ memory.key }}/tags" style="max-width:40rem">
+  <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/tags" style="max-width:40rem">
     <label for="tags-input" style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.25rem">Edit tags (comma-separated)</label>
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
       <input type="text" id="tags-input" name="tags" class="form-input" style="flex:1;min-width:12rem"
@@ -173,7 +173,7 @@
 </div>
 {% elif memory.tags %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Tags</h3>
+  <h3 class="eyebrow-heading">Tags</h3>
   {% for tag in memory.tags %}
   <span class="badge" style="background:var(--bg-input);color:var(--text-dim);margin-right:0.25rem">{{ tag }}</span>
   {% endfor %}
@@ -182,28 +182,28 @@
 
 {% if memory.lesson %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Lesson</h3>
+  <h3 class="eyebrow-heading">Lesson</h3>
   <div class="detail-content" style="border-color:var(--accent);margin-bottom:0">{{ memory.lesson }}</div>
 </div>
 {% endif %}
 
 {% if memory.breakthrough %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Breakthrough</h3>
+  <h3 class="eyebrow-heading">Breakthrough</h3>
   <div class="detail-content" style="border-color:var(--green);margin-bottom:0">{{ memory.breakthrough }}</div>
 </div>
 {% endif %}
 
 {% if memory.gotchas %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Gotchas</h3>
+  <h3 class="eyebrow-heading">Gotchas</h3>
   <div class="detail-content" style="border-color:var(--yellow);margin-bottom:0">{{ memory.gotchas }}</div>
 </div>
 {% endif %}
 
 {% if memory.abandoned_approaches %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Abandoned Approaches</h3>
+  <h3 class="eyebrow-heading">Abandoned Approaches</h3>
   {% for a in memory.abandoned_approaches %}
   <div class="search-result" style="border-color:var(--orange)">
     <strong>{{ a.name }}</strong>{% if a.type %} <span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ a.type }}</span>{% endif %}
@@ -214,32 +214,32 @@
 {% endif %}
 
 <div style="margin-bottom:1.5rem" id="trust">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Trust</h3>
+  <h3 class="eyebrow-heading">Trust</h3>
   <p style="font-size:0.85rem">
     {% if memory.trust == 'candidate' %}OmniMem concluded this itself and nobody has confirmed it yet.
     {% elif memory.trust == 'accepted' %}This memory is believed.
     {% elif memory.trust == 'disputed' %}This memory is in a contradiction that hasn't been settled.
-    {% elif memory.trust == 'superseded' %}A newer memory replaced this one{% if memory.superseded_by %}: <a href="/memory/{{ memory.superseded_by }}" class="mono" style="color:var(--accent);text-decoration:none">{{ memory.superseded_by }}</a>{% endif %}.
+    {% elif memory.trust == 'superseded' %}A newer memory replaced this one{% if memory.superseded_by %}: <a href="{{ admin }}/memory/{{ memory.superseded_by }}" class="mono" style="color:var(--accent);text-decoration:none">{{ memory.superseded_by }}</a>{% endif %}.
     {% elif memory.trust == 'rejected' %}Someone judged this memory wrong, so it isn't recalled.
     {% endif %}
     {% if memory.trust_prior and memory.trust != 'accepted' %}<span style="color:var(--text-dim)">It goes back to <strong>{{ memory.trust_prior }}</strong> if that is undone.</span>{% endif %}
   </p>
   <div class="action-bar" style="margin-top:0.5rem;align-items:center">
     {% if memory.trust == 'candidate' %}
-    <form method="POST" action="/memory/{{ memory.key }}/trust" style="display:inline">
+    <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/trust" style="display:inline">
       <input type="hidden" name="action" value="confirm">
       <button type="submit" class="btn btn-primary btn-sm">Confirm</button>
     </form>
     {% endif %}
     {% if memory.trust == 'rejected' %}
-    <form method="POST" action="/memory/{{ memory.key }}/trust" style="display:inline">
+    <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/trust" style="display:inline">
       <input type="hidden" name="action" value="restore">
       <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
     </form>
     {% else %}
-    <form method="POST" action="/memory/{{ memory.key }}/trust" style="display:inline-flex;gap:0.5rem;align-items:center">
+    <form method="POST" action="{{ admin }}/memory/{{ memory.key }}/trust" style="display:inline-flex;gap:0.5rem;align-items:center">
       <input type="hidden" name="action" value="reject">
-      <input type="text" name="reason" placeholder="Why it's wrong (optional)" aria-label="Reason for rejecting" style="min-width:16rem">
+      <input type="text" class="form-input form-input-inline" name="reason" placeholder="Why it's wrong (optional)" aria-label="Reason for rejecting" style="min-width:16rem">
       <button type="submit" class="btn btn-danger btn-sm">Reject</button>
     </form>
     {% endif %}
@@ -251,7 +251,7 @@
 
 {% if memory.contradictions %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Contradictions</h3>
+  <h3 class="eyebrow-heading">Contradictions</h3>
   {% for c in memory.contradictions %}
   <div class="search-result" style="border-color:var(--red)">
     <span class="mono" style="font-size:0.75rem;color:var(--text-dim)">{{ c.key if c.key is defined else c }}</span>
@@ -272,15 +272,15 @@
 
 {% if memory.superseded_by or memory.supersedes %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Superseded</h3>
-  {% if memory.superseded_by %}<p style="font-size:0.85rem">Replaced by <a href="/memory/{{ memory.superseded_by }}" class="mono" style="color:var(--accent);text-decoration:none">{{ memory.superseded_by }}</a></p>{% endif %}
-  {% for k in memory.supersedes %}<p style="font-size:0.85rem">Replaces <a href="/memory/{{ k }}" class="mono" style="color:var(--accent);text-decoration:none">{{ k }}</a></p>{% endfor %}
+  <h3 class="eyebrow-heading">Superseded</h3>
+  {% if memory.superseded_by %}<p style="font-size:0.85rem">Replaced by <a href="{{ admin }}/memory/{{ memory.superseded_by }}" class="mono" style="color:var(--accent);text-decoration:none">{{ memory.superseded_by }}</a></p>{% endif %}
+  {% for k in memory.supersedes %}<p style="font-size:0.85rem">Replaces <a href="{{ admin }}/memory/{{ k }}" class="mono" style="color:var(--accent);text-decoration:none">{{ k }}</a></p>{% endfor %}
 </div>
 {% endif %}
 
 {% if memory.reinstate_hints %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Reinstate Hints</h3>
+  <h3 class="eyebrow-heading">Reinstate Hints</h3>
   {% for hint in memory.reinstate_hints %}
   <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);margin-right:0.25rem">{{ hint }}</span>
   {% endfor %}
@@ -289,21 +289,21 @@
 
 {% if memory.deprioritised_reason %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Deprioritised Reason</h3>
+  <h3 class="eyebrow-heading">Deprioritised Reason</h3>
   <p style="color:var(--yellow);font-size:0.9rem">{{ memory.deprioritised_reason }}</p>
 </div>
 {% endif %}
 
 {% if memory.archived_reason %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Archived Reason</h3>
+  <h3 class="eyebrow-heading">Archived Reason</h3>
   <p style="color:var(--yellow);font-size:0.9rem">{{ memory.archived_reason }}</p>
 </div>
 {% endif %}
 
 {% if history_on %}
 <div style="margin-bottom:1.5rem">
-  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">History</h3>
+  <h3 class="eyebrow-heading">History</h3>
   {% if history %}
   <table class="data-table">
     <thead>
@@ -321,7 +321,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <p style="margin-top:0.5rem;font-size:0.85rem"><a href="/audit?key={{ memory.key }}">All of this memory's history</a></p>
+  <p style="margin-top:0.5rem;font-size:0.85rem"><a href="{{ admin }}/audit?key={{ memory.key }}">All of this memory's history</a></p>
   {% else %}
   <p style="color:var(--text-dim);font-size:0.9rem">Nothing recorded for this memory yet.</p>
   {% endif %}
@@ -330,26 +330,26 @@
 
 <div class="action-bar">
   {% if memory.state == 'active' %}
-  <form method="POST" action="/lifecycle/deprioritise" style="display:inline">
+  <form method="POST" action="{{ admin }}/lifecycle/deprioritise" style="display:inline">
     <input type="hidden" name="key" value="{{ memory.key }}">
     <input type="hidden" name="reason" value="Deprioritised via web UI">
     <button type="submit" class="btn btn-secondary btn-sm">Deprioritise</button>
   </form>
-  <form method="POST" action="/lifecycle/archive" style="display:inline">
+  <form method="POST" action="{{ admin }}/lifecycle/archive" style="display:inline">
     <input type="hidden" name="key" value="{{ memory.key }}">
     <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
   </form>
   {% elif memory.state == 'deprioritised' %}
-  <form method="POST" action="/lifecycle/reinstate" style="display:inline">
+  <form method="POST" action="{{ admin }}/lifecycle/reinstate" style="display:inline">
     <input type="hidden" name="key" value="{{ memory.key }}">
     <button type="submit" class="btn btn-primary btn-sm">Reinstate</button>
   </form>
-  <form method="POST" action="/lifecycle/archive" style="display:inline">
+  <form method="POST" action="{{ admin }}/lifecycle/archive" style="display:inline">
     <input type="hidden" name="key" value="{{ memory.key }}">
     <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
   </form>
   {% elif memory.state == 'archived' %}
-  <form method="POST" action="/lifecycle/reinstate" style="display:inline">
+  <form method="POST" action="{{ admin }}/lifecycle/reinstate" style="display:inline">
     <input type="hidden" name="key" value="{{ memory.key }}">
     <button type="submit" class="btn btn-primary btn-sm">Reinstate</button>
   </form>
@@ -368,7 +368,7 @@
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm"
               data-hide="delete-modal">Cancel</button>
-      <form method="POST" action="/lifecycle/delete" style="display:inline">
+      <form method="POST" action="{{ admin }}/lifecycle/delete" style="display:inline">
         <input type="hidden" name="key" value="{{ memory.key }}">
         <button type="submit" class="btn btn-danger btn-sm">Delete</button>
       </form>

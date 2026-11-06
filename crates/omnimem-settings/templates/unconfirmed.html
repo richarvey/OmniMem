@@ -8,12 +8,12 @@
     <span class="badge ns-{{ i.namespace }}">{{ i.namespace }}</span>
     {% if i.state != 'active' %}<span class="badge {{ i.state }}">{{ i.state }}</span>{% endif %}
     {% if i.project %}<span class="mono" style="font-size:0.75rem;color:var(--text-dim)">{{ i.project }}</span>{% endif %}
-    <a href="/memory/{{ i.key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none">{{ i.key }}</a>
+    <a href="{{ admin }}/memory/{{ i.key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none">{{ i.key }}</a>
   </div>
   <div style="font-size:0.9rem">{{ i.content }}</div>
   <div class="action-bar" style="margin-top:0.5rem">
     {% for action, label, class in [('confirm', 'Confirm', 'btn-primary'), ('reject', 'Reject', 'btn-danger')] %}
-    <form method="POST" action="/unconfirmed/act" style="display:inline">
+    <form method="POST" action="{{ admin }}/unconfirmed/act" style="display:inline">
       <input type="hidden" name="key" value="{{ i.key }}">
       <input type="hidden" name="action" value="{{ action }}">
       <input type="hidden" name="back_source" value="{{ source }}">
@@ -51,21 +51,21 @@
 </p>
 
 {% if source %}
-<p class="section-note">Showing only what came from <a href="/memory/{{ source }}" class="mono" style="color:var(--accent)">{{ source }}</a>. <a href="/unconfirmed" style="color:var(--accent)">Show all</a></p>
+<p class="section-note">Showing only what came from <a href="{{ admin }}/memory/{{ source }}" class="mono" style="color:var(--accent)">{{ source }}</a>. <a href="{{ admin }}/unconfirmed" style="color:var(--accent)">Show all</a></p>
 {% endif %}
 
 {% for g in groups %}
 <section class="pending-proposal">
   <div class="pending-head">
     <strong>From</strong>
-    {% if g.exists %}<a href="/memory/{{ g.source }}" class="mono" style="color:var(--accent);text-decoration:none">{{ g.source }}</a>{% else %}<span class="mono">{{ g.source }}</span> (gone){% endif %}
+    {% if g.exists %}<a href="{{ admin }}/memory/{{ g.source }}" class="mono" style="color:var(--accent);text-decoration:none">{{ g.source }}</a>{% else %}<span class="mono">{{ g.source }}</span> (gone){% endif %}
     {% if g.title %}<span style="color:var(--text-dim)">{{ g.title }}</span>{% endif %}
     <span class="badge">{{ g.total }}</span>
-    {% if not source %}<a href="{{ g.url }}" class="mono" style="font-size:0.75rem;color:var(--accent)">only these</a>{% endif %}
+    {% if not source %}<a href="{{ admin }}{{ g.url }}" class="mono" style="font-size:0.75rem;color:var(--accent)">only these</a>{% endif %}
   </div>
   {% for i in g['items'] %}{{ item(i, source, page) }}{% endfor %}
   <div class="pending-actions">
-    <form method="POST" action="/unconfirmed/source" style="display:inline">
+    <form method="POST" action="{{ admin }}/unconfirmed/source" style="display:inline">
       <input type="hidden" name="source" value="{{ g.source }}">
       <input type="hidden" name="back_source" value="{{ source }}">
       <input type="hidden" name="back_page" value="{{ page }}">
@@ -88,9 +88,9 @@
 
 {% if pages > 1 %}
 <nav class="pagination">
-  {% if page > 1 %}<a href="{{ prev_url }}" class="page-link">Newer</a>{% endif %}
+  {% if page > 1 %}<a href="{{ admin }}{{ prev_url }}" class="page-link">Newer</a>{% endif %}
   <span class="page-link current">{{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a href="{{ next_url }}" class="page-link">Older</a>{% endif %}
+  {% if page < pages %}<a href="{{ admin }}{{ next_url }}" class="page-link">Older</a>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

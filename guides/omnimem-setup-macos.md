@@ -33,7 +33,7 @@ The first time it runs, OmniMem downloads the embedding model (all-MiniLM-L6-v2)
 Click the menu bar icon and you'll see:
 
 - **A status line**: whether it's running and how many memories it holds. **Copy MCP URL** puts the address on the clipboard
-- **Settings…**: opens the settings window
+- **Settings…**: opens the settings panel
 - **Copy MCP URL**: puts `http://127.0.0.1:8765/mcp` on your clipboard for your client config
 - **Add to Claude Desktop** and **Add to Claude Code**: does the setup for you. Each one checks the client's settings first, so OmniMem is never added twice: once it's there the item reads **✓ In Claude Desktop**, and if the client already has an `omnimem` server pointing somewhere else (your old 6.x server, say) it offers **Switch Claude Desktop here** instead, naming where it points now. Restart the client afterwards so it connects
 - **Start at login**: tick it and OmniMem comes up whenever you log in
@@ -41,7 +41,7 @@ Click the menu bar icon and you'll see:
 
 Tick **Start at login**. You want your memory there before you start work, not after you've remembered to open it.
 
-Only one copy runs at a time. Open OmniMem again while it's running and it just brings the settings window forward.
+Only one copy runs at a time. Open OmniMem again while it's running and it just brings the settings panel forward.
 
 ---
 
@@ -134,7 +134,7 @@ Backups don't carry vectors, so every memory gets re-embedded, at roughly 8 ms e
 
 ## Troubleshooting
 
-**No menu bar icon**: on a Mac with a crowded menu bar, macOS hides icons that don't fit, and a notch doesn't help. Quit a few other menu bar apps, or open OmniMem again from Applications to bring up the settings window.
+**No menu bar icon**: on a Mac with a crowded menu bar, macOS hides icons that don't fit, and a notch doesn't help. Quit a few other menu bar apps, or open OmniMem again from Applications to bring up the settings panel.
 
 **The status line says OmniMem failed**: it gives the reason. The usual suspects are the port being in use (change **Port**) or a non-local **Listen address** with no access token.
 

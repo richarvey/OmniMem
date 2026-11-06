@@ -449,7 +449,7 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
 }
 
 /// How much of a proposed diff goes into the question. A person reads it in
-/// a dialog, so the rest is summarised and left to the settings window.
+/// a dialog, so the rest is summarised and left to the settings panel.
 const DIFF_PREVIEW_CHARS: usize = 3_000;
 
 /// What a person is asked when an agent wants to write a skill: the domain,
@@ -485,7 +485,7 @@ fn skill_approval_message(review: &SkillReview) -> String {
     );
     if total > DIFF_PREVIEW_CHARS {
         message.push_str(&format!(
-            "\n... and {} more characters (see the Skills page in OmniMem's settings window).",
+            "\n... and {} more characters (see the Skills page in OmniMem's settings panel).",
             total - DIFF_PREVIEW_CHARS
         ));
     }
@@ -568,7 +568,7 @@ fn contradiction_approval_message(review: &ResolutionReview) -> String {
 
 /// `check_contradictions(mode="resolve")` under `HUMAN_APPROVAL=human`: the
 /// agent proposes, a person's answer is what writes. Without a person to
-/// ask, the proposal waits for the settings window (or `omnimem
+/// ask, the proposal waits for the settings panel (or `omnimem
 /// contradictions`).
 async fn resolve_with_approval(
     engine: &Arc<Engine>,
@@ -608,7 +608,7 @@ async fn resolve_with_approval(
             .await?;
             stored["note"] = json!(
                 "A person has to accept this, and this client can't ask them: it didn't declare MCP elicitation. \
-                 Nothing has been written. They can accept it in OmniMem's settings window, on the Contradictions \
+                 Nothing has been written. They can accept it in OmniMem's settings panel (/admin), on the Contradictions \
                  page under Pending, or with `omnimem contradictions` on the server. Don't call resolve again."
             );
             Ok(stored)
@@ -628,7 +628,7 @@ async fn resolve_with_approval(
 
 /// `compile_skill(mode="write")` under `HUMAN_APPROVAL=human`: the agent's
 /// call is a request, and a person's answer is the commit. Without a person
-/// to ask, the proposal waits for the settings window.
+/// to ask, the proposal waits for the settings panel.
 async fn write_with_approval(
     engine: &Arc<Engine>,
     peer: &Peer<RoleServer>,
@@ -668,16 +668,15 @@ async fn write_with_approval(
         }
         Answer::Unsupported => format!(
             "A person has to accept this proposal, and this client can't ask them: it didn't declare MCP elicitation. \
-             Accept it in OmniMem's settings window, on the Skills page under Pending proposals. A headless server has \
-             no window, so it needs a client that supports elicitation. Don't call write again; the proposal waits \
-             {}s for them.",
+             Accept it in OmniMem's settings panel (/admin), on the Skills page under Pending proposals. Don't call \
+             write again; the proposal waits {}s for them.",
             ttl.as_secs()
         ),
         Answer::Declined => "The person declined, so nothing was written. The proposal is still stashed until it expires, \
-             and they can accept it later from OmniMem's settings window. Don't ask again unless they do."
+             and they can accept it later from OmniMem's settings panel. Don't ask again unless they do."
             .to_owned(),
         _ => "The person didn't answer, so nothing was written. The proposal is still stashed until it expires, \
-             and they can accept it from OmniMem's settings window."
+             and they can accept it from OmniMem's settings panel."
             .to_owned(),
     };
     Ok(json!({

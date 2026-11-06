@@ -84,7 +84,7 @@
   change nothing.
 </p>
 {% else %}
-<form hx-post="/skills/import/confirm" hx-target="#import-result" style="margin-top:0.75rem;text-align:right">
+<form hx-post="{{ admin }}/skills/import/confirm" hx-target="#import-result" style="margin-top:0.75rem;text-align:right">
   <input type="hidden" name="token" value="{{ result.token }}">
   <button type="submit" class="btn btn-primary btn-sm">Confirm Import</button>
 </form>

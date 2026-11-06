@@ -12,6 +12,7 @@ use omnimem_engine::{Engine, EngineConfig};
 use omnimem_llm::{AnthropicClient, AnthropicConfig};
 use omnimem_mcp::ServerConfig;
 use omnimem_rss::{Ingester, RssConfig};
+use omnimem_settings::{AccessConfig, Panel, admin_panel_enabled};
 use omnimem_store::Store;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -108,16 +109,18 @@ pub fn local_mcp_url(bound: SocketAddr) -> String {
 
 /// Run every service until `shutdown` is cancelled (or, with
 /// `watch_signals`, until Ctrl-C or SIGTERM), reporting each state change and
-/// handing the engine to `ready` as soon as it is open.
+/// handing the engine to `ready` as soon as it is open. With a `panel`, the
+/// HTTP server also serves it at `/admin`, unless `ADMIN_PANEL` is false.
 pub fn run_services(
     db: &Path,
     shutdown: CancellationToken,
     watch_signals: bool,
+    panel: Option<Panel>,
     report: &dyn Fn(ServiceState),
     ready: &dyn Fn(&Arc<Engine>),
 ) -> Result<()> {
     report(ServiceState::Starting);
-    let result = serve_until_shutdown(db, shutdown, watch_signals, report, ready);
+    let result = serve_until_shutdown(db, shutdown, watch_signals, panel, report, ready);
     match &result {
         Ok(()) => report(ServiceState::Stopped),
         Err(e) => {
@@ -132,12 +135,24 @@ fn serve_until_shutdown(
     db: &Path,
     shutdown: CancellationToken,
     watch_signals: bool,
+    panel: Option<Panel>,
     report: &dyn Fn(ServiceState),
     ready: &dyn Fn(&Arc<Engine>),
 ) -> Result<()> {
     let config = ServerConfig::from_env();
     config.validate()?;
     let engine = Arc::new(open_engine(db)?);
+    let admin = match panel {
+        Some(panel) if admin_panel_enabled() => {
+            panel.set_engine(engine.clone());
+            Some(panel.admin_router(engine.store().clone(), AccessConfig::from_env()))
+        }
+        Some(_) => {
+            info!("the settings panel is off (ADMIN_PANEL=false)");
+            None
+        }
+        None => None,
+    };
     ready(&engine);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -195,7 +210,7 @@ fn serve_until_shutdown(
             Arc::new(move || count_memories(&engine))
         };
         let serving = async {
-            omnimem_mcp::serve(engine, config, Some(listener), shutdown)
+            omnimem_mcp::serve_with(engine, config, Some(listener), shutdown, admin)
                 .await
                 .map_err(anyhow::Error::from)
         };
@@ -361,6 +376,7 @@ mod tests {
             Path::new("/nonexistent/omnimem.db"),
             CancellationToken::new(),
             false,
+            None,
             &|s| states.lock().unwrap().push(s),
             &|_| {},
         );

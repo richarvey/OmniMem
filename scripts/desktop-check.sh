@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lint, test, build and smoke-test the desktop app on Linux inside a
-# container (ci/desktop/Dockerfile), so the GTK, WebKitGTK and AppIndicator
+# container (ci/desktop/Dockerfile), so the GTK and AppIndicator
 # development libraries never need installing on the host.
 #
 # The smoke test runs `omnimem desktop --smoke-test` under Xvfb with a D-Bus
