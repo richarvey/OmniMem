@@ -393,14 +393,17 @@ fn query_param(request: &Request, name: &str) -> Option<String> {
 }
 
 /// Headers every panel response carries: no framing, no sniffing, no
-/// referrer (a sign-in link must never leave in one), and the same Content
-/// Security Policy the pages declare.
+/// referrer to another site (a sign-in link must never leave in one), and the
+/// same Content Security Policy the pages declare. `same-origin`, not
+/// `no-referrer`: under `no-referrer` a browser sends `Origin: null` on a
+/// form POST, which the Host/Origin guard refuses as "Forbidden Origin", so
+/// no form in the panel could be submitted.
 fn harden(mut response: Response, is_static: bool) -> Response {
     let headers = response.headers_mut();
     for (name, value) in [
         (header::X_FRAME_OPTIONS, "DENY"),
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-        (header::REFERRER_POLICY, "no-referrer"),
+        (header::REFERRER_POLICY, "same-origin"),
         (header::CONTENT_SECURITY_POLICY, crate::render::CSP),
     ] {
         headers.insert(name, HeaderValue::from_static(value));

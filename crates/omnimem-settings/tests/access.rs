@@ -111,7 +111,11 @@ async fn a_visitor_without_a_session_is_sent_to_sign_in() {
         "/admin/login?next=/memories%3Fpage%3D2"
     );
     assert_eq!(response.headers()["x-frame-options"], "DENY");
-    assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+    assert_eq!(
+        response.headers()["referrer-policy"],
+        "same-origin",
+        "no-referrer makes browsers send Origin: null on form POSTs, which the Origin guard refuses"
+    );
 
     let login = get(&f, "/admin/login", None).await;
     assert_eq!(login.status(), StatusCode::OK);

@@ -33,7 +33,7 @@ The panel is where a person accepts a skill an agent proposed, settles a contrad
 - **Changes must come from the panel's own pages.** A form post or an htmx request has to carry `Sec-Fetch-Site: same-origin` (or, from an older browser, an `Origin` matching the server). With the strict cookie, no other site can make your browser change anything.
 - **HTTPS, or this machine.** The panel only opens to a browser on the same machine or through a proxy that says it used HTTPS (`X-Forwarded-Proto: https`). Anything else would send the password and the session in the clear. If the network is private already (WireGuard, Tailscale, a container port published to localhost only), `ADMIN_ALLOW_HTTP=true` lifts the rule.
 - **Failed logins are limited** per address with the OAuth login's settings, `OAUTH_LOGIN_MAX_ATTEMPTS` (10) in `OAUTH_LOGIN_WINDOW_SECONDS` (900). The panel keeps its own count.
-- **The pages run no inline script** and every response carries the same Content Security Policy, plus `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`, so a sign-in link can't leak in a referrer.
+- **The pages run no inline script** and every response carries the same Content Security Policy, plus `X-Frame-Options: DENY` and `Referrer-Policy: same-origin`, so a sign-in link can't leak to another site in a referrer.
 
 ## Pages
 
