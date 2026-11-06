@@ -14,7 +14,7 @@
 </div>
 {% endif %}
 
-<form method="POST" action="{% if is_new %}/feeds/new{% else %}/feeds/{{ feed.index }}/edit{% endif %}" style="max-width:700px">
+<form method="POST" action="{{ admin }}{% if is_new %}/feeds/new{% else %}/feeds/{{ feed.index }}/edit{% endif %}" style="max-width:700px">
   <div class="form-group">
     <label>Feed Name</label>
     <input type="text" name="name" class="form-input" value="{{ feed.name }}" placeholder="Rust Official Blog" required autofocus>
