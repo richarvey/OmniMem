@@ -2,11 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://omnimem.org/</loc>
-    <lastmod>2026-11-04</lastmod>
+    <lastmod>2026-11-06</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/</loc>
-    <lastmod>2026-11-04</lastmod>
+    <lastmod>2026-11-06</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/claude-ai/</loc>
@@ -30,7 +30,7 @@
   </url>
   <url>
     <loc>https://omnimem.org/guides/docker/</loc>
-    <lastmod>2026-11-04</lastmod>
+    <lastmod>2026-11-05</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/github-copilot/</loc>
@@ -45,6 +45,10 @@
     <lastmod>2026-09-15</lastmod>
   </url>
   <url>
+    <loc>https://omnimem.org/guides/mistral/</loc>
+    <lastmod>2026-11-06</lastmod>
+  </url>
+  <url>
     <loc>https://omnimem.org/guides/aws-linux/</loc>
     <lastmod>2026-10-21</lastmod>
   </url>
@@ -53,8 +57,12 @@
     <lastmod>2026-10-21</lastmod>
   </url>
   <url>
+    <loc>https://omnimem.org/guides/linux-cloudflare/</loc>
+    <lastmod>2026-11-06</lastmod>
+  </url>
+  <url>
     <loc>https://omnimem.org/guides/linux-tailscale/</loc>
-    <lastmod>2026-10-21</lastmod>
+    <lastmod>2026-11-06</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/macos/</loc>

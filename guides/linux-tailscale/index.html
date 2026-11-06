@@ -69,7 +69,7 @@
         "https://omnimem.org/omnimem-social.png"
       ],
       "datePublished": "2026-07-17",
-      "dateModified": "2026-10-21",
+      "dateModified": "2026-11-06",
       "inLanguage": "en-GB",
       "author": {
         "@id": "https://omnimem.org/#ric",
@@ -299,10 +299,10 @@ sudo systemctl restart omnimem</code></pre>
 <p><strong>The login page shows 403 Forbidden Origin</strong>: you're reaching OmniMem under a hostname it doesn't know, a custom domain for instance. Add it to <code>MCP_ALLOWED_HOSTS</code> and <code>MCP_ALLOWED_ORIGINS</code>.</p>
 <p><strong>claude.ai says the connection failed after signing in</strong>: check OmniMem is running (<code>systemctl status omnimem</code>) and the Funnel is up (<code>tailscale funnel status</code>), and that the connector URL ends in <code>/mcp</code>.</p>
 <p><strong>Signed out after a month</strong>: that's <code>OAUTH_REFRESH_MAX_DAYS</code> doing its job. Raise it, up to 90, if you'd rather sign in less often.</p>
-<p><strong>Want a custom domain instead of ts.net?</strong> Funnel only does TLS for <code>ts.net</code> names, so you'd need your own proxy, Caddy for instance, in front. At that point the <a href="/guides/aws-linux/">AWS guide</a>'s Caddy section is the better fit.</p>
+<p><strong>Want a custom domain instead of ts.net?</strong> Funnel only does TLS for <code>ts.net</code> names, so you'd need something else in front. A <a href="/guides/linux-cloudflare/">Cloudflare Tunnel</a> gives you a custom domain with no open ports, or the <a href="/guides/aws-linux/">AWS guide</a>'s Caddy section does it on your own box.</p>
 
-<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>Then connect your agent:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Or run it somewhere else:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/windows/">Windows</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li></ul></aside>
-<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-10-21">21 October 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-linux-tailscale.md">This guide on Forgejo</a></p>
+<aside class="omm-related" aria-labelledby="omm-related-h"><h2 id="omm-related-h">Related guides</h2><p>Then connect your agent:</p><ul><li><a href="/guides/claude-code/">Claude Code</a></li><li><a href="/guides/claude-desktop/">Claude Desktop</a></li><li><a href="/guides/claude-ai/">claude.ai</a></li><li><a href="/guides/cursor/">Cursor</a></li><li><a href="/guides/codex/">Codex CLI</a></li><li><a href="/guides/github-copilot/">GitHub Copilot</a></li></ul><p>Or run it somewhere else:</p><ul><li><a href="/guides/macos/">macOS</a></li><li><a href="/guides/windows/">Windows</a></li><li><a href="/guides/docker/">Docker</a></li><li><a href="/guides/raspberry-pi/">Raspberry Pi</a></li><li><a href="/guides/aws-linux/">AWS</a></li><li><a href="/guides/gcp-linux/">Google Cloud</a></li><li><a href="/guides/linux-cloudflare/">Linux with a Cloudflare Tunnel</a></li></ul></aside>
+<p class="omm-meta"><span>By <a href="https://www.linkedin.com/in/richarvey">Ric Harvey</a></span><span>Updated <time datetime="2026-11-06">6 November 2026</time></span><a href="/guides/">All guides</a><a href="https://code.squarecows.com/ric/omnimem/src/branch/main/guides/omnimem-setup-linux-tailscale.md">This guide on Forgejo</a></p>
 </article>
 </main>
 <footer class="omm-footer" data-screen-label="Footer">

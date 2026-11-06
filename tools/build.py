@@ -50,13 +50,15 @@ DESCRIPTIONS = {
     "aws-linux": "Set up OmniMem on an AWS EC2 instance, or any Linux server: install the .deb or .rpm, configure it, add HTTPS with Caddy and connect your agent.",
     "gcp-linux": "Set up OmniMem on a Google Cloud Compute Engine VM: firewall, the .deb, configuration, HTTPS with Caddy, connecting your agent and RSS feeds.",
     "linux-tailscale": "Give OmniMem a public HTTPS address with Tailscale Funnel, so claude.ai and other OAuth clients can reach it. No domain, certificates or port forwarding.",
+    "linux-cloudflare": "Put OmniMem on a permanent hostname on your own domain with a named Cloudflare Tunnel: no open ports, OAuth for claude.ai and Mistral, and the Cloudflare settings to avoid.",
+    "mistral": "Connect Mistral's Le Chat to OmniMem as a custom MCP connector: OAuth 2.1, the allowed origin it needs, why Tailscale Funnel won't work, and troubleshooting.",
 }
 
 # Which guides point at which: a client guide needs OmniMem running somewhere,
 # a host guide ends with connecting an agent.
-HOSTS = ["macos", "windows", "docker", "raspberry-pi", "aws-linux", "gcp-linux", "linux-tailscale"]
-CLIENTS = ["claude-code", "claude-desktop", "claude-ai", "cursor", "codex", "github-copilot", "gitlab-duo", "kiro", "opencode", "open-design"]
-NEEDS_PUBLIC_HTTPS = {"claude-ai", "open-design"}
+HOSTS = ["macos", "windows", "docker", "raspberry-pi", "aws-linux", "gcp-linux", "linux-tailscale", "linux-cloudflare"]
+CLIENTS = ["claude-code", "claude-desktop", "claude-ai", "cursor", "codex", "github-copilot", "gitlab-duo", "kiro", "opencode", "open-design", "mistral"]
+NEEDS_PUBLIC_HTTPS = {"claude-ai", "open-design", "mistral"}
 
 # The homepage's JSON-LD defines these; other pages point at them by @id.
 RIC = {"@id": SITE + "/#ric", "@type": "Person", "name": "Ric Harvey"}
@@ -314,8 +316,10 @@ def related(slug, titles):
         return "".join(f'<li><a href="/guides/{s}/">{html.escape(titles[s])}</a></li>' for s in slugs if s in titles and s != slug)
     parts = []
     if slug in CLIENTS:
-        if slug in NEEDS_PUBLIC_HTTPS:
-            parts.append('<p>This needs OmniMem on a public HTTPS address. <a href="/guides/linux-tailscale/">Tailscale Funnel</a> is the easiest route.</p>')
+        if slug == "mistral":
+            parts.append('<p>This needs OmniMem on a public HTTPS address that isn\'t Tailscale Funnel. A <a href="/guides/linux-cloudflare/">Cloudflare Tunnel</a> works.</p>')
+        elif slug in NEEDS_PUBLIC_HTTPS:
+            parts.append('<p>This needs OmniMem on a public HTTPS address. <a href="/guides/linux-tailscale/">Tailscale Funnel</a> is the easiest route, or a <a href="/guides/linux-cloudflare/">Cloudflare Tunnel</a> on your own domain.</p>')
         parts.append(f"<p>OmniMem needs to be running first:</p><ul>{items(HOSTS)}</ul>")
         parts.append(f"<p>Connecting another agent as well:</p><ul>{items([c for c in CLIENTS if c != slug][:5])}</ul>")
         if slug == "claude-code":
