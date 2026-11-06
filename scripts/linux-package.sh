@@ -199,6 +199,11 @@ docker run --rm --volume "$dist/$deb:/tmp/omnimem.deb:ro" debian:13-slim sh -euc
     test -s /etc/ssl/certs/ca-certificates.crt
     id omnimem >/dev/null
     test "$(stat -c %a:%U:%G /etc/omnimem/omnimem.env)" = 640:root:omnimem
+    test "$(stat -c %a:%U:%G /etc/omnimem)" = 770:root:omnimem
+    # The settings panel saves the file the way configuration.rs does: a new
+    # copy beside it, renamed into place, as the service'"'"'s user.
+    su -s /bin/sh omnimem -c "cp /etc/omnimem/omnimem.env /etc/omnimem/omnimem.env.partial && mv /etc/omnimem/omnimem.env.partial /etc/omnimem/omnimem.env"
+    grep -q "^ReadWritePaths=.*/etc/omnimem" /usr/lib/systemd/system/omnimem.service
     test "$(stat -c %U /var/lib/omnimem)" = omnimem
     su -s /bin/sh omnimem -c "omnimem --help" >/dev/null
     # Commands read the settings file and find the service'"'"'s database

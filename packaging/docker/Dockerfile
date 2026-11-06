@@ -14,10 +14,15 @@ RUN groupadd --system --gid 1000 omnimem \
         --no-create-home --shell /usr/sbin/nologin --comment "OmniMem" omnimem
 
 COPY omnimem.deb /tmp/omnimem.deb
+# The package lets the service save /etc/omnimem/omnimem.env from the
+# settings panel. Not here: a save inside the container would be gone the
+# next time it's recreated, so the folder goes back to root and the panel
+# says to change the environment or a mounted file instead.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /tmp/omnimem.deb \
     && rm -rf /var/lib/apt/lists/* /tmp/omnimem.deb \
-    && install -d -o omnimem -g omnimem -m 0750 /data /data/hf-cache
+    && install -d -o omnimem -g omnimem -m 0750 /data /data/hf-cache \
+    && chown root:root /etc/omnimem && chmod 0755 /etc/omnimem
 
 # The database, feeds.yml and backups sit together in /data; the embedding
 # model downloads into it once. 0.0.0.0 so the published port reaches the

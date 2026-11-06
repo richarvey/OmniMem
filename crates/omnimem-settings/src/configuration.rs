@@ -682,7 +682,15 @@ fn write_file(path: &Path, values: &BTreeMap<String, String>) -> Result<(), Stri
         .and_then(|()| std::fs::rename(&partial, path))
         .map_err(|e| {
             let _ = std::fs::remove_file(&partial);
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
+            if e.kind() == std::io::ErrorKind::ReadOnlyFilesystem {
+                format!(
+                    "OmniMem can't change {}: its folder is read-only to OmniMem ({e}). \
+                     A systemd service sees it read-only unless the unit's ReadWritePaths \
+                     includes it, as the omnimem package's does from 7.1. Edit it as an \
+                     administrator, such as with sudo, then restart OmniMem",
+                    path.display()
+                )
+            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
                 format!(
                     "OmniMem isn't allowed to change {} ({e}). Edit it as an administrator, \
                      such as with sudo, then restart OmniMem",

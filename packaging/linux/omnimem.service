@@ -21,11 +21,13 @@ ExecStart=/usr/bin/omnimem serve
 Restart=on-failure
 RestartSec=5
 
-# It needs its own folder and the network, and nothing else.
+# It needs its own folder, its settings folder (the settings panel saves
+# omnimem.env by writing a new copy beside it and renaming it into place) and
+# the network, and nothing else.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/omnimem
+ReadWritePaths=/var/lib/omnimem /etc/omnimem
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes

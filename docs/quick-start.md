@@ -58,7 +58,7 @@ Development builds are spelt with a tilde in the package names (`omnimem_7.0.4~d
 
 For anything else there's `omnimem-<version>-linux-<arch>.tar.gz`: unpack it and run `sudo ./install.sh`, which puts the binary in `/usr/local/bin` and sets up the same service.
 
-Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root and the `omnimem` group only since it can hold your API key and tokens, and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
+Either way you get a systemd service, `omnimem.service`, that runs `omnimem serve` as its own `omnimem` user and starts straight away, on `127.0.0.1:8765`. Its settings are one file, `/etc/omnimem/omnimem.env`, readable by root and the `omnimem` group only since it can hold your API key and tokens (the settings panel at `/admin` can edit it too), and its data (database, `feeds.yml`, backups and the embedding model) lives in `/var/lib/omnimem`. There are no GUI libraries involved, so it's happy on a minimal server.
 
 ```bash
 sudoedit /etc/omnimem/omnimem.env      # every setting is in there, unused ones commented out; configuration.md explains them

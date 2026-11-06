@@ -16,8 +16,11 @@ if ! id omnimem >/dev/null 2>&1; then
 fi
 install -d -o omnimem -g omnimem -m 0750 /var/lib/omnimem
 # It can hold an API key and tokens. The service reads it as the omnimem
-# user, as do commands run with sudo -u omnimem.
-chown root:omnimem /etc/omnimem/omnimem.env
+# user, as do commands run with sudo -u omnimem, and the settings panel saves
+# it by renaming a new copy into place, which needs the folder writable by the
+# omnimem group too. Nobody else can read either.
+chown root:omnimem /etc/omnimem /etc/omnimem/omnimem.env
+chmod 0770 /etc/omnimem
 chmod 0640 /etc/omnimem/omnimem.env
 # Before 7.0.4 the service unit set these two, and a settings file kept from
 # then doesn't have them. Without HF_HOME the model would be downloaded again.
