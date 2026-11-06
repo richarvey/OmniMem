@@ -1,63 +1,117 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in to OmniMem</title>
+  <title>Sign in — OmniMem</title>
+  <meta name="theme-color" content="#0b0c0e">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
+    /* The settings panel's sign-in page (omnimem-settings templates/login.html
+       and static/style.css), carried whole: this page is served with or
+       without the panel, so it loads nothing from /admin. */
+    @font-face {
+      font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+      src: url('{font_sans}') format('woff2');
+    }
+    @font-face {
+      font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap;
+      src: url('{font_mono}') format('woff2');
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b0c0e;
+      --surface: #101216;
+      --surface-card: #111318;
+      --surface-terminal: #121418;
+      --border: #262a31;
+      --border-card: #20242b;
+      --border-strong: #646b76;
+      --text: #e7e9ec;
+      --text-soft: #c9cdd3;
+      --text-body: #969ca5;
+      --text-muted: #868c96;
+      --accent: #63bd85;
+      --accent-fill-hover: #7fcb9b;
+      --on-accent: #0b0c0e;
+      --red: #d76a55;
+      --font-sans: 'Onest', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #0f172a; color: #e2e8f0;
+      font-family: var(--font-sans); background: var(--bg); color: var(--text);
       display: flex; align-items: center; justify-content: center;
-      min-height: 100vh; margin: 0;
+      min-height: 100vh; padding: 1rem;
     }
-    .card {
-      background: #1e293b; border-radius: 12px; padding: 2rem;
-      width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    .login-card {
+      border: 1px solid var(--border-card); border-radius: 16px;
+      background: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 46%), var(--surface-card);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+      padding: 2rem 2rem 1.75rem; width: 100%; max-width: 400px;
     }
-    h1 { font-size: 1.4rem; margin: 0 0 .25rem; text-align: center; }
-    .sub { text-align: center; color: #94a3b8; font-size: .85rem; margin-bottom: 1.5rem; }
-    label { display: block; font-size: .85rem; margin-bottom: .25rem; color: #94a3b8; }
-    input {
-      width: 100%; padding: .6rem .75rem; border: 1px solid #334155;
-      border-radius: 6px; background: #0f172a; color: #e2e8f0;
-      font-size: .95rem; margin-bottom: 1rem;
+    .login-logo { display: flex; justify-content: center; margin: 0 0 1.1rem; }
+    .login-logo img { height: 34px; width: auto; }
+    .login-eyebrow {
+      display: block; text-align: center; font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.5rem;
     }
-    input:focus { outline: none; border-color: #6366f1; }
-    button {
-      width: 100%; padding: .65rem; border: none; border-radius: 6px;
-      background: #6366f1; color: #fff; font-size: .95rem; font-weight: 600;
-      cursor: pointer;
+    .login-sub {
+      text-align: center; color: var(--text-body); font-size: 13.5px; line-height: 1.6; margin: 0 0 1.5rem;
     }
-    button:hover { background: #4f46e5; }
-    .error {
-      background: #7f1d1d; color: #fca5a5; padding: .5rem .75rem;
-      border-radius: 6px; font-size: .85rem; margin-bottom: 1rem;
-      text-align: center;
+    .login-client {
+      border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+      box-shadow: inset 3px 0 0 var(--accent); color: var(--text-body);
+      padding: 0.65rem 1rem; margin: 0 0 1rem; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;
     }
-    .client {
-      background: #0f172a; border: 1px solid #334155; color: #cbd5e1;
-      padding: .6rem .75rem; border-radius: 6px; font-size: .85rem;
-      margin: 0 0 1rem; line-height: 1.5; word-break: break-word;
+    .login-client strong { color: var(--text); font-weight: 600; }
+    .flash-error {
+      border: 1px solid rgba(215, 106, 85, 0.35); border-radius: 10px; background: var(--surface);
+      box-shadow: inset 3px 0 0 var(--red); color: var(--text);
+      padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 13.5px;
     }
-    .client strong { color: #e2e8f0; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.4rem;
+    }
+    .form-input {
+      width: 100%; height: 2.25rem; padding: 0.5rem 0.75rem; background: var(--surface-terminal);
+      border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text);
+      font-size: 13.5px; font-family: inherit; transition: border-color 0.15s;
+    }
+    .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .login-submit {
+      display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 0.5rem;
+      padding: 9px 16px; border: 1px solid transparent; border-radius: 8px;
+      background: var(--accent); color: var(--on-accent);
+      font-family: var(--font-mono); font-size: 13px; font-weight: 500; line-height: 1.3;
+      cursor: pointer; transition: background-color 0.15s;
+    }
+    .login-submit:hover { background: var(--accent-fill-hover); }
+    .login-submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>OmniMem</h1>
-    <p class="sub">Sign in to authorise access</p>
+  <main class="login-card">
+    <h1 class="login-logo"><img src="{logo}" width="175" height="34" alt="&lt;omnimem&gt;"></h1>
+    <span class="login-eyebrow">Authorise access</span>
+    <p class="login-sub">Sign in with the admin username and password to let an app use your memory.</p>
     {client_block}
     {error_block}
     <form method="post" action="/oauth/login">
       <input type="hidden" name="session" value="{session}">
-      <label for="username">Username</label>
-      <input id="username" name="username" type="text" required autofocus>
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" required>
-      <button type="submit">Sign in</button>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input class="form-input" id="username" name="username" type="text" autocomplete="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input class="form-input" id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-submit">Sign in →</button>
     </form>
-  </div>
+  </main>
 </body>
 </html>

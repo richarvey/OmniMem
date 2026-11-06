@@ -1,7 +1,7 @@
 //! The OAuth routes, and the Host and Origin guard in front of them.
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -10,6 +10,8 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, he
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
@@ -25,7 +27,27 @@ const WRITE: &[&str] = &["POST", "OPTIONS"];
 const CORS_HEADERS: &str =
     "Accept, Accept-Language, Content-Language, Content-Type, mcp-protocol-version";
 const NO_STORE: &[(&str, &str)] = &[("cache-control", "no-store"), ("pragma", "no-cache")];
-const LOGIN_PAGE: &str = include_str!("login.html");
+/// The settings panel's fonts and logo, taken from its own static folder so
+/// the two sign-in pages can't drift apart. They go into the page as data
+/// URIs: the login page has to work where the panel isn't mounted
+/// (`ADMIN_PANEL=false`), so it can't load them from `/admin/static`.
+const FONT_SANS: &[u8] =
+    include_bytes!("../../../omnimem-settings/static/fonts/onest-variable-latin.woff2");
+const FONT_MONO: &[u8] =
+    include_bytes!("../../../omnimem-settings/static/fonts/geist-mono-variable-latin.woff2");
+const LOGO: &[u8] =
+    include_bytes!("../../../omnimem-settings/static/images/omnimem-logo-horizontal-dark.png");
+
+/// The login page with its fonts and logo filled in, once. The braced names
+/// are the template's own placeholders, not format arguments.
+#[allow(clippy::literal_string_with_formatting_args)]
+static LOGIN_PAGE: LazyLock<String> = LazyLock::new(|| {
+    let data = |mime: &str, bytes: &[u8]| format!("data:{mime};base64,{}", STANDARD.encode(bytes));
+    include_str!("login.html")
+        .replace("{font_sans}", &data("font/woff2", FONT_SANS))
+        .replace("{font_mono}", &data("font/woff2", FONT_MONO))
+        .replace("{logo}", &data("image/png", LOGO))
+});
 
 /// The brand mark OAuth clients such as claude.ai show for the connector,
 /// served at the paths they look in (6.x issue #12).
@@ -425,12 +447,17 @@ fn escape(text: &str) -> String {
 #[allow(clippy::literal_string_with_formatting_args)]
 fn render_login(session: &str, prompt: Option<&SignInPrompt>, problem: Option<&str>) -> String {
     let error_block = problem
-        .map(|p| format!(r#"<div class="error">{}</div>"#, escape(p)))
+        .map(|p| {
+            format!(
+                r#"<div class="flash-error" role="alert">{}</div>"#,
+                escape(p)
+            )
+        })
         .unwrap_or_default();
     let client_block = prompt
         .map(|p| {
             format!(
-                r#"<p class="client">Signing in will let <strong>{}</strong> use your memory. Afterwards you'll be sent to <strong>{}</strong>.</p>"#,
+                r#"<p class="login-client">Signing in will let <strong>{}</strong> use your memory. Afterwards you'll be sent to <strong>{}</strong>.</p>"#,
                 escape(&p.client),
                 escape(&p.redirect_host)
             )
@@ -689,11 +716,14 @@ mod tests {
         };
         let page = render_login("a\"b<c>", Some(&prompt), Some("bad & worse"));
         assert!(page.contains(r#"value="a&quot;b&lt;c&gt;""#));
-        assert!(page.contains(r#"<div class="error">bad &amp; worse</div>"#));
+        assert!(page.contains(r#"<div class="flash-error" role="alert">bad &amp; worse</div>"#));
         assert!(page.contains("<strong>&lt;b&gt;claude&lt;/b&gt;</strong>"));
         assert!(page.contains("<strong>claude.ai</strong>"));
         let bare = render_login("s", None, None);
-        assert!(!bare.contains("class=\"error\""));
-        assert!(!bare.contains("class=\"client\""));
+        assert!(!bare.contains("class=\"flash-error\""));
+        assert!(!bare.contains("class=\"login-client\""));
+        assert!(!bare.contains("{font_sans}") && !bare.contains("{logo}"));
+        assert!(bare.contains("data:font/woff2;base64,"));
+        assert!(!bare.contains("/admin/"));
     }
 }
