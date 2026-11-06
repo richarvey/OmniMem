@@ -27,6 +27,7 @@ OmniMem speaks MCP over Streamable HTTP at `/mcp`, so anything that can use a re
 | [AWS](omnimem-setup-aws-linux.md) | The `.deb` or `.rpm`, with Caddy for HTTPS |
 | [Google Cloud](omnimem-setup-gcp-linux.md) | The `.deb`, with Caddy for HTTPS |
 | [Linux with Tailscale Funnel](omnimem-setup-linux-tailscale.md) | The `.deb`, Funnel and OAuth, for claude.ai |
+| [Linux with a Cloudflare Tunnel](omnimem-setup-linux-cloudflare.md) | The `.deb`, a named tunnel on your own domain and OAuth |
 | [Docker](docker.md) | The single headless image |
 
 For everything else, start with the [quick start](../docs/quick-start.md).
