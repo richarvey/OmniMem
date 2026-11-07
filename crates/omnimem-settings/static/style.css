@@ -2195,3 +2195,9 @@ a.review-source:hover { color: var(--accent-text); }
 @media (min-width: 641px) { .project-desc { max-width: none; } }
 .fold-summary::before, .pair-summary::before { font-size: 14px; color: var(--text-soft); }
 .fold-summary:focus-visible, .pair-summary:focus-visible, .row-menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Domains: pills shrink and truncate, the +N count never does. */
+.projects-table .domains-cell { text-overflow: clip; }
+.projects-table .domains-cell > .domain-pill { max-width: 7.5rem; }
+.domain-pills { display: flex; gap: 0.25rem; align-items: center; min-width: 0; }
+.domain-pills > .domain-pill { flex: 0 1 auto; min-width: 2.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.domain-pills > .domain-more { flex-shrink: 0; min-width: 0; }

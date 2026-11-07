@@ -13,9 +13,12 @@
     {% if p.memory_count > 0 %}<a href="{{ admin }}/memories?project={{ p.name|urlquote }}" aria-label="{{ p.memory_count }} memories in {{ p.name }}">{{ p.memory_count|thousands }}</a>{% else %}<span class="text-dim">0</span>{% endif %}
   </td>
   <td class="domains-cell">
-    {% for d in p.domains[:3] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill">{{ d }}</a>{% endfor %}
-    {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlsegment }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}">+{{ p.domains|length - 3 }}</a>{% endif %}
-    {% if not p.domains %}<span class="text-dim">&mdash;</span>{% endif %}
+    {% if p.domains %}
+    <span class="domain-pills">
+      {% for d in p.domains[:3] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill" title="{{ d }}">{{ d }}</a>{% endfor %}
+      {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlsegment }}?back={{ here|urlquote }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}" aria-label="{{ p.domains|length - 3 }} more domains">+{{ p.domains|length - 3 }}</a>{% endif %}
+    </span>
+    {% else %}<span class="text-dim">&mdash;</span>{% endif %}
   </td>
   <td class="date-cell"><span class="date-main">{{ p.updated_date }}</span></td>
   <td class="actions-cell">
