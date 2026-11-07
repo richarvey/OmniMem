@@ -105,7 +105,7 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_engine::Result<Value> {
                 "key": key,
                 "namespace": namespace,
                 "state": row.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
-                "content": crate::render::clip(&content, 140),
+                "content": crate::render::clip(&content, crate::render::preview::DASHBOARD),
                 "project": row.get("project").filter(|p| !p.is_empty()).or_else(|| row.get("project_name")).cloned().unwrap_or_default(),
                 "updated_date": date,
                 "updated_time": time,

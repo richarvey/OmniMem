@@ -650,6 +650,21 @@ impl Store {
         Ok(deleted)
     }
 
+    /// The memory keys under `prefix` that carry contradiction links, in key
+    /// order, from the partial index (`memories_linked`): a store with no
+    /// disputes answers at once.
+    pub fn keys_with_contradictions(&self, prefix: &str) -> Result<Vec<String>> {
+        let upper = format!("{prefix}\u{10FFFF}");
+        let conn = self.conn();
+        let sql = format!(
+            "SELECT key FROM memories WHERE key >= ?1 AND key < ?2 AND {} ORDER BY key",
+            crate::schema::LINKED_CONDITION
+        );
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let rows = stmt.query_map(params![prefix, upper], |r| r.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// The memory keys under `prefix` whose `field` is set and not empty, in
     /// key order: what a listing of contradiction links reads instead of
     /// every memory's row.
@@ -1426,6 +1441,27 @@ mod tests {
             ["mem:knowledge:01E"]
         );
         assert!(store.keys_with_field("mem:", "bad\"field").is_err());
+        // The dedicated scan agrees, and walks the partial index.
+        assert_eq!(
+            store.keys_with_contradictions("mem:episodic:").unwrap(),
+            ["mem:episodic:01A", "mem:episodic:01B"]
+        );
+        let plan: Vec<String> = {
+            let conn = store.conn();
+            let sql = format!(
+                "EXPLAIN QUERY PLAN SELECT key FROM memories WHERE key >= 'mem:' AND key < 'mem:\u{10FFFF}' AND {} ORDER BY key",
+                crate::schema::LINKED_CONDITION
+            );
+            let mut stmt = conn.prepare(&sql).unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap()
+        };
+        assert!(
+            plan.iter().any(|p| p.contains("memories_linked")),
+            "{plan:?}"
+        );
     }
 
     #[test]

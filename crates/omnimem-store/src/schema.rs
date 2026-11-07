@@ -13,7 +13,7 @@ pub const HEURISTIC_EXPLANATION: &str = "These memories discuss the same topic b
 /// a heuristic link from one the model confirmed.
 pub const HEURISTIC_LINK_EXPLANATION: &str = "Opposing language patterns detected.";
 
-pub(crate) const SCHEMA_VERSION: i64 = 5;
+pub(crate) const SCHEMA_VERSION: i64 = 6;
 
 /// The trust a record with no `trust` field has: an extracted fact or
 /// preference (it carries `enriched_from`) is OmniMem's own conclusion and
@@ -170,6 +170,16 @@ CREATE TABLE store_meta (
 ) STRICT;
 ";
 
+/// Version 6: a partial index of the memories that carry contradiction
+/// links, so listing them is a walk of the links rather than of every
+/// memory. [`crate::Store::keys_with_contradictions`] spells the same
+/// condition, which is what lets SQLite use it.
+pub(crate) const LINKED_CONDITION: &str = "json_extract(fields, '$.contradictions') IS NOT NULL AND json_extract(fields, '$.contradictions') <> ''";
+
+fn v6() -> String {
+    format!("CREATE INDEX memories_linked ON memories (key) WHERE {LINKED_CONDITION};")
+}
+
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version > SCHEMA_VERSION {
@@ -193,6 +203,10 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     if version < 5 {
         let v5 = v5();
         conn.execute_batch(&format!("BEGIN; {v5} PRAGMA user_version = 5; COMMIT;"))?;
+    }
+    if version < 6 {
+        let v6 = v6();
+        conn.execute_batch(&format!("BEGIN; {v6} PRAGMA user_version = 6; COMMIT;"))?;
     }
     Ok(())
 }

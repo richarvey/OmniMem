@@ -613,7 +613,7 @@ impl Engine {
         for namespace in ["episodic", "knowledge", "preference", "project"] {
             keys.extend(
                 self.store
-                    .keys_with_field(&format!("mem:{namespace}:"), "contradictions")?,
+                    .keys_with_contradictions(&format!("mem:{namespace}:"))?,
             );
         }
         let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;

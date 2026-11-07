@@ -60,6 +60,15 @@ fn compact(value: &Value) -> String {
     }
 }
 
+/// How much of a memory each one-line preview carries, by page.
+pub(crate) mod preview {
+    pub const DASHBOARD: usize = 140;
+    pub const SEARCH: usize = 300;
+    pub const EFFORTFUL: usize = 100;
+    pub const PROJECT_FIELD: usize = 120;
+    pub const PROJECT_RECENT: usize = 160;
+}
+
 /// The first `max` characters of a preview, with an ellipsis when that cut
 /// something. Lines are kept: `plain` joins them, and needs to see a
 /// heading line to join it with a colon.
