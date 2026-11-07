@@ -82,7 +82,7 @@
         </td>
         <td>
           {% for src in r.sources %}
-          <a href="{{ admin }}/memory/{{ src }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.7rem;display:block">{{ src }}</a>
+          <a href="{{ admin }}/memory/{{ src|urlquote }}?back={{ here|urlquote }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.7rem;display:block">{{ src }}</a>
           {% endfor %}
         </td>
       </tr>
@@ -108,7 +108,7 @@
     The memories this skill was compiled from. Update these (or add new ones) and recompile to change the skill.
   </p>
   {% for src in skill.sources %}
-  <a href="{{ admin }}/memory/{{ src }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.75rem;display:block;padding:0.15rem 0">{{ src }}</a>
+  <a href="{{ admin }}/memory/{{ src|urlquote }}?back={{ here|urlquote }}" class="mono" style="color:var(--accent);text-decoration:none;font-size:0.75rem;display:block;padding:0.15rem 0">{{ src }}</a>
   {% endfor %}
 </div>
 {% endif %}

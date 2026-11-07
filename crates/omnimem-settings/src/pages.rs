@@ -176,3 +176,134 @@ mod tests {
         assert!(!is_web_url("example.com"));
     }
 }
+
+// ---------------------------------------------------------------- return paths
+
+/// The longest return path a link or form may carry.
+const MAX_BACK_LEN: usize = 512;
+
+/// `path` when it is somewhere inside the panel a link or form may send the
+/// browser back to, written as a panel path (`/memories?page=2`), else
+/// `None`. A single leading `/` and nothing that could read as another
+/// site: `//` is scheme-relative, and a browser reads `/\` the same way.
+/// Control characters have no place in a path. A path that already starts
+/// with the panel's root would be prefixed twice by [`see_other`], and the
+/// sign-in, sign-out and lifecycle routes are actions, not places to return
+/// to, so those are refused too.
+pub(crate) fn local_path(path: &str) -> Option<String> {
+    if path.len() > MAX_BACK_LEN {
+        return None;
+    }
+    let mut chars = path.chars();
+    if chars.next() != Some('/') {
+        return None;
+    }
+    if matches!(chars.next(), Some('/' | '\\')) || path.chars().any(|c| c == '\\' || c.is_control())
+    {
+        return None;
+    }
+    let route = path.split(['?', '#']).next().unwrap_or(path);
+    let under = |prefix: &str| route == prefix || route.starts_with(&format!("{prefix}/"));
+    if under(crate::ADMIN_ROOT) || under("/lifecycle") || under("/login") || under("/logout") {
+        return None;
+    }
+    Some(path.to_owned())
+}
+
+/// The `back` a link or form carried, when it is a usable return path.
+pub(crate) fn back_of(values: &std::collections::HashMap<String, String>) -> Option<String> {
+    values.get("back").and_then(|b| local_path(b.trim()))
+}
+
+/// A memory's page, remembering where the person came from.
+pub(crate) fn memory_url(key: &str, back: Option<&str>) -> String {
+    match back {
+        Some(back) => format!("/memory/{}?back={}", quote_segment(key), quote(back)),
+        None => format!("/memory/{}", quote_segment(key)),
+    }
+}
+
+tokio::task_local! {
+    /// The panel path (with its query) of the page being rendered, so every
+    /// template can link onwards with `?back={{ here|urlquote }}`.
+    static HERE: String;
+}
+
+/// Middleware: remember where this request is, for [`here`]. An htmx
+/// request names the page it came from in `HX-Current-URL`, which is the
+/// place a person would come back to, not the fragment's own route.
+pub(crate) async fn remember_here(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let own = request.uri().path_and_query().map_or_else(
+        || request.uri().path().to_owned(),
+        |pq| pq.as_str().to_owned(),
+    );
+    let from_htmx = request
+        .headers()
+        .get("hx-current-url")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|url| url.parse::<Uri>().ok())
+        .and_then(|uri| {
+            let pq = uri.path_and_query()?.as_str().to_owned();
+            pq.strip_prefix(crate::ADMIN_ROOT).map(|rest| {
+                if rest.is_empty() || rest.starts_with('?') {
+                    format!("/{rest}")
+                } else {
+                    rest.to_owned()
+                }
+            })
+        });
+    let here = from_htmx
+        .or(Some(own))
+        .and_then(|p| local_path(&p))
+        .unwrap_or_else(|| "/".to_owned());
+    HERE.scope(here, next.run(request)).await
+}
+
+/// The page being rendered, as a panel path: `/` outside a request.
+pub(crate) fn here() -> String {
+    HERE.try_with(Clone::clone)
+        .unwrap_or_else(|_| "/".to_owned())
+}
+
+#[cfg(test)]
+mod return_path_tests {
+    use super::*;
+
+    #[test]
+    fn only_panel_paths_are_return_paths() {
+        assert_eq!(
+            local_path("/memories?page=2").as_deref(),
+            Some("/memories?page=2")
+        );
+        assert_eq!(local_path("/").as_deref(), Some("/"));
+        assert!(local_path("//evil.example").is_none());
+        assert!(local_path("/\\evil.example").is_none());
+        assert!(local_path("https://evil.example").is_none());
+        assert!(local_path("/memories\r\nX: y").is_none());
+        assert!(local_path("").is_none());
+        assert!(local_path("/admin/memories").is_none());
+        assert!(local_path("/admin").is_none());
+        assert!(local_path("/lifecycle/archive").is_none());
+        assert!(local_path("/logout").is_none());
+        assert!(local_path(&format!("/{}", "a".repeat(600))).is_none());
+        assert_eq!(
+            local_path("/administrators").as_deref(),
+            Some("/administrators")
+        );
+    }
+
+    #[test]
+    fn memory_links_carry_their_return_path() {
+        assert_eq!(memory_url("mem:episodic:1", None), "/memory/mem:episodic:1");
+        assert_eq!(
+            memory_url(
+                "mem:episodic:1",
+                Some("/duplicates?namespace=knowledge&scan=1")
+            ),
+            "/memory/mem:episodic:1?back=/duplicates%3Fnamespace%3Dknowledge%26scan%3D1"
+        );
+    }
+}

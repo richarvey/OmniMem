@@ -94,7 +94,7 @@ async fn without_a_settings_file_there_is_nothing_to_configure() {
     let panel = Panel::new();
     let page = text(&get(&panel, "/configuration").await);
     assert!(page.contains("no settings file to edit"), "{page}");
-    assert!(page.contains("class=\"nav-link active\">Configuration"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Configuration"));
 }
 
 #[tokio::test]

@@ -20,40 +20,54 @@
   <div class="layout">
     <nav class="sidebar" aria-label="Main">
       <div class="sidebar-header">
-        <h1 class="logo"><a href="{{ admin }}/"><img src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></h1>
+        <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
         <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Hide sidebar" aria-expanded="true">&laquo;</button>
-        <div class="sidebar-version">
-          <span class="version-badge">v{{ version }}</span>
-          <span hx-get="{{ admin }}/version-check" hx-trigger="load" hx-swap="innerHTML" style="line-height:1"></span>
-        </div>
       </div>
-      <ul class="nav-list">
-        <li><a href="{{ admin }}/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}">Dashboard</a></li>
-        <li><a href="{{ admin }}/search" class="nav-link{% if current_page == 'search' %} active{% endif %}">Search</a></li>
-        <li><a href="{{ admin }}/create" class="nav-link{% if current_page == 'create' %} active{% endif %}">Create</a></li>
-        <li class="nav-section-label">Memory</li>
-        <li><a href="{{ admin }}/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}">Memories</a></li>
-        <li><a href="{{ admin }}/projects" class="nav-link{% if current_page == 'projects' %} active{% endif %}">Projects</a></li>
-        <li><a href="{{ admin }}/memories?namespace=preference" class="nav-link{% if current_page == 'preferences' %} active{% endif %}">Preferences</a></li>
-        <li><a href="{{ admin }}/unconfirmed" class="nav-link{% if current_page == 'unconfirmed' %} active{% endif %}">Unconfirmed<span hx-get="{{ admin }}/unconfirmed/badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
-        <li><a href="{{ admin }}/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}">Experience</a></li>
-        <li><a href="{{ admin }}/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}">Graveyard</a></li>
-        <li class="nav-section-label">Skills</li>
-        <li><a href="{{ admin }}/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}">Compiled Skills<span hx-get="{{ admin }}/skills/pending-badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
-        <li class="nav-section-label">Management</li>
-        <li><a href="{{ admin }}/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}">Duplicates</a></li>
-        <li><a href="{{ admin }}/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}">Contradictions</a></li>
-        <li><a href="{{ admin }}/suppressions" class="nav-link{% if current_page == 'suppressions' %} active{% endif %}">Suppressions</a></li>
-        <li class="nav-section-label">Knowledge Management</li>
-        <li><a href="{{ admin }}/memories?namespace=knowledge&amp;source=rss" class="nav-link{% if current_page == 'articles' %} active{% endif %}">Articles</a></li>
-        <li><a href="{{ admin }}/memories?namespace=knowledge&amp;source=learned" class="nav-link{% if current_page == 'learned' %} active{% endif %}">Learned Knowledge</a></li>
-        <li><a href="{{ admin }}/feeds" class="nav-link{% if current_page == 'feeds' %} active{% endif %}">RSS Feeds</a></li>
-        <li class="nav-section-label">System Management</li>
-        <li><a href="{{ admin }}/audit" class="nav-link{% if current_page == 'audit' %} active{% endif %}">Audit Log</a></li>
-        <li><a href="{{ admin }}/telemetry" class="nav-link{% if current_page == 'telemetry' or current_page == 'token_overhead' %} active{% endif %}">Telemetry</a></li>
-        <li><a href="{{ admin }}/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}">Backups</a></li>
-        <li><a href="{{ admin }}/configuration" class="nav-link{% if current_page == 'configuration' %} active{% endif %}">Configuration</a></li>
-      </ul>
+      <details class="nav-menu" open data-nav-menu>
+        <summary class="nav-menu-toggle">Menu</summary>
+        <div class="nav-menu-body">
+          <a href="{{ admin }}/create" class="btn btn-primary nav-create{% if current_page == 'create' %} is-current{% endif %}"{% if current_page == 'create' %} aria-current="page"{% endif %}>+ New memory</a>
+          <ul class="nav-list">
+        <li class="nav-section-label" role="presentation">Overview</li>
+        <li><a href="{{ admin }}/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}"{% if current_page == 'dashboard' %} aria-current="page"{% endif %}><span class="nav-label">Dashboard</span></a></li>
+        <li><a href="{{ admin }}/search" class="nav-link{% if current_page == 'search' %} active{% endif %}"{% if current_page == 'search' %} aria-current="page"{% endif %}><span class="nav-label">Search</span></a></li>
+        <li class="nav-section-label" role="presentation">Review</li>
+        <li><a href="{{ admin }}/unconfirmed" class="nav-link{% if current_page == 'unconfirmed' %} active{% endif %}"{% if current_page == 'unconfirmed' %} aria-current="page"{% endif %}><span class="nav-label">Unconfirmed</span><span class="nav-badge" hx-get="{{ admin }}/unconfirmed/badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
+        <li><a href="{{ admin }}/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}"{% if current_page == 'contradictions' %} aria-current="page"{% endif %}><span class="nav-label">Contradictions</span><span class="nav-badge" hx-get="{{ admin }}/contradictions/badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
+        <li><a href="{{ admin }}/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}"{% if current_page == 'duplicates' %} aria-current="page"{% endif %}><span class="nav-label">Duplicates</span></a></li>
+        <li class="nav-section-label" role="presentation">Memory</li>
+        <li><a href="{{ admin }}/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}"{% if current_page == 'memories' %} aria-current="page"{% endif %}><span class="nav-label">Memories</span></a></li>
+        <li><a href="{{ admin }}/memories?namespace=preference" class="nav-link{% if current_page == 'preferences' %} active{% endif %}"{% if current_page == 'preferences' %} aria-current="page"{% endif %}><span class="nav-label">Preferences</span></a></li>
+        <li><a href="{{ admin }}/projects" class="nav-link{% if current_page == 'projects' %} active{% endif %}"{% if current_page == 'projects' %} aria-current="page"{% endif %}><span class="nav-label">Projects</span></a></li>
+        <li><a href="{{ admin }}/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}"{% if current_page == 'skills' %} aria-current="page"{% endif %}><span class="nav-label">Skills</span><span class="nav-badge" hx-get="{{ admin }}/skills/pending-badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
+        <li class="nav-section-label" role="presentation">Learning</li>
+        <li><a href="{{ admin }}/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}"{% if current_page == 'experience' %} aria-current="page"{% endif %}><span class="nav-label">Experience</span></a></li>
+        <li><a href="{{ admin }}/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}"{% if current_page == 'graveyard' %} aria-current="page"{% endif %}><span class="nav-label">Graveyard</span></a></li>
+        <li class="nav-section-label" role="presentation">Knowledge</li>
+        <li><a href="{{ admin }}/memories?namespace=knowledge&amp;source=rss" class="nav-link{% if current_page == 'articles' %} active{% endif %}"{% if current_page == 'articles' %} aria-current="page"{% endif %}><span class="nav-label">Articles</span></a></li>
+        <li><a href="{{ admin }}/memories?namespace=knowledge&amp;source=learned" class="nav-link{% if current_page == 'learned' %} active{% endif %}"{% if current_page == 'learned' %} aria-current="page"{% endif %}><span class="nav-label">Learned knowledge</span></a></li>
+        <li><a href="{{ admin }}/feeds" class="nav-link{% if current_page == 'feeds' %} active{% endif %}"{% if current_page == 'feeds' %} aria-current="page"{% endif %}><span class="nav-label">RSS feeds</span></a></li>
+        <li class="nav-section-label" role="presentation">System</li>
+        <li><a href="{{ admin }}/suppressions" class="nav-link{% if current_page == 'suppressions' %} active{% endif %}"{% if current_page == 'suppressions' %} aria-current="page"{% endif %}><span class="nav-label">Suppressions</span></a></li>
+        <li><a href="{{ admin }}/audit" class="nav-link{% if current_page == 'audit' %} active{% endif %}"{% if current_page == 'audit' %} aria-current="page"{% endif %}><span class="nav-label">Audit log</span></a></li>
+        <li><a href="{{ admin }}/telemetry" class="nav-link{% if current_page == 'telemetry' or current_page == 'token_overhead' %} active{% endif %}"{% if current_page == 'telemetry' or current_page == 'token_overhead' %} aria-current="page"{% endif %}><span class="nav-label">Telemetry</span></a></li>
+        <li><a href="{{ admin }}/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}"{% if current_page == 'backups' %} aria-current="page"{% endif %}><span class="nav-label">Backups</span></a></li>
+        <li><a href="{{ admin }}/configuration" class="nav-link{% if current_page == 'configuration' %} active{% endif %}"{% if current_page == 'configuration' %} aria-current="page"{% endif %}><span class="nav-label">Configuration</span></a></li>
+          </ul>
+          <div class="sidebar-foot">
+            <div class="sidebar-version">
+              <span class="version-badge">v{{ version }}</span>
+              <span hx-get="{{ admin }}/version-check" hx-trigger="load" hx-swap="innerHTML"></span>
+            </div>
+            <form method="POST" action="{{ admin }}/logout" class="logout-form"><button type="submit" class="btn btn-secondary btn-sm">Sign out</button></form>
+            <p class="sidebar-links">
+              <a href="https://code.squarecows.com/ric/omnimem" target="_blank" rel="noopener">Source</a>
+              <a href="https://omnimem.org" target="_blank" rel="noopener">omnimem.org</a>
+              <a href="https://mastodon.squarecows.com/@Ric" target="_blank" rel="me noopener">Mastodon</a>
+            </p>
+          </div>
+        </div>
+      </details>
     </nav>
     <main class="content" id="main">
       <div id="flash-area">
@@ -64,17 +78,6 @@
       {% block content %}{% endblock %}
     </main>
   </div>
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <a href="https://code.squarecows.com/ric/omnimem" class="footer-link" target="_blank" rel="noopener">Source</a>
-      <span class="footer-sep"></span>
-      <a href="https://omnimem.org" class="footer-link" target="_blank" rel="noopener">omnimem.org</a>
-      <span class="footer-sep"></span>
-      <a href="https://mastodon.squarecows.com/@Ric" class="footer-link" target="_blank" rel="me noopener">Mastodon</a>
-      <span class="footer-sep"></span>
-      <form method="POST" action="{{ admin }}/logout" class="logout-form"><button type="submit" class="footer-link">Sign out</button></form>
-    </div>
-  </footer>
   <script src="{{ admin }}/static/panel.js"></script>
 </body>
 </html>

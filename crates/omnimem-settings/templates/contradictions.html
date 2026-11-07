@@ -2,108 +2,108 @@
 
 {% block title %}Contradictions — OmniMem{% endblock %}
 
+{% macro pair_card(pair, open) %}
+<details class="pair"{% if open %} open{% endif %}>
+  <summary class="pair-summary">
+    <span class="pair-side">{{ pair.content_a[:110] }}{% if pair.content_a|length > 110 %}…{% endif %}</span>
+    <span class="pair-vs" aria-hidden="true">vs</span>
+    <span class="pair-side">{{ pair.content_b[:110] }}{% if pair.content_b|length > 110 %}…{% endif %}</span>
+  </summary>
+  <div class="pair-body">
+    {% if pair.explanation %}<p class="pair-why">{{ pair.explanation }}</p>{% endif %}
+    <div class="pair-grid">
+      <div class="pair-col">
+        <span class="pair-label">A</span>
+        <a href="{{ admin }}/memory/{{ pair.key_a|urlquote }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
+        <div class="pair-text">{{ pair.content_a }}</div>
+      </div>
+      <div class="pair-col">
+        <span class="pair-label">B</span>
+        <a href="{{ admin }}/memory/{{ pair.key_b|urlquote }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
+        <div class="pair-text">{{ pair.content_b }}</div>
+      </div>
+    </div>
+    <form method="POST" action="{{ admin }}/contradictions/resolve" class="pair-form">
+      <input type="hidden" name="key_a" value="{{ pair.key_a }}">
+      <input type="hidden" name="key_b" value="{{ pair.key_b }}">
+      <label class="field-label" for="why-{{ pair.key_a|urlquote }}">Why (optional)</label>
+      <input type="text" id="why-{{ pair.key_a|urlquote }}" class="form-input" name="reason" maxlength="2000">
+      <div class="action-bar">
+        <button type="submit" name="choice" value="a" class="btn btn-secondary btn-sm">A is current</button>
+        <button type="submit" name="choice" value="b" class="btn btn-secondary btn-sm">B is current</button>
+        <button type="submit" name="choice" value="both" class="btn btn-secondary btn-sm">Both stand</button>
+        <button type="submit" name="choice" value="not" class="btn btn-secondary btn-sm">Not a contradiction</button>
+        <label class="check-label"><input type="checkbox" name="retire_loser" value="1"> Deprioritise the out-of-date one</label>
+      </div>
+    </form>
+  </div>
+</details>
+{% endmacro %}
+
 {% block content %}
 <header class="page-header">
-  <h2>Contradictions</h2>
+  <div>
+    <h2>Contradictions <span class="count-chip">{{ pairs|length + wording|length + pending|length }}</span></h2>
+    <p class="page-intro">Pairs of memories that disagree. Say which one holds, and recall stops warning about the pair.</p>
+  </div>
 </header>
 
 {% if last_maintenance %}
-<div style="margin-bottom:1rem;padding:0.6rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);font-size:0.8rem;color:var(--text-dim)">
-  Last auto-maintenance: <strong style="color:var(--text)">{{ last_maintenance.when }}</strong>
-  (project: {{ last_maintenance.project }}, {{ last_maintenance.contradictions_found }} contradiction{{ 's' if last_maintenance.contradictions_found != 1 }} found)
-</div>
+<p class="note-bar">Last automatic check: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }}, {{ last_maintenance.contradictions_found }} contradiction{{ 's' if last_maintenance.contradictions_found != 1 }} found.</p>
 {% endif %}
 
-{% if message %}
-<div class="flash flash-success">
-  {{ message }}
-  <button class="flash-close" data-dismiss>&times;</button>
-</div>
-{% endif %}
-
-{% if error %}
-<div class="flash flash-error">
-  {{ error }}
-  <button class="flash-close" data-dismiss>&times;</button>
-</div>
-{% endif %}
+{% if message %}<div class="flash flash-success" role="status">{{ message }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
 
 {% if pending %}
-<h3 class="eyebrow-heading">Pending</h3>
-<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">An agent proposed {{ pending|length }} resolution{{ 's' if pending|length != 1 }} that no one could be asked about. Nothing changes until you accept. They are dropped after a week.</p>
-{% for p in pending %}
-<div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--radius)">
-  <div style="font-size:0.85rem;margin-bottom:0.75rem">
-    <strong>{{ p.outcome }}</strong>{% if p.winner %}, current: <span class="mono">{{ p.winner }}</span>{% endif %}{% if p.retire != 'no' %}, then {{ p.retire }} the other{% endif %}
-    {% if p.reason %}<div style="color:var(--text-dim)">{{ p.reason }}</div>{% endif %}
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-    <div>
-      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">{{ p.key_a }}</div>
-      <div style="font-size:0.85rem">{{ p.content_a }}</div>
+<section class="group" aria-labelledby="pending-h">
+  <h3 id="pending-h" class="section-heading">Proposed by an agent <span class="count-chip">{{ pending|length }}</span></h3>
+  <p class="field-help">An agent proposed these resolutions when no one could be asked. Nothing changes until you accept. They're dropped after a week.</p>
+  {% for p in pending %}
+  <div class="callout callout-accent pending-card">
+    <p><strong>{{ p.outcome }}</strong>{% if p.winner %}, current: <span class="mono">{{ p.winner }}</span>{% endif %}{% if p.retire != 'no' %}, then {{ p.retire }} the other{% endif %}</p>
+    {% if p.reason %}<p class="callout-note">{{ p.reason }}</p>{% endif %}
+    <div class="pair-grid">
+      <div class="pair-col"><span class="mono pair-key">{{ p.key_a }}</span><div class="pair-text">{{ p.content_a }}</div></div>
+      <div class="pair-col"><span class="mono pair-key">{{ p.key_b }}</span><div class="pair-text">{{ p.content_b }}</div></div>
     </div>
-    <div>
-      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">{{ p.key_b }}</div>
-      <div style="font-size:0.85rem">{{ p.content_b }}</div>
+    <div class="action-bar">
+      <form method="POST" action="{{ admin }}/contradictions/accept">
+        <input type="hidden" name="key_a" value="{{ p.key_a }}"><input type="hidden" name="key_b" value="{{ p.key_b }}">
+        <button type="submit" class="btn btn-primary btn-sm">Accept</button>
+      </form>
+      <form method="POST" action="{{ admin }}/contradictions/discard">
+        <input type="hidden" name="key_a" value="{{ p.key_a }}"><input type="hidden" name="key_b" value="{{ p.key_b }}">
+        <button type="submit" class="btn btn-secondary btn-sm">Discard</button>
+      </form>
     </div>
   </div>
-  <div class="action-bar" style="margin-top:0.75rem">
-    <form method="POST" action="{{ admin }}/contradictions/accept" style="display:inline">
-      <input type="hidden" name="key_a" value="{{ p.key_a }}">
-      <input type="hidden" name="key_b" value="{{ p.key_b }}">
-      <button type="submit" class="btn btn-primary btn-sm">Accept</button>
-    </form>
-    <form method="POST" action="{{ admin }}/contradictions/discard" style="display:inline">
-      <input type="hidden" name="key_a" value="{{ p.key_a }}">
-      <input type="hidden" name="key_b" value="{{ p.key_b }}">
-      <button type="submit" class="btn btn-secondary btn-sm">Discard</button>
-    </form>
-  </div>
-</div>
-{% endfor %}
+  {% endfor %}
+</section>
 {% endif %}
 
-{% if pairs %}
-<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">{{ pairs|length }} contradiction pair{{ 's' if pairs|length != 1 }}</p>
-
-{% for pair in pairs %}
-<div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--red);border-radius:var(--radius)">
-  {% if pair.explanation %}
-  <div style="font-size:0.8rem;color:var(--red);margin-bottom:0.75rem">{{ pair.explanation }}</div>
+<section class="group" aria-labelledby="model-h">
+  <h3 id="model-h" class="section-heading">Confirmed by the model <span class="count-chip">{{ pairs|length }}</span></h3>
+  {% if pairs %}
+  <p class="field-help">A model read both and judged that they disagree. Open one to settle it.</p>
+  {% for pair in pairs %}{{ pair_card(pair, loop.first and pairs|length < 4) }}{% endfor %}
+  {% else %}
+  <p class="empty-state">None waiting.</p>
   {% endif %}
+</section>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-    <div>
-      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">
-        <a href="{{ admin }}/memory/{{ pair.key_a }}" style="color:var(--accent);text-decoration:none">{{ pair.key_a }}</a>
-      </div>
-      <div style="font-size:0.85rem">{{ pair.content_a }}</div>
-    </div>
-    <div>
-      <div class="mono" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.35rem">
-        <a href="{{ admin }}/memory/{{ pair.key_b }}" style="color:var(--accent);text-decoration:none">{{ pair.key_b }}</a>
-      </div>
-      <div style="font-size:0.85rem">{{ pair.content_b }}</div>
-    </div>
-  </div>
-
-  <form method="POST" action="{{ admin }}/contradictions/resolve" style="margin-top:0.75rem">
-    <input type="hidden" name="key_a" value="{{ pair.key_a }}">
-    <input type="hidden" name="key_b" value="{{ pair.key_b }}">
-    <input type="text" class="form-input form-input-inline" name="reason" placeholder="Why (optional)" maxlength="2000" style="width:100%;margin-bottom:0.5rem">
-    <div class="action-bar">
-      <button type="submit" name="choice" value="a" class="btn btn-secondary btn-sm">A is current</button>
-      <button type="submit" name="choice" value="b" class="btn btn-secondary btn-sm">B is current</button>
-      <button type="submit" name="choice" value="both" class="btn btn-secondary btn-sm">Both stand</button>
-      <button type="submit" name="choice" value="not" class="btn btn-secondary btn-sm">Not a contradiction</button>
-      <label style="font-size:0.8rem;color:var(--text-dim);margin-left:0.5rem">
-        <input type="checkbox" name="retire_loser" value="1"> Deprioritise the out-of-date one
-      </label>
-    </div>
+{% if wording %}
+<details class="fold group">
+  <summary class="fold-summary">Wording only <span class="count-chip">{{ wording|length }}</span><span class="text-dim">opposing words in memories on the same topic</span></summary>
+  <p class="field-help">The quick check linked these because one says "always" and the other "never", or similar. Most aren't real disagreements, and they never lower a memory's trust.</p>
+  <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" class="fold-action" data-confirm="Mark all {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
+    <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>
   </form>
-</div>
-{% endfor %}
-{% elif not pending %}
+  {% for pair in wording %}{{ pair_card(pair, false) }}{% endfor %}
+</details>
+{% endif %}
+
+{% if not pairs and not wording and not pending %}
 <p class="empty-state">No contradictions detected.</p>
 {% endif %}
 {% endblock %}

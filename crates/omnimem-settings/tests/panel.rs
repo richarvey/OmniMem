@@ -88,16 +88,24 @@ async fn pages_wait_for_the_engine_then_show_the_dashboard() {
     let dashboard = get(&panel, "/?refresh=1").await;
     let html = text(&dashboard);
     assert_eq!(dashboard.status(), 200, "{html}");
-    assert!(html.contains("memories across all namespaces"), "{html}");
+    assert!(html.contains("2 memories"), "{html}");
+    assert!(
+        html.contains("Needs you") && html.contains("Nothing is waiting for you"),
+        "{html}"
+    );
+    assert!(
+        html.contains("Busiest projects") && html.contains("/projects/omnimem"),
+        "{html}"
+    );
     assert!(html.contains("The panel renders the dashboard in-process"));
     assert!(html.contains("<title>Dashboard — OmniMem</title>"));
     assert!(
-        html.contains("class=\"nav-link active\">Dashboard"),
+        html.contains("aria-current=\"page\"><span class=\"nav-label\">Dashboard"),
         "the sidebar marks the page"
     );
     assert!(
-        html.contains("width: 50"),
-        "two memories split the composition bar evenly: {html}"
+        html.contains("width: 100.0%"),
+        "each namespace's one memory fills its state bar: {html}"
     );
 }
 

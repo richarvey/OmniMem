@@ -15,7 +15,7 @@ use omnimem_engine::trust::TrustAction;
 use serde_json::{Value, json};
 
 use crate::PanelState;
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{back_of, blocking, memory_url, quote, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
@@ -185,7 +185,12 @@ fn reason_of(form: &FormData) -> Option<String> {
 
 /// POST `/unconfirmed/act`: confirm or reject one candidate. A click is the
 /// person's say-so, so it writes at once.
-pub(crate) async fn act(State(state): State<PanelState>, Form(form): Form<FormData>) -> Response {
+pub(crate) async fn act(
+    State(state): State<PanelState>,
+    headers: axum::http::HeaderMap,
+    Form(form): Form<FormData>,
+) -> Response {
+    let htmx = headers.contains_key("hx-request");
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
@@ -206,6 +211,18 @@ pub(crate) async fn act(State(state): State<PanelState>, Form(form): Form<FormDa
         })())
     })
     .await;
+    // An htmx click swaps its own row: nothing on success, the problem if refused.
+    if htmx {
+        return match done {
+            Ok(Ok(_)) => Html("").into_response(),
+            Ok(Err(problem)) => Html(format!(
+                r#"<p class="form-error" role="alert">{}</p>"#,
+                problem.replace('&', "&amp;").replace('<', "&lt;")
+            ))
+            .into_response(),
+            Err(failure) => failure,
+        };
+    }
     done.map_or_else(|failure| failure, |notice| back(&form, notice))
 }
 
@@ -245,6 +262,7 @@ pub(crate) async fn memory_trust(
     };
     let action = field(&form, "action");
     let reason = reason_of(&form);
+    let back = back_of(&form);
     let target = key.clone();
     let done = blocking(move || {
         shown((|| {
@@ -256,9 +274,11 @@ pub(crate) async fn memory_trust(
         })())
     })
     .await;
+    let here = memory_url(&key, back.as_deref());
+    let joiner = if here.contains('?') { '&' } else { '?' };
     match done {
-        Ok(Ok(())) => see_other(&format!("/memory/{key}")),
-        Ok(Err(problem)) => see_other(&format!("/memory/{key}?trust_error={}", quote(&problem))),
+        Ok(Ok(())) => see_other(&here),
+        Ok(Err(problem)) => see_other(&format!("{here}{joiner}trust_error={}", quote(&problem))),
         Err(failure) => failure,
     }
 }

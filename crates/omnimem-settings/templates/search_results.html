@@ -21,7 +21,7 @@
     {% endif %}
   </div>
   <div class="search-result-content">
-    <a href="{{ admin }}/memory/{{ r.key }}" style="color:var(--text);text-decoration:none">{{ r.content }}</a>
+    <a href="{{ admin }}/memory/{{ r.key|urlquote }}?back={{ here|urlquote }}" style="color:var(--text);text-decoration:none">{{ r.content }}</a>
   </div>
   {% if r.tags %}
   <div style="margin-top:0.5rem">

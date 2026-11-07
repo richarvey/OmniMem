@@ -2,87 +2,136 @@
 
 {% block title %}Projects — OmniMem{% endblock %}
 
+{% macro project_row(p) %}
+<tr>
+  <td class="project-cell">
+    <a href="{{ admin }}/projects/{{ p.name|urlquote }}" class="project-name">{{ p.name }}</a>
+    {% if p.description %}<span class="project-desc">{{ p.description }}</span>{% endif %}
+  </td>
+  <td>{% if p.state != 'active' %}<span class="badge {{ p.state }}">{{ p.state }}</span>{% else %}<span class="badge active">active</span>{% endif %}</td>
+  <td class="num-cell">
+    {% if p.memory_count > 0 %}<a href="{{ admin }}/memories?project={{ p.name|urlquote }}" aria-label="{{ p.memory_count }} memories in {{ p.name }}">{{ p.memory_count|thousands }}</a>{% else %}<span class="text-dim">0</span>{% endif %}
+  </td>
+  <td class="domains-cell">
+    {% for d in p.domains[:3] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill">{{ d }}</a>{% endfor %}
+    {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlquote }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}">+{{ p.domains|length - 3 }}</a>{% endif %}
+    {% if not p.domains %}<span class="text-dim">&mdash;</span>{% endif %}
+  </td>
+  <td class="date-cell"><span class="date-main">{{ p.updated_date }}</span></td>
+  <td class="actions-cell">
+    {% if p.has_context %}
+    <details class="row-menu">
+      <summary class="btn btn-secondary btn-sm" aria-label="Actions for {{ p.name }}">&middot;&middot;&middot;</summary>
+      <div class="row-menu-body">
+        <a href="{{ admin }}/projects/{{ p.name|urlquote }}/edit" class="row-menu-item row-menu-link">Edit</a>
+        {% if p.state == "deprioritised" %}
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/reinstate" data-confirm="Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.">
+          <input type="hidden" name="next" value="{{ here }}">
+          <button type="submit" class="row-menu-item">Reinstate</button>
+        </form>
+        {% else %}
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/deprioritise" data-confirm="Deprioritise project &quot;{{ p.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
+          <input type="hidden" name="next" value="{{ here }}">
+          <button type="submit" class="row-menu-item">Deprioritise</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/delete" data-confirm="Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.">
+          <input type="hidden" name="next" value="{{ here }}">
+          <button type="submit" class="row-menu-item row-menu-danger">Delete context</button>
+        </form>
+      </div>
+    </details>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro project_table(rows, caption) %}
+<div class="table-scroll">
+<table class="data-table projects-table">
+  <caption class="visually-hidden">{{ caption }}</caption>
+  <thead>
+    <tr>
+      <th scope="col">Project</th>
+      <th scope="col">State</th>
+      <th scope="col" class="num-cell">Memories</th>
+      <th scope="col">Domains</th>
+      <th scope="col">Updated</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in rows %}{{ project_row(p) }}{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
 {% block content %}
+{% set with_context = projects|selectattr("has_context")|list %}
+{% set without_context = projects|rejectattr("has_context")|list %}
 <header class="page-header">
-  <h2>Projects{% if domain_filter and domain_filter_valid %} <span class="header-qualifier">in {{ domain_filter }}</span>{% endif %}</h2>
-  <a href="{{ admin }}/projects/new" class="btn btn-primary btn-sm">New Project</a>
+  <div>
+    <h2>Projects <span class="count-chip">{{ total_projects }}</span></h2>
+    <p class="page-intro">Each project's context (stack, goals, where it stands) and the kinds of work it involves. Domains let recall search every project doing the same kind of work.</p>
+  </div>
+  <div class="header-actions">
+    <a href="{{ admin }}/projects/new" class="btn btn-primary btn-sm">+ New project</a>
+  </div>
 </header>
 
-{% if all_domains %}
-<nav class="domain-filter-bar" aria-label="Filter projects by domain">
-  <a href="{{ admin }}/projects" class="domain-chip{% if not domain_filter %} is-active{% endif %}">All <span class="domain-chip-count">{{ total_projects }}</span></a>
-  {% for name, count in all_domains %}
-  <a href="{{ admin }}/projects?domain={{ name }}" class="domain-chip{% if domain_filter == name %} is-active{% endif %}">{{ name }} <span class="domain-chip-count">{{ count }}</span></a>
-  {% endfor %}
-</nav>
-{% endif %}
+<form method="GET" action="{{ admin }}/projects" class="toolbar" role="search">
+  <div class="toolbar-field toolbar-grow">
+    <label for="project-q" class="field-label">Search</label>
+    <input type="search" id="project-q" name="q" class="form-input" value="{{ search }}" placeholder="Name or description">
+  </div>
+  <div class="toolbar-field">
+    <label for="project-domain" class="field-label">Domain</label>
+    <select id="project-domain" name="domain" class="form-select">
+      <option value="">All domains</option>
+      {% for name, count in all_domains %}
+      <option value="{{ name }}"{% if domain_filter == name %} selected{% endif %}>{{ name }} ({{ count }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="toolbar-field">
+    <label for="project-state" class="field-label">State</label>
+    <select id="project-state" name="state" class="form-select">
+      <option value="">Any state</option>
+      <option value="active"{% if state_filter == 'active' %} selected{% endif %}>Active</option>
+      <option value="deprioritised"{% if state_filter == 'deprioritised' %} selected{% endif %}>Deprioritised</option>
+      <option value="archived"{% if state_filter == 'archived' %} selected{% endif %}>Archived</option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+  {% if search or domain_filter or state_filter %}<a href="{{ admin }}/projects" class="btn-link">Clear</a>{% endif %}
+</form>
 
 {% if domain_filter and not domain_filter_valid %}
 <p class="empty-state">
   &ldquo;{{ domain_filter }}&rdquo; is not a usable domain. Domains are 1&ndash;64
   characters of lowercase letters, digits, hyphens, underscores or dots.
 </p>
-{% elif projects %}
-<table class="data-table projects-table">
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Domains</th>
-      <th>Description</th>
-      <th>Current State</th>
-      <th>Updated</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in projects %}
-    <tr>
-      <td class="name-cell">
-        {% if p.has_context %}
-        <a href="{{ admin }}/projects/{{ p.name }}" class="project-name">{{ p.name }}</a>
-        {% else %}
-        <span class="project-name">{{ p.name }}</span>
-        {% endif %}
-        {% if p.memory_count > 0 %}
-        <span class="memory-count-badge">{{ p.memory_count }}</span>
-        {% endif %}
-      </td>
-      <td class="domains-cell">
-        {% for d in p.domains %}<a href="{{ admin }}/projects?domain={{ d }}" class="domain-pill">{{ d }}</a>{% else %}<span class="text-dim">&mdash;</span>{% endfor %}
-      </td>
-      <td class="content-cell">{{ p.description }}</td>
-      <td class="content-cell">{{ p.current_state }}</td>
-      <td class="date-cell">
-        <span class="date-main">{{ p.updated_date }}</span>
-        <span class="date-time">{{ p.updated_time }}</span>
-      </td>
-      <td class="actions-cell">
-        {% if p.has_context %}
-        {% if p.state == "deprioritised" %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name }}/reinstate" style="display:inline" data-confirm="Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.">
-          <button type="submit" class="btn btn-secondary btn-sm">Reinstate</button>
-        </form>
-        {% else %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name }}/deprioritise" style="display:inline" data-confirm="Deprioritise project &quot;{{ p.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
-          <button type="submit" class="btn btn-secondary btn-sm">Deprioritise</button>
-        </form>
-        {% endif %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name }}/delete" style="display:inline" data-confirm="Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.">
-          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-        </form>
-        {% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% elif with_context %}
+<p class="result-count">{{ with_context|length }} project{{ '' if with_context|length == 1 else 's' }}{% if search or domain_filter or state_filter %} match{% endif %}</p>
+{{ project_table(with_context, "Projects with a context") }}
 {% elif domain_filter %}
 <p class="empty-state">
   No project declares the domain &ldquo;{{ domain_filter }}&rdquo;. Open a project and
   use <strong>Suggest from stack &amp; memories</strong> on its edit page, or run
   <code>compile_project_domains("&lt;project&gt;")</code>.
 </p>
+{% elif search or state_filter %}
+<p class="empty-state">No project matches. <a href="{{ admin }}/projects">Clear the filters</a>.</p>
 {% else %}
-<p class="empty-state">No projects configured yet.</p>
+<p class="empty-state">No projects configured yet. <a href="{{ admin }}/projects/new">Create one</a>, or let an agent call <code>set_project_context</code>.</p>
+{% endif %}
+
+{% if without_context and not (domain_filter and not domain_filter_valid) %}
+<details class="fold">
+  <summary class="fold-summary">Names used without a project context <span class="count-chip">{{ without_context|length }}</span></summary>
+  <p class="field-help">Memories name these as their project, but nobody has written a context for them. Open one to see its memories, or give it a context to make it a full project.</p>
+  {{ project_table(without_context, "Names without a context") }}
+</details>
 {% endif %}
 {% endblock %}

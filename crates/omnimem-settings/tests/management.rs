@@ -113,13 +113,38 @@ async fn duplicates_scan_and_maintenance_is_noted() {
 
     let page = text(&get(&panel, "/duplicates").await);
     assert!(page.contains("04 Sep 2025 15:33 UTC"), "{page}");
-    assert!(page.contains("(project: omnimem, 2 duplicates archived)"));
-    assert!(page.contains("class=\"nav-link active\">Duplicates"));
+    assert!(
+        page.contains("project omnimem,\n  2 duplicates archived"),
+        "{page}"
+    );
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Duplicates"));
 
     let scan = text(&get(&panel, "/duplicates/scan?namespace=episodic").await);
-    assert!(scan.contains("Found 1 cluster of duplicates"), "{scan}");
+    assert!(
+        scan.contains("1 cluster of near-identical episodic memories"),
+        "{scan}"
+    );
     assert!(scan.contains(&first) && scan.contains(&second));
     assert!(scan.contains("similarity 1.0"), "{scan}");
+
+    // A scan has an address, and its Archive and memory links come back to it.
+    let here = "/duplicates?namespace=episodic&scan=1";
+    let page = text(&get(&panel, here).await);
+    assert!(
+        page.contains("1 cluster of near-identical episodic memories"),
+        "{page}"
+    );
+    assert!(
+        page.contains(&format!(
+            r#"name="next" value="{}""#,
+            here.replace('&', "&amp;")
+        )),
+        "{page}"
+    );
+    assert!(
+        page.contains("?back=/duplicates%3Fnamespace%3Depisodic%26scan%3D1"),
+        "{page}"
+    );
     assert!(
         text(&get(&panel, "/duplicates/scan?namespace=knowledge").await)
             .contains("No duplicates found in knowledge.")
@@ -146,11 +171,14 @@ async fn contradictions_list_each_pair_once() {
         .unwrap();
 
     let page = text(&get(&panel, "/contradictions").await);
-    assert!(page.contains("1 contradiction pair"), "{page}");
+    assert!(
+        page.contains(r#"Confirmed by the model <span class="count-chip">1</span>"#),
+        "{page}"
+    );
     assert!(!page.contains("pairs"));
     assert!(page.contains("They disagree"));
     assert!(page.contains("Always squash merge") && page.contains("Never squash merge"));
-    assert!(page.contains("1 contradiction found)"));
+    assert!(page.contains("1 contradiction found."));
 }
 
 #[tokio::test]
@@ -183,7 +211,10 @@ async fn a_pair_shows_its_explanation_whichever_side_recorded_it() {
             .unwrap();
 
         let page = text(&get(&panel, "/contradictions").await);
-        assert!(page.contains("1 contradiction pair"), "{page}");
+        assert!(
+            page.contains(r#"Confirmed by the model <span class="count-chip">1</span>"#),
+            "{page}"
+        );
         assert!(
             page.contains("Opposite advice"),
             "explanation on the {} side lost: {page}",
@@ -322,7 +353,7 @@ async fn pending_resolutions_are_listed_to_accept_or_discard() {
 
     let page = text(&get(&panel, "/contradictions").await);
     assert!(
-        page.contains("Pending") && page.contains("agent says so"),
+        page.contains("Proposed by an agent") && page.contains("agent says so"),
         "{page}"
     );
     assert!(page.contains("action=\"/admin/contradictions/accept\""));
@@ -424,7 +455,7 @@ async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
     assert!(page[most..gone].find("Recalled often") < page[most..gone].find("Recalled long ago"));
     assert!(page[gone..never].contains("Recalled long ago"));
     assert!(page[never..].contains("Never recalled at all"));
-    assert!(page.contains("class=\"nav-link active\">Telemetry"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Telemetry"));
 
     let filtered = text(&get(&panel, "/telemetry/refresh?project=other").await);
     assert!(!filtered.contains("<html"));
@@ -460,7 +491,7 @@ async fn token_overhead_measures_and_resets() {
     assert!(page.contains(r#"<td class="mono">recall</td>"#));
     assert!(page.contains("33.3ms"), "{page}");
     assert!(page.contains("~83"), "average tokens");
-    assert!(page.contains("class=\"nav-link active\">Telemetry"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Telemetry"));
 
     let reset = post(&panel, "/token-overhead/reset", "").await;
     assert_eq!(reset.headers()["x-omnimem-redirect"], "/token-overhead");

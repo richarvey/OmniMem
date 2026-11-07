@@ -711,6 +711,182 @@ impl Store {
         Ok(counts)
     }
 
+    /// One project's memories: `(namespace, state, count)` and the keys of
+    /// the `limit` most recently updated, leaving out its context entry.
+    pub fn project_memories(
+        &self,
+        project: &str,
+        limit: usize,
+    ) -> Result<(Vec<StateCount>, Vec<String>)> {
+        let conn = self.conn();
+        let filter = "(project = ?1 OR project_name = ?1) AND key != 'mem:project:' || ?1";
+        let mut counts = Vec::new();
+        {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT namespace, COALESCE(NULLIF(state, ''), 'active'), COUNT(*) FROM memories WHERE {filter} GROUP BY 1, 2"
+            ))?;
+            let rows = stmt.query_map(params![project], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                counts.push(row?);
+            }
+        }
+        let mut stmt = conn.prepare(&format!(
+            "SELECT key FROM memories WHERE {filter} ORDER BY updated_at DESC LIMIT ?2"
+        ))?;
+        let keys = stmt
+            .query_map(params![project, limit as i64], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok((counts, keys))
+    }
+
+    /// How many memories name each project, in any namespace, leaving out a
+    /// project's own context entry and articles (which carry their feed's
+    /// label as a project).
+    pub fn memory_counts_by_project(&self) -> Result<HashMap<String, u64>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT p, COUNT(*) FROM (
+                 SELECT key, COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p
+                 FROM memories
+                 WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND feed_name IS NOT NULL)
+             ) WHERE p IS NOT NULL AND key != 'mem:project:' || p GROUP BY p",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// The aggregates the settings panel's dashboard draws, each one query
+    /// over the generated columns, so the whole set costs a few
+    /// milliseconds on thousands of memories. `now` is in epoch seconds;
+    /// the growth chart counts `weeks` whole weeks back from it, project
+    /// activity counts updates in the last `recent_days`, and the article
+    /// intake counts the last 30 days.
+    pub fn dashboard_counts(
+        &self,
+        now: f64,
+        weeks: i64,
+        recent_days: i64,
+    ) -> Result<DashboardCounts> {
+        const WEEK: f64 = 604_800.0;
+        const DAY: f64 = 86_400.0;
+        let conn = self.conn();
+        let pairs = |sql: &str, args: &[&dyn rusqlite::ToSql]| -> Result<Vec<(String, u64)>> {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map(args, |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    r.get::<_, i64>(1)? as u64,
+                ))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        };
+        let buckets = |sql: &str, args: &[&dyn rusqlite::ToSql]| -> Result<Vec<(i64, u64)>> {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map(args, |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? as u64))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        };
+
+        let mut by_namespace_state = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT namespace, COALESCE(NULLIF(state, ''), 'active'), COUNT(*)
+                 FROM memories GROUP BY 1, 2",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                by_namespace_state.push(row?);
+            }
+        }
+
+        let start = now - weeks as f64 * WEEK;
+        let mut created_weekly = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT namespace, CAST((created_at - ?1) / ?2 AS INTEGER), COUNT(*)
+                 FROM memories WHERE created_at >= ?1 AND created_at < ?3 GROUP BY 1, 2",
+            )?;
+            let rows = stmt.query_map(params![start, WEEK, now], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                created_weekly.push(row?);
+            }
+        }
+
+        let recent = now - recent_days as f64 * DAY;
+        let mut projects = Vec::new();
+        {
+            // Articles carry their feed's label as a project; they aren't one.
+            let mut stmt = conn.prepare(
+                "SELECT p, COUNT(*), SUM(updated_at >= ?1) FROM (
+                     SELECT COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p, updated_at
+                     FROM memories
+                     WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND feed_name IS NOT NULL)
+                 ) WHERE p IS NOT NULL GROUP BY p ORDER BY 3 DESC, 2 DESC, p LIMIT 8",
+            )?;
+            let rows = stmt.query_map(params![recent], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)? as u64,
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0) as u64,
+                ))
+            })?;
+            for row in rows {
+                projects.push(row?);
+            }
+        }
+
+        let outcomes = pairs(
+            "SELECT json_extract(fields, '$.outcome'), COUNT(*) FROM memories
+             WHERE namespace = 'episodic' AND json_extract(fields, '$.outcome') IS NOT NULL GROUP BY 1",
+            &[],
+        )?;
+        let efforts = buckets(
+            "SELECT e, COUNT(*) FROM (
+                 SELECT CAST(json_extract(fields, '$.effort_score') AS INTEGER) AS e
+                 FROM memories WHERE namespace = 'episodic'
+             ) WHERE e BETWEEN 1 AND 5 GROUP BY e",
+            &[],
+        )?;
+        let month = now - 30.0 * DAY;
+        let articles_daily = buckets(
+            "SELECT CAST((created_at - ?1) / ?2 AS INTEGER), COUNT(*) FROM memories
+             WHERE namespace = 'knowledge' AND feed_name IS NOT NULL AND created_at >= ?1 AND created_at < ?3
+             GROUP BY 1",
+            &[&month, &DAY, &now],
+        )?;
+        let trust = pairs("SELECT trust, COUNT(*) FROM memories GROUP BY 1", &[])?;
+        Ok(DashboardCounts {
+            by_namespace_state,
+            created_weekly,
+            projects,
+            outcomes,
+            efforts,
+            articles_daily,
+            trust,
+        })
+    }
+
     /// How many memories in a namespace have a vector.
     pub fn vector_count(&self, namespace: Namespace) -> usize {
         self.sync_external_writes();
@@ -1104,6 +1280,28 @@ fn scrub_recall_log(tx: &rusqlite::Transaction<'_>, keys: &[&str]) -> Result<usi
     Ok(removed)
 }
 
+/// `(namespace, state, count)`.
+pub type StateCount = (String, String, u64);
+
+/// What [`Store::dashboard_counts`] returns.
+#[derive(Debug, Default, Clone)]
+pub struct DashboardCounts {
+    /// `(namespace, state, count)`, an unset state counted as active.
+    pub by_namespace_state: Vec<(String, String, u64)>,
+    /// `(namespace, week, count)` of memories created, week 0 the oldest.
+    pub created_weekly: Vec<(String, i64, u64)>,
+    /// `(project, memories, updated recently)`, the eight busiest.
+    pub projects: Vec<(String, u64, u64)>,
+    /// Episodic `(outcome, count)`.
+    pub outcomes: Vec<(String, u64)>,
+    /// Episodic `(effort score 1 to 5, count)`.
+    pub efforts: Vec<(i64, u64)>,
+    /// `(day, articles)` over the last 30 days, day 0 the oldest.
+    pub articles_daily: Vec<(i64, u64)>,
+    /// `(trust, count)` across every namespace.
+    pub trust: Vec<(String, u64)>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1141,6 +1339,94 @@ mod tests {
         let just_fits = format!("mem:episodic:{}", "a".repeat(MAX_KEY_BYTES - 13));
         assert_eq!(just_fits.len(), MAX_KEY_BYTES);
         assert!(validate_key(&just_fits).is_ok());
+    }
+
+    #[test]
+    fn the_dashboard_counts_namespaces_growth_projects_and_outcomes() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let now = 10_000_000.0;
+        let put = |key: &str, extra: &[(&str, &str)], created: f64| {
+            let mut fields = Fields::from([
+                ("content".to_owned(), key.to_owned()),
+                ("created_at".to_owned(), created.to_string()),
+                ("updated_at".to_owned(), created.to_string()),
+            ]);
+            for (k, v) in extra {
+                fields.insert((*k).to_owned(), (*v).to_owned());
+            }
+            store.upsert(key, &fields, None).unwrap();
+        };
+        put(
+            "mem:episodic:1",
+            &[
+                ("project", "omnimem"),
+                ("outcome", "succeeded"),
+                ("effort_score", "3"),
+            ],
+            now - 3600.0,
+        );
+        put(
+            "mem:episodic:2",
+            &[
+                ("project", "omnimem"),
+                ("state", "archived"),
+                ("outcome", "abandoned"),
+                ("effort_score", "5"),
+            ],
+            now - 8.0 * 86_400.0,
+        );
+        put(
+            "mem:episodic:3",
+            &[("project", "other")],
+            now - 400.0 * 86_400.0,
+        );
+        put(
+            "mem:project:omnimem",
+            &[("project_name", "omnimem"), ("goals", "x")],
+            now - 60.0,
+        );
+        put(
+            "mem:knowledge:a",
+            &[("feed_name", "Rust Blog"), ("project", "RSS")],
+            now - 2.0 * 86_400.0,
+        );
+
+        let counts = store.dashboard_counts(now, 26, 30).unwrap();
+        let count = |ns: &str, state: &str| {
+            counts
+                .by_namespace_state
+                .iter()
+                .find(|(n, s, _)| n == ns && s == state)
+                .map_or(0, |r| r.2)
+        };
+        assert_eq!(count("episodic", "active"), 2);
+        assert_eq!(count("episodic", "archived"), 1);
+        assert_eq!(count("knowledge", "active"), 1);
+        // The 400-day-old memory is outside the 26 weeks.
+        let weekly: u64 = counts
+            .created_weekly
+            .iter()
+            .filter(|(ns, _, _)| ns == "episodic")
+            .map(|r| r.2)
+            .sum();
+        assert_eq!(weekly, 2);
+        assert!(
+            counts
+                .created_weekly
+                .iter()
+                .all(|(_, week, _)| (0..26).contains(week))
+        );
+        // Articles aren't a project; the context row counts towards its project.
+        assert_eq!(counts.projects[0], ("omnimem".to_owned(), 3, 3));
+        assert!(counts.projects.iter().all(|(p, _, _)| p != "RSS"));
+        assert_eq!(
+            counts.projects.iter().find(|p| p.0 == "other").unwrap().2,
+            0
+        );
+        assert!(counts.outcomes.contains(&("succeeded".to_owned(), 1)));
+        assert!(counts.outcomes.contains(&("abandoned".to_owned(), 1)));
+        assert_eq!(counts.efforts, vec![(3, 1), (5, 1)]);
+        assert_eq!(counts.articles_daily, vec![(28, 1)]);
     }
 
     #[test]

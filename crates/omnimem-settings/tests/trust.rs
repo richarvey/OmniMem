@@ -114,10 +114,10 @@ async fn the_list_shows_candidates_under_their_source() {
     for needle in ["fact a1", "fact a2", "fact b1", SRC_ONE, SRC_TWO] {
         assert!(page.contains(needle), "missing {needle}: {page}");
     }
-    assert!(page.contains("href=\"/admin/memory/mem:knowledge:01SRCONE\""));
-    assert!(page.contains("Confirm all 2 from this source"));
+    assert!(page.contains("href=\"/admin/memory/mem%3Aknowledge%3A01SRCONE?back="));
+    assert!(page.contains("Confirm all 2<"));
     assert!(
-        page.contains("/unconfirmed\" class=\"nav-link active"),
+        page.contains("/unconfirmed\" class=\"nav-link active\""),
         "the sidebar link"
     );
 

@@ -28,6 +28,17 @@
     apply(root.classList.contains('sidebar-collapsed'));
   })();
 
+  // The menu is a <details>, open in the markup so it works without
+  // scripts. On a phone it folds behind its Menu toggle until asked for.
+  (function () {
+    var menu = document.querySelector('[data-nav-menu]');
+    if (!menu || !window.matchMedia) return;
+    var phone = window.matchMedia('(max-width: 768px)');
+    function fit() { menu.open = !phone.matches; }
+    fit();
+    if (phone.addEventListener) phone.addEventListener('change', fit);
+  })();
+
   // Clicks: dismiss a flash, open or close a modal, proxy a click to a
   // hidden file input, add a skill row, or fill the domains field from a
   // suggestion. Delegated, so rows htmx swaps in later work too.
@@ -86,6 +97,14 @@
     var form = event.target.closest('[data-confirm]');
     if (form && !window.confirm(form.getAttribute('data-confirm'))) {
       event.preventDefault();
+      return;
+    }
+    // A slow GET (a duplicate scan) says it is working and can't be sent twice.
+    var busy = event.target.closest('[data-busy-on-submit]');
+    if (busy) {
+      var note = busy.querySelector('.busy-note');
+      if (note) note.textContent = 'Scanning…';
+      busy.querySelectorAll('button[type="submit"]').forEach(function (b) { b.disabled = true; });
     }
   });
 

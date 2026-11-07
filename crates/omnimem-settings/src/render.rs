@@ -107,6 +107,8 @@ pub(crate) fn failure(message: &str) -> Response {
 
 /// Render a template, or the error page.
 pub(crate) fn page(env: &Environment<'static>, name: &str, context: Value) -> Response {
+    // Every page knows where it is, so its links can carry a way back.
+    let context = minijinja::context! { here => crate::pages::here(), ..context };
     match env.get_template(name).and_then(|t| t.render(context)) {
         Ok(html) => Html(html).into_response(),
         Err(e) => failure(&format!("rendering {name}: {e:#}")),

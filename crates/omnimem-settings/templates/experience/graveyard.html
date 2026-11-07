@@ -26,7 +26,7 @@
       <td><span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ a.type }}</span></td>
       <td class="content-cell">{{ a.reason }}</td>
       <td>{% if a.effort_score %}<span class="score">{{ a.effort_score }}/5</span>{% else %}—{% endif %}</td>
-      <td><a href="{{ admin }}/memory/{{ a.memory_key }}" class="btn btn-secondary btn-sm">View</a></td>
+      <td><a href="{{ admin }}/memory/{{ a.memory_key|urlquote }}?back={{ here|urlquote }}" class="btn btn-secondary btn-sm">View</a></td>
     </tr>
     {% endfor %}
   </tbody>

@@ -70,7 +70,7 @@
       <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
       <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
       <td>{{ e.action }}</td>
-      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
+      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key|urlquote }}?back={{ here|urlquote }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
       <td>{{ e.summary }}</td>
       <td style="color:var(--text-dim)">{{ e.reason }}</td>
     </tr>

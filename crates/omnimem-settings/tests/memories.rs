@@ -117,11 +117,11 @@ async fn the_list_filters_pages_and_answers_htmx_with_rows() {
 
     let all = text(&get(&panel, "/memories").await);
     assert!(
-        all.contains(r#"<span class="badge" style="font-size:0.75rem">31</span>"#),
+        all.contains(r#"<span class="count-chip">31</span>"#),
         "{all}"
     );
     assert!(all.contains("page=2"), "31 memories need a second page");
-    assert!(all.contains("class=\"nav-link active\">Memories"));
+    assert!(all.contains("aria-current=\"page\"><span class=\"nav-label\">Memories"));
     assert!(all.contains(r#"<option value="omnimem">omnimem</option>"#));
 
     let queue = text(&get(&panel, "/memories?namespace=knowledge&licence=unknown").await);
@@ -131,7 +131,7 @@ async fn the_list_filters_pages_and_answers_htmx_with_rows() {
     );
     assert!(queue.contains("unclassified"));
     assert!(!queue.contains("episodic note number"));
-    assert!(queue.contains("class=\"nav-link active\">Articles"));
+    assert!(queue.contains("aria-current=\"page\"><span class=\"nav-label\">Articles"));
     assert!(
         queue.contains("&amp;namespace=knowledge&amp;licence=unknown") || !queue.contains("page=2"),
         "pagination keeps the filters"
@@ -312,7 +312,7 @@ async fn lifecycle_actions_move_state_and_land_where_asked() {
 #[tokio::test]
 async fn create_stores_or_shows_the_duplicate() {
     let (panel, engine) = setup();
-    assert!(text(&get(&panel, "/create").await).contains("class=\"nav-link active\">Create"));
+    assert!(text(&get(&panel, "/create").await).contains("aria-current=\"page\">+ New memory"));
     assert!(
         text(&post(&panel, "/create", "content=++").await).contains("Content cannot be empty.")
     );
@@ -385,7 +385,7 @@ async fn the_detail_page_shows_why_a_memory_was_archived() {
     let (panel, engine) = setup();
     let key = remember(&engine, "A memory that was put away", "episodic", None);
     assert!(
-        !text(&get(&panel, &format!("/memory/{key}")).await).contains("Archived Reason"),
+        !text(&get(&panel, &format!("/memory/{key}")).await).contains("Why it was archived"),
         "nothing to show before it is archived"
     );
 
@@ -393,6 +393,6 @@ async fn the_detail_page_shows_why_a_memory_was_archived() {
         .archive(&key, Some("replaced by the 7.0 design"))
         .unwrap();
     let page = text(&get(&panel, &format!("/memory/{key}")).await);
-    assert!(page.contains("Archived Reason"), "{page}");
+    assert!(page.contains("Why it was archived"), "{page}");
     assert!(page.contains("replaced by the 7.0 design"), "{page}");
 }

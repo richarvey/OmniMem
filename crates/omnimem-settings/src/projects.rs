@@ -23,6 +23,7 @@ use tracing::{info, warn};
 
 use crate::PanelState;
 use crate::format::{date_and_time, number, timestamp};
+use crate::lifecycle::redirect_target;
 use crate::pages::{blocking, quote, quote_segment, see_other, starting};
 use crate::render::page;
 
@@ -171,6 +172,12 @@ pub(crate) async fn list(
                 project.memory_count += 1;
             }
         }
+        let counts = engine.store().memory_counts_by_project()?;
+        for project in &mut projects {
+            if let Some(n) = counts.get(&project.name) {
+                project.memory_count = *n as usize;
+            }
+        }
         projects.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
         let known: Vec<(String, usize)> = engine
             .domain_map()?
@@ -186,11 +193,26 @@ pub(crate) async fn list(
     };
 
     let total_projects = projects.len();
+    let search = query
+        .get("q")
+        .map(|q| q.trim().to_lowercase())
+        .unwrap_or_default();
+    let state_filter = query
+        .get("state")
+        .filter(|s| matches!(s.as_str(), "active" | "deprioritised" | "archived"))
+        .cloned()
+        .unwrap_or_default();
     let projects: Vec<Value> = projects
         .into_iter()
         .filter(|p| match &wanted {
             Some(domain) => p.domains.contains(domain),
             None => !invalid_domain,
+        })
+        .filter(|p| state_filter.is_empty() || p.state == state_filter)
+        .filter(|p| {
+            search.is_empty()
+                || p.name.to_lowercase().contains(&search)
+                || p.description.to_lowercase().contains(&search)
         })
         .map(|p| {
             let (date, time) = date_and_time(p.updated_at);
@@ -219,22 +241,72 @@ pub(crate) async fn list(
             domain_filter_valid => !invalid_domain,
             all_domains,
             total_projects,
+            search => query.get("q").map(|q| q.trim().to_owned()).unwrap_or_default(),
+            state_filter,
         },
     )
 }
+
+/// How many of a project's latest memories its page lists.
+const PROJECT_RECENT: usize = 12;
 
 pub(crate) async fn detail(State(state): State<PanelState>, Path(name): Path<String>) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
     let found = blocking(move || {
-        let Some(data) = engine.store().get(&context_key(&name))? else {
+        let context = engine.store().get(&context_key(&name))?;
+        let (counts, keys) = engine.store().project_memories(&name, PROJECT_RECENT)?;
+        if context.is_none() && counts.is_empty() {
             return Ok(None);
-        };
+        }
         let compiled = skill_domains(&engine)?;
+        let data = context.clone().unwrap_or_default();
         let text = |field: &str| data.get(field).cloned().unwrap_or_default();
+        // Memories by namespace and state, for the project's summary.
+        let mut by_namespace: Vec<Value> = Vec::new();
+        let mut total = 0u64;
+        for ns in ["episodic", "knowledge", "preference", "project"] {
+            let n = |state: &str| {
+                counts
+                    .iter()
+                    .filter(|(c, s, _)| c == ns && (state.is_empty() || s == state))
+                    .map(|r| r.2)
+                    .sum::<u64>()
+            };
+            let all = n("");
+            total += all;
+            if all > 0 {
+                by_namespace.push(json!({
+                    "namespace": ns,
+                    "total": all,
+                    "active": n("active"),
+                    "deprioritised": n("deprioritised"),
+                    "archived": n("archived"),
+                }));
+            }
+        }
+        let rows = engine
+            .store()
+            .get_fields_multi(&keys, &["content", "state", "updated_at"])?;
+        let recent: Vec<Value> = keys
+            .iter()
+            .zip(rows)
+            .map(|(key, row)| {
+                let row = row.unwrap_or_default();
+                let (date, _) = date_and_time(number(row.get("updated_at")));
+                json!({
+                    "key": key,
+                    "namespace": key.split(':').nth(1).unwrap_or(""),
+                    "state": row.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
+                    "content": row.get("content").map(|c| c.chars().take(160).collect::<String>()).unwrap_or_default(),
+                    "updated_date": date,
+                })
+            })
+            .collect();
         let project = json!({
-            "name": data.get("project_name").cloned().unwrap_or(name),
+            "name": data.get("project_name").cloned().unwrap_or_else(|| name.clone()),
+            "has_context": context.is_some(),
             "description": text("description"),
             "stack": text("stack"),
             "domains": read_domains(&data)
@@ -247,6 +319,9 @@ pub(crate) async fn detail(State(state): State<PanelState>, Path(name): Path<Str
             "state": data.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
             "created_at": timestamp(data.get("created_at")),
             "updated_at": timestamp(data.get("updated_at")),
+            "memory_total": total,
+            "by_namespace": by_namespace,
+            "recent": recent,
         });
         Ok(Some((project, engine.config().skill_user.clone())))
     })
@@ -273,13 +348,18 @@ async fn edit_page(
     state: PanelState,
     engine: std::sync::Arc<Engine>,
     name: Option<String>,
+    prefill: Option<String>,
     error: Option<String>,
 ) -> Response {
     let is_new = name.is_none();
     let found = blocking(move || {
         let options = domain_options(&engine)?;
         let Some(name) = name else {
-            return Ok(Some((blank_project(), options)));
+            let mut blank = blank_project();
+            if let Some(prefill) = prefill {
+                blank["name"] = json!(prefill);
+            }
+            return Ok(Some((blank, options)));
         };
         let Some(data) = engine.store().get(&context_key(&name))? else {
             return Ok(None);
@@ -317,7 +397,12 @@ pub(crate) async fn new_form(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    edit_page(state, engine, None, query.get("error").cloned()).await
+    // A name without a context can be given one: its page links here with it.
+    let prefill = query
+        .get("name")
+        .map(|n| n.trim().to_owned())
+        .filter(|n| check_project_name(n).is_ok());
+    edit_page(state, engine, None, prefill, query.get("error").cloned()).await
 }
 
 pub(crate) async fn edit_form(
@@ -327,7 +412,7 @@ pub(crate) async fn edit_form(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    edit_page(state, engine, Some(name), None).await
+    edit_page(state, engine, Some(name), None, None).await
 }
 
 /// Write a project context from the form, as `set_project_context` stamps
@@ -459,7 +544,12 @@ pub(crate) async fn suggest_domains(
     }
 }
 
-pub(crate) async fn delete(State(state): State<PanelState>, Path(name): Path<String>) -> Response {
+pub(crate) async fn delete(
+    State(state): State<PanelState>,
+    Path(name): Path<String>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let target = redirect_target(&form, "/projects".to_owned());
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
@@ -482,12 +572,13 @@ pub(crate) async fn delete(State(state): State<PanelState>, Path(name): Path<Str
     })
     .await;
     match removed {
-        Ok(()) => see_other("/projects"),
+        Ok(()) => see_other(&target),
         Err(failure) => failure,
     }
 }
 
-async fn bulk(state: PanelState, name: String, deprioritise: bool) -> Response {
+async fn bulk(state: PanelState, name: String, form: &FormData, deprioritise: bool) -> Response {
+    let target = redirect_target(form, "/projects".to_owned());
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
@@ -507,7 +598,7 @@ async fn bulk(state: PanelState, name: String, deprioritise: bool) -> Response {
     })
     .await;
     match outcome {
-        Ok(()) => see_other("/projects"),
+        Ok(()) => see_other(&target),
         Err(failure) => failure,
     }
 }
@@ -515,15 +606,17 @@ async fn bulk(state: PanelState, name: String, deprioritise: bool) -> Response {
 pub(crate) async fn deprioritise(
     State(state): State<PanelState>,
     Path(name): Path<String>,
+    Form(form): Form<FormData>,
 ) -> Response {
-    bulk(state, name, true).await
+    bulk(state, name, &form, true).await
 }
 
 pub(crate) async fn reinstate(
     State(state): State<PanelState>,
     Path(name): Path<String>,
+    Form(form): Form<FormData>,
 ) -> Response {
-    bulk(state, name, false).await
+    bulk(state, name, &form, false).await
 }
 
 #[cfg(test)]

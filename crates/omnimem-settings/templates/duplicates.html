@@ -4,41 +4,38 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Duplicate Detection</h2>
+  <div>
+    <h2>Duplicates</h2>
+    <p class="page-intro">Memories that say nearly the same thing. Archive the copies you don't need; the one you keep is unchanged.</p>
+  </div>
 </header>
 
 {% if last_maintenance %}
-<div style="margin-bottom:1rem;padding:0.6rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);font-size:0.8rem;color:var(--text-dim)">
-  Last auto-maintenance: <strong style="color:var(--text)">{{ last_maintenance.when }}</strong>
-  (project: {{ last_maintenance.project }}, {{ last_maintenance.duplicates_archived }} duplicate{{ 's' if last_maintenance.duplicates_archived != 1 }} archived)
-</div>
+<p class="note-bar">
+  Last automatic tidy-up: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }},
+  {{ last_maintenance.duplicates_archived }} duplicate{{ 's' if last_maintenance.duplicates_archived != 1 }} archived.
+</p>
 {% endif %}
 
-<div class="filter-bar">
-  <div class="form-group">
-    <label>Namespace</label>
+<form method="GET" action="{{ admin }}/duplicates" class="toolbar" data-busy-on-submit>
+  <input type="hidden" name="scan" value="1">
+  <div class="toolbar-field">
+    <label for="dup-namespace" class="field-label">Namespace</label>
     <select class="form-select" name="namespace" id="dup-namespace">
-      <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
-      <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
-      <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
-      <option value="preference"{% if namespace == 'preference' %} selected{% endif %}>Preference</option>
+      {% for ns in ["episodic", "project", "knowledge", "preference"] %}
+      <option value="{{ ns }}"{% if namespace == ns %} selected{% endif %}>{{ ns|capitalize }}</option>
+      {% endfor %}
     </select>
   </div>
-  <div class="form-group" style="align-self:end">
-    <button class="btn btn-primary"
-            hx-get="{{ admin }}/duplicates/scan"
-            hx-include="#dup-namespace"
-            hx-target="#dup-results"
-            hx-indicator="#dup-spinner">
-      Scan for Duplicates
-      <span class="htmx-indicator spinner" id="dup-spinner"></span>
-    </button>
-  </div>
-</div>
+  <button type="submit" class="btn btn-primary">{{ 'Scan again' if scanned else 'Scan for duplicates' }}</button>
+  <span class="busy-note" aria-live="polite"></span>
+</form>
 
 <div id="dup-results">
 {% if scanned %}
   {% include "partials/dup_results.html" %}
+{% else %}
+  <p class="empty-state">Choose a namespace and scan. A scan compares stored vectors, so it takes a few seconds on a large namespace.</p>
 {% endif %}
 </div>
 {% endblock %}

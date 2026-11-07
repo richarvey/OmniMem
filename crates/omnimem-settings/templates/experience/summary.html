@@ -37,7 +37,7 @@
       <span class="badge active">{{ b.outcome }}</span>
     </div>
     <div style="color:var(--green);font-size:0.9rem;margin-bottom:0.25rem">{{ b.breakthrough }}</div>
-    <div class="search-result-content"><a href="{{ admin }}/memory/{{ b.key }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
+    <div class="search-result-content"><a href="{{ admin }}/memory/{{ b.key|urlquote }}?back={{ here|urlquote }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
   </div>
   {% endfor %}
 </section>

@@ -158,27 +158,47 @@ async fn projects_are_created_listed_filtered_and_edited() {
         list.contains(r#"<a href="/admin/projects/omnimem" class="project-name">omnimem</a>"#),
         "{list}"
     );
+    // A name without a context is a link too, folded under its own heading,
+    // and counts every memory that names it.
     assert!(
-        list.contains(r#"<span class="project-name">other</span>"#),
-        "memories without a context aren't links"
+        list.contains("Names used without a project context"),
+        "{list}"
     );
-    assert!(list.contains(r#"<span class="memory-count-badge">1</span>"#));
     assert!(
-        list.contains(r#"class="domain-chip">python <span class="domain-chip-count">1</span>"#),
+        list.contains(r#"<a href="/admin/projects/other" class="project-name">other</a>"#),
+        "{list}"
+    );
+    assert!(
+        list.contains(r#"aria-label="1 memories in other">1</a>"#),
+        "{list}"
+    );
+    assert!(
+        list.contains(r#"<option value="python">python (1)</option>"#),
         "{list}"
     );
 
     let python = text(&get(&panel, "/projects?domain=py").await);
     assert!(
-        python.contains(r#"<span class="header-qualifier">in python</span>"#),
-        "aliases resolve"
+        python.contains(r#"<option value="python" selected>python (1)</option>"#),
+        "aliases resolve: {python}"
     );
-    assert!(!python.contains(r#"<span class="project-name">other</span>"#));
+    assert!(!python.contains("/admin/projects/other\""));
     assert!(
         text(&get(&panel, "/projects?domain=golang").await)
             .contains("No project declares the domain")
     );
     assert!(text(&get(&panel, "/projects?domain=%21%21").await).contains("is not a usable domain"));
+    assert!(text(&get(&panel, "/projects?q=memory").await).contains("1 project match"));
+    assert!(text(&get(&panel, "/projects?q=nothing-like-it").await).contains("No project matches"));
+
+    // Its page shows its memories and offers to write a context.
+    let other = text(&get(&panel, "/projects/other").await);
+    assert!(
+        other.contains("Write a context") && other.contains("A note about another project"),
+        "{other}"
+    );
+    assert!(other.contains("/admin/projects/new?name=other"));
+    assert!(text(&get(&panel, "/projects/new?name=other").await).contains(r#"value="other""#));
 
     let detail = text(&get(&panel, "/projects/omnimem").await);
     assert!(detail.contains("Memory for agents"), "{detail}");
@@ -348,7 +368,7 @@ async fn experience_summarises_and_the_graveyard_deduplicates() {
     );
     assert!(page.contains("1 pivoted"));
     assert!(page.contains("Share the model"));
-    assert!(page.contains("class=\"nav-link active\">Experience"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Experience"));
 
     let pivoted = htmx(&panel, "/experience?outcome=pivoted").await;
     assert!(pivoted.contains("pivoted work at effort 4"), "{pivoted}");
@@ -372,5 +392,5 @@ async fn experience_summarises_and_the_graveyard_deduplicates() {
         "the effort 4 record outranks effort 3"
     );
     assert!(!graveyard.contains(&heavier));
-    assert!(graveyard.contains("class=\"nav-link active\">Graveyard"));
+    assert!(graveyard.contains("aria-current=\"page\"><span class=\"nav-label\">Graveyard"));
 }

@@ -202,7 +202,7 @@ async fn skills_list_show_and_delete() {
         r#"<a href="/admin/skills/{key}" class="project-name">rust-local</a>"#
     )));
     assert!(list.contains("1 active"));
-    assert!(list.contains("class=\"nav-link active\">Compiled Skills"));
+    assert!(list.contains("aria-current=\"page\"><span class=\"nav-label\">Skills"));
 
     let detail = text(&get(&panel, &format!("/skills/{key}")).await);
     assert!(
@@ -214,7 +214,10 @@ async fn skills_list_show_and_delete() {
             || detail.contains("(1 do · 0 watch · 0 don't)"),
         "{detail}"
     );
-    assert!(detail.contains(&format!(r#"<a href="/admin/memory/{source}""#)));
+    assert!(detail.contains(&format!(
+        r#"<a href="/admin/memory/{}?back="#,
+        source.replace(':', "%3A")
+    )));
     assert!(detail.contains("# Rust"));
     assert_eq!(
         get(&panel, "/skills/mem:skill:gen:nothing").await.status(),

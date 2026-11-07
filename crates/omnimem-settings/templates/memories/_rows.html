@@ -2,21 +2,21 @@
 <table class="data-table memories-table">
   <thead>
     <tr>
-      <th>Namespace</th>
-      <th>Content</th>
-      <th>State</th>
+      <th scope="col">Namespace</th>
+      <th scope="col">Content</th>
+      <th scope="col">State</th>
       {# Articles all share one project label — the feed they came from is
          the meaningful grouping #}
       <th>{{ "Feed" if source == "rss" else "Project" }}</th>
       <th>{{ "Added" if source == "rss" else "Updated" }}</th>
-      <th>Actions</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>
     {% for mem in memories %}
     <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlquote }}?back={{ back_url|urlquote }}">{{ mem.content }}</a></td>
       <td>
         <span class="badge {{ mem.state }}">{{ mem.state }}</span>
         {# Only the unclassified case gets a pill: it is the one that asks
@@ -31,18 +31,37 @@
         <span class="date-time">{{ mem.updated_time }}</span>
       </td>
       <td class="actions-cell">
-        {% if mem.state == 'active' %}
-        <form method="POST" action="{{ admin }}/lifecycle/deprioritise">
-          <input type="hidden" name="key" value="{{ mem.key }}">
-          <input type="hidden" name="next" value="{{ back_url }}">
-          <button type="submit" class="btn btn-secondary btn-sm" title="Deprioritise — stops surfacing in recall (0.2x)">Depri</button>
-        </form>
-        {% endif %}
-        <form method="POST" action="{{ admin }}/lifecycle/delete" data-confirm="Permanently delete this memory? This cannot be undone.">
-          <input type="hidden" name="key" value="{{ mem.key }}">
-          <input type="hidden" name="next" value="{{ back_url }}">
-          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-        </form>
+        <details class="row-menu">
+          <summary class="btn btn-secondary btn-sm" aria-label="Actions for this memory">&middot;&middot;&middot;</summary>
+          <div class="row-menu-body">
+            {% if mem.state == 'active' %}
+            <form method="POST" action="{{ admin }}/lifecycle/deprioritise">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Deprioritise</button>
+            </form>
+            {% endif %}
+            {% if mem.state != 'archived' %}
+            <form method="POST" action="{{ admin }}/lifecycle/archive">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Archive</button>
+            </form>
+            {% endif %}
+            {% if mem.state != 'active' %}
+            <form method="POST" action="{{ admin }}/lifecycle/reinstate">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Reinstate</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ admin }}/lifecycle/delete" data-confirm="Permanently delete this memory? This cannot be undone.">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item row-menu-danger">Delete</button>
+            </form>
+          </div>
+        </details>
       </td>
     </tr>
     {% endfor %}

@@ -134,7 +134,7 @@ async fn the_audit_page_lists_and_filters_the_log() {
     assert!(page.contains("state: active -&gt; archived"), "{page}");
     assert!(page.contains("claude-code"), "the client is shown");
     assert!(
-        page.contains("/audit\" class=\"nav-link active"),
+        page.contains("/audit\" class=\"nav-link active\""),
         "the sidebar link"
     );
 
@@ -178,7 +178,7 @@ async fn a_memorys_page_has_its_history() {
     assert!(page.contains("remember"));
     assert!(page.contains("transition"));
     assert!(page.contains("Archived via web UI"));
-    assert!(page.contains(&format!("/audit?key={key}")));
+    assert!(page.contains(&format!("/audit?key={}", key.replace(':', "%3A"))));
 }
 
 #[tokio::test]

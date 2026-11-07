@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use axum::Form;
 use axum::extract::{Query, State};
-use axum::response::Response;
+use axum::response::{Html, IntoResponse, Response};
 use chrono::{TimeZone, Utc};
 use minijinja::context;
 use omnimem_engine::{Engine, EngineError, ResolveRequest, Retire};
@@ -60,19 +60,58 @@ fn last_maintenance(engine: &Engine) -> omnimem_engine::Result<Option<Value>> {
     Ok(latest.map(|(_, note)| note))
 }
 
-pub(crate) async fn duplicates(State(state): State<PanelState>) -> Response {
+fn scan_namespace(query: &HashMap<String, String>) -> String {
+    query
+        .get("namespace")
+        .filter(|n| NAMESPACES.contains(&n.as_str()))
+        .cloned()
+        .unwrap_or_else(|| "episodic".to_owned())
+}
+
+/// One namespace's clusters, from the stored vectors.
+fn scan(engine: &Engine, namespace: &str, project: &str) -> omnimem_engine::Result<Value> {
+    match engine.find_duplicates(namespace, None, Some(project)) {
+        Ok(result) => Ok(result["clusters"].clone()),
+        Err(EngineError::Invalid(problem)) => {
+            warn!(problem, "duplicate scan refused");
+            Ok(json!([]))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// GET `/duplicates`: the form, and with `scan=1` its results, so a scan has
+/// an address: an Archive, or a memory's Back link, comes back to the same
+/// clusters rather than an empty form.
+pub(crate) async fn duplicates(
+    State(state): State<PanelState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    match blocking(move || last_maintenance(&engine)).await {
-        Ok(last) => page(
+    let namespace = scan_namespace(&query);
+    let project = query.get("project").cloned().unwrap_or_default();
+    let scanned = query.get("scan").is_some_and(|s| s == "1");
+    let wanted = namespace.clone();
+    match blocking(move || {
+        let clusters = if scanned {
+            scan(&engine, &wanted, &project)?
+        } else {
+            json!([])
+        };
+        Ok((clusters, last_maintenance(&engine)?))
+    })
+    .await
+    {
+        Ok((clusters, last)) => page(
             state.templates(),
             "duplicates.html",
             context! {
                 current_page => "duplicates",
-                clusters => (),
-                namespace => "episodic",
-                scanned => false,
+                clusters,
+                namespace,
+                scanned,
                 last_maintenance => last,
             },
         ),
@@ -80,7 +119,7 @@ pub(crate) async fn duplicates(State(state): State<PanelState>) -> Response {
     }
 }
 
-/// GET `/duplicates/scan`: the htmx scan, reusing stored vectors.
+/// GET `/duplicates/scan`: the htmx form of the same scan.
 pub(crate) async fn duplicates_scan(
     State(state): State<PanelState>,
     Query(query): Query<HashMap<String, String>>,
@@ -88,25 +127,10 @@ pub(crate) async fn duplicates_scan(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let namespace = query
-        .get("namespace")
-        .filter(|n| NAMESPACES.contains(&n.as_str()))
-        .cloned()
-        .unwrap_or_else(|| "episodic".to_owned());
+    let namespace = scan_namespace(&query);
     let project = query.get("project").cloned().unwrap_or_default();
     let scanned = namespace.clone();
-    let found = blocking(
-        move || match engine.find_duplicates(&scanned, None, Some(&project)) {
-            Ok(result) => Ok(result["clusters"].clone()),
-            Err(EngineError::Invalid(problem)) => {
-                warn!(problem, "duplicate scan refused");
-                Ok(json!([]))
-            }
-            Err(e) => Err(e),
-        },
-    )
-    .await;
-    match found {
+    match blocking(move || scan(&engine, &scanned, &project)).await {
         Ok(clusters) => page(
             state.templates(),
             "partials/dup_results.html",
@@ -132,19 +156,96 @@ pub(crate) async fn contradictions(
     })
     .await;
     match found {
-        Ok((pairs, pending, last)) => page(
-            state.templates(),
-            "contradictions.html",
-            context! {
-                current_page => "contradictions",
-                pairs,
-                pending,
-                last_maintenance => last,
-                message => query.get("message"),
-                error => query.get("error"),
-            },
-        ),
+        Ok((pairs, pending, last)) => {
+            // Wording-only links come from the heuristic, which never disputes
+            // anything; they are most of the list and mostly noise, so they
+            // are shown apart from the ones a model confirmed.
+            let (wording, pairs): (Vec<Value>, Vec<Value>) =
+                pairs.into_iter().partition(is_wording_only);
+            page(
+                state.templates(),
+                "contradictions.html",
+                context! {
+                    current_page => "contradictions",
+                    pairs,
+                    wording,
+                    pending,
+                    last_maintenance => last,
+                    message => query.get("message"),
+                    error => query.get("error"),
+                },
+            )
+        }
         Err(failure) => failure,
+    }
+}
+
+/// A pair only the heuristic linked: its explanation is one of the fixed
+/// heuristic sentences.
+fn is_wording_only(pair: &Value) -> bool {
+    let explanation = pair["explanation"].as_str().unwrap_or("").trim();
+    explanation == omnimem_store::HEURISTIC_LINK_EXPLANATION
+        || explanation == omnimem_store::HEURISTIC_EXPLANATION
+}
+
+/// POST `/contradictions/dismiss-wording`: settle every wording-only pair as
+/// not a contradiction, in one click. The click is the person's say-so, as
+/// for a single pair; a pair a model confirmed is never touched.
+pub(crate) async fn dismiss_wording(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let done = blocking(move || {
+        let mut settled = 0usize;
+        for pair in engine.open_contradictions()? {
+            if !is_wording_only(&pair) {
+                continue;
+            }
+            let (Some(a), Some(b)) = (pair["key_a"].as_str(), pair["key_b"].as_str()) else {
+                continue;
+            };
+            let request = ResolveRequest::new(
+                a,
+                b,
+                "false_positive",
+                None,
+                Some("Wording only: dismissed from the settings panel"),
+                Retire::No,
+            )?;
+            match engine.resolve_contradiction(&request, "panel") {
+                Ok(_) => settled += 1,
+                Err(EngineError::Invalid(problem)) => {
+                    warn!(problem, a, b, "could not dismiss a pair")
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(Ok(format!(
+            "Dismissed {settled} wording-only pair{}.",
+            if settled == 1 { "" } else { "s" }
+        )))
+    })
+    .await;
+    done.map_or_else(|failure| failure, contradictions_notice)
+}
+
+/// GET `/contradictions/badge`: the menu's count of pairs still in dispute
+/// plus resolutions waiting for a person, or nothing when there are none.
+pub(crate) async fn badge(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return Html("").into_response();
+    };
+    let waiting = blocking(move || {
+        Ok(engine.open_contradictions()?.len() + engine.pending_resolutions()?.len())
+    })
+    .await;
+    match waiting {
+        Ok(n) if n > 0 => Html(format!(
+            r#"<span class="nav-count" title="{n} contradiction{} to settle">{n}</span>"#,
+            if n == 1 { "" } else { "s" }
+        ))
+        .into_response(),
+        _ => Html("").into_response(),
     }
 }
 

@@ -4,115 +4,209 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Dashboard</h2>
-  <div class="health-indicators">
-    <span class="indicator {{ 'ok' if health.store else 'err' }}">Store</span>
-    <span class="indicator {{ 'ok' if health.model else 'err' }}">Model</span>
-    <span class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}"
-          title="Enrichment queue: {{ enrichment_pending }} pending">
-      Enrichment{% if enrichment_pending > 0 %} ({{ enrichment_pending }}){% endif %}
-    </span>
+  <div>
+    <h2>Dashboard</h2>
+    <p class="page-intro">
+      {{ total|thousands }} memories{% if stats_age is not none %}, counted {{ stats_age }}s ago. <a href="{{ admin }}/?refresh=1">Count again</a>{% endif %}
+    </p>
   </div>
+  <ul class="health-indicators" aria-label="Health">
+    <li class="indicator {{ 'ok' if health.store else 'err' }}">Store</li>
+    <li class="indicator {{ 'ok' if health.model else 'err' }}">Model</li>
+    <li class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}">Enrichment{% if enrichment_pending > 0 %}: {{ enrichment_pending }} queued{% endif %}</li>
+  </ul>
 </header>
 
-{% if stats_age is not none %}
-<p class="stats-meta">
-  Stats updated {{ stats_age }}s ago · <a href="{{ admin }}/?refresh=1">refresh now</a>
-</p>
-{% endif %}
-
-{% set ns_links = {
-  "episodic": "/memories?namespace=episodic",
-  "project": "/projects",
-  "knowledge": "/memories?namespace=knowledge",
-  "preference": "/memories?namespace=preference",
-} %}
-{% if total > 0 %}
-<section class="composition" aria-label="Memory composition by namespace">
-  <a class="composition-total" href="{{ admin }}/memories">
-    <span class="composition-num">{{ total }}</span>
-    <span class="composition-label">memories across all namespaces</span>
-  </a>
-  <div class="composition-main">
-    <div class="composition-bar" role="img"
-         aria-label="{% for ns, stats in ns_stats.items() %}{{ stats.total }} {{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}">
-      {%- for ns, stats in ns_stats.items() %}{% if stats.total > 0 -%}
-      <div class="composition-seg ns-{{ ns }}" style="width: {{ (stats.total / total * 100)|round(2) }}%"></div>
-      {%- endif %}{% endfor -%}
-    </div>
-    <div class="composition-legend" aria-hidden="true">
-      {% for ns, stats in ns_stats.items() %}
-      <span class="badge ns-{{ ns }}">{{ ns }} <span class="count">{{ stats.total }}</span></span>
-      {% endfor %}
-    </div>
-  </div>
+{# What waits on a person comes first, and only what is waiting. #}
+{% set waiting = attention.unconfirmed + attention.contradictions + attention.resolutions + attention.proposals %}
+<section class="attention" aria-labelledby="attention-h">
+  <h3 id="attention-h" class="section-heading">Needs you</h3>
+  {% if waiting > 0 %}
+  <ul class="attention-grid">
+    {% if attention.unconfirmed > 0 %}
+    <li><a class="attention-tile" href="{{ admin }}/unconfirmed">
+      <span class="attention-num">{{ attention.unconfirmed|thousands }}</span>
+      <span class="attention-label">unconfirmed fact{{ '' if attention.unconfirmed == 1 else 's' }}</span>
+      <span class="attention-hint">Concluded by OmniMem, waiting for a yes or no</span>
+    </a></li>
+    {% endif %}
+    {% if attention.contradictions + attention.resolutions > 0 %}
+    <li><a class="attention-tile attention-danger" href="{{ admin }}/contradictions">
+      <span class="attention-num">{{ (attention.contradictions + attention.resolutions)|thousands }}</span>
+      <span class="attention-label">contradiction{{ '' if attention.contradictions + attention.resolutions == 1 else 's' }}</span>
+      <span class="attention-hint">{% if attention.resolutions %}{{ attention.resolutions }} proposed fix{{ '' if attention.resolutions == 1 else 'es' }} to accept{% else %}Pairs that disagree, to settle{% endif %}</span>
+    </a></li>
+    {% endif %}
+    {% if attention.proposals > 0 %}
+    <li><a class="attention-tile" href="{{ admin }}/skills">
+      <span class="attention-num">{{ attention.proposals }}</span>
+      <span class="attention-label">skill proposal{{ '' if attention.proposals == 1 else 's' }}</span>
+      <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
+    </a></li>
+    {% endif %}
+  </ul>
+  {% else %}
+  <p class="attention-clear">Nothing is waiting for you. New facts to confirm, contradictions and skill proposals show here when they arrive.</p>
+  {% endif %}
 </section>
-{% endif %}
-<section class="stats-grid">
-  {% for ns, stats in ns_stats.items() %}
-  <a class="stat-card" href="{{ admin }}{{ ns_links[ns] }}">
-    <h3 class="stat-ns">{{ "projects" if ns == "project" else ns }}</h3>
-    {% if ns == "project" %}
-    <div class="stat-total">{{ stats.distinct }}</div>
-    <div class="stat-breakdown">
-      <span class="badge active">{{ stats.projects.active }} active</span>
-      <span class="badge deprioritised">{{ stats.projects.deprioritised }} depri</span>
-      <span class="badge archived">{{ stats.projects.archived }} arch</span>
+
+<div class="dash-grid">
+  {# Growth: memories created per week, stacked by namespace. #}
+  <section class="panel dash-wide" aria-labelledby="growth-h">
+    <div class="panel-head">
+      <h3 id="growth-h" class="section-heading">Memories added</h3>
+      <span class="panel-meta">{{ charts.growth.total|thousands }} in the last {{ charts.growth.weeks }} weeks</span>
     </div>
+    {% if charts.growth.total > 0 %}
+    <svg class="chart" viewBox="0 0 {{ charts.growth.width }} {{ charts.growth.height + 22 }}" role="img" aria-labelledby="growth-h growth-desc" preserveAspectRatio="none">
+      <desc id="growth-desc">Memories created each week for {{ charts.growth.weeks }} weeks, the busiest week {{ charts.growth.peak }}.</desc>
+      <line x1="0" x2="{{ charts.growth.width }}" y1="{{ charts.growth.height }}" y2="{{ charts.growth.height }}" class="chart-axis"/>
+      {% for c in charts.growth.columns %}
+      <g>
+        <title>Week of {{ c.label }}: {{ c.total }} memor{{ 'y' if c.total == 1 else 'ies' }}</title>
+        {% for s in c.segments %}<rect x="{{ c.x }}" y="{{ s.y }}" width="{{ c.w }}" height="{{ s.h }}" class="fill-{{ s.namespace }}"/>{% endfor %}
+        {% if c.tick %}<text x="{{ c.x }}" y="{{ charts.growth.height + 16 }}" class="chart-label">{{ c.label }}</text>{% endif %}
+      </g>
+      {% endfor %}
+    </svg>
+    <ul class="legend" aria-hidden="true">
+      {% for ns in ["episodic", "knowledge", "preference", "project"] %}<li><span class="swatch fill-{{ ns }}"></span>{{ ns }}</li>{% endfor %}
+    </ul>
+    <details class="chart-data">
+      <summary>Show data</summary>
+      <div class="table-scroll">
+      <table class="data-table compact-table">
+        <thead><tr><th scope="col">Week of</th><th scope="col">Episodic</th><th scope="col">Knowledge</th><th scope="col">Preference</th><th scope="col">Project</th><th scope="col">Total</th></tr></thead>
+        <tbody>{% for c in charts.growth.columns %}<tr><td>{{ c.label }}</td>{% for n in c.by_namespace %}<td>{{ n }}</td>{% endfor %}<td>{{ c.total }}</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+    </details>
     {% else %}
-    <div class="stat-total">{{ stats.total }}</div>
-    <div class="stat-breakdown">
-      <span class="badge active">{{ stats.states.active }} active</span>
-      <span class="badge deprioritised">{{ stats.states.deprioritised }} depri</span>
-      <span class="badge archived">{{ stats.states.archived }} arch</span>
+    <p class="empty-state">Nothing added in the last {{ charts.growth.weeks }} weeks.</p>
+    {% endif %}
+  </section>
+
+  {# Each namespace as one bar, split by state. #}
+  <section class="panel" aria-labelledby="states-h">
+    <div class="panel-head">
+      <h3 id="states-h" class="section-heading">By namespace</h3>
+      <span class="panel-meta">active, deprioritised, archived</span>
+    </div>
+    <ul class="state-bars">
+      {% for s in charts.states %}
+      <li>
+        <a class="state-bar-row" href="{{ admin }}{{ '/projects' if s.namespace == 'project' else ('/skills' if s.namespace == 'skill' else '/memories?namespace=' ~ s.namespace) }}">
+          <span class="state-bar-name"><span class="badge ns-{{ s.namespace }}">{{ s.namespace }}</span></span>
+          <span class="state-bar-total">{{ s.total|thousands }}</span>
+          <span class="state-bar" role="img" aria-label="{{ s.active }} active, {{ s.deprioritised }} deprioritised, {{ s.archived }} archived">
+            <span class="seg seg-active fill-{{ s.namespace }}" style="width: {{ s.active_pct }}%"></span><span class="seg seg-depri" style="width: {{ s.deprioritised_pct }}%"></span><span class="seg seg-archived" style="width: {{ s.archived_pct }}%"></span>
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="panel-foot">
+      {{ ns_stats.project.distinct }} projects: {{ ns_stats.project.projects.active }} active, {{ ns_stats.project.projects.deprioritised }} deprioritised{% if ns_stats.project.projects.archived %}, {{ ns_stats.project.projects.archived }} archived{% endif %}
+    </p>
+  </section>
+
+  {# The projects with the most memories, busiest recently first. #}
+  <section class="panel" aria-labelledby="projects-h">
+    <div class="panel-head">
+      <h3 id="projects-h" class="section-heading">Busiest projects</h3>
+      <a class="panel-link" href="{{ admin }}/projects">All projects</a>
+    </div>
+    {% if charts.projects %}
+    <ol class="hbars">
+      {% for p in charts.projects %}
+      <li>
+        <a class="hbar-row" href="{{ admin }}/projects/{{ p.name|urlquote }}">
+          <span class="hbar-name">{{ p.name }}</span>
+          <span class="hbar-track" aria-hidden="true"><span class="hbar" style="width: {{ p.pct }}%"></span></span>
+          <span class="hbar-value">{{ p.total|thousands }}<span class="visually-hidden"> memories</span>{% if p.recent %} <span class="hbar-recent">+{{ p.recent }} in {{ charts.recent_days }} days</span>{% endif %}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty-state">No memories name a project yet.</p>
+    {% endif %}
+  </section>
+
+  {# Experience: how attempts ended, and how hard they were. #}
+  <section class="panel" aria-labelledby="exp-h">
+    <div class="panel-head">
+      <h3 id="exp-h" class="section-heading">Experience</h3>
+      <a class="panel-link" href="{{ admin }}/experience">Details</a>
+    </div>
+    {% set e = charts.experience %}
+    {% if e.total > 0 %}
+    <span class="split-bar" role="img" aria-label="{{ e.succeeded }} succeeded, {{ e.pivoted }} pivoted, {{ e.abandoned }} abandoned">
+      <span class="seg fill-episodic" style="width: {{ e.succeeded_pct }}%"></span><span class="seg fill-preference" style="width: {{ e.pivoted_pct }}%"></span><span class="seg fill-graveyard" style="width: {{ e.abandoned_pct }}%"></span>
+    </span>
+    <ul class="legend legend-values">
+      <li><span class="swatch fill-episodic"></span>{{ e.succeeded }} succeeded</li>
+      <li><span class="swatch fill-preference"></span>{{ e.pivoted }} pivoted</li>
+      <li><a href="{{ admin }}/experience/graveyard"><span class="swatch fill-graveyard"></span>{{ e.abandoned }} abandoned</a></li>
+    </ul>
+    {% endif %}
+    {% if e.effort_n > 0 %}
+    <p class="mini-heading">Effort, 1 easy to 5 hard. Average {{ e.effort_avg }}</p>
+    <div class="effort-cols" role="img" aria-label="{% for f in e.efforts %}{{ f.count }} at effort {{ f.score }}{% if not loop.last %}, {% endif %}{% endfor %}">
+      {% for f in e.efforts %}
+      <span class="effort-col"><span class="effort-bar" style="height: {{ f.pct }}%"></span><span class="effort-n">{{ f.count }}</span><span class="effort-score">{{ f.score }}</span></span>
+      {% endfor %}
     </div>
     {% endif %}
-  </a>
-  {% endfor %}
-  <a class="stat-card" href="{{ admin }}/skills">
-    <h3 class="stat-ns">skills</h3>
-    <div class="stat-total">{{ skills.total }}</div>
-    <div class="stat-breakdown">
-      <span class="badge active">{{ skills.states.active }} active</span>
-      {% if skills.proposals > 0 %}
-      <span class="badge deprioritised">{{ skills.proposals }} proposal{{ "" if skills.proposals == 1 else "s" }} pending</span>
-      {% endif %}
-      {% if skills.states.deprioritised %}<span class="badge deprioritised">{{ skills.states.deprioritised }} depri</span>{% endif %}
-      {% if skills.states.archived %}<span class="badge archived">{{ skills.states.archived }} arch</span>{% endif %}
-    </div>
-  </a>
-</section>
+    {% if e.total == 0 and e.effort_n == 0 %}
+    <p class="empty-state">No experience recorded yet. Agents record it with <code>record_experience</code>.</p>
+    {% endif %}
+  </section>
 
-<section class="recent-section">
-  <h3>Recent Activity</h3>
+  <section class="panel" aria-labelledby="intake-h">
+    <div class="panel-head">
+      <h3 id="intake-h" class="section-heading">Article intake</h3>
+      <a class="panel-link" href="{{ admin }}/feeds">Feeds</a>
+    </div>
+    <p class="big-number">{{ charts.articles.month|thousands }} <span class="big-number-label">articles in 30 days</span></p>
+    {% if charts.articles.month > 0 %}
+    <svg class="sparkline" viewBox="0 0 240 40" role="img" aria-label="Articles added each day for 30 days" preserveAspectRatio="none">
+      <polyline points="{{ charts.articles.spark }}" class="spark-line"/>
+    </svg>
+    {% endif %}
+    <p class="panel-foot"><a href="{{ admin }}/memories?namespace=knowledge&amp;source=rss">Articles</a> &middot; <a href="{{ admin }}/memories?namespace=knowledge&amp;source=learned">Learned knowledge</a></p>
+  </section>
+
+  <section class="panel" aria-labelledby="skills-h">
+    <div class="panel-head">
+      <h3 id="skills-h" class="section-heading">Skills</h3>
+      <a class="panel-link" href="{{ admin }}/skills">All skills</a>
+    </div>
+    <p class="big-number">{{ skills.total }} <span class="big-number-label">compiled skill{{ '' if skills.total == 1 else 's' }}</span></p>
+    <p class="panel-foot">
+      {{ skills.states.active }} active{% if skills.proposals > 0 %}, <a href="{{ admin }}/skills">{{ skills.proposals }} proposal{{ '' if skills.proposals == 1 else 's' }} waiting</a>{% endif %}{% if charts.disputed %}. {{ charts.disputed }} memor{{ 'y is' if charts.disputed == 1 else 'ies are' }} disputed{% endif %}
+    </p>
+  </section>
+</div>
+
+<section class="panel recent" aria-labelledby="recent-h">
+  <div class="panel-head">
+    <h3 id="recent-h" class="section-heading">Recent activity</h3>
+    <a class="panel-link" href="{{ admin }}/memories?sort=newest">All memories</a>
+  </div>
   {% if recent %}
-  <table class="data-table memories-table">
-    <thead>
-      <tr>
-        <th>Namespace</th>
-        <th>Content</th>
-        <th>State</th>
-        <th>Project</th>
-        <th>Updated</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for mem in recent %}
-      <tr>
-        <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-        <td class="content-cell"><a href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key }}">{{ mem.content }}</a></td>
-        <td><span class="badge {{ mem.state }}">{{ mem.state }}</span></td>
-        <td class="content-cell">{{ mem.project or "—" }}</td>
-        <td class="date-cell">
-          <span class="date-main">{{ mem.updated_date }}</span>
-          <span class="date-time">{{ mem.updated_time }}</span>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <ul class="recent-list">
+    {% for mem in recent %}
+    <li class="recent-row">
+      <span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>
+      <a class="recent-content" href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key|urlquote }}?back={{ here|urlquote }}">{{ mem.content }}</a>
+      {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% endif %}
+      <span class="recent-meta">{% if mem.project %}{{ mem.project }} &middot; {% endif %}<time>{{ mem.updated_date }} {{ mem.updated_time }}</time></span>
+    </li>
+    {% endfor %}
+  </ul>
   {% else %}
-  <p class="empty-state">No memories yet — <a href="{{ admin }}/create">create one</a>, or connect a Claude session and it will start remembering.</p>
+  <p class="empty-state">No memories yet. <a href="{{ admin }}/create">Create one</a>, or connect an agent and it will start remembering.</p>
   {% endif %}
 </section>
 {% endblock %}

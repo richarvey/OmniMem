@@ -3,31 +3,36 @@
 {% block title %}Unconfirmed — OmniMem{% endblock %}
 
 {% macro item(i, source, page) %}
-<div class="search-result" style="margin-bottom:0.5rem">
-  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">
-    <span class="badge ns-{{ i.namespace }}">{{ i.namespace }}</span>
-    {% if i.state != 'active' %}<span class="badge {{ i.state }}">{{ i.state }}</span>{% endif %}
-    {% if i.project %}<span class="mono" style="font-size:0.75rem;color:var(--text-dim)">{{ i.project }}</span>{% endif %}
-    <a href="{{ admin }}/memory/{{ i.key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none">{{ i.key }}</a>
+<li class="review-row">
+  <div class="review-text">
+    <div class="review-meta">
+      <span class="badge ns-{{ i.namespace }}">{{ i.namespace }}</span>
+      {% if i.state != 'active' %}<span class="badge {{ i.state }}">{{ i.state }}</span>{% endif %}
+      {% if i.project %}<span class="review-project">{{ i.project }}</span>{% endif %}
+    </div>
+    <a href="{{ admin }}/memory/{{ i.key|urlquote }}?back={{ here|urlquote }}" class="review-content">{{ i.content }}</a>
   </div>
-  <div style="font-size:0.9rem">{{ i.content }}</div>
-  <div class="action-bar" style="margin-top:0.5rem">
-    {% for action, label, class in [('confirm', 'Confirm', 'btn-primary'), ('reject', 'Reject', 'btn-danger')] %}
-    <form method="POST" action="{{ admin }}/unconfirmed/act" style="display:inline">
+  <div class="review-actions">
+    {% for action, label, class in [('confirm', 'Confirm', 'btn-primary'), ('reject', 'Reject', 'btn-secondary')] %}
+    <form method="POST" action="{{ admin }}/unconfirmed/act"
+          hx-post="{{ admin }}/unconfirmed/act" hx-target="closest .review-row" hx-swap="outerHTML">
       <input type="hidden" name="key" value="{{ i.key }}">
       <input type="hidden" name="action" value="{{ action }}">
       <input type="hidden" name="back_source" value="{{ source }}">
       <input type="hidden" name="back_page" value="{{ page }}">
-      <button type="submit" class="btn {{ class }} btn-sm">{{ label }}</button>
+      <button type="submit" class="btn {{ class }} btn-sm" aria-label="{{ label }}: {{ i.content[:60] }}">{{ label }}</button>
     </form>
     {% endfor %}
   </div>
-</div>
+</li>
 {% endmacro %}
 
 {% block content %}
 <header class="page-header">
-  <h2>Unconfirmed <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+  <div>
+    <h2>Unconfirmed <span class="count-chip">{{ total|thousands }}</span></h2>
+    <p class="page-intro">Facts and preferences OmniMem concluded for itself that nothing has vouched for yet. Confirm the right ones and reject the wrong ones. Only you can: an agent can't confirm what it concluded.</p>
+  </div>
 </header>
 
 {% if message %}
@@ -44,41 +49,38 @@
 </div>
 {% endif %}
 
-<p class="section-note">
-  Facts and preferences OmniMem concluded for itself, which nothing has
-  vouched for yet. Confirm the ones that are right and reject the ones that
-  aren't. Only you can do this: an agent can't confirm what it concluded.
-</p>
+
 
 {% if source %}
-<p class="section-note">Showing only what came from <a href="{{ admin }}/memory/{{ source }}" class="mono" style="color:var(--accent)">{{ source }}</a>. <a href="{{ admin }}/unconfirmed" style="color:var(--accent)">Show all</a></p>
+<p class="note-bar">Showing only what came from <a href="{{ admin }}/memory/{{ source|urlquote }}?back={{ here|urlquote }}" class="mono">{{ source }}</a>. <a href="{{ admin }}/unconfirmed">Show everything</a></p>
 {% endif %}
 
 {% for g in groups %}
-<section class="pending-proposal">
-  <div class="pending-head">
-    <strong>From</strong>
-    {% if g.exists %}<a href="{{ admin }}/memory/{{ g.source }}" class="mono" style="color:var(--accent);text-decoration:none">{{ g.source }}</a>{% else %}<span class="mono">{{ g.source }}</span> (gone){% endif %}
-    {% if g.title %}<span style="color:var(--text-dim)">{{ g.title }}</span>{% endif %}
-    <span class="badge">{{ g.total }}</span>
-    {% if not source %}<a href="{{ admin }}{{ g.url }}" class="mono" style="font-size:0.75rem;color:var(--accent)">only these</a>{% endif %}
-  </div>
-  {% for i in g['items'] %}{{ item(i, source, page) }}{% endfor %}
-  <div class="pending-actions">
-    <form method="POST" action="{{ admin }}/unconfirmed/source" style="display:inline">
-      <input type="hidden" name="source" value="{{ g.source }}">
-      <input type="hidden" name="back_source" value="{{ source }}">
-      <input type="hidden" name="back_page" value="{{ page }}">
-      <button type="submit" class="btn btn-secondary btn-sm">Confirm all {{ g.total }} from this source</button>
-    </form>
-  </div>
+<section class="review-group" aria-label="From {{ g.title or g.source }}">
+  <header class="review-group-head">
+    <div class="review-group-title">
+      <span class="field-label">From</span>
+      {% if g.exists %}<a href="{{ admin }}/memory/{{ g.source|urlquote }}?back={{ here|urlquote }}" class="review-source">{{ g.title or g.source }}</a>{% else %}<span class="review-source">{{ g.title or g.source }} <span class="text-dim">(gone)</span></span>{% endif %}
+      <span class="count-chip">{{ g.total }}</span>
+    </div>
+    <div class="review-group-actions">
+      {% if not source and g.total > g['items']|length %}<a href="{{ admin }}{{ g.url }}" class="btn-link">See all {{ g.total }}</a>{% endif %}
+      <form method="POST" action="{{ admin }}/unconfirmed/source" data-confirm="Confirm all {{ g.total }} facts from this source?">
+        <input type="hidden" name="source" value="{{ g.source }}">
+        <input type="hidden" name="back_source" value="{{ source }}">
+        <input type="hidden" name="back_page" value="{{ page }}">
+        <button type="submit" class="btn btn-secondary btn-sm">Confirm all {{ g.total }}</button>
+      </form>
+    </div>
+  </header>
+  <ul class="review-list">{% for i in g['items'] %}{{ item(i, source, page) }}{% endfor %}</ul>
 </section>
 {% endfor %}
 
 {% if loose %}
-<section class="pending-proposal">
-  <div class="pending-head"><strong>Not tied to a source memory</strong></div>
-  {% for i in loose %}{{ item(i, source, page) }}{% endfor %}
+<section class="review-group" aria-label="Not tied to a source memory">
+  <header class="review-group-head"><div class="review-group-title"><span class="review-source">Not tied to a source memory</span></div></header>
+  <ul class="review-list">{% for i in loose %}{{ item(i, source, page) }}{% endfor %}</ul>
 </section>
 {% endif %}
 

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use crate::PanelState;
 use crate::choices::{LICENCE_CHOICES, PROVENANCE_CHOICES, licence_label, provenance_label};
-use crate::pages::{blocking, is_web_url, quote, see_other, starting};
+use crate::pages::{back_of, blocking, is_web_url, memory_url, quote, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
@@ -137,6 +137,11 @@ pub(crate) async fn handler(
     let (history_on, history_rows) = history;
     let history: Vec<Value> = history_rows.iter().map(crate::audit_log::view).collect();
     let param = |name: &str| query.get(name).cloned().unwrap_or_default();
+    let came_from = back_of(&query);
+    let back = came_from
+        .clone()
+        .unwrap_or_else(|| default_back(&namespace).to_owned());
+    let self_url = memory_url(&key, came_from.as_deref());
     page(
         state.templates(),
         "detail.html",
@@ -150,7 +155,10 @@ pub(crate) async fn handler(
             licence_classes => LICENCE_CHOICES,
             provenance_error => param("provenance_error"),
             provenance_classes => PROVENANCE_CHOICES,
-            current_page => "memories",
+            current_page => section_of(&back),
+            back_label => back_label(&back),
+            back,
+            self_url,
         },
     )
 }
@@ -164,6 +172,7 @@ enum Outcome {
 async fn run_form(
     state: PanelState,
     key: String,
+    back: Option<String>,
     error_param: &'static str,
     work: impl FnOnce(&omnimem_engine::Engine, &str) -> omnimem_engine::Result<Outcome> + Send + 'static,
 ) -> Response {
@@ -176,13 +185,74 @@ async fn run_form(
         other => other,
     })
     .await;
+    let here = memory_url(&key, back.as_deref());
     match outcome {
-        Ok(Outcome::Done) => see_other(&format!("/memory/{key}")),
-        Ok(Outcome::Refused(message)) => {
-            see_other(&format!("/memory/{key}?{error_param}={}", quote(&message)))
-        }
+        Ok(Outcome::Done) => see_other(&here),
+        Ok(Outcome::Refused(message)) => see_other(&with_param(&here, error_param, &message)),
         Err(failure) => failure,
     }
+}
+
+/// Where a memory's page goes back to when nothing said where it came from.
+fn default_back(namespace: &str) -> &'static str {
+    match namespace {
+        "preference" => "/memories?namespace=preference",
+        "knowledge" => "/memories?namespace=knowledge",
+        "project" => "/projects",
+        "skill" => "/skills",
+        _ => "/memories",
+    }
+}
+
+/// The menu item a return path belongs to, so the menu still says where
+/// the person is working while they look at one memory.
+pub(crate) fn section_of(path: &str) -> &'static str {
+    let route = path.split(['?', '#']).next().unwrap_or(path);
+    let query = path.split_once('?').map_or("", |(_, q)| q);
+    let has = |pair: &str| query.split('&').any(|p| p == pair);
+    match route.trim_end_matches('/') {
+        "" => "dashboard",
+        "/search" => "search",
+        "/unconfirmed" => "unconfirmed",
+        "/contradictions" => "contradictions",
+        "/duplicates" => "duplicates",
+        "/experience" => "experience",
+        "/experience/graveyard" => "graveyard",
+        "/audit" => "audit",
+        "/skills" => "skills",
+        r if r.starts_with("/skills/") => "skills",
+        r if r.starts_with("/projects") => "projects",
+        "/memories" if has("source=rss") => "articles",
+        "/memories" if has("source=learned") => "learned",
+        "/memories" if has("namespace=preference") => "preferences",
+        _ => "memories",
+    }
+}
+
+/// What the Back link says: the page it returns to, in the menu's words.
+fn back_label(path: &str) -> &'static str {
+    match section_of(path) {
+        "dashboard" => "Dashboard",
+        "search" => "Search",
+        "unconfirmed" => "Unconfirmed",
+        "contradictions" => "Contradictions",
+        "duplicates" => "Duplicates",
+        "experience" => "Experience",
+        "graveyard" => "Graveyard",
+        "audit" => "Audit log",
+        "skills" => "Skills",
+        "projects" => "Projects",
+        "articles" => "Articles",
+        "learned" => "Learned knowledge",
+        "preferences" => "Preferences",
+        _ => "Memories",
+    }
+}
+
+/// `url` with one more query parameter.
+fn with_param(url: &str, name: &str, value: &str) -> String {
+    let joiner = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{joiner}{name}={}", quote(value))
 }
 
 /// A tool result carrying `error` is a refusal, as a `ValueError` was.
@@ -205,10 +275,16 @@ pub(crate) async fn retag(
                 .collect()
         })
         .unwrap_or_default();
-    run_form(state, key, "tag_error", move |engine, key| {
-        engine.retag(key, Some(tags), None, None)?;
-        Ok(Outcome::Done)
-    })
+    run_form(
+        state,
+        key,
+        back_of(&form),
+        "tag_error",
+        move |engine, key| {
+            engine.retag(key, Some(tags), None, None)?;
+            Ok(Outcome::Done)
+        },
+    )
     .await
 }
 
@@ -217,38 +293,45 @@ pub(crate) async fn licence(
     Path(key): Path<String>,
     Form(form): Form<FormData>,
 ) -> Response {
-    run_form(state, key, "licence_error", move |engine, key| {
-        // created_at proves the record exists: every writer sets it, and an
-        // unclassified record must still be classifiable here.
-        if !is_classifiable_key(key) {
-            return Ok(Outcome::Done);
-        }
-        let Some(current) = engine
-            .store()
-            .get_fields_multi(
-                &[key.to_owned()],
-                &["created_at", "licence", "licence_note"],
-            )?
-            .pop()
-            .flatten()
-        else {
-            return Ok(Outcome::Done);
-        };
-        let field = |name: &str| form.get(name).map_or("", String::as_str);
-        let (class, derived) = resolve_licence(field("licence"))?;
-        let submitted = validate_licence_note(Some(field("licence_note")))?;
-        // The form pre-fills the current note: switching class keeps it only
-        // when the human changed it.
-        let note = note_for_reclassification(
-            current.get("licence").map_or("", String::as_str),
-            current.get("licence_note").map(String::as_str),
-            class,
-            submitted,
-        )
-        .or_else(|| derived.map(str::to_owned));
-        let result = engine.set_licence(class, Some(&[key.to_owned()]), None, note.as_deref())?;
-        Ok(refused(&result).map_or(Outcome::Done, Outcome::Refused))
-    })
+    run_form(
+        state,
+        key,
+        back_of(&form),
+        "licence_error",
+        move |engine, key| {
+            // created_at proves the record exists: every writer sets it, and an
+            // unclassified record must still be classifiable here.
+            if !is_classifiable_key(key) {
+                return Ok(Outcome::Done);
+            }
+            let Some(current) = engine
+                .store()
+                .get_fields_multi(
+                    &[key.to_owned()],
+                    &["created_at", "licence", "licence_note"],
+                )?
+                .pop()
+                .flatten()
+            else {
+                return Ok(Outcome::Done);
+            };
+            let field = |name: &str| form.get(name).map_or("", String::as_str);
+            let (class, derived) = resolve_licence(field("licence"))?;
+            let submitted = validate_licence_note(Some(field("licence_note")))?;
+            // The form pre-fills the current note: switching class keeps it only
+            // when the human changed it.
+            let note = note_for_reclassification(
+                current.get("licence").map_or("", String::as_str),
+                current.get("licence_note").map(String::as_str),
+                class,
+                submitted,
+            )
+            .or_else(|| derived.map(str::to_owned));
+            let result =
+                engine.set_licence(class, Some(&[key.to_owned()]), None, note.as_deref())?;
+            Ok(refused(&result).map_or(Outcome::Done, Outcome::Refused))
+        },
+    )
     .await
 }
 
@@ -257,20 +340,26 @@ pub(crate) async fn provenance(
     Path(key): Path<String>,
     Form(form): Form<FormData>,
 ) -> Response {
-    run_form(state, key, "provenance_error", move |engine, key| {
-        if !is_classifiable_key(key)
-            || engine
-                .store()
-                .get_fields_multi(&[key.to_owned()], &["created_at"])?
-                .pop()
-                .flatten()
-                .is_none()
-        {
-            return Ok(Outcome::Done);
-        }
-        let class = resolve_provenance(form.get("provenance").map_or("", String::as_str))?;
-        let result = engine.set_provenance(class, &[key.to_owned()])?;
-        Ok(refused(&result).map_or(Outcome::Done, Outcome::Refused))
-    })
+    run_form(
+        state,
+        key,
+        back_of(&form),
+        "provenance_error",
+        move |engine, key| {
+            if !is_classifiable_key(key)
+                || engine
+                    .store()
+                    .get_fields_multi(&[key.to_owned()], &["created_at"])?
+                    .pop()
+                    .flatten()
+                    .is_none()
+            {
+                return Ok(Outcome::Done);
+            }
+            let class = resolve_provenance(form.get("provenance").map_or("", String::as_str))?;
+            let result = engine.set_provenance(class, &[key.to_owned()])?;
+            Ok(refused(&result).map_or(Outcome::Done, Outcome::Refused))
+        },
+    )
     .await
 }

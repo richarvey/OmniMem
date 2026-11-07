@@ -232,6 +232,11 @@ impl Panel {
             .route("/duplicates", get(management::duplicates))
             .route("/duplicates/scan", get(management::duplicates_scan))
             .route("/contradictions", get(management::contradictions))
+            .route("/contradictions/badge", get(management::badge))
+            .route(
+                "/contradictions/dismiss-wording",
+                post(management::dismiss_wording),
+            )
             .route(
                 "/contradictions/resolve",
                 post(management::resolve_contradiction),
@@ -288,7 +293,10 @@ impl Panel {
                 get(configuration::form).post(configuration::save),
             )
             .route("/static/{*path}", get(assets::serve));
-        let router = router.fallback(pages::pending).with_state(state.clone());
+        let router = router
+            .fallback(pages::pending)
+            .layer(axum::middleware::from_fn(pages::remember_here))
+            .with_state(state.clone());
         Self { state, router }
     }
 
