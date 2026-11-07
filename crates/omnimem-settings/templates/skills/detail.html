@@ -57,19 +57,15 @@
 
 {% if skill.rules %}
 <div style="margin-bottom:1.5rem">
-  <h2 class="eyebrow-heading">
-    Rules
-    <span style="font-weight:400;text-transform:none;letter-spacing:0">
-      ({{ skill.rule_counts.do }} do · {{ skill.rule_counts.watch }} watch · {{ skill.rule_counts.dont }} don't{% if skill.rule_counts.ref %} · {{ skill.rule_counts.ref }} ref{% endif %})
-    </span>
-  </h2>
+  <h2 class="section-heading">Rules <span class="count-note">{{ skill.rule_counts.do }} do, {{ skill.rule_counts.watch }} watch, {{ skill.rule_counts.dont }} don't{% if skill.rule_counts.ref %}, {{ skill.rule_counts.ref }} ref{% endif %}</span></h2>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Rules, scrolls sideways">
   <table class="data-table skill-rules-table">
     <thead>
       <tr>
-        <th style="width:8%">Kind</th>
+        <th scope="col" style="width:4.5rem">Kind</th>
         <th scope="col">Rule</th>
-        <th style="width:12%">Backing</th>
-        <th style="width:24%">Sources</th>
+        <th scope="col" style="width:6.5rem">Backing</th>
+        <th scope="col" style="width:24%">Sources</th>
       </tr>
     </thead>
     <tbody>
@@ -91,6 +87,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endif %}
 

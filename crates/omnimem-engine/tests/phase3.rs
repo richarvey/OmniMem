@@ -1346,4 +1346,14 @@ fn maintenance_links_the_pairs_it_finds_without_touching_updated_at() {
     assert_eq!(open.len(), 1, "{open:?}");
     assert_eq!(open[0]["key_a"], "mem:episodic:01E");
     assert_eq!(open[0]["key_b"], "mem:episodic:01F");
+
+    // The next pass finds nothing new: the pair is linked, not re-counted,
+    // and still open.
+    e.briefing(Some("p"), true).unwrap();
+    let fourth = e.briefing(Some("p"), true).unwrap();
+    assert_eq!(
+        fourth["auto_maintenance"]["contradictions_found"],
+        json!([])
+    );
+    assert_eq!(e.open_contradictions().unwrap().len(), 1);
 }

@@ -4,22 +4,22 @@
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-ns">Static overhead</div>
-    <div class="stat-total" title="{{ static_total_tokens|thousands }}">{{ num(static_total_tokens) }}</div>
+    <div class="stat-total">{{ num(static_total_tokens) }}</div>
     <div class="stat-label">tokens/session</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Total tool calls</div>
-    <div class="stat-total" title="{{ total_tool_calls|thousands }}">{{ num(total_tool_calls) }}</div>
+    <div class="stat-total">{{ num(total_tool_calls) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card stat-card-highlight">
     <div class="stat-ns">Total tool tokens</div>
-    <div class="stat-total" title="~{{ total_tool_tokens|thousands }}">~{{ num(total_tool_tokens) }}</div>
+    <div class="stat-total">~{{ num(total_tool_tokens) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Stored memories</div>
-    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>
+    <div class="stat-total">{{ num(total_memories) }}</div>
     <div class="stat-label">active</div>
   </div>
 </div>

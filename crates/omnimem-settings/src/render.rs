@@ -61,13 +61,14 @@ fn compact(value: &Value) -> String {
 }
 
 /// The first `max` characters of a preview, with an ellipsis when that cut
-/// something, on one line.
+/// something. Lines are kept: `plain` joins them, and needs to see a
+/// heading line to join it with a colon.
 pub(crate) fn clip(text: &str, max: usize) -> String {
     let mut out: String = text.chars().take(max).collect();
     if text.chars().count() > max {
         out.push('…');
     }
-    out.replace('\n', " ")
+    out
 }
 
 /// A one-line preview of markdown: heading marks, emphasis, code ticks and

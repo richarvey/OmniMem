@@ -26,35 +26,35 @@
   <ul class="attention-grid">
     {% if attention.unconfirmed > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/unconfirmed">
-      <span class="attention-num" title="{{ attention.unconfirmed|thousands }}">{{ num(attention.unconfirmed) }}</span>
+      <span class="attention-num">{{ num(attention.unconfirmed) }}</span>
       <span class="attention-label">unconfirmed fact{{ '' if attention.unconfirmed == 1 else 's' }}</span>
       <span class="attention-hint">Concluded by OmniMem, waiting for a yes or no</span>
     </a></li>
     {% endif %}
     {% if attention.contradictions > 0 %}
     <li><a class="attention-tile attention-danger" href="{{ admin }}/contradictions">
-      <span class="attention-num" title="{{ attention.contradictions|thousands }}">{{ num(attention.contradictions) }}</span>
+      <span class="attention-num">{{ num(attention.contradictions) }}</span>
       <span class="attention-label">contradiction{{ '' if attention.contradictions == 1 else 's' }} to settle</span>
       <span class="attention-hint">Confirmed by a model, or a fix an agent proposed. Say which memory holds.</span>
     </a></li>
     {% endif %}
     {% if attention.wording > 0 %}
     <li><a class="attention-tile attention-muted" href="{{ admin }}/contradictions#wording-h">
-      <span class="attention-num" title="{{ attention.wording|thousands }}">{{ num(attention.wording) }}</span>
+      <span class="attention-num">{{ num(attention.wording) }}</span>
       <span class="attention-label">wording-only pair{{ '' if attention.wording == 1 else 's' }}</span>
       <span class="attention-hint">Possible contradictions from the quick wording check. Most aren't real: dismiss them in one go, or settle the ones that are.</span>
     </a></li>
     {% endif %}
     {% if duplicates_found > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/duplicates?namespace={{ duplicates_in[0] }}{% if duplicates_project %}&amp;project={{ duplicates_project|urlquote }}{% endif %}&amp;scan=1">
-      <span class="attention-num" title="{{ duplicates_found|thousands }}">{{ num(duplicates_found) }}</span>
+      <span class="attention-num">{{ num(duplicates_found) }}</span>
       <span class="attention-label">duplicate cluster{{ '' if duplicates_found == 1 else 's' }}</span>
       <span class="attention-hint">Found by your scan of {{ duplicates_in|join(', ') }}{% if duplicates_age < 1 %} just now{% elif duplicates_age < 60 %} {{ duplicates_age }} min ago{% else %} {{ duplicates_age // 60 }} h ago{% endif %}. Open it to keep one of each.</span>
     </a></li>
     {% endif %}
     {% if attention.proposals > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/skills">
-      <span class="attention-num" title="{{ attention.proposals|thousands }}">{{ num(attention.proposals) }}</span>
+      <span class="attention-num">{{ num(attention.proposals) }}</span>
       <span class="attention-label">skill proposal{{ '' if attention.proposals == 1 else 's' }}</span>
       <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
     </a></li>

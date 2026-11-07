@@ -443,12 +443,32 @@ async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
         .store()
         .bump_recall_counts(std::slice::from_ref(&cold), "1000.0")
         .unwrap();
+    // A compiled skill is recalled too: listed, but not a memory in the
+    // total, as Token overhead counts.
+    let skill = "mem:skill:gen:rust-local";
+    engine
+        .store()
+        .upsert(
+            skill,
+            &Fields::from([
+                ("name".to_owned(), "rust-local".to_owned()),
+                ("state".to_owned(), "active".to_owned()),
+                ("body".to_owned(), "# Rust".to_owned()),
+            ]),
+            None,
+        )
+        .unwrap();
+    engine
+        .store()
+        .bump_recall_counts(std::slice::from_ref(&skill.to_owned()), &now)
+        .unwrap();
 
     let page = text(&get(&panel, "/telemetry").await);
     assert!(
-        page.contains(r#"<div class="stat-total" title="3">3</div>"#),
+        page.contains(r#"<div class="stat-total">3</div>"#),
         "{page}"
     );
+    assert!(page.contains("rust-local"), "the skill is listed: {page}");
     let most = page.find("Most recalled").unwrap();
     let gone = page.find("Gone cold").unwrap();
     let never = page.find("Never recalled <span").unwrap();

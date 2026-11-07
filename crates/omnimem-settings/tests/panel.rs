@@ -83,12 +83,29 @@ async fn pages_wait_for_the_engine_then_show_the_dashboard() {
             None,
         )
         .unwrap();
+    // An article summary: its preview reads as a sentence, cut with an ellipsis.
+    engine
+        .remember(
+            &format!("# Summary\nDocker Sandboxes' kits {}", "x".repeat(200)),
+            Some("omnimem"),
+            None,
+            "knowledge",
+            true,
+            Some("raw"),
+            None,
+            None,
+        )
+        .unwrap();
     panel.set_engine(engine);
 
     let dashboard = get(&panel, "/?refresh=1").await;
     let html = text(&dashboard);
     assert_eq!(dashboard.status(), 200, "{html}");
-    assert!(html.contains("2 memories"), "{html}");
+    assert!(html.contains("3 memories"), "{html}");
+    assert!(
+        html.contains("Summary: Docker Sandboxes&#39; kits x") && html.contains("x…</a>"),
+        "{html}"
+    );
     assert!(
         html.contains("Requires your attention") && html.contains("Nothing needs your attention"),
         "{html}"

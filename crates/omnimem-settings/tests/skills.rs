@@ -210,8 +210,7 @@ async fn skills_list_show_and_delete() {
         "{detail}"
     );
     assert!(
-        detail.contains("(1 do · 0 watch · 0 don&#39;t)")
-            || detail.contains("(1 do · 0 watch · 0 don't)"),
+        detail.contains("1 do, 0 watch, 0 don&#39;t") || detail.contains("1 do, 0 watch, 0 don't"),
         "{detail}"
     );
     assert!(detail.contains(&format!(r#"<a href="/admin/memory/{}?back="#, source)));

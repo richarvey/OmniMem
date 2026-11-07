@@ -31,7 +31,8 @@
   // The sidebar scrolls on a short window: the current page's item is
   // always in view.
   var current = document.querySelector('.sidebar [aria-current="page"]');
-  if (current && current.scrollIntoView) current.scrollIntoView({ block: 'nearest' });
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  if (current && current.scrollIntoView && !narrow) current.scrollIntoView({ block: 'nearest' });
 
   // The menu is a <details>, open in the markup so it works without
   // scripts. On a phone it folds behind its Menu toggle until asked for.

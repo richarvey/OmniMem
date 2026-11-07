@@ -890,20 +890,7 @@ span.project-name {
   margin-bottom: 0.25rem;
 }
 
-.skills-table th:nth-child(1),
-.skills-table td:nth-child(1) { width: 16%; }
-.skills-table th:nth-child(2),
-.skills-table td:nth-child(2) { width: 12%; }
-.skills-table th:nth-child(3),
-.skills-table td:nth-child(3) { width: 23%; }
-.skills-table th:nth-child(4),
-.skills-table td:nth-child(4) { width: 12%; }
-.skills-table th:nth-child(5),
-.skills-table td:nth-child(5) { width: 13%; }
-.skills-table th:nth-child(6),
-.skills-table td:nth-child(6) { width: 6%; }
-.skills-table th:nth-child(7),
-.skills-table td:nth-child(7) { width: 18%; }
+/* Column widths: in the consolidated block at the end of this file. */
 
 /* Graveyard table */
 .graveyard-table {
@@ -2128,9 +2115,6 @@ a.review-source:hover { color: var(--accent-text); }
 .btn-ghost:hover { color: var(--text); border-color: var(--border-strong); }
 .btn-confirm:hover { border-color: var(--accent); color: var(--accent-text); }
 .btn-sm { min-height: 32px; }
-.nav-link { min-height: 30px; padding-top: 4px; padding-bottom: 4px; }
-.nav-section-label { margin-top: 0.75rem; }
-.nav-create { margin-top: 0.75rem; }
 .rail-trust .form-input { width: 100%; }
 
 /* Configuration */
@@ -2183,7 +2167,6 @@ a.review-source:hover { color: var(--accent-text); }
   color: var(--text-soft); margin: 1.1rem 0.9rem 0.15rem; padding: 0.55rem 0.3rem 0.3rem; border-top: 1px solid var(--border-subtle);
 }
 .nav-list > li:first-child.nav-section-label { margin-top: 0.75rem; border-top: 0; padding-top: 0; }
-.nav-link { margin-left: 0.9rem; margin-right: 0.9rem; padding-left: 12px; }
 .stat-total { font-size: clamp(30px, 2.8vw, 44px); overflow-wrap: anywhere; }
 .attention-num { font-variant-numeric: tabular-nums; }
 .attention-muted { border-color: var(--border-card); box-shadow: inset 3px 0 0 var(--text-faint); }
@@ -2219,7 +2202,7 @@ details[open] > .fold-summary .when-open { display: inline; }
   .count-note { display: block; margin-top: 0.2rem; }
   /* Wide data tables scroll sideways inside their wrapper rather than crushing their columns. */
   .table-scroll > .skills-table, .table-scroll > .graveyard-table, .table-scroll > .effortful-table,
-  .table-scroll > .telemetry-table, .table-scroll > .tool-metrics-table { min-width: 640px; }
+  .table-scroll > .telemetry-table, .table-scroll > .tool-metrics-table, .table-scroll > .skill-rules-table { min-width: 640px; }
   .tool-metrics-table td:first-child, .skills-table .skill-actions, .graveyard-table .badge, .effortful-table .badge { white-space: nowrap; }
 }
 .table-legend { margin-top: 0.5rem; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: center; }
@@ -2235,18 +2218,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .detail-head h1.detail-title { font-size: 20px; font-weight: 600; line-height: 1.35; }
 /* Round 5c */
 .search-result-header { flex-wrap: wrap; row-gap: 0.3rem; }
-.skills-table th:nth-child(1), .skills-table td:nth-child(1) { width: 22%; }
-.skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 19%; }
-.skills-table th:nth-child(7), .skills-table td:nth-child(7) { width: 16%; }
-.skills-table td:nth-child(1) { overflow-wrap: anywhere; white-space: normal; }
 /* A tighter menu, so most of it fits a 900 px window; the sidebar scrolls for the rest. */
-.nav-link { min-height: 28px; padding-top: 3px; padding-bottom: 3px; }
-.nav-section-label { margin-top: 0.75rem; padding-top: 0.45rem; padding-bottom: 0.2rem; }
-.nav-create { margin-top: 0.5rem; margin-bottom: 0.25rem; }
-.sidebar-foot { margin-top: 0.5rem; padding-top: 0.6rem; }
 @media (max-width: 640px) {
   /* A table wider than the phone says so, in place of looking cut off. */
-  .table-scroll:has(> .skills-table, > .graveyard-table, > .effortful-table, > .telemetry-table, > .tool-metrics-table)::before {
+  .table-scroll:has(> .skills-table, > .graveyard-table, > .effortful-table, > .telemetry-table, > .tool-metrics-table, > .skill-rules-table)::before {
     content: "Swipe sideways for the rest of the table"; display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 0.35rem;
   }
 }
@@ -2262,27 +2237,54 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* Round 5e */
 .detail-rail { max-height: none; overflow-y: visible; }
 @media (min-width: 901px) { .detail-rail { max-height: calc(100vh - 2rem); overflow-y: auto; } }
-.skills-table td:nth-child(2) .badge { overflow-wrap: break-word; white-space: normal; }
 /* Round 5f */
-.nav-link { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
-.nav-section-label { margin-top: 0.55rem; padding-top: 0.4rem; padding-bottom: 0.15rem; }
-.nav-list { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-.nav-create { margin-top: 0.4rem; margin-bottom: 0.1rem; }
-.sidebar-header { padding-bottom: 0.6rem; }
 .search-breakthrough { margin-top: 0.35rem; font-size: 13px; color: var(--green); overflow-wrap: anywhere; }
 .num-exact { display: block; font-family: var(--font-mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-muted); line-height: 1.4; margin-top: 0.15rem; }
 .attention-num .num-exact { display: inline; margin-left: 0.4rem; }
 .telemetry-table th:first-child, .telemetry-table td:first-child { width: 7.5rem; }
 .group-action { margin: 0.5rem 0 0.75rem; }
 /* Round 5g */
-.skills-table th:nth-child(2), .skills-table td:nth-child(2) { width: 18%; }
-.skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 16%; }
-.skills-table th:nth-child(5), .skills-table td:nth-child(5) { width: 10%; }
-.skills-table td:nth-child(2) .badge { hyphens: manual; }
 .sidebar-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
 .sidebar-foot .logout-form { margin: 0; }
 .sidebar-foot .sidebar-links { margin: 0; }
 .dash-grid { align-items: start; }
 @media (max-width: 640px) {
   .table-scroll > .graveyard-table { min-width: 760px; }
+}
+/* The menu and the skills table, in one place (the earlier rounds' layers are folded in here). */
+.nav-list { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.nav-link { margin-left: 0.9rem; margin-right: 0.9rem; padding: 2px 10px 2px 12px; min-height: 26px; }
+.nav-section-label { margin-top: 0.55rem; padding-top: 0.4rem; padding-bottom: 0.15rem; }
+.nav-create { margin-top: 0.4rem; margin-bottom: 0.1rem; }
+.sidebar-header { padding-bottom: 0.6rem; }
+.sidebar-foot { margin-top: 0.5rem; padding-top: 0.6rem; }
+.skills-table th:nth-child(1), .skills-table td:nth-child(1) { width: 22%; }
+.skills-table th:nth-child(2), .skills-table td:nth-child(2) { width: 18%; }
+.skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 16%; }
+.skills-table th:nth-child(4), .skills-table td:nth-child(4) { width: 12%; }
+.skills-table th:nth-child(5), .skills-table td:nth-child(5) { width: 10%; }
+.skills-table th:nth-child(6), .skills-table td:nth-child(6) { width: 6%; }
+.skills-table th:nth-child(7), .skills-table td:nth-child(7) { width: 16%; }
+.skills-table td:nth-child(1) { overflow-wrap: anywhere; white-space: normal; }
+/* A domain breaks at its hyphens, or anywhere when it has none (64 characters of [a-z0-9._-] may). */
+.skills-table td:nth-child(2) .badge { overflow-wrap: anywhere; white-space: normal; hyphens: manual; }
+/* Round 5h */
+.table-scroll { position: relative; }
+.detail-header { flex-wrap: wrap; }
+@media (max-width: 640px) { .detail-header .detail-key { flex-basis: 100%; } }
+.graveyard-table th:nth-child(2), .graveyard-table td:nth-child(2) { width: 44%; }
+.graveyard-table th:nth-child(3), .graveyard-table td:nth-child(3) { width: 12%; }
+.sidebar-foot { margin-top: 0.4rem; padding-top: 0.45rem; }
+@media (max-width: 640px) {
+  /* "accessibility" in the mono face needs the room, or it breaks mid-word. */
+  .skills-table th:nth-child(2), .skills-table td:nth-child(2) { width: 9.5rem; min-width: 9.5rem; }
+}
+.sidebar-foot { margin-top: 0.3rem; padding-top: 0.35rem; }
+.nav-list { padding-top: 0.15rem; padding-bottom: 0.15rem; }
+.legend-item { white-space: nowrap; }
+@media (max-width: 640px) {
+  /* A collapsed pair still shows where A ends and B begins. */
+  .pair-summary .pair-vs { display: block; margin: 0.2rem 0; }
+  .graveyard-table th:nth-child(1), .graveyard-table td:nth-child(1) { width: 30%; }
+  .stat-ns { letter-spacing: 0.1em; }
 }
