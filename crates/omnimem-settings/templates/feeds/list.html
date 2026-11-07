@@ -8,16 +8,12 @@
     <h2>RSS feeds</h2>
     <p class="page-intro">The reading list OmniMem summarises into knowledge, kept in <code>feeds.yml</code>.</p>
   </div>
-  <div style="display:flex;gap:0.5rem;align-items:center">
-    <a href="{{ admin }}/feeds/new" class="btn btn-primary btn-sm">Add Feed</a>
-    <a href="{{ admin }}/feeds/download" class="btn btn-secondary btn-sm" title="Download feeds.yml" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    </a>
-    <form method="POST" action="{{ admin }}/feeds/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center">
-      <input type="file" name="file" accept=".yml,.yaml" required style="display:none" id="feeds-file-input" data-submit-on-change>
-      <button type="button" class="btn btn-secondary btn-sm" title="Upload feeds.yml" data-click-target="feeds-file-input" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </button>
+  <div class="header-actions">
+    <a href="{{ admin }}/feeds/new" class="btn btn-primary btn-sm">+ Add feed</a>
+    <a href="{{ admin }}/feeds/download" class="btn btn-secondary btn-sm">Download feeds.yml</a>
+    <form method="POST" action="{{ admin }}/feeds/upload" enctype="multipart/form-data" class="inline-form">
+      <input type="file" name="file" accept=".yml,.yaml" required hidden id="feeds-file-input" data-submit-on-change>
+      <button type="button" class="btn btn-secondary btn-sm" data-click-target="feeds-file-input">Upload feeds.yml</button>
     </form>
   </div>
 </header>

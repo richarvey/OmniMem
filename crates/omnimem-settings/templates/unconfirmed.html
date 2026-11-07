@@ -13,7 +13,7 @@
     <a href="{{ admin }}/memory/{{ i.key|urlsegment }}?back={{ here|urlquote }}" class="review-content">{{ i.content }}</a>
   </div>
   <div class="review-actions">
-    {% for action, label, class in [('confirm', 'Confirm', 'btn-primary'), ('reject', 'Reject', 'btn-secondary')] %}
+    {% for action, label, class in [('confirm', 'Confirm', 'btn-secondary btn-confirm'), ('reject', 'Reject', 'btn-ghost')] %}
     <form method="POST" action="{{ admin }}/unconfirmed/act"
           hx-post="{{ admin }}/unconfirmed/act" hx-target="closest .review-row" hx-swap="outerHTML">
       <input type="hidden" name="key" value="{{ i.key }}">
@@ -69,7 +69,7 @@
         <input type="hidden" name="source" value="{{ g.source }}">
         <input type="hidden" name="back_source" value="{{ source }}">
         <input type="hidden" name="back_page" value="{{ page }}">
-        <button type="submit" class="btn btn-secondary btn-sm">Confirm all {{ g.total }}</button>
+        <button type="submit" class="btn btn-primary btn-sm">Confirm all {{ g.total }}</button>
       </form>
     </div>
   </header>

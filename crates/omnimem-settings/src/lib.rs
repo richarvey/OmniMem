@@ -143,6 +143,14 @@ impl PanelState {
         &self.0.templates
     }
 
+    /// Forget the menu's and the dashboard's counts after a review action,
+    /// so the page it lands on doesn't show the old numbers.
+    pub(crate) fn invalidate_counts(&self) {
+        let mut caches = self.caches();
+        caches.nav_counts = None;
+        caches.dashboard = None;
+    }
+
     pub(crate) fn caches(&self) -> std::sync::MutexGuard<'_, Caches> {
         self.0
             .caches
@@ -238,7 +246,6 @@ impl Panel {
             .route("/duplicates/scan", get(management::duplicates_scan))
             .route("/duplicates/keep", post(management::keep_duplicate))
             .route("/contradictions", get(management::contradictions))
-            .route("/contradictions/badge", get(management::badge))
             .route("/nav-counts", get(management::nav_counts))
             .route(
                 "/contradictions/dismiss-wording",

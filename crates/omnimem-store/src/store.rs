@@ -711,6 +711,19 @@ impl Store {
         Ok(counts)
     }
 
+    /// How many facts wait for a person: candidate trust, active or
+    /// deprioritised, in any namespace but skills (the Unconfirmed page's set).
+    pub fn count_unconfirmed(&self) -> Result<usize> {
+        let n: i64 = self.conn().query_row(
+            "SELECT COUNT(*) FROM memories
+             WHERE namespace != 'skill' AND trust = 'candidate'
+               AND COALESCE(NULLIF(state, ''), 'active') IN ('active', 'deprioritised')",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(n as usize)
+    }
+
     /// One project's memories: `(namespace, state, count)` and the keys of
     /// the `limit` most recently updated, leaving out its context entry.
     pub fn project_memories(

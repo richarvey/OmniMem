@@ -121,7 +121,7 @@ async fn settings_go_to_the_file_and_secrets_to_the_keychain() {
         "defaults are placeholders"
     );
     assert!(page.contains("Not set"));
-    assert!(page.contains("secrets\n  to the system keychain"), "{page}");
+    assert!(page.contains("secrets to the system keychain"), "{page}");
     assert!(!page.contains("Secrets can&#39;t be saved"));
 
     let saved = landed(&post(&panel, "MCP_PORT=9000&INGEST_MODE=raw&RSS_REQUIRE_LICENCE=true&ANTHROPIC_API_KEY=sk-ant-test&MCP_HOST=").await);
@@ -256,7 +256,7 @@ async fn on_a_server_secrets_go_into_the_settings_file_and_stay_hidden() {
     panel.set_secret_store(Arc::new(SettingsFileSecrets::new(file.clone())));
 
     let page = text(&get(&panel, "/configuration").await);
-    assert!(page.contains("secrets\n  to the settings file"), "{page}");
+    assert!(page.contains("secrets to the settings file"), "{page}");
 
     let saved = landed(&post(&panel, "MCP_PORT=9100&OAUTH_ADMIN_PASSWORD=s3cret").await);
     assert!(

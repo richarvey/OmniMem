@@ -19,7 +19,7 @@
 
 {# What waits on a person comes first, and only what is waiting. #}
 {% set backlog = enrichment_pending if enrichment_pending > 0 else 0 %}
-{% set waiting = attention.unconfirmed + attention.contradictions + attention.resolutions + attention.proposals + backlog %}
+{% set waiting = attention.unconfirmed + attention.contradictions + attention.proposals + duplicates_found + backlog %}
 <section class="attention" aria-labelledby="attention-h">
   <h3 id="attention-h" class="section-heading">Needs you</h3>
   {% if waiting > 0 %}
@@ -31,11 +31,18 @@
       <span class="attention-hint">Concluded by OmniMem, waiting for a yes or no</span>
     </a></li>
     {% endif %}
-    {% if attention.contradictions + attention.resolutions > 0 %}
+    {% if attention.contradictions > 0 %}
     <li><a class="attention-tile attention-danger" href="{{ admin }}/contradictions">
-      <span class="attention-num">{{ (attention.contradictions + attention.resolutions)|thousands }}</span>
-      <span class="attention-label">contradiction{{ '' if attention.contradictions + attention.resolutions == 1 else 's' }}</span>
-      <span class="attention-hint">{% if attention.resolutions %}{{ attention.resolutions }} proposed fix{{ '' if attention.resolutions == 1 else 'es' }} to accept{% else %}Pairs that disagree, to settle{% endif %}</span>
+      <span class="attention-num">{{ attention.contradictions|thousands }}</span>
+      <span class="attention-label">contradiction{{ '' if attention.contradictions == 1 else 's' }}</span>
+      <span class="attention-hint">Confirmed disagreements, or fixes an agent proposed, to settle{% if attention.wording %}; plus {{ attention.wording }} wording only{% endif %}</span>
+    </a></li>
+    {% endif %}
+    {% if duplicates_found > 0 %}
+    <li><a class="attention-tile" href="{{ admin }}/duplicates?namespace={{ duplicates_in[0] }}&amp;scan=1">
+      <span class="attention-num">{{ duplicates_found }}</span>
+      <span class="attention-label">duplicate cluster{{ '' if duplicates_found == 1 else 's' }}</span>
+      <span class="attention-hint">Found by your last scan of {{ duplicates_in|join(', ') }}</span>
     </a></li>
     {% endif %}
     {% if attention.proposals > 0 %}
@@ -54,7 +61,7 @@
     {% endif %}
   </ul>
   {% else %}
-  <p class="attention-clear">Nothing is waiting for you. New facts to confirm, contradictions and skill proposals show here when they arrive.</p>
+  <p class="attention-clear">Nothing is waiting for you. New facts to confirm, contradictions and skill proposals show here when they arrive.{% if attention.wording %} <a href="{{ admin }}/contradictions">{{ attention.wording }} wording-only pairs</a> can be skimmed when you have a minute.{% endif %}</p>
   {% endif %}
 </section>
 
@@ -86,7 +93,7 @@
       </svg>
       </div>
       <div class="chart-x" aria-hidden="true">
-        {% for c in g.columns %}{% if c.tick %}<span style="left: {{ c.left }}%">{{ c.label }}</span>{% endif %}{% endfor %}
+        {% for c in g.columns %}{% if c.tick %}<span style="left: {{ c.left }}%"{% if c.tick_minor %} class="tick-minor"{% endif %}>{{ c.label }}</span>{% endif %}{% endfor %}
       </div>
     </div>
     <ul class="legend" aria-hidden="true">
@@ -130,7 +137,8 @@
       {% endfor %}
     </ul>
     <p class="panel-foot">
-      <a href="{{ admin }}/projects">{{ projects.distinct }} projects</a>: {{ projects.states.active }} active, {{ projects.states.deprioritised }} deprioritised{% if projects.states.archived %}, {{ projects.states.archived }} archived{% endif %}
+      <a href="{{ admin }}/projects">{{ projects.distinct }} projects</a>: {{ projects.states.active }} active, {{ projects.states.deprioritised }} deprioritised{% if projects.states.archived %}, {{ projects.states.archived }} archived{% endif %}.
+      <a href="{{ admin }}/skills">{{ skills.total }} compiled skill{{ '' if skills.total == 1 else 's' }}</a>{% if skills.proposals %}, {{ skills.proposals }} waiting{% endif %}.{% if charts.disputed %} {{ charts.disputed }} memor{{ 'y is' if charts.disputed == 1 else 'ies are' }} disputed.{% endif %}
     </p>
   </section>
 
@@ -160,7 +168,7 @@
 
 </div>
 
-<div class="dash-grid dash-grid-3">
+<div class="dash-grid">
   {# Experience: how attempts ended, and how hard they were. #}
   <section class="panel" aria-labelledby="exp-h">
     <div class="panel-head">
@@ -206,16 +214,6 @@
     <p class="panel-foot"><a href="{{ admin }}/memories?namespace=knowledge&amp;source=rss">Articles</a> &middot; <a href="{{ admin }}/memories?namespace=knowledge&amp;source=learned">Learned knowledge</a></p>
   </section>
 
-  <section class="panel" aria-labelledby="skills-h">
-    <div class="panel-head">
-      <h3 id="skills-h" class="section-heading">Skills</h3>
-      <a class="panel-link" href="{{ admin }}/skills">All skills</a>
-    </div>
-    <p class="big-number">{{ skills.total }} <span class="big-number-label">compiled skill{{ '' if skills.total == 1 else 's' }}</span></p>
-    <p class="panel-foot">
-      {{ skills.states.active }} active{% if skills.proposals > 0 %}, <a href="{{ admin }}/skills">{{ skills.proposals }} proposal{{ '' if skills.proposals == 1 else 's' }} waiting</a>{% endif %}{% if charts.disputed %}. {{ charts.disputed }} memor{{ 'y is' if charts.disputed == 1 else 'ies are' }} disputed{% endif %}
-    </p>
-  </section>
 </div>
 
 <section class="panel recent" aria-labelledby="recent-h">

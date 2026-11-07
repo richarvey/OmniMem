@@ -231,6 +231,7 @@ fn charts(counts: &omnimem_store::DashboardCounts, now: f64) -> Value {
             "total": total,
             "label": label(week_start(i)),
             "tick": i % 4 == 0,
+            "tick_minor": i % 8 == 4,
             "by_namespace": week,
         }));
     }
@@ -342,18 +343,16 @@ fn charts(counts: &omnimem_store::DashboardCounts, now: f64) -> Value {
 
 /// What waits on a person, read live: these are the dashboard's first row.
 fn attention(engine: &Engine) -> omnimem_engine::Result<Value> {
-    let unconfirmed = engine.unconfirmed_from(None, usize::MAX)?.len();
-    let contradictions = engine.open_contradictions()?.len();
-    let resolutions = engine.pending_resolutions()?.len();
+    let (contradictions, wording) = crate::management::contradiction_counts(engine)?;
     let proposals = engine
         .pending_skill_proposals()?
         .iter()
         .filter(|p| !p.stale)
         .count();
     Ok(json!({
-        "unconfirmed": unconfirmed,
+        "unconfirmed": engine.store().count_unconfirmed()?,
         "contradictions": contradictions,
-        "resolutions": resolutions,
+        "wording": wording,
         "proposals": proposals,
     }))
 }
@@ -385,6 +384,25 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
             Err(e) => return crate::render::failure(&format!("counting memories: {e}")),
         }
     };
+    // Duplicates a recent scan found, still unsettled: a scan is too costly
+    // to run for the dashboard, so it only reports one that was run.
+    let duplicates: (usize, Vec<String>) = {
+        let caches = state.caches();
+        let mut found = 0usize;
+        let mut namespaces = Vec::new();
+        for ((ns, _), (at, clusters)) in &caches.duplicates {
+            if at.elapsed() >= crate::management::SCAN_TTL {
+                continue;
+            }
+            let n = clusters.as_array().map_or(0, Vec::len);
+            if n > 0 {
+                found += n;
+                namespaces.push(ns.clone());
+            }
+        }
+        namespaces.sort();
+        (found, namespaces)
+    };
     // The queue depth is a store read, so it goes off the workers too.
     let enrichment_pending =
         off_runtime(move || engine.store().enrichment_pending().map_or(-1, |n| n as i64))
@@ -401,6 +419,8 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
             recent => counts["recent"],
             charts => counts["charts"],
             attention => counts["attention"],
+            duplicates_found => duplicates.0,
+            duplicates_in => duplicates.1,
             stats_age => (!ttl.is_zero()).then(|| computed_at.elapsed().as_secs()),
             health => json!({"store": true, "model": true}),
             enrichment_pending => enrichment_pending,

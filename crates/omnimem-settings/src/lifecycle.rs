@@ -56,6 +56,7 @@ async fn act(
         Ok(done) => done,
         Err(failure) => return failure,
     };
+    state.invalidate_counts();
     // An htmx request removes its own row, so it wants no page back. A
     // refusal answers 409, which htmx doesn't swap, so the row stays.
     if headers.contains_key("hx-request") {

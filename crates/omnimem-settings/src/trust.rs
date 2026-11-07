@@ -211,6 +211,7 @@ pub(crate) async fn act(
         })())
     })
     .await;
+    state.invalidate_counts();
     // An htmx click swaps its own row: nothing on success, the problem if refused.
     if htmx {
         return match done {
@@ -248,6 +249,7 @@ pub(crate) async fn confirm_source(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, |notice| back(&form, notice))
 }
 

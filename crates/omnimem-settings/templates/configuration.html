@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Configuration</h2>
+  <div>
+    <h2>Configuration</h2>
+    <p class="page-intro">Every setting OmniMem reads. Leave a field empty to use the default; an environment variable of the same name always wins.</p>
+  </div>
 </header>
 
 {% if not available %}
@@ -29,11 +32,11 @@
 </div>
 {% endif %}
 
-<p class="section-note">
-  Settings are saved to <span class="mono">{{ settings_path }}</span> and secrets
-  to {{ secret_place }}. They apply the next time OmniMem starts. Leave a field
-  empty to use the default. An environment variable of the same name always wins.
-</p>
+<p class="note-bar">Saved to <span class="mono">{{ settings_path }}</span>, secrets to {{ secret_place }}. Changes apply the next time OmniMem starts.</p>
+
+<nav class="jump-list" aria-label="Sections">
+  {% for group in groups %}<a href="#group-{{ loop.index }}" class="domain-pill">{{ group.title }}</a>{% endfor %}
+</nav>
 
 {% if not secrets_available %}
 <div class="flash flash-warning">
@@ -44,38 +47,38 @@
 </div>
 {% endif %}
 
-<form method="POST" action="{{ admin }}/configuration" style="max-width:760px">
+<form method="POST" action="{{ admin }}/configuration" class="config-form">
   {% for group in groups %}
-  <section style="margin-bottom:2rem">
-    <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:0.75rem">{{ group.title }}</h3>
+  <section class="panel config-group" id="group-{{ loop.index }}" aria-labelledby="group-{{ loop.index }}-h">
+    <h3 id="group-{{ loop.index }}-h" class="section-heading config-group-h">{{ group.title }}</h3>
     {% for s in group.settings %}
     <div class="form-group">
       <label for="setting-{{ s.name }}">
         {{ s.label }}
-        <span class="mono" style="font-size:0.7rem;color:var(--text-dim);text-transform:none;letter-spacing:0">{{ s.name }}</span>
+        <span class="mono setting-name">{{ s.name }}</span>
         {% if s.overridden %}
         <span class="badge deprioritised" title="An environment variable of this name is set, and it takes precedence">set in the environment</span>
         {% endif %}
       </label>
       {% if s.kind == "secret" %}
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
-        <input type="password" id="setting-{{ s.name }}" name="{{ s.name }}" class="form-input" style="flex:1;min-width:14rem"
+      <div class="inline-form">
+        <input type="password" id="setting-{{ s.name }}" name="{{ s.name }}" class="form-input"
                autocomplete="off" {% if not secrets_available %}disabled{% endif %}
                placeholder="{% if s.stored %}Saved. Type to replace it{% else %}Not set{% endif %}">
         {% if s.stored %}
-        <label style="display:flex;align-items:center;gap:0.35rem;margin:0;text-transform:none;letter-spacing:0;font-size:0.8rem;color:var(--text)">
+        <label class="check-label">
           <input type="checkbox" name="clear:{{ s.name }}" {% if not secrets_available %}disabled{% endif %}> Remove
         </label>
         {% endif %}
       </div>
       {% elif s.kind == "flag" %}
-      <select id="setting-{{ s.name }}" name="{{ s.name }}" class="form-select" style="max-width:16rem">
+      <select id="setting-{{ s.name }}" name="{{ s.name }}" class="form-select field-narrow">
         <option value="">Default ({{ s.default }})</option>
         <option value="true"{% if s.value == "true" %} selected{% endif %}>On</option>
         <option value="false"{% if s.value == "false" %} selected{% endif %}>Off</option>
       </select>
       {% elif s.kind == "choice" %}
-      <select id="setting-{{ s.name }}" name="{{ s.name }}" class="form-select" style="max-width:16rem">
+      <select id="setting-{{ s.name }}" name="{{ s.name }}" class="form-select field-narrow">
         <option value="">Default ({{ s.default }})</option>
         {% for choice in s.choices %}
         <option value="{{ choice }}"{% if s.value == choice %} selected{% endif %}>{{ choice }}</option>
@@ -83,18 +86,21 @@
       </select>
       {% else %}
       <input type="text" id="setting-{{ s.name }}" name="{{ s.name }}" class="form-input"
-             {% if s.kind == "integer" or s.kind == "decimal" %}inputmode="decimal" style="max-width:16rem"{% endif %}
+             {% if s.kind == "integer" or s.kind == "decimal" %}inputmode="decimal"{% endif %} {% if s.kind == "integer" or s.kind == "decimal" %}data-narrow{% endif %}
              value="{{ s.value }}" placeholder="{{ s.default or 'Not set' }}">
       {% endif %}
       {% if s.help %}
-      <small style="color:var(--text-muted);margin-top:0.25rem;display:block">{{ s.help }}</small>
+      <small class="field-help setting-help">{{ s.help }}</small>
       {% endif %}
     </div>
     {% endfor %}
   </section>
   {% endfor %}
 
-  <button type="submit" class="btn btn-primary">Save</button>
+  <div class="save-bar">
+    <span class="text-dim">Changes apply the next time OmniMem starts.</span>
+    <button type="submit" class="btn btn-primary">Save configuration</button>
+  </div>
 </form>
 {% endif %}
 {% endblock %}

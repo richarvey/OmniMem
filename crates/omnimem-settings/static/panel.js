@@ -125,6 +125,28 @@
     if (cluster) cluster = null;
   });
 
+  // htmx doesn't swap an error response, so a refused action would look
+  // like nothing happened: say so in the flash area instead.
+  document.addEventListener('htmx:responseError', function (event) {
+    var area = byId('flash-area');
+    if (!area) return;
+    var note = document.createElement('div');
+    note.className = 'flash flash-error';
+    note.setAttribute('role', 'alert');
+    var status = event.detail && event.detail.xhr ? event.detail.xhr.status : 0;
+    note.textContent = status === 409
+      ? 'That could not be done: it may have changed since the page loaded. Reload and try again.'
+      : 'Something went wrong (' + status + '). Reload and try again.';
+    var close = document.createElement('button');
+    close.className = 'flash-close';
+    close.setAttribute('data-dismiss', '');
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '\u00d7';
+    note.appendChild(close);
+    area.appendChild(note);
+    note.scrollIntoView({ block: 'nearest' });
+  });
+
   // The starting page polls until the services are up.
   var reload = document.querySelector('[data-reload-after]');
   if (reload) {

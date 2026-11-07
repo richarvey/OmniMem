@@ -43,7 +43,7 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Contradictions <span class="count-chip">{{ pairs|length + wording|length + pending|length }}</span></h2>
+    <h2>Contradictions <span class="count-chip">{{ pairs|length + pending|length }}</span>{% if wording %} <span class="count-note">and {{ wording|length }} wording only</span>{% endif %}</h2>
     <p class="page-intro">Pairs of memories that disagree. Say which one holds, and recall stops warning about the pair.</p>
   </div>
 </header>
@@ -88,19 +88,25 @@
   <p class="field-help">A model read both and judged that they disagree. Open one to settle it.</p>
   {% for pair in pairs %}{{ pair_card(pair, loop.first and pairs|length < 4) }}{% endfor %}
   {% else %}
-  <p class="empty-state">None waiting.</p>
+  <p class="field-help">None waiting: no model has confirmed a disagreement.</p>
   {% endif %}
 </section>
 
 {% if wording %}
-<details class="fold group">
-  <summary class="fold-summary">Wording only <span class="count-chip">{{ wording|length }}</span><span class="text-dim">opposing words in memories on the same topic</span></summary>
+<section class="group" aria-labelledby="wording-h">
+  <div class="group-head">
+    <h3 id="wording-h" class="section-heading">Wording only <span class="count-chip">{{ wording|length }}</span></h3>
+    <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" data-confirm="Mark these {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
+      {% for pair in wording %}<input type="hidden" name="pair" value="{{ pair.key_a }}|{{ pair.key_b }}">{% endfor %}
+      <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>
+    </form>
+  </div>
   <p class="field-help">The quick check linked these because one says "always" and the other "never", or similar. Most aren't real disagreements, and they never lower a memory's trust.</p>
-  <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" class="fold-action" data-confirm="Mark all {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
-    <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>
-  </form>
-  {% for pair in wording %}{{ pair_card(pair, false) }}{% endfor %}
-</details>
+  <details class="fold"{% if not pairs %} open{% endif %}>
+    <summary class="fold-summary">{{ 'Hide' if not pairs else 'Show' }} the {{ wording|length }} pairs</summary>
+    {% for pair in wording %}{{ pair_card(pair, false) }}{% endfor %}
+  </details>
+</section>
 {% endif %}
 
 {% if not pairs and not wording and not pending %}

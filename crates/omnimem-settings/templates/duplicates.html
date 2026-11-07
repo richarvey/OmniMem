@@ -17,8 +17,12 @@
 </p>
 {% endif %}
 
+{% if message %}<div class="flash flash-success" role="status">{{ message }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
+
 <form method="GET" action="{{ admin }}/duplicates" class="toolbar" data-busy-on-submit>
   <input type="hidden" name="scan" value="1">
+  {% if scanned %}<input type="hidden" name="fresh" value="1">{% endif %}
   <div class="toolbar-field">
     <label for="dup-namespace" class="field-label">Namespace</label>
     <select class="form-select" name="namespace" id="dup-namespace">
@@ -28,7 +32,7 @@
     </select>
   </div>
   <button type="submit" class="btn btn-primary">{{ 'Scan again' if scanned else 'Scan for duplicates' }}</button>
-  <span class="busy-note" aria-live="polite"></span>
+  <span class="busy-note" aria-live="polite">{% if scanned %}Scanned {{ 'just now' if scan_minutes == 0 else (scan_minutes ~ ' min ago') }}{% endif %}</span>
 </form>
 
 <div id="dup-results">

@@ -91,29 +91,36 @@ pub(crate) async fn duplicates(
         return starting(&state);
     };
     let namespace = scan_namespace(&query);
-    let project = query.get("project").cloned().unwrap_or_default();
+    // Only a usable project name narrows a scan, so a made-up one can't start
+    // (and cache) a scan of its own.
+    let project = query
+        .get("project")
+        .filter(|p| crate::projects::check_project_name(p).is_ok())
+        .cloned()
+        .unwrap_or_default();
     let scanned = query.get("scan").is_some_and(|s| s == "1");
+    let fresh = query.get("fresh").is_some_and(|f| f == "1");
     let wanted = namespace.clone();
     let slot = (namespace.clone(), project.clone());
     // A scan compares every vector, so the page an Archive returns to reuses
-    // the last one, minus what has been archived since.
+    // the last one, minus what has been archived since. It keeps its own
+    // age: archiving doesn't make an old scan new.
     let cached = state
         .caches()
         .duplicates
         .get(&slot)
-        .filter(|(at, _)| at.elapsed() < SCAN_TTL)
-        .map(|(_, clusters)| clusters.clone());
-    let fresh = query.get("fresh").is_some_and(|f| f == "1");
+        .filter(|(at, _)| at.elapsed() < SCAN_TTL && !fresh)
+        .map(|(at, clusters)| (*at, clusters.clone()));
     let found = blocking(move || {
-        let clusters = match (scanned, cached) {
-            (false, _) => json!([]),
-            (true, Some(clusters)) if !fresh => prune(&engine, &clusters)?,
-            (true, _) => scan(&engine, &wanted, &project)?,
+        let (at, clusters) = match (scanned, cached) {
+            (false, _) => (std::time::Instant::now(), json!([])),
+            (true, Some((at, clusters))) => (at, prune(&engine, &clusters)?),
+            (true, None) => (std::time::Instant::now(), scan(&engine, &wanted, &project)?),
         };
-        Ok((clusters, last_maintenance(&engine)?))
+        Ok((at, clusters, last_maintenance(&engine)?))
     })
     .await;
-    let (clusters, last) = match found {
+    let (at, clusters, last) = match found {
         Ok(found) => found,
         Err(failure) => return failure,
     };
@@ -121,10 +128,8 @@ pub(crate) async fn duplicates(
         let mut caches = state.caches();
         caches
             .duplicates
-            .retain(|_, (at, _)| at.elapsed() < SCAN_TTL);
-        caches
-            .duplicates
-            .insert(slot, (std::time::Instant::now(), clusters.clone()));
+            .retain(|_, (when, _)| when.elapsed() < SCAN_TTL);
+        caches.duplicates.insert(slot, (at, clusters.clone()));
     }
     page(
         state.templates(),
@@ -134,7 +139,10 @@ pub(crate) async fn duplicates(
             clusters,
             namespace,
             scanned,
+            scan_minutes => at.elapsed().as_secs() / 60,
             last_maintenance => last,
+            message => query.get("message"),
+            error => query.get("error"),
         },
     )
 }
@@ -153,27 +161,81 @@ pub(crate) async fn keep_duplicate(
     let target = value("next")
         .and_then(|n| crate::pages::local_path(&n))
         .unwrap_or_else(|| "/duplicates".to_owned());
-    let others: Vec<String> = form
-        .iter()
-        .filter(|(k, v)| k == "other" && *v != keep && v.starts_with("mem:"))
-        .map(|(_, v)| v.clone())
-        .collect();
+    // The others are the rest of the scanned cluster this memory is in, never
+    // whatever the form names: a form can't widen what gets archived.
+    let others: Option<Vec<String>> =
+        state
+            .caches()
+            .duplicates
+            .values()
+            .find_map(|(_, clusters)| {
+                clusters.as_array()?.iter().find_map(|cluster| {
+                    let keys: Vec<String> = cluster["memories"]
+                        .as_array()?
+                        .iter()
+                        .filter_map(|m| m["key"].as_str().map(str::to_owned))
+                        .collect();
+                    keys.contains(&keep)
+                        .then(|| keys.into_iter().filter(|k| *k != keep).collect())
+                })
+            });
+    let Some(others) = others else {
+        return see_other(&with_notice(
+            &target,
+            "error",
+            "That scan has expired. Scan again, then choose which copy to keep.",
+        ));
+    };
     let done = blocking(move || {
+        let live = engine
+            .store()
+            .get_fields_multi(std::slice::from_ref(&keep), &["state"])?
+            .into_iter()
+            .next()
+            .flatten()
+            .is_some_and(|row| {
+                !matches!(
+                    row.get("state").map(String::as_str),
+                    Some("archived" | "deleted")
+                )
+            });
+        if !live {
+            return Ok(Err(
+                "The copy to keep is no longer active, so nothing was archived.".to_owned(),
+            ));
+        }
         let reason = format!("Duplicate of {keep}, archived from the settings panel");
+        let (mut archived, mut failed) = (0usize, 0usize);
         for key in &others {
-            if let Err(e) =
-                engine.transition(key, omnimem_engine::MemoryState::Archived, Some(&reason))
-            {
-                warn!(key, error = %e, "could not archive a duplicate");
+            match engine.transition(key, omnimem_engine::MemoryState::Archived, Some(&reason)) {
+                Ok(_) => archived += 1,
+                Err(e) => {
+                    warn!(key, error = %e, "could not archive a duplicate");
+                    failed += 1;
+                }
             }
         }
-        Ok(())
+        Ok(if failed == 0 {
+            Ok(format!("Kept one, archived {archived}."))
+        } else {
+            Err(format!(
+                "Kept one, archived {archived}; {failed} could not be archived."
+            ))
+        })
     })
     .await;
+    state.invalidate_counts();
     match done {
-        Ok(()) => see_other(&target),
+        Ok(Ok(message)) => see_other(&with_notice(&target, "message", &message)),
+        Ok(Err(problem)) => see_other(&with_notice(&target, "error", &problem)),
         Err(failure) => failure,
     }
+}
+
+/// `url` with a one-off notice added to its query.
+fn with_notice(url: &str, name: &str, text: &str) -> String {
+    let joiner = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{joiner}{name}={}", quote(text))
 }
 
 /// A cached scan as it stands now: members archived or deleted since are
@@ -281,22 +343,50 @@ fn is_wording_only(pair: &Value) -> bool {
         || explanation == omnimem_store::HEURISTIC_EXPLANATION
 }
 
+/// What waits on a person in Contradictions, counted as the menu, the
+/// dashboard and the page all count it: pairs a model confirmed plus
+/// resolutions an agent proposed, and, apart, the wording-only pairs.
+pub(crate) fn contradiction_counts(engine: &Engine) -> omnimem_engine::Result<(usize, usize)> {
+    let open = engine.open_contradictions()?;
+    let wording = open.iter().filter(|p| is_wording_only(p)).count();
+    Ok((
+        open.len() - wording + engine.pending_resolutions()?.len(),
+        wording,
+    ))
+}
+
 /// POST `/contradictions/dismiss-wording`: settle every wording-only pair as
 /// not a contradiction, in one click. The click is the person's say-so, as
 /// for a single pair; a pair a model confirmed is never touched.
-pub(crate) async fn dismiss_wording(State(state): State<PanelState>) -> Response {
+pub(crate) async fn dismiss_wording(
+    State(state): State<PanelState>,
+    Form(form): Form<Vec<(String, String)>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
+    // Only the pairs the page listed, so one linked after it was shown is
+    // never dismissed unseen.
+    let shown: std::collections::BTreeSet<(String, String)> = form
+        .iter()
+        .filter(|(k, _)| k == "pair")
+        .filter_map(|(_, v)| v.split_once('|'))
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+        .collect();
     let done = blocking(move || {
-        let mut settled = 0usize;
-        for pair in engine.open_contradictions()? {
-            if !is_wording_only(&pair) {
-                continue;
-            }
+        let (mut settled, mut skipped) = (0usize, 0usize);
+        let open = engine.open_contradictions()?;
+        for pair in &open {
             let (Some(a), Some(b)) = (pair["key_a"].as_str(), pair["key_b"].as_str()) else {
                 continue;
             };
+            if !shown.contains(&(a.to_owned(), b.to_owned())) {
+                continue;
+            }
+            if !is_wording_only(pair) {
+                skipped += 1;
+                continue;
+            }
             let request = ResolveRequest::new(
                 a,
                 b,
@@ -308,43 +398,29 @@ pub(crate) async fn dismiss_wording(State(state): State<PanelState>) -> Response
             match engine.resolve_contradiction(&request, "panel") {
                 Ok(_) => settled += 1,
                 Err(EngineError::Invalid(problem)) => {
-                    warn!(problem, a, b, "could not dismiss a pair")
+                    warn!(problem, a, b, "could not dismiss a pair");
+                    skipped += 1;
                 }
                 Err(e) => return Err(e),
             }
         }
-        Ok(Ok(format!(
-            "Dismissed {settled} wording-only pair{}.",
-            if settled == 1 { "" } else { "s" }
-        )))
+        let plural = |n: usize| if n == 1 { "" } else { "s" };
+        let mut message = format!("Dismissed {settled} wording-only pair{}.", plural(settled));
+        if skipped > 0 {
+            message.push_str(&format!(
+                " {skipped} changed since the page was shown and were left alone."
+            ));
+        }
+        Ok(Ok(message))
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
-}
-
-/// GET `/contradictions/badge`: the menu's count of pairs still in dispute
-/// plus resolutions waiting for a person, or nothing when there are none.
-pub(crate) async fn badge(State(state): State<PanelState>) -> Response {
-    let Some(engine) = state.engine() else {
-        return Html("").into_response();
-    };
-    let waiting = blocking(move || {
-        Ok(engine.open_contradictions()?.len() + engine.pending_resolutions()?.len())
-    })
-    .await;
-    match waiting {
-        Ok(n) if n > 0 => Html(format!(
-            r#"<span class="nav-count" title="{n} contradiction{} to settle">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
-        ))
-        .into_response(),
-        _ => Html("").into_response(),
-    }
 }
 
 /// How long the menu's counts and a duplicate scan are reused.
 const NAV_TTL: std::time::Duration = std::time::Duration::from_secs(30);
-const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+pub(crate) const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 fn nav_badge(id: &str, n: usize, what: &str) -> String {
     let inner = if n > 0 {
@@ -373,10 +449,15 @@ pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
         counts
     } else {
         let counted = blocking(move || {
+            let (model, _) = contradiction_counts(&engine)?;
             Ok(json!({
-                "unconfirmed": engine.unconfirmed_from(None, usize::MAX)?.len(),
-                "contradictions": engine.open_contradictions()?.len() + engine.pending_resolutions()?.len(),
-                "proposals": engine.pending_skill_proposals()?.iter().filter(|p| !p.stale).count(),
+                "unconfirmed": engine.store().count_unconfirmed()?,
+                "contradictions": model,
+                "proposals": engine
+                    .pending_skill_proposals()?
+                    .iter()
+                    .filter(|p| !p.stale)
+                    .count(),
             }))
         })
         .await;
@@ -470,6 +551,7 @@ pub(crate) async fn resolve_contradiction(
         })())
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 
@@ -493,6 +575,7 @@ pub(crate) async fn accept_resolution(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 
@@ -519,6 +602,7 @@ pub(crate) async fn discard_resolution(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 

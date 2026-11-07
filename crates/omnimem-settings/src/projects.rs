@@ -199,6 +199,7 @@ pub(crate) async fn list(
     };
 
     let total_projects = projects.len();
+    let total_with_context = projects.iter().filter(|p| p.has_context).count();
     let search = query
         .get("q")
         .map(|q| q.trim().to_lowercase())
@@ -247,6 +248,7 @@ pub(crate) async fn list(
             domain_filter_valid => !invalid_domain,
             all_domains,
             total_projects,
+            total_with_context,
             search => query.get("q").map(|q| q.trim().to_owned()).unwrap_or_default(),
             state_filter,
         },

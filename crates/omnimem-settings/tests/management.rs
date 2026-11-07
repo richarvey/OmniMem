@@ -516,3 +516,143 @@ async fn the_apps_notice_tops_every_page() {
         );
     }
 }
+
+fn link(engine: &Engine, a: &str, b: &str, explanation: &str) {
+    engine
+        .store()
+        .set_field(
+            a,
+            "contradictions",
+            &format!(r#"[{{"key": "{b}", "explanation": "{explanation}"}}]"#),
+        )
+        .unwrap();
+    engine
+        .store()
+        .set_field(b, "contradictions", &format!(r#"[{{"key": "{a}"}}]"#))
+        .unwrap();
+}
+
+fn encode(text: &str) -> String {
+    text.replace(':', "%3A").replace('|', "%7C")
+}
+
+#[tokio::test]
+async fn wording_only_pairs_are_counted_apart_and_dismissed_only_as_shown() {
+    let (panel, engine) = setup();
+    let (a, b) = (
+        remember(&engine, "Always rebase", "omnimem"),
+        remember(&engine, "Never rebase", "omnimem"),
+    );
+    let (c, d) = (
+        remember(&engine, "Always tag releases", "omnimem"),
+        remember(&engine, "Never tag releases", "omnimem"),
+    );
+    let (e, f) = (
+        remember(&engine, "Ship on Fridays", "omnimem"),
+        remember(&engine, "Don't ship on Fridays", "omnimem"),
+    );
+    link(&engine, &a, &b, omnimem_store::HEURISTIC_LINK_EXPLANATION);
+    link(&engine, &c, &d, omnimem_store::HEURISTIC_LINK_EXPLANATION);
+    link(&engine, &e, &f, "A model read both: they disagree");
+
+    // The menu counts what needs a decision, not wording-only pairs.
+    let counts = text(&get(&panel, "/nav-counts").await);
+    assert!(
+        counts.contains(r#"id="nav-count-contradictions" hx-swap-oob="true"><span class="nav-count" title="1 contradiction to settle">1</span>"#),
+        "{counts}"
+    );
+    let page = text(&get(&panel, "/contradictions").await);
+    assert!(
+        page.contains(r#"Contradictions <span class="count-chip">1</span>"#),
+        "{page}"
+    );
+    assert!(page.contains("and 2 wording only"), "{page}");
+
+    // Dismissing posts the pairs the page showed. One that wasn't posted,
+    // and the model-confirmed one even if posted, stay open.
+    let (lo, hi) = if a < b { (&a, &b) } else { (&b, &a) };
+    let (mlo, mhi) = if e < f { (&e, &f) } else { (&f, &e) };
+    let form = format!(
+        "pair={}&pair={}",
+        encode(&format!("{lo}|{hi}")),
+        encode(&format!("{mlo}|{mhi}"))
+    );
+    let done = post(&panel, "/contradictions/dismiss-wording", &form).await;
+    let location = done.headers()["location"].to_str().unwrap().to_owned();
+    assert!(
+        location.contains("Dismissed%201%20wording-only%20pair"),
+        "{location}"
+    );
+    let open = engine.open_contradictions().unwrap();
+    assert_eq!(open.len(), 2, "{open:?}");
+    let still = |x: &str| open.iter().any(|p| p["key_a"] == x || p["key_b"] == x);
+    assert!(!still(&a) && still(&c) && still(&e));
+}
+
+#[tokio::test]
+async fn keeping_a_duplicate_archives_only_its_scanned_cluster() {
+    let (panel, engine) = setup();
+    let first = remember(&engine, "Twins share a length: one", "omnimem");
+    let second = remember(&engine, "Twins share a length: two", "omnimem");
+    let bystander = remember(
+        &engine,
+        "Something else entirely, a different length",
+        "omnimem",
+    );
+
+    // Without a scan behind it, nothing is archived.
+    let refused = post(
+        &panel,
+        "/duplicates/keep",
+        &format!(
+            "key={}&other={}&next=%2Fduplicates",
+            encode(&first),
+            encode(&bystander)
+        ),
+    )
+    .await;
+    assert!(
+        refused.headers()["location"]
+            .to_str()
+            .unwrap()
+            .contains("error=")
+    );
+
+    // After a scan, the form's `other` is ignored: the cluster decides.
+    let scan = text(&get(&panel, "/duplicates?namespace=episodic&scan=1").await);
+    assert!(scan.contains("Keep this one"), "{scan}");
+    let kept = post(
+        &panel,
+        "/duplicates/keep",
+        &format!(
+            "key={}&other={}&next=%2Fduplicates%3Fnamespace%3Depisodic%26scan%3D1",
+            encode(&first),
+            encode(&bystander)
+        ),
+    )
+    .await;
+    let location = kept.headers()["location"].to_str().unwrap().to_owned();
+    assert!(
+        location.contains("Kept%20one%2C%20archived%201."),
+        "{location}"
+    );
+    let state = |key: &str| {
+        engine
+            .store()
+            .get(key)
+            .unwrap()
+            .unwrap()
+            .get("state")
+            .cloned()
+    };
+    assert_eq!(state(&second).as_deref(), Some("archived"));
+    assert_ne!(state(&bystander).as_deref(), Some("archived"));
+    assert_ne!(state(&first).as_deref(), Some("archived"));
+
+    // Back on the scan, the cluster is settled without a rescan.
+    let again = text(&get(&panel, "/duplicates?namespace=episodic&scan=1").await);
+    assert!(
+        again.contains("No duplicates found in episodic."),
+        "{again}"
+    );
+}
