@@ -163,22 +163,22 @@ pub(crate) async fn keep_duplicate(
         .unwrap_or_else(|| "/duplicates".to_owned());
     // The others are the rest of the scanned cluster this memory is in, never
     // whatever the form names: a form can't widen what gets archived.
-    let others: Option<Vec<String>> =
-        state
-            .caches()
-            .duplicates
-            .values()
-            .find_map(|(_, clusters)| {
-                clusters.as_array()?.iter().find_map(|cluster| {
-                    let keys: Vec<String> = cluster["memories"]
-                        .as_array()?
-                        .iter()
-                        .filter_map(|m| m["key"].as_str().map(str::to_owned))
-                        .collect();
-                    keys.contains(&keep)
-                        .then(|| keys.into_iter().filter(|k| *k != keep).collect())
-                })
-            });
+    let others: Option<Vec<String>> = state
+        .caches()
+        .duplicates
+        .values()
+        .filter(|(at, _)| at.elapsed() < SCAN_TTL)
+        .find_map(|(_, clusters)| {
+            clusters.as_array()?.iter().find_map(|cluster| {
+                let keys: Vec<String> = cluster["memories"]
+                    .as_array()?
+                    .iter()
+                    .filter_map(|m| m["key"].as_str().map(str::to_owned))
+                    .collect();
+                keys.contains(&keep)
+                    .then(|| keys.into_iter().filter(|k| *k != keep).collect())
+            })
+        });
     let Some(others) = others else {
         return see_other(&with_notice(
             &target,
@@ -206,7 +206,22 @@ pub(crate) async fn keep_duplicate(
         }
         let reason = format!("Duplicate of {keep}, archived from the settings panel");
         let (mut archived, mut failed) = (0usize, 0usize);
-        for key in &others {
+        // A copy archived from its own row since the scan is already done.
+        let states = engine.store().get_fields_multi(&others, &["state"])?;
+        let others: Vec<&String> = others
+            .iter()
+            .zip(states)
+            .filter(|(_, row)| {
+                row.as_ref().is_some_and(|r| {
+                    !matches!(
+                        r.get("state").map(String::as_str),
+                        Some("archived" | "deleted")
+                    )
+                })
+            })
+            .map(|(key, _)| key)
+            .collect();
+        for key in others {
             match engine.transition(key, omnimem_engine::MemoryState::Archived, Some(&reason)) {
                 Ok(_) => archived += 1,
                 Err(e) => {
@@ -404,8 +419,12 @@ pub(crate) async fn dismiss_wording(
                 Err(e) => return Err(e),
             }
         }
+        let gone = shown.len().saturating_sub(settled + skipped);
         let plural = |n: usize| if n == 1 { "" } else { "s" };
         let mut message = format!("Dismissed {settled} wording-only pair{}.", plural(settled));
+        if gone > 0 {
+            message.push_str(&format!(" {gone} had already been settled."));
+        }
         if skipped > 0 {
             message.push_str(&format!(
                 " {skipped} changed since the page was shown and were left alone."

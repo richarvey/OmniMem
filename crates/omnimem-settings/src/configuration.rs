@@ -625,7 +625,7 @@ const GROUPS: &[(&str, &[Setting])] = &[
         )],
     ),
     (
-        "Settings panel",
+        "Dashboard and telemetry",
         &[
             setting(
                 "DASHBOARD_STATS_TTL",

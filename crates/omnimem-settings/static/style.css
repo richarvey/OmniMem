@@ -2181,3 +2181,17 @@ a.review-source:hover { color: var(--accent-text); }
   border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: 0 -12px 24px -12px rgba(0, 0, 0, 0.6);
 }
 .save-bar .text-dim { font-size: 13px; margin-right: auto; }
+.age-old { color: var(--text-muted); border-color: var(--border); }
+
+/* Round 4 */
+.projects-table { table-layout: fixed; width: 100%; }
+.projects-table th:nth-child(1), .projects-table td:nth-child(1) { width: auto; }
+.projects-table th:nth-child(2), .projects-table td:nth-child(2) { width: 8rem; }
+.projects-table th:nth-child(3), .projects-table td:nth-child(3) { width: 6rem; }
+.projects-table th:nth-child(4), .projects-table td:nth-child(4) { width: 24%; }
+.projects-table th:nth-child(5), .projects-table td:nth-child(5) { width: 7.5rem; }
+.projects-table th:nth-child(6), .projects-table td:nth-child(6) { width: 3.5rem; }
+.project-cell { min-width: 0; }
+@media (min-width: 641px) { .project-desc { max-width: none; } }
+.fold-summary::before, .pair-summary::before { font-size: 14px; color: var(--text-soft); }
+.fold-summary:focus-visible, .pair-summary:focus-visible, .row-menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

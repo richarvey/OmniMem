@@ -5,9 +5,9 @@
 {% macro pair_card(pair, open) %}
 <details class="pair"{% if open %} open{% endif %}>
   <summary class="pair-summary">
-    <span class="pair-side">{{ pair.content_a[:110] }}{% if pair.content_a|length > 110 %}…{% endif %}</span>
+    <span class="pair-side">{% if pair.content_a %}{{ pair.content_a[:110] }}{% if pair.content_a|length > 110 %}…{% endif %}{% else %}<span class="text-dim">(memory no longer exists)</span>{% endif %}</span>
     <span class="pair-vs" aria-hidden="true">vs</span>
-    <span class="pair-side">{{ pair.content_b[:110] }}{% if pair.content_b|length > 110 %}…{% endif %}</span>
+    <span class="pair-side">{% if pair.content_b %}{{ pair.content_b[:110] }}{% if pair.content_b|length > 110 %}…{% endif %}{% else %}<span class="text-dim">(memory no longer exists)</span>{% endif %}</span>
   </summary>
   <div class="pair-body">
     {% if pair.explanation %}<p class="pair-why">{{ pair.explanation }}</p>{% endif %}
@@ -15,12 +15,12 @@
       <div class="pair-col">
         <span class="pair-label">A</span>
         <a href="{{ admin }}/memory/{{ pair.key_a|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
-        <div class="pair-text">{{ pair.content_a }}</div>
+        <div class="pair-text">{{ pair.content_a or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}</div>
       </div>
       <div class="pair-col">
         <span class="pair-label">B</span>
         <a href="{{ admin }}/memory/{{ pair.key_b|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
-        <div class="pair-text">{{ pair.content_b }}</div>
+        <div class="pair-text">{{ pair.content_b or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}</div>
       </div>
     </div>
     <form method="POST" action="{{ admin }}/contradictions/resolve" class="pair-form">
