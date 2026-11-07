@@ -94,7 +94,9 @@ pub(crate) async fn list(
                 .get("feed_name")
                 .filter(|t| !t.is_empty())
                 .or_else(|| row.get("content"))
-                .map_or_else(String::new, |t| crate::render::clip(t, 100));
+                .map_or_else(String::new, |t| {
+                    crate::render::clip(t, crate::render::preview::UNCONFIRMED_GROUP)
+                });
             groups.push(json!({
                 "source": from,
                 "title": title,

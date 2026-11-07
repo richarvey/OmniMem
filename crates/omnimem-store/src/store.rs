@@ -665,24 +665,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// The memory keys under `prefix` whose `field` is set and not empty, in
-    /// key order: what a listing of contradiction links reads instead of
-    /// every memory's row.
-    pub fn keys_with_field(&self, prefix: &str, field: &str) -> Result<Vec<String>> {
-        let Some(path) = json_paths(&[field]).and_then(|p| p.into_iter().next()) else {
-            return Err(StoreError::InvalidField(field.to_owned()));
-        };
-        let upper = format!("{prefix}\u{10FFFF}");
-        let conn = self.conn();
-        let mut stmt = conn.prepare_cached(
-            "SELECT key FROM memories WHERE key >= ?1 AND key < ?2
-             AND json_extract(fields, ?3) IS NOT NULL AND json_extract(fields, ?3) != ''
-             ORDER BY key",
-        )?;
-        let rows = stmt.query_map(params![prefix, upper, path], |r| r.get::<_, String>(0))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
-    }
-
     /// Every live key starting with `prefix`, memories and others, sorted.
     pub fn scan_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let upper = format!("{prefix}\u{10FFFF}");
@@ -1411,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_with_field_finds_only_rows_where_it_is_set() {
+    fn keys_with_contradictions_finds_only_linked_rows() {
         let store = Store::open_in_memory_with_dim(2).unwrap();
         let put = |key: &str, links: Option<&str>| {
             let mut fields = Fields::from([("content".to_owned(), key.to_owned())]);
@@ -1429,23 +1411,14 @@ mod tests {
             Some(r#"[{"key": "mem:episodic:01A"}]"#),
         );
         assert_eq!(
-            store
-                .keys_with_field("mem:episodic:", "contradictions")
-                .unwrap(),
-            ["mem:episodic:01A", "mem:episodic:01B"]
-        );
-        assert_eq!(
-            store
-                .keys_with_field("mem:knowledge:", "contradictions")
-                .unwrap(),
-            ["mem:knowledge:01E"]
-        );
-        assert!(store.keys_with_field("mem:", "bad\"field").is_err());
-        // The dedicated scan agrees, and walks the partial index.
-        assert_eq!(
             store.keys_with_contradictions("mem:episodic:").unwrap(),
             ["mem:episodic:01A", "mem:episodic:01B"]
         );
+        assert_eq!(
+            store.keys_with_contradictions("mem:knowledge:").unwrap(),
+            ["mem:knowledge:01E"]
+        );
+        // It walks the partial index.
         let plan: Vec<String> = {
             let conn = store.conn();
             let sql = format!(

@@ -469,6 +469,11 @@ async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
         "{page}"
     );
     assert!(page.contains("rust-local"), "the skill is listed: {page}");
+    // Its recall is listed but not in the total: three memories, three recalls.
+    assert!(
+        page.matches(r#"<div class="stat-total">3</div>"#).count() >= 2,
+        "memories and recalls both leave the skill out: {page}"
+    );
     let most = page.find("Most recalled").unwrap();
     let gone = page.find("Gone cold").unwrap();
     let never = page.find("Never recalled <span").unwrap();

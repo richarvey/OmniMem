@@ -67,6 +67,7 @@ pub(crate) mod preview {
     pub const EFFORTFUL: usize = 100;
     pub const PROJECT_FIELD: usize = 120;
     pub const PROJECT_RECENT: usize = 160;
+    pub const UNCONFIRMED_GROUP: usize = 100;
 }
 
 /// The first `max` characters of a preview, with an ellipsis when that cut

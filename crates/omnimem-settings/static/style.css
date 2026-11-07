@@ -903,9 +903,9 @@ span.project-name {
 .graveyard-table th:nth-child(1),
 .graveyard-table td:nth-child(1) { width: 24%; }
 .graveyard-table th:nth-child(2),
-.graveyard-table td:nth-child(2) { width: 12%; }
+.graveyard-table td:nth-child(2) { width: 44%; } /* Reason */
 .graveyard-table th:nth-child(3),
-.graveyard-table td:nth-child(3) { width: 44%; }
+.graveyard-table td:nth-child(3) { width: 12%; } /* Type */
 .graveyard-table th:nth-child(4),
 .graveyard-table td:nth-child(4) { width: 9%; }
 .graveyard-table th:nth-child(5),
@@ -2264,8 +2264,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .skills-table td:nth-child(2) .badge { overflow-wrap: anywhere; white-space: normal; hyphens: manual; }
 /* Round 5h */
 .table-scroll { position: relative; }
-.graveyard-table th:nth-child(2), .graveyard-table td:nth-child(2) { width: 44%; }
-.graveyard-table th:nth-child(3), .graveyard-table td:nth-child(3) { width: 12%; }
 .sidebar-foot { margin-top: 0.4rem; padding-top: 0.45rem; }
 @media (max-width: 640px) {
   /* "accessibility" in the mono face needs the room, or it breaks mid-word. */
