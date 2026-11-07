@@ -117,6 +117,10 @@ volumes:
 
 `MCP_HOST: 0.0.0.0` is needed inside a container so Traefik can reach it, and OAuth (or a token) is what lets that start.
 
+### Cloudflare Tunnel
+
+No proxy on the machine at all: `cloudflared` dials out to Cloudflare and forwards to `127.0.0.1:8765`, so nothing listens on the internet. Use a named tunnel with a hostname on your own domain, not a quick tunnel, whose `trycloudflare.com` name changes on every restart. [The Cloudflare guide](../guides/omnimem-setup-linux-cloudflare.md) covers it from start to finish, including the Cloudflare security settings that block MCP clients.
+
 ### Basic auth at the proxy
 
 You can still put basic auth in front, but only if every client can send it, and claude.ai can't. For a token-only setup it adds little over `MCP_AUTH_TOKEN` itself. If you use OAuth, leave the OAuth routes and `/mcp` without proxy auth or the sign-in can't work.
