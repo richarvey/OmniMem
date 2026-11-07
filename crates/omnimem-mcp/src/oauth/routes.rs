@@ -50,16 +50,38 @@ static LOGIN_PAGE: LazyLock<String> = LazyLock::new(|| {
 });
 
 /// The brand mark OAuth clients such as claude.ai show for the connector,
-/// served at the paths they look in (6.x issue #12).
-const ICON_SVG: &str = concat!(
-    r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">"##,
-    r##"<rect width="64" height="64" rx="14" fill="#1e293b"/>"##,
-    r##"<path d="M16 32 q0 -10 8 -10 q4 0 6 4 q2 -4 6 -4 q8 0 8 10 "##,
-    r##"q0 10 -8 10 q-4 0 -6 -4 q-2 4 -6 4 q-8 0 -8 -10 z" "##,
-    r##"fill="none" stroke="#6366f1" stroke-width="3" stroke-linejoin="round"/>"##,
-    r##"<circle cx="32" cy="32" r="2.5" fill="#6366f1"/>"##,
-    r##"</svg>"##,
-);
+/// served at the paths they look in (6.x issue #12). The `.ico` is the one
+/// in the logos repository, and omnimem.org's, kept in the panel's static
+/// folder so both use one copy: the `<brain>` mark in green
+/// on black, which reads on a light page and a dark one. The SVG paths wrap
+/// its largest frame, since there's no vector version of the mark.
+const FAVICON_ICO: &[u8] = include_bytes!("../../../omnimem-settings/static/images/favicon.ico");
+static ICON_SVG: LazyLock<String> = LazyLock::new(|| {
+    let (size, png) = largest_png_frame(FAVICON_ICO).expect("favicon.ico holds a PNG frame");
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {size} {size}" width="{size}" height="{size}"><image width="{size}" height="{size}" xlink:href="data:image/png;base64,{}"/></svg>"#,
+        STANDARD.encode(png)
+    )
+});
+
+/// The biggest PNG-encoded image in an `.ico` and its width: a 6-byte
+/// header, then a 16-byte entry per image (width, height, …, size, offset).
+fn largest_png_frame(ico: &[u8]) -> Option<(u32, &[u8])> {
+    let count = usize::from(u16::from_le_bytes(ico.get(4..6)?.try_into().ok()?));
+    (0..count)
+        .filter_map(|i| {
+            let entry = ico.get(6 + 16 * i..22 + 16 * i)?;
+            let width = match entry[0] {
+                0 => 256,
+                w => u32::from(w),
+            };
+            let len = u32::from_le_bytes(entry[8..12].try_into().ok()?) as usize;
+            let offset = u32::from_le_bytes(entry[12..16].try_into().ok()?) as usize;
+            let data = ico.get(offset..offset.checked_add(len)?)?;
+            data.starts_with(b"\x89PNG").then_some((width, data))
+        })
+        .max_by_key(|(width, _)| *width)
+}
 
 /// The OAuth routes in two parts. The first is what a client calls without a
 /// person in a browser: discovery, registration, the token exchange and
@@ -100,7 +122,7 @@ pub(crate) fn routes(oauth: Arc<OAuth>) -> (Router, Router) {
         .route("/revoke", post(revoke).options(revoke).layer(write()))
         .route("/icon.svg", get(icon))
         .route("/favicon.svg", get(icon))
-        .route("/favicon.ico", get(icon))
+        .route("/favicon.ico", get(favicon))
         .route("/oauth/icon.svg", get(icon))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn(log_request))
@@ -648,7 +670,18 @@ async fn icon() -> Response {
             (header::CONTENT_TYPE, "image/svg+xml"),
             (header::CACHE_CONTROL, "public, max-age=86400"),
         ],
-        ICON_SVG,
+        ICON_SVG.as_str(),
+    )
+        .into_response()
+}
+
+async fn favicon() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/x-icon"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON_ICO,
     )
         .into_response()
 }
@@ -725,5 +758,14 @@ mod tests {
         assert!(!bare.contains("{font_sans}") && !bare.contains("{logo}"));
         assert!(bare.contains("data:font/woff2;base64,"));
         assert!(!bare.contains("/admin/"));
+    }
+
+    #[test]
+    fn the_icon_is_the_favicons_largest_frame() {
+        let (size, png) = largest_png_frame(FAVICON_ICO).unwrap();
+        assert_eq!(size, 64);
+        assert!(png.starts_with(b"\x89PNG"));
+        assert!(ICON_SVG.contains(r#"viewBox="0 0 64 64""#));
+        assert!(largest_png_frame(b"not an icon").is_none());
     }
 }

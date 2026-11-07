@@ -13,6 +13,7 @@ fn content_type(path: &str) -> &'static str {
         Some("woff2") => "font/woff2",
         Some("svg") => "image/svg+xml",
         Some("png") => "image/png",
+        Some("ico") => "image/x-icon",
         _ => "application/octet-stream",
     }
 }
