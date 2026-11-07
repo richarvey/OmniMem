@@ -10,7 +10,7 @@
       {% if i.state != 'active' %}<span class="badge {{ i.state }}">{{ i.state }}</span>{% endif %}
       {% if i.project %}<span class="review-project">{{ i.project }}</span>{% endif %}
     </div>
-    <a href="{{ admin }}/memory/{{ i.key|urlsegment }}?back={{ here|urlquote }}" class="review-content">{{ i.content }}</a>
+    <a href="{{ admin }}/memory/{{ i.key|urlsegment }}?back={{ here|urlquote }}" class="review-content">{{ i.content|plain }}</a>
   </div>
   <div class="review-actions">
     {% for action, label, class in [('confirm', 'Confirm', 'btn-secondary btn-confirm'), ('reject', 'Reject', 'btn-ghost')] %}
@@ -36,14 +36,14 @@
 </header>
 
 {% if message %}
-<div class="flash flash-success">
+<div class="flash flash-success" role="status">
   {{ message }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
 {% if error %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   {{ error }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>

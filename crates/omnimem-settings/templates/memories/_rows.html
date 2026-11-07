@@ -15,8 +15,8 @@
   <tbody>
     {% for mem in memories %}
     <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}"{% if mem.heat == 'hot' %} title="Recalled in the last week"{% elif mem.heat == 'warm' %} title="Recalled in the last month"{% elif mem.heat == 'cool' %} title="Recalled in the last three months"{% endif %}>
-      <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ back_url|urlquote }}">{{ mem.content }}</a></td>
+      <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>{% if mem.heat == 'hot' %}<span class="visually-hidden">, recalled this week</span>{% elif mem.heat == 'warm' %}<span class="visually-hidden">, recalled this month</span>{% elif mem.heat == 'cool' %}<span class="visually-hidden">, recalled in the last three months</span>{% endif %}</td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ back_url|urlquote }}">{{ mem.content|plain }}</a></td>
       <td>
         <span class="badge {{ mem.state }}">{{ mem.state }}</span>
         {# Only the unclassified case gets a pill: it is the one that asks
@@ -67,7 +67,7 @@
     {% endfor %}
   </tbody>
 </table>
-<p class="table-legend" aria-hidden="true"><span class="legend-edge legend-hot"></span> recalled this week <span class="legend-edge legend-warm"></span> this month <span class="legend-edge legend-cool"></span> in three months</p>
+<p class="table-legend"><span class="legend-edge legend-hot"></span> recalled this week <span class="legend-edge legend-warm"></span> this month <span class="legend-edge legend-cool"></span> in three months</p>
 
 {% include "partials/pagination.html" %}
 {% else %}

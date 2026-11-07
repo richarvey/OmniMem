@@ -48,28 +48,28 @@
 
     {% if project.current_state %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Where it stands</h3>
+      <h2 class="eyebrow-heading">Where it stands</h2>
       <div class="callout callout-accent">{{ project.current_state }}</div>
     </section>
     {% endif %}
 
     {% if project.goals %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Goals</h3>
+      <h2 class="eyebrow-heading">Goals</h2>
       <div class="callout">{{ project.goals }}</div>
     </section>
     {% endif %}
 
     {% if project.notes %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Notes</h3>
+      <h2 class="eyebrow-heading">Notes</h2>
       <div class="callout">{{ project.notes }}</div>
     </section>
     {% endif %}
 
     <section class="detail-section">
       <div class="panel-head">
-        <h3 class="eyebrow-heading">Latest memories</h3>
+        <h2 class="eyebrow-heading">Latest memories</h2>
         {% if project.memory_total %}<a class="panel-link" href="{{ admin }}/memories?project={{ project.name|urlquote }}">All {{ project.memory_total|thousands }}</a>{% endif %}
       </div>
       {% if project.recent %}
@@ -77,7 +77,7 @@
         {% for mem in project.recent %}
         <li class="recent-row">
           <span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>
-          <a class="recent-content" href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}">{{ mem.content }}</a>
+          <a class="recent-content" href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}">{{ mem.content|plain }}</a>
           {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% else %}<span></span>{% endif %}
           <span class="recent-meta"><time>{{ mem.updated_date }}</time></span>
         </li>
@@ -92,7 +92,7 @@
   <aside class="detail-rail" aria-label="Project details">
     {% if project.by_namespace %}
     <section>
-      <h3 class="eyebrow-heading">Memories</h3>
+      <h2 class="eyebrow-heading">Memories</h2>
       <ul class="state-bars">
         {% for s in project.by_namespace %}
         <li>
@@ -108,7 +108,7 @@
     {% endif %}
 
     <section class="{{ 'rail-section' if project.by_namespace else '' }}">
-      <h3 class="eyebrow-heading">Domains</h3>
+      <h2 class="eyebrow-heading">Domains</h2>
       {% if project.domains %}
       <div class="tag-row">
         {% for d in project.domains %}
@@ -123,7 +123,7 @@
 
     {% if project.stack %}
     <section class="rail-section">
-      <h3 class="eyebrow-heading">Stack</h3>
+      <h2 class="eyebrow-heading">Stack</h2>
       <p class="section-text">{{ project.stack }}</p>
     </section>
     {% endif %}

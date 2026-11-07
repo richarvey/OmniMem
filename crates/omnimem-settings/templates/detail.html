@@ -17,7 +17,7 @@
       <span class="badge {{ memory.state }}">{{ memory.state }}</span>
       <span class="badge {{ 'deprioritised' if memory.trust != 'accepted' else 'active' }}" data-trust="{{ memory.trust }}">trust: {{ memory.trust }}</span>
     </div>
-    <h1 class="detail-title">{{ memory.content[:90]|trim }}{% if memory.content|length > 90 %}…{% endif %}</h1>
+    <h1 class="detail-title">{{ memory.content[:90]|plain|trim }}{% if memory.content|length > 90 %}…{% endif %}</h1>
     <p class="detail-key mono">{{ memory.key }}</p>
   </div>
   <div class="detail-actions">
@@ -56,28 +56,28 @@
 
     {% if memory.lesson %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Lesson</h3>
+      <h2 class="eyebrow-heading">Lesson</h2>
       <div class="callout callout-accent">{{ memory.lesson }}</div>
     </section>
     {% endif %}
 
     {% if memory.breakthrough %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Breakthrough</h3>
+      <h2 class="eyebrow-heading">Breakthrough</h2>
       <div class="callout callout-accent">{{ memory.breakthrough }}</div>
     </section>
     {% endif %}
 
     {% if memory.gotchas %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Gotchas</h3>
+      <h2 class="eyebrow-heading">Gotchas</h2>
       <div class="callout callout-warn">{{ memory.gotchas }}</div>
     </section>
     {% endif %}
 
     {% if memory.abandoned_approaches %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Abandoned approaches</h3>
+      <h2 class="eyebrow-heading">Abandoned approaches</h2>
       {% for a in memory.abandoned_approaches %}
       <div class="callout callout-danger">
         <strong>{{ a.name }}</strong>{% if a.type %} <span class="badge">{{ a.type }}</span>{% endif %}
@@ -90,7 +90,7 @@
 
     {% if memory.contradictions %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Contradictions</h3>
+      <h2 class="eyebrow-heading">Contradictions</h2>
       {% for c in memory.contradictions %}
       <div class="callout callout-danger">
         {% if c.key is defined %}{{ memory_link(c.key) }}{% else %}<span class="mono">{{ c }}</span>{% endif %}
@@ -111,7 +111,7 @@
 
     {% if memory.superseded_by or memory.supersedes %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Superseded</h3>
+      <h2 class="eyebrow-heading">Superseded</h2>
       {% if memory.superseded_by %}<p class="section-text">Replaced by {{ memory_link(memory.superseded_by) }}</p>{% endif %}
       {% for k in memory.supersedes %}<p class="section-text">Replaces {{ memory_link(k) }}</p>{% endfor %}
     </section>
@@ -119,30 +119,30 @@
 
     {% if memory.reinstate_hints %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Reinstate hints</h3>
+      <h2 class="eyebrow-heading">Reinstate hints</h2>
       <div class="tag-row">{% for hint in memory.reinstate_hints %}<span class="badge tag">{{ hint }}</span>{% endfor %}</div>
     </section>
     {% endif %}
 
     {% if memory.deprioritised_reason %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Why it was deprioritised</h3>
+      <h2 class="eyebrow-heading">Why it was deprioritised</h2>
       <div class="callout callout-warn">{{ memory.deprioritised_reason }}</div>
     </section>
     {% endif %}
 
     {% if memory.archived_reason %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">Why it was archived</h3>
+      <h2 class="eyebrow-heading">Why it was archived</h2>
       <div class="callout callout-warn">{{ memory.archived_reason }}</div>
     </section>
     {% endif %}
 
     {% if history_on %}
     <section class="detail-section">
-      <h3 class="eyebrow-heading">History</h3>
+      <h2 class="eyebrow-heading">History</h2>
       {% if history %}
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0">
       <table class="data-table">
         <thead>
           <tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Action</th><th scope="col">Change</th><th scope="col">Reason</th></tr>
@@ -191,7 +191,7 @@
     </dl>
 
     <section class="rail-section rail-trust" id="trust">
-      <h3 class="eyebrow-heading">Trust</h3>
+      <h2 class="eyebrow-heading">Trust</h2>
       <p class="section-text">
         {% if memory.trust == 'candidate' %}OmniMem concluded this itself and nobody has confirmed it yet.
         {% elif memory.trust == 'accepted' %}This memory is believed.
@@ -220,7 +220,8 @@
           {{ back_field() }}
           <input type="hidden" name="action" value="reject">
           <label for="reject-reason" class="visually-hidden">Reason for rejecting</label>
-          <input type="text" id="reject-reason" class="form-input" name="reason" placeholder="Why it's wrong (optional)">
+          <label class="field-label" for="reject-reason">Why (optional)</label>
+          <input type="text" id="reject-reason" class="form-input" name="reason">
           <button type="submit" class="btn btn-secondary btn-sm">Reject as wrong</button>
         </form>
         {% endif %}
@@ -230,7 +231,7 @@
 
     {% if memory.namespace != 'skill' %}
     <section class="rail-section">
-      <h3 class="eyebrow-heading">Tags</h3>
+      <h2 class="eyebrow-heading">Tags</h2>
       {% if memory.tags %}<div class="tag-row">{% for tag in memory.tags %}<span class="badge tag">{{ tag }}</span>{% endfor %}</div>{% endif %}
       <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/tags" class="stack-form">
         {{ back_field() }}
@@ -242,7 +243,7 @@
     </section>
 
     <section class="rail-section">
-      <h3 class="eyebrow-heading">Redistribution rights</h3>
+      <h2 class="eyebrow-heading">Redistribution rights</h2>
       <p class="field-help">May this be shared outside this instance? Own work and open sources can; paywalled or all-rights-reserved sources can't.</p>
       <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/licence" class="stack-form">
         {{ back_field() }}
@@ -261,7 +262,7 @@
     </section>
 
     <section class="rail-section">
-      <h3 class="eyebrow-heading">Provenance</h3>
+      <h2 class="eyebrow-heading">Provenance</h2>
       <p class="field-help">Retrieved from a source, concluded by OmniMem, or asserted by you. Mark a memory you vouch for as asserted.</p>
       <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/provenance" class="stack-form">
         {{ back_field() }}
@@ -278,7 +279,7 @@
     </section>
     {% elif memory.tags %}
     <section class="rail-section">
-      <h3 class="eyebrow-heading">Tags</h3>
+      <h2 class="eyebrow-heading">Tags</h2>
       <div class="tag-row">{% for tag in memory.tags %}<span class="badge tag">{{ tag }}</span>{% endfor %}</div>
     </section>
     {% endif %}

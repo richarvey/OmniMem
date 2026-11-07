@@ -11,14 +11,14 @@
 </header>
 
 {% if error %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   {{ error }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
 {% if duplicate %}
-<div class="flash flash-warning" style="flex-direction:column;align-items:start">
+<div class="flash flash-warning" role="status" style="flex-direction:column;align-items:start">
   <div style="display:flex;justify-content:space-between;width:100%">
     <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
     <button class="flash-close" data-dismiss>&times;</button>

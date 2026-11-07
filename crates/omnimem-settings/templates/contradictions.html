@@ -15,12 +15,12 @@
       <div class="pair-col">
         <span class="pair-label">A</span>
         <a href="{{ admin }}/memory/{{ pair.key_a|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
-        <div class="pair-text">{{ pair.content_a or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}</div>
+        <div class="pair-text">{{ pair.content_a or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_a|length >= 150 %}…{% endif %}</div>
       </div>
       <div class="pair-col">
         <span class="pair-label">B</span>
         <a href="{{ admin }}/memory/{{ pair.key_b|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
-        <div class="pair-text">{{ pair.content_b or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}</div>
+        <div class="pair-text">{{ pair.content_b or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_b|length >= 150 %}…{% endif %}</div>
       </div>
     </div>
     <form method="POST" action="{{ admin }}/contradictions/resolve" class="pair-form">
@@ -49,7 +49,7 @@
 </header>
 
 {% if last_maintenance %}
-<p class="note-bar">Last automatic check: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }}: {{ last_maintenance.contradictions_found }} pair{{ 's' if last_maintenance.contradictions_found != 1 }} linked in that run.</p>
+<p class="note-bar">Last automatic check: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }}: {{ last_maintenance.contradictions_found }} pair{{ 's' if last_maintenance.contradictions_found != 1 }} found in that run; those still open are listed below.</p>
 {% endif %}
 
 {% if message %}<div class="flash flash-success" role="status">{{ message }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
@@ -57,7 +57,7 @@
 
 {% if pending %}
 <section class="group" aria-labelledby="pending-h">
-  <h3 id="pending-h" class="section-heading">Proposed by an agent <span class="count-chip">{{ pending|length }}</span></h3>
+  <h2 id="pending-h" class="section-heading">Proposed by an agent <span class="count-chip">{{ pending|length }}</span></h2>
   <p class="field-help">An agent proposed these resolutions when no one could be asked. Nothing changes until you accept. They're dropped after a week.</p>
   {% for p in pending %}
   <div class="callout callout-accent pending-card">
@@ -83,7 +83,7 @@
 {% endif %}
 
 <section class="group" aria-labelledby="model-h">
-  <h3 id="model-h" class="section-heading">Confirmed by the model <span class="count-chip">{{ pairs|length }}</span></h3>
+  <h2 id="model-h" class="section-heading">Confirmed by the model <span class="count-chip">{{ pairs|length }}</span></h2>
   {% if pairs %}
   <p class="field-help">A model read both and judged that they disagree. Open one to settle it.</p>
   {% for pair in pairs %}{{ pair_card(pair, loop.first and pairs|length < 4, 'm' ~ loop.index) }}{% endfor %}
@@ -95,7 +95,7 @@
 {% if wording %}
 <section class="group" aria-labelledby="wording-h">
   <div class="group-head">
-    <h3 id="wording-h" class="section-heading">Wording only <span class="count-chip">{{ wording|length }}</span></h3>
+    <h2 id="wording-h" class="section-heading">Wording only <span class="count-chip">{{ wording|length }}</span></h2>
     <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" data-confirm="Mark these {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
       {% for pair in wording %}<input type="hidden" name="pair" value="{{ pair.key_a }}|{{ pair.key_b }}">{% endfor %}
       <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>

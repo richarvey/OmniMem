@@ -15,8 +15,8 @@
   <td class="domains-cell">
     {% if p.domains %}
     <span class="domain-pills">
-      {% for d in p.domains[:3] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill" title="{{ d }}">{{ d }}</a>{% endfor %}
-      {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlsegment }}?back={{ here|urlquote }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}" aria-label="{{ p.domains|length - 3 }} more domains">+{{ p.domains|length - 3 }}</a>{% endif %}
+      {% for d in p.domains[:2] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill" title="{{ d }}">{{ d }}</a>{% endfor %}
+      {% if p.domains|length > 2 %}<a href="{{ admin }}/projects/{{ p.name|urlsegment }}?back={{ here|urlquote }}" class="domain-pill domain-more" title="{{ p.domains[2:]|join(', ') }}" aria-label="{{ p.domains|length - 2 }} more domains">+{{ p.domains|length - 2 }}</a>{% endif %}
     </span>
     {% else %}<span class="text-dim">&mdash;</span>{% endif %}
   </td>
@@ -50,7 +50,7 @@
 {% endmacro %}
 
 {% macro project_table(rows, caption) %}
-<div class="table-scroll">
+<div class="table-scroll" tabindex="0">
 <table class="data-table projects-table">
   <caption class="visually-hidden">{{ caption }}</caption>
   <thead>
@@ -116,7 +116,7 @@
   characters of lowercase letters, digits, hyphens, underscores or dots.
 </p>
 {% elif with_context %}
-<p class="result-count">{{ with_context|length }} project{{ '' if with_context|length == 1 else 's' }}{% if search or domain_filter or state_filter %} match{% endif %}</p>
+<p class="result-count" aria-live="polite">{{ with_context|length }} project{{ '' if with_context|length == 1 else 's' }}{% if search or domain_filter or state_filter %} match{% endif %}</p>
 {{ project_table(with_context, "Projects with a context") }}
 {% elif domain_filter %}
 <p class="empty-state">

@@ -19,14 +19,14 @@
 {% else %}
 
 {% if message %}
-<div class="flash flash-success">
+<div class="flash flash-success" role="status">
   {{ message }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
 {% if error %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   {{ error }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
@@ -39,7 +39,7 @@
 </nav>
 
 {% if not secrets_available %}
-<div class="flash flash-warning">
+<div class="flash flash-warning" role="status">
   <span>
     Secrets can't be saved to {{ secret_place }}{% if keychain_error %} ({{ keychain_error }}){% endif %},
     so secrets can only come from environment variables for now.
@@ -50,7 +50,7 @@
 <form method="POST" action="{{ admin }}/configuration" class="config-form">
   {% for group in groups %}
   <section class="panel config-group" id="group-{{ loop.index }}" aria-labelledby="group-{{ loop.index }}-h">
-    <h3 id="group-{{ loop.index }}-h" class="section-heading config-group-h">{{ group.title }}</h3>
+    <h2 id="group-{{ loop.index }}-h" class="section-heading config-group-h">{{ group.title }}</h2>
     {% for s in group.settings %}
     <div class="form-group">
       <label for="setting-{{ s.name }}">

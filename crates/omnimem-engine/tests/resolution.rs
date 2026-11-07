@@ -713,3 +713,52 @@ fn forget_by_identifier_takes_every_mention_and_no_lookalike() {
         );
     }
 }
+
+#[test]
+fn open_pairs_are_listed_from_every_namespace_a_scan_can_link() {
+    let e = engine();
+    let key = |ns: &str, content: &str| {
+        e.remember(
+            content,
+            Some("alpha"),
+            None,
+            ns,
+            true,
+            Some("raw"),
+            None,
+            None,
+        )
+        .unwrap()["key"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let a = key("knowledge", "the api always answers within a second");
+    let b = key("knowledge", "the api never answers within a second");
+    let found = e
+        .check_contradictions(None, "knowledge", Some("alpha"), false)
+        .unwrap();
+    assert_eq!(
+        found["contradictions"].as_array().unwrap().len(),
+        1,
+        "{found}"
+    );
+
+    // 6.x's page read episodic alone, so this pair was invisible.
+    let open = e.open_contradictions().unwrap();
+    assert_eq!(open.len(), 1, "{open:?}");
+    let pair = [
+        open[0]["key_a"].as_str().unwrap(),
+        open[0]["key_b"].as_str().unwrap(),
+    ];
+    assert!(
+        pair.contains(&a.as_str()) && pair.contains(&b.as_str()),
+        "{open:?}"
+    );
+    assert!(open[0]["content_a"].as_str().unwrap().contains("answers"));
+    // A heuristic link is not an update to either memory.
+    for k in [&a, &b] {
+        let row = e.store().get(k).unwrap().unwrap();
+        assert_eq!(row["updated_at"], row["created_at"], "{k}");
+    }
+}

@@ -88,6 +88,27 @@
     }
   });
 
+  // A dialog closed any way (Escape included) forgets its last result.
+  document.querySelectorAll('dialog[data-dialog]').forEach(function (dialog) {
+    dialog.addEventListener('close', function () {
+      var cleared = byId(dialog.getAttribute('data-clear'));
+      if (cleared) cleared.innerHTML = '';
+    });
+  });
+
+  // An open row menu closes on Escape, or on a click anywhere else.
+  function closeRowMenus(except) {
+    document.querySelectorAll('details.row-menu[open]').forEach(function (menu) {
+      if (menu !== except) menu.removeAttribute('open');
+    });
+  }
+  document.addEventListener('click', function (event) {
+    closeRowMenus(event.target.closest('details.row-menu'));
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeRowMenus(null);
+  });
+
   // A file input that submits its form as soon as a file is chosen, and a
   // filter form whose selects apply as soon as they change.
   document.addEventListener('change', function (event) {

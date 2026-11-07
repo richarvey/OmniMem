@@ -105,7 +105,7 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_engine::Result<Value> {
                 "namespace": namespace,
                 "state": row.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
                 "content": content.chars().take(140).collect::<String>(),
-                "project": row.get("project").cloned().unwrap_or_default(),
+                "project": row.get("project").filter(|p| !p.is_empty()).or_else(|| row.get("project_name")).cloned().unwrap_or_default(),
                 "updated_date": date,
                 "updated_time": time,
             })
@@ -291,7 +291,7 @@ fn charts(counts: &omnimem_store::DashboardCounts, now: f64) -> Value {
         0.0
     } else {
         let sum: u64 = counts.efforts.iter().map(|(s, n)| *s as u64 * n).sum();
-        (sum as f64 / effort_n as f64 * 10.0).round() / 10.0
+        (sum as f64 / effort_n as f64 * 100.0).round() / 100.0
     };
 
     // Article intake: a 30-day sparkline in a 240 x 40 box.
@@ -421,24 +421,7 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
             }
         }
     }
-    let duplicates: (usize, Vec<String>, u64) = {
-        let caches = state.caches();
-        let mut found = 0usize;
-        let mut namespaces = Vec::new();
-        let mut newest: Option<Instant> = None;
-        for ((ns, _), (at, clusters)) in &caches.duplicates {
-            let n = clusters.as_array().map_or(0, Vec::len);
-            if n > 0 {
-                found += n;
-                namespaces.push(ns.clone());
-                newest = Some(newest.map_or(*at, |best| best.max(*at)));
-            }
-        }
-        namespaces.sort();
-        namespaces.dedup();
-        let age = newest.map_or(0, |at| at.elapsed().as_secs() / 60);
-        (found, namespaces, age)
-    };
+    let duplicates = crate::management::cached_duplicates(&state.caches());
     // The queue depth is a store read, so it goes off the workers too.
     let enrichment_pending =
         off_runtime(move || engine.store().enrichment_pending().map_or(-1, |n| n as i64))

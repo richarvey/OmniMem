@@ -178,7 +178,7 @@ async fn contradictions_list_each_pair_once() {
     assert!(!page.contains("pairs"));
     assert!(page.contains("They disagree"));
     assert!(page.contains("Always squash merge") && page.contains("Never squash merge"));
-    assert!(page.contains("1 pair linked in that run."));
+    assert!(page.contains("1 pair found in that run"));
 }
 
 #[tokio::test]

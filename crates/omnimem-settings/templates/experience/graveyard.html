@@ -11,8 +11,22 @@
   <a href="{{ admin }}/experience" class="btn btn-secondary btn-sm">&larr; Summary</a>
 </header>
 
+<form method="GET" action="{{ admin }}/experience/graveyard" class="toolbar" role="search">
+  <div class="toolbar-field toolbar-grow">
+    <label for="graveyard-q" class="field-label">Search</label>
+    <input type="search" id="graveyard-q" name="q" class="form-input" value="{{ q }}" placeholder="Name, type or reason">
+  </div>
+  <div class="toolbar-field">
+    <label for="graveyard-project" class="field-label">Project</label>
+    <input type="text" id="graveyard-project" name="project" class="form-input" value="{{ project }}" placeholder="Any project">
+  </div>
+  <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+  {% if q or project %}<a href="{{ admin }}/experience/graveyard" class="btn-link">Clear</a>{% endif %}
+</form>
+{% if abandoned %}<p class="result-count" aria-live="polite">{{ abandoned|length }} abandoned approach{{ '' if abandoned|length == 1 else 'es' }}{% if q or project %} match{% endif %}</p>{% endif %}
+
 {% if abandoned %}
-<div class="table-scroll">
+<div class="table-scroll" tabindex="0">
 <table class="data-table graveyard-table">
   <thead>
     <tr>
@@ -28,7 +42,7 @@
     <tr>
       <td style="font-weight:600;color:var(--orange)">{{ a.name }}</td>
       <td><span class="badge" style="background:var(--bg-input);color:var(--text-dim)">{{ a.type }}</span></td>
-      <td class="content-cell">{{ a.reason }}</td>
+      <td class="content-cell" title="{{ a.reason }}">{{ a.reason }}</td>
       <td>{% if a.effort_score %}<span class="score">{{ a.effort_score }}/5</span>{% else %}—{% endif %}</td>
       <td><a href="{{ admin }}/memory/{{ a.memory_key|urlsegment }}?back={{ here|urlquote }}" class="btn btn-secondary btn-sm">View</a></td>
     </tr>
@@ -37,6 +51,6 @@
 </table>
 </div>
 {% else %}
-<p class="empty-state">No abandoned approaches recorded yet. That's a good sign.</p>
+<p class="empty-state">{% if q or project %}No abandoned approach matches. <a href="{{ admin }}/experience/graveyard">Clear the filters</a>.{% else %}No abandoned approaches recorded yet. That's a good sign.{% endif %}</p>
 {% endif %}
 {% endblock %}

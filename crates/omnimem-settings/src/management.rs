@@ -444,28 +444,51 @@ pub(crate) async fn dismiss_wording(
 /// a scan's result is remembered for the dashboard after that.
 const NAV_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 pub(crate) const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
-const SCAN_MEMORY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+pub(crate) const SCAN_MEMORY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
 
-/// `3814` as `3,814`, so the menu's count reads as the pages' do.
-fn grouped(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
+/// What the last duplicate scans found and is still unsettled: clusters,
+/// the namespaces scanned, and the newest scan's age in minutes. One scan
+/// per namespace: a project-scoped scan's clusters are a subset of the whole
+/// namespace's, so the unscoped scan speaks for it where there is one, else
+/// the newest. That is also the scan the dashboard tile opens. A scan older
+/// than the cache keeps it is ignored here as it would be there.
+pub(crate) fn cached_duplicates(caches: &crate::Caches) -> (usize, Vec<String>, u64) {
+    let mut by_namespace: HashMap<&str, (bool, &std::time::Instant, &Value)> = HashMap::new();
+    for ((ns, project), (at, clusters)) in &caches.duplicates {
+        if at.elapsed() >= SCAN_MEMORY {
+            continue;
         }
-        out.push(c);
+        let unscoped = project.is_empty();
+        let wins = by_namespace
+            .get(ns.as_str())
+            .is_none_or(|(best_unscoped, best_at, _)| (unscoped, at) > (*best_unscoped, *best_at));
+        if wins {
+            by_namespace.insert(ns, (unscoped, at, clusters));
+        }
     }
-    out
+    let mut found = 0usize;
+    let mut namespaces = Vec::new();
+    let mut newest: Option<std::time::Instant> = None;
+    for (ns, (_, at, clusters)) in by_namespace {
+        let n = clusters.as_array().map_or(0, Vec::len);
+        if n > 0 {
+            found += n;
+            namespaces.push(ns.to_owned());
+            newest = Some(newest.map_or(*at, |best| best.max(*at)));
+        }
+    }
+    namespaces.sort();
+    let age = newest.map_or(0, |at| at.elapsed().as_secs() / 60);
+    (found, namespaces, age)
 }
 
 fn nav_badge(id: &str, n: usize, what: &str) -> String {
     let inner = if n > 0 {
         format!(
             r#"<span class="nav-count" title="{} {what}{}">{}</span>"#,
-            grouped(n),
+            crate::render::thousands(&minijinja::Value::from(n)),
             if n == 1 { "" } else { "s" },
-            grouped(n)
+            crate::render::thousands(&minijinja::Value::from(n))
         )
     } else {
         String::new()
@@ -509,8 +532,10 @@ pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
         }
     };
     let n = |name: &str| usize::try_from(counts[name].as_u64().unwrap_or(0)).unwrap_or(0);
+    // The scan cache is in memory, so this one is never stale.
+    let (duplicates, _, _) = cached_duplicates(&state.caches());
     Html(format!(
-        "{}{}{}",
+        "{}{}{}{}",
         nav_badge(
             "nav-count-unconfirmed",
             n("unconfirmed"),
@@ -522,6 +547,11 @@ pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
             "contradiction to settle"
         ),
         nav_badge("nav-count-skills", n("proposals"), "skill proposal waiting"),
+        nav_badge(
+            "nav-count-duplicates",
+            duplicates,
+            "duplicate cluster from your last scan"
+        ),
     ))
     .into_response()
 }

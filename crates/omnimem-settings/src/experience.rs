@@ -173,6 +173,10 @@ pub(crate) async fn graveyard(
         return starting(&state);
     };
     let project = query.get("project").cloned().unwrap_or_default();
+    let q = query
+        .get("q")
+        .map(|q| q.trim().to_lowercase())
+        .unwrap_or_default();
     let scan_project = project.clone();
     let rows = match blocking(move || episodic(&engine, &scan_project)).await {
         Ok(rows) => rows,
@@ -214,7 +218,16 @@ pub(crate) async fn graveyard(
             }
         }
     }
-    let mut abandoned: Vec<Value> = unique.into_iter().map(|(_, item)| item).collect();
+    let mut abandoned: Vec<Value> = unique
+        .into_iter()
+        .map(|(_, item)| item)
+        .filter(|item| {
+            q.is_empty()
+                || ["name", "type", "reason"]
+                    .iter()
+                    .any(|f| item[f].as_str().unwrap_or("").to_lowercase().contains(&q))
+        })
+        .collect();
     abandoned.sort_by(|a, b| {
         b["effort_score"]
             .as_i64()
@@ -224,7 +237,7 @@ pub(crate) async fn graveyard(
     page(
         state.templates(),
         "experience/graveyard.html",
-        context! { current_page => "graveyard", abandoned, project },
+        context! { current_page => "graveyard", abandoned, project, q },
     )
 }
 

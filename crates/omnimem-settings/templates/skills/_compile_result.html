@@ -25,7 +25,7 @@
 </form>
 
 {% elif st == "exists" %}
-<div class="flash flash-warning">
+<div class="flash flash-warning" role="status">
   <span>
     A skill for <strong>{{ result.domain }}</strong> already exists:
     <a href="{{ admin }}/skills/{{ result.skill_id }}">{{ result.name }}</a>.
@@ -35,7 +35,7 @@
 </div>
 
 {% elif st == "no_candidates" %}
-<div class="flash flash-warning">
+<div class="flash flash-warning" role="status">
   <span>
     No active episodic memories are tagged <strong>{{ result.domain }}</strong>.
     Domains are tags — tag memories at remember() time.
@@ -50,7 +50,7 @@
 {% endif %}
 
 {% elif st == "insufficient_reinforcement" %}
-<div class="flash flash-warning">
+<div class="flash flash-warning" role="status">
   <span>
     {{ result.pool_size }} memor{{ "y" if result.pool_size == 1 else "ies" }} found for
     <strong>{{ result.domain }}</strong>, but no lesson recurs across
@@ -66,7 +66,7 @@
 {% endif %}
 
 {% else %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   <span>{{ result.note or result.reason or "Compile failed with status: " ~ st }}</span>
 </div>
 {% endif %}

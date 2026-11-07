@@ -1,27 +1,27 @@
 {% from "partials/macros.html" import num %}
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-ns">Total memories</div>
-    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>
+    <div class="stat-ns">Active memories</div>
+    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>{% if total_memories >= 1000 %}<div class="stat-label" aria-hidden="true">{{ total_memories|thousands }}</div>{% endif %}
   </div>
   <div class="stat-card">
     <div class="stat-ns">Total recalls</div>
-    <div class="stat-total" title="{{ total_recalls|thousands }}">{{ num(total_recalls) }}</div>
+    <div class="stat-total" title="{{ total_recalls|thousands }}">{{ num(total_recalls) }}</div>{% if total_recalls >= 1000 %}<div class="stat-label" aria-hidden="true">{{ total_recalls|thousands }}</div>{% endif %}
   </div>
   <div class="stat-card">
     <div class="stat-ns">Unique recalled</div>
-    <div class="stat-total" title="{{ unique_recalled|thousands }}">{{ num(unique_recalled) }}</div>
+    <div class="stat-total" title="{{ unique_recalled|thousands }}">{{ num(unique_recalled) }}</div>{% if unique_recalled >= 1000 %}<div class="stat-label" aria-hidden="true">{{ unique_recalled|thousands }}</div>{% endif %}
   </div>
   <div class="stat-card">
     <div class="stat-ns">Never recalled</div>
-    <div class="stat-total" title="{{ never_recalled|thousands }}">{{ num(never_recalled) }}</div>
+    <div class="stat-total" title="{{ never_recalled|thousands }}">{{ num(never_recalled) }}</div>{% if never_recalled >= 1000 %}<div class="stat-label" aria-hidden="true">{{ never_recalled|thousands }}</div>{% endif %}
   </div>
 </div>
 
 <div class="recent-section">
-  <h3>Most recalled</h3>
+  <h2>Most recalled</h2>
   {% if most_recalled %}
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -36,7 +36,7 @@
       {% for m in most_recalled %}
       <tr>
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content|plain }}</a></td>
         <td>{{ m.project }}</td>
         <td><span class="recall-badge">{{ m.recall_count }}</span></td>
         <td class="mono">{{ m.last_recalled }}</td>
@@ -52,8 +52,8 @@
 
 {% if gone_cold %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Gone cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h3>
-  <div class="table-scroll">
+  <h2>Gone cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h2>
+  <div class="table-scroll" tabindex="0">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -68,7 +68,7 @@
       {% for m in gone_cold %}
       <tr class="cold-row">
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content|plain }}</a></td>
         <td>{{ m.project }}</td>
         <td><span class="recall-badge">{{ m.recall_count }}</span></td>
         <td class="mono">{{ m.last_recalled }}</td>
@@ -81,9 +81,9 @@
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Never recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h3>
+  <h2>Never recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h2>
   {% if never_recalled_list %}
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -96,7 +96,7 @@
       {% for m in never_recalled_list %}
       <tr>
         <td><span class="badge ns-{{ m.namespace }}">{{ m.namespace }}</span></td>
-        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content }}</a></td>
+        <td class="content-cell"><a href="{{ admin }}{{ m.url }}">{{ m.content|plain }}</a></td>
         <td>{{ m.project }}</td>
       </tr>
       {% endfor %}

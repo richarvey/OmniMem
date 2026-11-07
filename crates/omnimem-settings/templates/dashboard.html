@@ -21,7 +21,7 @@
 {# What waits on a person comes first: everything a review page would list, and nothing else. #}
 {% set waiting = attention.unconfirmed + attention.contradictions + attention.wording + attention.proposals + duplicates_found %}
 <section class="attention" aria-labelledby="attention-h">
-  <h3 id="attention-h" class="section-heading">Requires your attention</h3>
+  <h2 id="attention-h" class="section-heading">Requires your attention</h2>
   {% if waiting > 0 %}
   <ul class="attention-grid">
     {% if attention.unconfirmed > 0 %}
@@ -54,7 +54,7 @@
     {% endif %}
     {% if attention.proposals > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/skills">
-      <span class="attention-num">{{ num(attention.proposals) }}</span>
+      <span class="attention-num" title="{{ attention.proposals|thousands }}">{{ num(attention.proposals) }}</span>
       <span class="attention-label">skill proposal{{ '' if attention.proposals == 1 else 's' }}</span>
       <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
     </a></li>
@@ -69,7 +69,7 @@
   {# Growth: memories created per week, stacked by namespace. #}
   <section class="panel dash-wide" aria-labelledby="growth-h">
     <div class="panel-head">
-      <h3 id="growth-h" class="section-heading">Memories added</h3>
+      <h2 id="growth-h" class="section-heading">Memories added</h2>
       <span class="panel-meta">{{ charts.growth.total|thousands }} in the last {{ charts.growth.weeks }} weeks</span>
     </div>
     {% if charts.growth.total > 0 %}
@@ -101,7 +101,7 @@
     </ul>
     <details class="chart-data">
       <summary>Show data</summary>
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0">
       <table class="data-table compact-table">
         <thead><tr><th scope="col">Week of</th><th scope="col">Episodic</th><th scope="col">Knowledge</th><th scope="col">Preference</th><th scope="col">Project</th><th scope="col">Total</th></tr></thead>
         <tbody>{% for c in charts.growth.columns %}<tr><td>{{ c.label }}</td>{% for n in c.by_namespace %}<td>{{ n }}</td>{% endfor %}<td>{{ c.total }}</td></tr>{% endfor %}</tbody>
@@ -116,9 +116,9 @@
   {# Each namespace as one bar, split by state. #}
   <section class="panel" aria-labelledby="states-h">
     <div class="panel-head">
-      <h3 id="states-h" class="section-heading">By namespace</h3>
+      <h2 id="states-h" class="section-heading">By namespace</h2>
       <ul class="legend legend-inline" aria-label="Bar segments">
-        <li><span class="swatch swatch-active"></span>active</li>
+        <li><span class="swatch swatch-active"></span>active, in the namespace's colour</li>
         <li><span class="swatch seg-depri"></span>deprioritised</li>
         <li><span class="swatch seg-archived"></span>archived</li>
       </ul>
@@ -145,7 +145,7 @@
   {# The projects with the most memories, busiest recently first. #}
   <section class="panel" aria-labelledby="projects-h">
     <div class="panel-head">
-      <h3 id="projects-h" class="section-heading">Busiest projects</h3>
+      <h2 id="projects-h" class="section-heading">Busiest projects</h2>
       <a class="panel-link" href="{{ admin }}/projects">All projects</a>
     </div>
     {% if charts.projects %}
@@ -172,7 +172,7 @@
   {# Experience: how attempts ended, and how hard they were. #}
   <section class="panel" aria-labelledby="exp-h">
     <div class="panel-head">
-      <h3 id="exp-h" class="section-heading">Experience</h3>
+      <h2 id="exp-h" class="section-heading">Experience</h2>
       <a class="panel-link" href="{{ admin }}/experience">Details</a>
     </div>
     {% set e = charts.experience %}
@@ -202,7 +202,7 @@
 
   <section class="panel" aria-labelledby="intake-h">
     <div class="panel-head">
-      <h3 id="intake-h" class="section-heading">Article intake</h3>
+      <h2 id="intake-h" class="section-heading">Article intake</h2>
       <a class="panel-link" href="{{ admin }}/feeds">Feeds</a>
     </div>
     <p class="big-number">{{ charts.articles.month|thousands }} <span class="big-number-label">articles in 30 days</span></p>
@@ -218,7 +218,7 @@
 
 <section class="panel recent" aria-labelledby="recent-h">
   <div class="panel-head">
-    <h3 id="recent-h" class="section-heading">Recent activity</h3>
+    <h2 id="recent-h" class="section-heading">Recent activity</h2>
     <a class="panel-link" href="{{ admin }}/memories?sort=newest">All memories</a>
   </div>
   {% if recent %}
@@ -226,7 +226,7 @@
     {% for mem in recent %}
     <li class="recent-row">
       <span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>
-      <a class="recent-content" href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key|urlquote }}?back={{ here|urlquote }}">{{ mem.content }}</a>
+      <a class="recent-content" href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key|urlquote }}?back={{ here|urlquote }}">{{ mem.content|plain }}</a>
       {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% else %}<span aria-hidden="true"></span>{% endif %}
       <span class="recent-meta">{% if mem.project %}{{ mem.project }} &middot; {% endif %}<time>{{ mem.updated_date }} {{ mem.updated_time }}</time></span>
     </li>

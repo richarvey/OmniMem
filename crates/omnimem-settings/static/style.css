@@ -2235,3 +2235,30 @@ dialog.modal-backdrop[open] { display: flex; }
 dialog.modal-backdrop::backdrop { background: transparent; }
 .form-group > .field-label { display: block; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.4rem; }
 .detail-head h1.detail-title { font-size: 20px; font-weight: 600; line-height: 1.35; }
+/* Round 5c */
+.search-result-header { flex-wrap: wrap; row-gap: 0.3rem; }
+.skills-table th:nth-child(1), .skills-table td:nth-child(1) { width: 22%; }
+.skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 19%; }
+.skills-table th:nth-child(7), .skills-table td:nth-child(7) { width: 16%; }
+.skills-table td:nth-child(1) { overflow-wrap: anywhere; white-space: normal; }
+/* The whole menu fits a 900 px window. */
+.nav-link { min-height: 28px; padding-top: 3px; padding-bottom: 3px; }
+.nav-section-label { margin-top: 0.75rem; padding-top: 0.45rem; padding-bottom: 0.2rem; }
+.nav-create { margin-top: 0.5rem; margin-bottom: 0.25rem; }
+.sidebar-foot { margin-top: 0.5rem; padding-top: 0.6rem; }
+@media (max-width: 640px) {
+  /* A table wider than the phone says so, in place of looking cut off. */
+  .table-scroll:has(> .skills-table, > .graveyard-table, > .effortful-table, > .telemetry-table, > .tool-metrics-table, > .overhead-table)::before {
+    content: "Swipe sideways for the rest of the table"; display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 0.35rem;
+  }
+}
+/* Round 5d */
+.recent-section h2 { font-size: 17.5px; font-weight: 600; letter-spacing: -0.012em; color: var(--text-heading); margin-bottom: 1rem; }
+.modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-bright); }
+.domain-pills > .domain-pill { min-width: 2.5rem; margin-right: 0; }
+.detail-rail { max-height: calc(100vh - 2rem); overflow-y: auto; }
+.btn { white-space: nowrap; }
+.inline-form { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.domain-pill, .stat-label, .memory-count-badge { font-size: 11px; }
+.breakthrough-link { text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+.breakthrough-link:hover { text-decoration-color: var(--accent); }

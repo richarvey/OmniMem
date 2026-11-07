@@ -28,15 +28,15 @@
 </p>
 
 {% if message %}
-<div class="flash flash-success"><span>{{ message }}</span></div>
+<div class="flash flash-success" role="status"><span>{{ message }}</span></div>
 {% endif %}
 {% if error %}
-<div class="flash flash-error"><span>{{ error }}</span></div>
+<div class="flash flash-error" role="alert"><span>{{ error }}</span></div>
 {% endif %}
 
-<dialog id="compile-modal" class="modal-backdrop" data-dialog>
+<dialog id="compile-modal" class="modal-backdrop" data-dialog data-clear="compile-result" aria-labelledby="compile-modal-h">
   <div class="modal modal-wide">
-    <h3>Compile a new skill</h3>
+    <h2 id="compile-modal-h">Compile a new skill</h2>
     <p>
       Distils lessons from episodic memories tagged with a domain into a
       SKILL.md. You review the draft here first — nothing is written until you
@@ -55,9 +55,9 @@
   </div>
 </dialog>
 
-<dialog id="import-modal" class="modal-backdrop" data-dialog>
+<dialog id="import-modal" class="modal-backdrop" data-dialog data-clear="import-result" aria-labelledby="import-modal-h">
   <div class="modal modal-wide">
-    <h3>Import a skill bundle</h3>
+    <h2 id="import-modal-h">Import a skill bundle</h2>
     <p>
       Upload a <code>.zip</code> exported from another OmniMem instance's
       skills page. The bundle is validated first, then you review exactly
@@ -79,7 +79,7 @@
 
 {% if proposals %}
 <section class="pending-proposals" id="pending-proposals">
-  <h3 class="section-heading">Pending proposals <span class="count-chip">{{ proposals|length }}</span></h3>
+  <h2 class="section-heading">Pending proposals <span class="count-chip">{{ proposals|length }}</span></h2>
   <p class="section-note">
     Drafts waiting for a person, including any an agent proposed over MCP.
     Nothing here is written until you accept it, and each one expires on its
@@ -100,7 +100,7 @@
       <pre class="skill-draft">{{ p.shown }}</pre>
     </details>
     {% if p.stale %}
-    <div class="flash flash-warning">
+    <div class="flash flash-warning" role="status">
       <span>The stored skill changed after this was proposed, so it can't be accepted. Discard it and propose again.</span>
     </div>
     {% endif %}
@@ -123,7 +123,7 @@
 {% endif %}
 
 {% if skills %}
-<div class="table-scroll">
+<div class="table-scroll" tabindex="0">
 <table class="data-table skills-table">
   <thead>
     <tr>
@@ -140,7 +140,7 @@
     {% for s in skills %}
     <tr>
       <td class="name-cell">
-        <a href="{{ admin }}/skills/{{ s.key }}" class="project-name">{{ s.name }}</a>
+        <a href="{{ admin }}/skills/{{ s.key }}" class="project-name" title="{{ s.name }}">{{ s.name }}</a>
         {% if s.generated %}<span class="badge generated" title="Compiler output — never hand-edited">gen</span>{% endif %}
       </td>
       <td><span class="badge ns-skill">{{ s.domain or "—" }}</span></td>

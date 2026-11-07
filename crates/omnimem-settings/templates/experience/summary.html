@@ -14,15 +14,15 @@
 
 <section class="stats-grid">
   <div class="stat-card">
-    <h3 class="stat-ns">Memories with experience</h3>
+    <h2 class="stat-ns">Memories with experience</h2>
     <div class="stat-total" title="{{ count|thousands }}">{{ num(count) }}</div>
   </div>
   <div class="stat-card">
-    <h3 class="stat-ns">Average effort</h3>
+    <h2 class="stat-ns">Average effort</h2>
     <div class="stat-total">{{ avg_effort }}</div>
   </div>
   <div class="stat-card">
-    <h3 class="stat-ns">Outcomes</h3>
+    <h2 class="stat-ns">Outcomes</h2>
     <div class="stat-breakdown" style="margin-top:0.5rem">
       <span class="badge active">{{ outcomes.succeeded }} succeeded</span>
       <span class="badge deprioritised">{{ outcomes.pivoted }} pivoted</span>
@@ -33,12 +33,12 @@
 
 {% if breakthroughs %}
 <section style="margin-bottom:2rem">
-  <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Breakthroughs</h3>
+  <h2 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Breakthroughs</h2>
   {% for b in breakthroughs %}
   <div class="callout callout-accent breakthrough">
     <div class="breakthrough-meta"><span class="badge active">{{ b.outcome }}</span><span class="text-dim">effort {{ b.effort_score }}/5</span></div>
     <p class="breakthrough-text">{{ b.breakthrough }}</p>
-    <a href="{{ admin }}/memory/{{ b.key|urlsegment }}?back={{ here|urlquote }}" class="callout-note breakthrough-link">{{ b.content }}</a>
+    <a href="{{ admin }}/memory/{{ b.key|urlsegment }}?back={{ here|urlquote }}" class="callout-note breakthrough-link">{{ b.content|plain }}</a>
   </div>
   {% endfor %}
 </section>
@@ -47,7 +47,7 @@
 {% if count %}
 <section>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem">
-    <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright)">Most effortful memories</h3>
+    <h2 style="font-size:0.95rem;font-weight:600;color:var(--text-bright)">Most effortful memories</h2>
     <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:var(--text-dim)">
       Outcome
       <input type="hidden" name="project" value="{{ project }}">

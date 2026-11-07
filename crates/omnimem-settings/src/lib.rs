@@ -82,7 +82,7 @@ pub struct StaticOverhead {
 }
 
 #[derive(Default)]
-struct Caches {
+pub(crate) struct Caches {
     dashboard: Option<(Instant, Value)>,
     /// Duplicate scans by `(namespace, project)`, so an Archive that returns
     /// to the same scan doesn't compare every vector again.

@@ -55,12 +55,12 @@
 
 {% if skill.rules %}
 <div style="margin-bottom:1.5rem">
-  <h3 class="eyebrow-heading">
+  <h2 class="eyebrow-heading">
     Rules
     <span style="font-weight:400;text-transform:none;letter-spacing:0">
       ({{ skill.rule_counts.do }} do · {{ skill.rule_counts.watch }} watch · {{ skill.rule_counts.dont }} don't{% if skill.rule_counts.ref %} · {{ skill.rule_counts.ref }} ref{% endif %})
     </span>
-  </h3>
+  </h2>
   <table class="data-table skill-rules-table">
     <thead>
       <tr>
@@ -93,7 +93,7 @@
 {% endif %}
 
 <div style="margin-bottom:1.5rem">
-  <h3 class="eyebrow-heading">SKILL.md</h3>
+  <h2 class="eyebrow-heading">SKILL.md</h2>
   {% if skill.body %}
   <pre class="skill-body">{{ skill.body }}</pre>
   {% else %}
@@ -103,7 +103,7 @@
 
 {% if skill.sources %}
 <div style="margin-bottom:1.5rem">
-  <h3 class="eyebrow-heading">Source Manifest</h3>
+  <h2 class="eyebrow-heading">Source Manifest</h2>
   <p class="section-note" style="margin-bottom:0.5rem">
     The memories this skill was compiled from. Update these (or add new ones) and recompile to change the skill.
   </p>

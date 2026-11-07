@@ -19,7 +19,14 @@
        hx-target="#results" hx-push-url="true"
        class="page-link">{{ p }}</a>
     {% elif p - 1 == page or p - 1 <= 3 or (p - 1 >= page - 1 and p - 1 <= page + 1) %}
+      {% if p + 1 == page or p + 1 > total_pages - 2 or (p + 1 >= page - 1 and p + 1 <= page + 1) %}
+    <a href="{{ admin }}{{ base_url }}?page={{ p }}{{ extra_params }}"
+       hx-get="{{ admin }}{{ base_url }}?page={{ p }}{{ extra_params }}"
+       hx-target="#results" hx-push-url="true"
+       class="page-link">{{ p }}</a>
+      {% else %}
     <span class="page-link ellipsis" aria-hidden="true">&hellip;</span>
+      {% endif %}
     {% endif %}
   {% endfor %}
 

@@ -11,7 +11,7 @@ use tracing::error;
 use crate::embedded::TEMPLATES;
 
 /// `"{:,}".format(n)`: digits grouped in threes.
-fn thousands(value: &Value) -> String {
+pub(crate) fn thousands(value: &Value) -> String {
     let number = value.to_string();
     let (sign, digits) = number
         .strip_prefix('-')
@@ -60,6 +60,27 @@ fn compact(value: &Value) -> String {
     }
 }
 
+/// A one-line preview of markdown: heading marks, emphasis, code ticks and
+/// quote marks go, so "# Summary **Who:** x" reads as "Summary Who: x".
+fn plain(text: String) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let line = line
+            .trim_start()
+            .trim_start_matches(['#', '>'])
+            .trim_start();
+        let line = line
+            .strip_prefix("- ")
+            .or_else(|| line.strip_prefix("* "))
+            .unwrap_or(line);
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.extend(line.chars().filter(|c| !matches!(c, '*' | '`')));
+    }
+    out
+}
+
 /// HTML escaping as Jinja2's markupsafe does it: `& < > ' "` and nothing
 /// else. minijinja also escapes `/`, which browsers read the same way but
 /// which would make the panel's output differ from the web UI's byte for byte.
@@ -96,6 +117,7 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
     env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
     env.add_filter("thousands", thousands);
     env.add_filter("compact", compact);
+    env.add_filter("plain", plain);
     // For a value going into a query string, before HTML escaping.
     env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
     // For a value that is one path segment (a project name, a memory key):
@@ -191,6 +213,18 @@ mod tests {
     }
 
     #[test]
+    fn previews_drop_markdown_marks() {
+        assert_eq!(
+            plain("# Summary **Who:** the `api` team\n> quoted\n- a point".into()),
+            "Summary Who: the api team quoted a point"
+        );
+        assert_eq!(
+            plain("check_contradictions stays".into()),
+            "check_contradictions stays"
+        );
+    }
+
+    #[test]
     fn a_pager_shows_one_ellipsis_per_gap() {
         let env = environment(Arc::default());
         let render = |page: i64, total_pages: i64| {
@@ -207,6 +241,10 @@ mod tests {
         assert_eq!(middle.matches("&hellip;").count(), 2, "{middle}");
         let short = render(2, 4);
         assert_eq!(short.matches("&hellip;").count(), 0, "{short}");
+        // A gap of one page is that page, not an ellipsis standing in for it.
+        let one = render(5, 9);
+        assert_eq!(one.matches("&hellip;").count(), 0, "{one}");
+        assert!(one.contains("?page=7\""), "{one}");
     }
 
     #[test]

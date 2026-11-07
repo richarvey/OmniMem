@@ -11,7 +11,7 @@
 </div>
 
 {% for w in result.warnings %}
-<div class="flash flash-warning"><span>{{ w }}</span></div>
+<div class="flash flash-warning" role="status"><span>{{ w }}</span></div>
 {% endfor %}
 
 <ul class="import-plan">
@@ -91,7 +91,7 @@
 {% endif %}
 
 {% else %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   <span>{{ result.reason or "Import failed." }}</span>
 </div>
 {% endif %}

@@ -25,9 +25,9 @@
 </div>
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Static overhead breakdown</h3>
+  <h2>Static overhead breakdown</h2>
   <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0">
   <table class="data-table overhead-table">
     <thead>
       <tr>
@@ -64,9 +64,9 @@
 
 {% if tool_metrics %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool usage</h3>
+  <h2>Tool usage</h2>
   <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0">
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
@@ -106,15 +106,15 @@
 </div>
 {% else %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool usage</h3>
+  <h2>Tool usage</h2>
   <p class="empty-state">No tool calls recorded{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} yet{% endif %}. Metrics will appear here once the MCP server processes requests.</p>
 </div>
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Memory store</h3>
+  <h2>Memory store</h2>
   <p class="section-note">Data held in OmniMem's store.</p>
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0">
   <table class="data-table overhead-table">
     <thead>
       <tr>

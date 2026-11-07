@@ -363,7 +363,7 @@ async fn experience_summarises_and_the_graveyard_deduplicates() {
 
     let page = text(&get(&panel, "/experience").await);
     assert!(
-        page.contains(r#"<div class="stat-total">3</div>"#),
+        page.contains(r#"<div class="stat-total" title="3">3</div>"#),
         "{page}"
     );
     assert!(
@@ -380,7 +380,7 @@ async fn experience_summarises_and_the_graveyard_deduplicates() {
     assert!(!pivoted.contains("<html"));
     assert!(
         text(&get(&panel, "/experience?project=other").await)
-            .contains(r#"<div class="stat-total">1</div>"#)
+            .contains(r#"<div class="stat-total" title="1">1</div>"#)
     );
 
     let graveyard = text(&get(&panel, "/experience/graveyard").await);
