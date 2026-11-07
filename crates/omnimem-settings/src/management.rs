@@ -126,9 +126,12 @@ pub(crate) async fn duplicates(
     };
     if scanned {
         let mut caches = state.caches();
+        // An expired scan is still the last word on its namespace, so the
+        // dashboard can say what it found and how long ago; only a stale
+        // one goes, so the map can't grow with every project scanned.
         caches
             .duplicates
-            .retain(|_, (when, _)| when.elapsed() < SCAN_TTL);
+            .retain(|_, (when, _)| when.elapsed() < SCAN_MEMORY);
         caches.duplicates.insert(slot, (at, clusters.clone()));
     }
     page(
@@ -255,7 +258,7 @@ fn with_notice(url: &str, name: &str, text: &str) -> String {
 
 /// A cached scan as it stands now: members archived or deleted since are
 /// gone, and a cluster left with one member is settled.
-fn prune(engine: &Engine, clusters: &Value) -> omnimem_engine::Result<Value> {
+pub(crate) fn prune(engine: &Engine, clusters: &Value) -> omnimem_engine::Result<Value> {
     let Some(list) = clusters.as_array() else {
         return Ok(json!([]));
     };
@@ -437,15 +440,32 @@ pub(crate) async fn dismiss_wording(
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 
-/// How long the menu's counts and a duplicate scan are reused.
+/// How long the menu's counts and a duplicate scan are reused, and how long
+/// a scan's result is remembered for the dashboard after that.
 const NAV_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 pub(crate) const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+const SCAN_MEMORY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// `3814` as `3,814`, so the menu's count reads as the pages' do.
+fn grouped(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
 
 fn nav_badge(id: &str, n: usize, what: &str) -> String {
     let inner = if n > 0 {
         format!(
-            r#"<span class="nav-count" title="{n} {what}{}">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
+            r#"<span class="nav-count" title="{} {what}{}">{}</span>"#,
+            grouped(n),
+            if n == 1 { "" } else { "s" },
+            grouped(n)
         )
     } else {
         String::new()

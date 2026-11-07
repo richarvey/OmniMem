@@ -28,7 +28,10 @@ pub(crate) async fn check(State(state): State<PanelState>) -> Response {
         Some(latest) => page(
             state.templates(),
             "partials/version_update.html",
-            context! { latest_version => latest },
+            context! {
+                release_url => omnimem_engine::release::release_url(&latest),
+                latest_version => latest,
+            },
         ),
         None => Html("").into_response(),
     }

@@ -20,16 +20,32 @@ use crate::PanelState;
 use crate::pages::{blocking, starting};
 use crate::render::page;
 
-pub(crate) async fn form(State(state): State<PanelState>) -> Response {
+/// The form, filled in from the address: a search has a URL (the form pushes
+/// one), so a reload, a bookmark or a shared link runs it again.
+pub(crate) async fn form(
+    State(state): State<PanelState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let text = |name: &str| {
+        params
+            .get(name)
+            .map(|v| v.trim().to_owned())
+            .unwrap_or_default()
+    };
+    let top_k = params
+        .get("top_k")
+        .and_then(|k| k.trim().parse::<i64>().ok())
+        .unwrap_or(10)
+        .clamp(1, 50);
     page(
         state.templates(),
         "search.html",
         context! {
             results => (),
-            query => "",
-            namespace => "",
-            project => "",
-            top_k => 10,
+            query => text("query"),
+            namespace => text("namespace"),
+            project => text("project"),
+            top_k => top_k,
             current_page => "search",
         },
     )

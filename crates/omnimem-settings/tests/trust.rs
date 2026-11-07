@@ -124,10 +124,11 @@ async fn the_list_shows_candidates_under_their_source() {
     let one = text(&get(&f.panel, &format!("/unconfirmed?source={SRC_TWO}")).await);
     assert!(one.contains("fact b1") && !one.contains("fact a1"), "{one}");
 
-    let badge = text(&get(&f.panel, "/unconfirmed/badge").await);
+    let counts = text(&get(&f.panel, "/nav-counts").await);
     assert!(
-        badge.contains("nav-count") && badge.contains('3'),
-        "{badge}"
+        counts.contains(r#"id="nav-count-unconfirmed" hx-swap-oob="true"><span class="nav-count""#)
+            && counts.contains(">3</span>"),
+        "{counts}"
     );
 }
 

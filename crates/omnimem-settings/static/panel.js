@@ -56,12 +56,15 @@
     }
     if (el.hasAttribute('data-show')) {
       var shown = byId(el.getAttribute('data-show'));
-      if (shown) shown.style.display = 'flex';
+      // A <dialog> opens as a modal: focus moves in, Escape closes it.
+      if (shown && shown.showModal) shown.showModal();
+      else if (shown) shown.style.display = 'flex';
       return;
     }
     if (el.hasAttribute('data-hide')) {
       var hidden = byId(el.getAttribute('data-hide'));
-      if (hidden) hidden.style.display = 'none';
+      if (hidden && hidden.close) hidden.close();
+      else if (hidden) hidden.style.display = 'none';
       var cleared = byId(el.getAttribute('data-clear'));
       if (cleared) cleared.innerHTML = '';
       return;

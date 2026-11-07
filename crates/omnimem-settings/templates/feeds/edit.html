@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_new %}Add Feed{% else %}Edit {{ feed.name }}{% endif %} — OmniMem{% endblock %}
+{% block title %}{% if is_new %}Add feed{% else %}Edit {{ feed.name }}{% endif %} — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
-  <h2>{% if is_new %}Add Feed{% else %}Edit Feed{% endif %}</h2>
+  <h1>{% if is_new %}Add feed{% else %}Edit feed{% endif %}</h1>
 </header>
 
 {% if error %}
@@ -16,18 +16,18 @@
 
 <form method="POST" action="{{ admin }}{% if is_new %}/feeds/new{% else %}/feeds/{{ feed.index }}/edit{% endif %}" style="max-width:700px">
   <div class="form-group">
-    <label>Feed Name</label>
-    <input type="text" name="name" class="form-input" value="{{ feed.name }}" placeholder="Rust Official Blog" required autofocus>
+    <label for="feed-name">Feed name</label>
+    <input type="text" id="feed-name" name="name" class="form-input" value="{{ feed.name }}" placeholder="Rust Official Blog" required autofocus>
   </div>
 
   <div class="form-group">
-    <label>Feed URL</label>
-    <input type="url" name="url" class="form-input" value="{{ feed.url }}" placeholder="https://blog.example.com/feed.xml" required>
+    <label for="feed-url">Feed URL</label>
+    <input type="url" id="feed-url" name="url" class="form-input" value="{{ feed.url }}" placeholder="https://blog.example.com/feed.xml" required>
   </div>
 
   <div class="form-group">
-    <label>Topics (comma-separated)</label>
-    <input type="text" name="topics" class="form-input" value="{{ feed.topics }}" placeholder="rust, systems, language">
+    <label for="feed-topics">Topics (comma-separated)</label>
+    <input type="text" id="feed-topics" name="topics" class="form-input" value="{{ feed.topics }}" placeholder="rust, systems, language">
   </div>
 
   <div class="form-group">
@@ -63,7 +63,7 @@
   </div>
 
   <div class="form-group">
-    <label>Skill influence</label>
+    <span class="field-label" id="skill-influence-h">Skill influence</span>
     <small style="color:var(--text-muted);margin-bottom:0.5rem;display:block">
       Tie this feed to one or more compiled skills. When a skill is rebuilt, the feed's
       latest articles appear in its Feed watch section — the influence score (1–10)
@@ -74,14 +74,14 @@
       {% for row in feed.skills %}
       <div class="skill-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
         <input type="text" name="skill_domain" class="form-input" list="skill-domains"
-               value="{{ row.domain }}" placeholder="skill domain, e.g. python" style="flex:1">
+               value="{{ row.domain }}" placeholder="skill domain, e.g. python" style="flex:1" aria-label="Skill domain">
         <input type="number" name="skill_influence" class="form-input" min="1" max="10"
                value="{{ row.influence }}" style="width:6rem" aria-label="Influence (1-10)">
       </div>
       {% endfor %}
       <div class="skill-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
         <input type="text" name="skill_domain" class="form-input" list="skill-domains"
-               value="" placeholder="skill domain, e.g. python" style="flex:1">
+               value="" placeholder="skill domain, e.g. python" style="flex:1" aria-label="Skill domain">
         <input type="number" name="skill_influence" class="form-input" min="1" max="10"
                value="5" style="width:6rem" aria-label="Influence (1-10)">
       </div>
@@ -95,7 +95,7 @@
   </div>
 
   <div style="display:flex;gap:0.5rem">
-    <button type="submit" class="btn btn-primary">{% if is_new %}Add Feed{% else %}Save{% endif %}</button>
+    <button type="submit" class="btn btn-primary">{% if is_new %}Add feed{% else %}Save{% endif %}</button>
     <a href="{{ admin }}/feeds" class="btn btn-secondary">Cancel</a>
   </div>
 </form>

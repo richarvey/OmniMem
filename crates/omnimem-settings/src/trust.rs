@@ -284,20 +284,3 @@ pub(crate) async fn memory_trust(
         Err(failure) => failure,
     }
 }
-
-/// GET `/unconfirmed/badge`: the sidebar's count of candidates, or nothing.
-/// Loaded after the page, so a page never waits on the count.
-pub(crate) async fn badge(State(state): State<PanelState>) -> Response {
-    let Some(engine) = state.engine() else {
-        return Html("").into_response();
-    };
-    let waiting = blocking(move || Ok(engine.unconfirmed_from(None, usize::MAX)?.len())).await;
-    match waiting {
-        Ok(n) if n > 0 => Html(format!(
-            r#"<span class="nav-count" title="{n} unconfirmed fact{}">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
-        ))
-        .into_response(),
-        _ => Html("").into_response(),
-    }
-}

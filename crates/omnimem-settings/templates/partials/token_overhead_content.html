@@ -1,31 +1,33 @@
+{% from "partials/macros.html" import num %}
 <p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls{% if metrics_since %} since the last reset{% endif %}. Tokens estimated at ~4 chars/token.</p>
 
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-ns">Static Overhead</div>
-    <div class="stat-total">{{ (static_total_tokens)|thousands }}</div>
+    <div class="stat-ns">Static overhead</div>
+    <div class="stat-total" title="{{ static_total_tokens|thousands }}">{{ num(static_total_tokens) }}</div>
     <div class="stat-label">tokens/session</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Total Tool Calls</div>
-    <div class="stat-total">{{ (total_tool_calls)|thousands }}</div>
+    <div class="stat-ns">Total tool calls</div>
+    <div class="stat-total" title="{{ total_tool_calls|thousands }}">{{ num(total_tool_calls) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card stat-card-highlight">
-    <div class="stat-ns">Total Tool Tokens</div>
-    <div class="stat-total">~{{ (total_tool_tokens)|thousands }}</div>
+    <div class="stat-ns">Total tool tokens</div>
+    <div class="stat-total" title="~{{ total_tool_tokens|thousands }}">~{{ num(total_tool_tokens) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Stored Memories</div>
-    <div class="stat-total">{{ (total_memories)|thousands }}</div>
+    <div class="stat-ns">Stored memories</div>
+    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>
     <div class="stat-label">active</div>
   </div>
 </div>
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Static Overhead Breakdown</h3>
+  <h3>Static overhead breakdown</h3>
   <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
+  <div class="table-scroll">
   <table class="data-table overhead-table">
     <thead>
       <tr>
@@ -57,12 +59,14 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>
 
 {% if tool_metrics %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage</h3>
+  <h3>Tool usage</h3>
   <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
+  <div class="table-scroll">
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
@@ -98,17 +102,19 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>
 {% else %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage</h3>
+  <h3>Tool usage</h3>
   <p class="empty-state">No tool calls recorded{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} yet{% endif %}. Metrics will appear here once the MCP server processes requests.</p>
 </div>
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Memory Store</h3>
+  <h3>Memory store</h3>
   <p class="section-note">Data held in OmniMem's store.</p>
+  <div class="table-scroll">
   <table class="data-table overhead-table">
     <thead>
       <tr>
@@ -134,6 +140,10 @@
         <td class="mono">{{ (namespace_counts.knowledge)|thousands }}</td>
       </tr>
       <tr>
+        <td>Preference</td>
+        <td class="mono">{{ (namespace_counts.preference)|thousands }}</td>
+      </tr>
+      <tr>
         <td>Total recall operations (all time)</td>
         <td class="mono">{{ (total_recalls)|thousands }}</td>
       </tr>
@@ -147,4 +157,5 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>

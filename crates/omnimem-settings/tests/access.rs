@@ -153,8 +153,9 @@ async fn a_sign_in_link_works_once_and_its_session_opens_the_panel() {
     let cookie = session_cookie(&response);
 
     let page = get(&f, "/admin/", Some(&cookie)).await;
-    assert_eq!(page.status(), StatusCode::OK);
+    let status = page.status();
     let html = text(page).await;
+    assert_eq!(status, StatusCode::OK, "{html}");
     assert!(
         html.contains("<title>Dashboard — OmniMem</title>"),
         "{html}"
@@ -349,7 +350,7 @@ async fn htmx_gets_a_redirect_header_instead_of_a_login_page_in_a_fragment() {
     let f = fixture(AccessConfig::default());
     let response = send(
         &f,
-        request("GET", "/admin/unconfirmed/badge", LOCAL)
+        request("GET", "/admin/nav-counts", LOCAL)
             .header("hx-request", "true")
             .body(Body::empty())
             .unwrap(),
@@ -358,7 +359,7 @@ async fn htmx_gets_a_redirect_header_instead_of_a_login_page_in_a_fragment() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response.headers()["hx-redirect"],
-        "/admin/login?next=/unconfirmed/badge"
+        "/admin/login?next=/nav-counts"
     );
 }
 

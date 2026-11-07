@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import num %}
 
 {% block title %}Experience — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Experience</h2>
+    <h1>Experience</h1>
     <p class="page-intro">How past attempts went: what worked, how hard it was, and what was learned.</p>
   </div>
   <a href="{{ admin }}/experience/graveyard" class="btn btn-secondary btn-sm">Graveyard</a>
@@ -13,11 +14,11 @@
 
 <section class="stats-grid">
   <div class="stat-card">
-    <h3 class="stat-ns">Memories with Experience</h3>
-    <div class="stat-total">{{ count }}</div>
+    <h3 class="stat-ns">Memories with experience</h3>
+    <div class="stat-total" title="{{ count|thousands }}">{{ num(count) }}</div>
   </div>
   <div class="stat-card">
-    <h3 class="stat-ns">Avg Effort Score</h3>
+    <h3 class="stat-ns">Average effort</h3>
     <div class="stat-total">{{ avg_effort }}</div>
   </div>
   <div class="stat-card">
@@ -46,7 +47,7 @@
 {% if count %}
 <section>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem">
-    <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright)">Most Effortful Memories</h3>
+    <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright)">Most effortful memories</h3>
     <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:var(--text-dim)">
       Outcome
       <input type="hidden" name="project" value="{{ project }}">

@@ -246,40 +246,6 @@ html.sidebar-collapsed .content {
   white-space: nowrap;
 }
 
-.version-update-wrapper {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-  vertical-align: middle;
-}
-
-.version-update-icon {
-  font-size: 1rem;
-  color: var(--red);
-  line-height: 1;
-}
-
-.version-update-tooltip {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  background: var(--bg-card);
-  border: 1px solid var(--red);
-  color: var(--red);
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius);
-  white-space: nowrap;
-  z-index: 50;
-  pointer-events: none;
-}
-
-.version-update-wrapper:hover .version-update-tooltip {
-  display: block;
-}
-
 .nav-list {
   list-style: none;
   padding: 0.75rem 0;
@@ -2201,3 +2167,71 @@ a.review-source:hover { color: var(--accent-text); }
 .domain-pills { display: flex; gap: 0.25rem; align-items: center; min-width: 0; }
 .domain-pills > .domain-pill { flex: 0 1 auto; min-width: 2.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .domain-pills > .domain-more { flex-shrink: 0; min-width: 0; }
+
+/* Round 5: the version under the logo, menu headings that read as headings,
+   counts that fit their tiles. */
+.sidebar-header { padding-bottom: 0.85rem; }
+.sidebar-version { margin-top: -0.1rem; }
+.version-update {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; white-space: nowrap; text-decoration: none;
+  color: var(--bg); background: var(--accent); padding: 2px 8px; border-radius: var(--radius-pill);
+}
+.version-update:hover { background: var(--accent-hover); color: var(--bg); }
+.version-update:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-section-label {
+  font-family: var(--font-sans); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-soft); margin: 1.1rem 0.9rem 0.15rem; padding: 0.55rem 0.3rem 0.3rem; border-top: 1px solid var(--border-subtle);
+}
+.nav-list > li:first-child.nav-section-label { margin-top: 0.75rem; border-top: 0; padding-top: 0; }
+.nav-link { margin-left: 0.9rem; margin-right: 0.9rem; padding-left: 12px; }
+.stat-total { font-size: clamp(30px, 2.8vw, 44px); overflow-wrap: anywhere; }
+.attention-num { font-variant-numeric: tabular-nums; }
+.attention-muted { border-color: var(--border-card); box-shadow: inset 3px 0 0 var(--text-faint); }
+.attention-muted:hover { border-color: var(--border-strong); }
+@media (max-width: 768px) {
+  /* Room for the Menu button at the right, and a second row for the version
+     and an update pill when the logo leaves no space beside it. */
+  .sidebar-header { flex-wrap: wrap; row-gap: 0.25rem; padding-right: 5.5rem; }
+  .sidebar-version { flex-basis: auto; }
+}
+
+/* Round 5b: the reviewers' findings. Page titles are h1 now; the h2 rule
+   stays for any page not yet converted. */
+.page-header h1 { font-family: var(--font-sans); font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; color: var(--text-heading); }
+.detail-head h1.project-title { font-size: 28px; }
+.action-bar { flex-wrap: wrap; row-gap: 0.4rem; }
+.pair-form { min-width: 0; }
+.pair-form .form-input { width: 100%; }
+.badge.reinstate { background: var(--accent-tint); color: var(--accent-text); border-color: var(--accent-edge); }
+.fold-summary .when-open, details[open] > .fold-summary .when-closed { display: none; }
+details[open] > .fold-summary .when-open { display: inline; }
+.domain-pills > .domain-pill { min-width: 4rem; max-width: 9rem; }
+.rail-trust .action-bar > form { flex: 1 1 100%; }
+.detail-main .recent-row { grid-template-columns: 6.5rem minmax(0, 1fr) auto 7rem; }
+/* A focused field never hides under the sticky save bar (WCAG 2.4.11). */
+.config-form .form-input, .config-form .form-select, .config-form textarea, .config-form input[type="checkbox"] { scroll-margin-bottom: 5rem; }
+/* The sidebar scrolls on its own; a fade at its foot says there is more. */
+.nav-menu-body::after { content: ""; display: block; position: sticky; bottom: 0; height: 2.5rem; margin-top: -2.5rem; background: linear-gradient(transparent, var(--bg-sidebar)); pointer-events: none; }
+@media (max-width: 768px) {
+  a, button, input, select, textarea, summary { scroll-margin-top: 4.5rem; }
+  .nav-menu-body::after { display: none; }
+}
+@media (max-width: 640px) {
+  .memories-table .content-cell { white-space: normal; }
+  .count-note { display: block; margin-top: 0.2rem; }
+  /* Wide data tables scroll sideways inside their wrapper rather than crushing their columns. */
+  .table-scroll > .skills-table, .table-scroll > .graveyard-table, .table-scroll > .effortful-table,
+  .table-scroll > .telemetry-table, .table-scroll > .tool-metrics-table, .table-scroll > .overhead-table { min-width: 640px; }
+  .tool-metrics-table td:first-child, .skills-table .skill-actions, .graveyard-table .badge, .effortful-table .badge { white-space: nowrap; }
+}
+.table-legend { margin-top: 0.5rem; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: center; }
+.legend-edge { display: inline-block; width: 3px; height: 14px; background: var(--accent); }
+.legend-warm { background: rgba(99, 189, 133, 0.55); }
+.legend-cool { background: rgba(99, 189, 133, 0.25); }
+/* Modals are <dialog>s: the browser's own dialog styling is reset, and an
+   open one fills the screen as the backdrop did. */
+dialog.modal-backdrop { display: none; width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; color: inherit; }
+dialog.modal-backdrop[open] { display: flex; }
+dialog.modal-backdrop::backdrop { background: transparent; }
+.form-group > .field-label { display: block; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.4rem; }
+.detail-head h1.detail-title { font-size: 20px; font-weight: 600; line-height: 1.35; }

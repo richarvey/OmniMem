@@ -1302,3 +1302,48 @@ fn a_dead_end_with_no_project_matches_every_project_and_archived_ones_still_warn
         "Abandoned approach: Celery — needs a broker"
     );
 }
+
+#[test]
+fn maintenance_links_the_pairs_it_finds_without_touching_updated_at() {
+    let e = engine_with(EngineConfig {
+        auto_maintenance_interval: 2,
+        ..EngineConfig::default()
+    });
+    put(&e, "mem:project:p", "the project", &[("project_name", "p")]);
+    put(
+        &e,
+        "mem:episodic:01E",
+        "deploys always use the docker image for the api",
+        &[("project", "p"), ("updated_at", "1000.0")],
+    );
+    put(
+        &e,
+        "mem:episodic:01F",
+        "deploys never use the docker image for the api",
+        &[("project", "p"), ("updated_at", "1000.0")],
+    );
+
+    e.briefing(Some("p"), true).unwrap();
+    let second = e.briefing(Some("p"), true).unwrap();
+    let found = second["auto_maintenance"]["contradictions_found"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(found.len(), 1, "{second}");
+
+    // The pair the summary counts is linked on both rows, as the tool's
+    // heuristic tier links it: unverified, and not an update to either.
+    for (key, other) in [
+        ("mem:episodic:01E", "mem:episodic:01F"),
+        ("mem:episodic:01F", "mem:episodic:01E"),
+    ] {
+        let links = field(&e, key, "contradictions").unwrap_or_default();
+        assert!(links.contains(other), "{key}: {links}");
+        assert!(!links.contains("verified"), "{key}: {links}");
+        assert_eq!(field(&e, key, "updated_at").as_deref(), Some("1000.0"));
+    }
+    let open = e.open_contradictions().unwrap();
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(open[0]["key_a"], "mem:episodic:01E");
+    assert_eq!(open[0]["key_b"], "mem:episodic:01F");
+}

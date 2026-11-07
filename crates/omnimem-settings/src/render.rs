@@ -32,6 +32,34 @@ fn thousands(value: &Value) -> String {
     }
 }
 
+/// A count that has to fit a tile: exact below a thousand, then `1.2k`,
+/// `12k`, `123k`, `1.2M`. One decimal only while the figure is under ten
+/// of its unit, so a tile never shows more than four characters of number.
+fn compact(value: &Value) -> String {
+    let Ok(n) = f64::try_from(value.clone()) else {
+        return value.to_string();
+    };
+    if !n.is_finite() || n.abs() < 1000.0 {
+        return thousands(value);
+    }
+    let sign = if n < 0.0 { "-" } else { "" };
+    let units = ["", "k", "M", "B", "T"];
+    let mut scaled = n.abs();
+    let mut unit = 0;
+    // 999,500 rounds up to the next unit ("1M"), never to "1000k".
+    while scaled >= 999.5 && unit + 1 < units.len() {
+        scaled /= 1000.0;
+        unit += 1;
+    }
+    let unit = units[unit];
+    let one_decimal = (scaled * 10.0).round() / 10.0;
+    if one_decimal < 10.0 && one_decimal.fract() != 0.0 {
+        format!("{sign}{one_decimal:.1}{unit}")
+    } else {
+        format!("{sign}{}{unit}", scaled.round())
+    }
+}
+
 /// HTML escaping as Jinja2's markupsafe does it: `& < > ' "` and nothing
 /// else. minijinja also escapes `/`, which browsers read the same way but
 /// which would make the panel's output differ from the web UI's byte for byte.
@@ -67,6 +95,7 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
     minijinja_contrib::add_to_environment(&mut env);
     env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
     env.add_filter("thousands", thousands);
+    env.add_filter("compact", compact);
     // For a value going into a query string, before HTML escaping.
     env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
     // For a value that is one path segment (a project name, a memory key):
@@ -143,6 +172,41 @@ mod tests {
         assert_eq!(thousands(&Value::from(999)), "999");
         assert_eq!(thousands(&Value::from(-1000)), "-1,000");
         assert_eq!(thousands(&Value::from(12345.5)), "12,345.5");
+    }
+
+    #[test]
+    fn compact_counts_fit_a_tile() {
+        assert_eq!(compact(&Value::from(999)), "999");
+        assert_eq!(compact(&Value::from(1000)), "1k");
+        assert_eq!(compact(&Value::from(1234)), "1.2k");
+        assert_eq!(compact(&Value::from(9949)), "9.9k");
+        assert_eq!(compact(&Value::from(9950)), "10k");
+        assert_eq!(compact(&Value::from(12_345)), "12k");
+        assert_eq!(compact(&Value::from(999_499)), "999k");
+        assert_eq!(compact(&Value::from(999_500)), "1M");
+        assert_eq!(compact(&Value::from(1_234_567)), "1.2M");
+        assert_eq!(compact(&Value::from(-1500)), "-1.5k");
+        assert_eq!(compact(&Value::from(3.2)), "3.2");
+        assert_eq!(compact(&Value::from("—")), "—");
+    }
+
+    #[test]
+    fn a_pager_shows_one_ellipsis_per_gap() {
+        let env = environment(Arc::default());
+        let render = |page: i64, total_pages: i64| {
+            env.get_template("partials/pagination.html")
+                .unwrap()
+                .render(minijinja::context! {
+                    page, total_pages, base_url => "/memories", extra_params => "",
+                })
+                .unwrap()
+        };
+        let near_start = render(1, 217);
+        assert_eq!(near_start.matches("&hellip;").count(), 1, "{near_start}");
+        let middle = render(100, 217);
+        assert_eq!(middle.matches("&hellip;").count(), 2, "{middle}");
+        let short = render(2, 4);
+        assert_eq!(short.matches("&hellip;").count(), 0, "{short}");
     }
 
     #[test]

@@ -90,7 +90,7 @@ async fn pages_wait_for_the_engine_then_show_the_dashboard() {
     assert_eq!(dashboard.status(), 200, "{html}");
     assert!(html.contains("2 memories"), "{html}");
     assert!(
-        html.contains("Needs you") && html.contains("Nothing is waiting for you"),
+        html.contains("Requires your attention") && html.contains("Nothing needs your attention"),
         "{html}"
     );
     assert!(

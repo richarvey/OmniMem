@@ -22,6 +22,10 @@
       <div class="sidebar-header">
         <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
         <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Hide sidebar" aria-expanded="true">&laquo;</button>
+        <div class="sidebar-version">
+          <span class="version-badge">v{{ version }}</span>
+          <span hx-get="{{ admin }}/version-check" hx-trigger="load" hx-swap="innerHTML"></span>
+        </div>
       </div>
       <details class="nav-menu" open data-nav-menu>
         <summary class="nav-menu-toggle">Menu</summary>
@@ -56,10 +60,6 @@
           </ul>
           <span hx-get="{{ admin }}/nav-counts" hx-trigger="load" hx-swap="none" hidden></span>
           <div class="sidebar-foot">
-            <div class="sidebar-version">
-              <span class="version-badge">v{{ version }}</span>
-              <span hx-get="{{ admin }}/version-check" hx-trigger="load" hx-swap="innerHTML"></span>
-            </div>
             <form method="POST" action="{{ admin }}/logout" class="logout-form"><button type="submit" class="btn btn-secondary btn-sm">Sign out</button></form>
             <p class="sidebar-links">
               <a href="https://code.squarecows.com/ric/omnimem" target="_blank" rel="noopener">Source</a>

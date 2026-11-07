@@ -346,14 +346,18 @@ async fn pending_proposals_list_with_their_draft_and_count() {
     let (panel, engine, dir) = setup();
     let none = text(&get(&panel, "/skills").await);
     assert!(!none.contains("Pending proposals"), "{none}");
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(
+        !text(&get(&panel, "/nav-counts").await)
+            .contains(r#"nav-count-skills" hx-swap-oob="true"><span"#),
+        "no proposal, no count"
+    );
 
     stash_proposal(&engine, "");
     let list = text(&get(&panel, "/skills").await);
     assert!(list.contains("Pending proposals"), "{list}");
     assert!(list.contains("new skill"), "{list}");
     assert!(list.contains("# Rust"), "the draft is shown: {list}");
-    assert!(list.contains("Accept &amp; Write Skill"));
+    assert!(list.contains("Accept &amp; write skill"));
     assert!(list.contains(r#"action="/admin/skills/discard""#));
     // The sidebar loads every review count in one request, out of band.
     assert!(list.contains(r#"hx-get="/admin/nav-counts""#));
@@ -363,8 +367,6 @@ async fn pending_proposals_list_with_their_draft_and_count() {
             && counts.contains(">1</span>"),
         "{counts}"
     );
-    let badge = text(&get(&panel, "/skills/pending-badge").await);
-    assert!(badge.contains(">1</span>"), "{badge}");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -385,7 +387,11 @@ async fn accepting_a_pending_proposal_commits_the_stash() {
         .unwrap();
     assert_eq!(stored["body"], DRAFT, "byte for byte");
     assert!(engine.store().hash_get_all(PROPOSAL).unwrap().is_none());
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(
+        !text(&get(&panel, "/nav-counts").await)
+            .contains(r#"nav-count-skills" hx-swap-oob="true"><span"#),
+        "no proposal, no count"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -422,8 +428,12 @@ async fn a_stale_pending_proposal_cannot_be_accepted() {
 
     let list = text(&get(&panel, "/skills").await);
     assert!(list.contains("changed after this was proposed"), "{list}");
-    assert!(!list.contains("Accept &amp; Write Skill"), "{list}");
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(!list.contains("Accept &amp; write skill"), "{list}");
+    assert!(
+        !text(&get(&panel, "/nav-counts").await)
+            .contains(r#"nav-count-skills" hx-swap-oob="true"><span"#),
+        "no proposal, no count"
+    );
 
     let refused = text(&post(&panel, "/skills/commit", "domain=rust").await);
     assert!(refused.contains("stored skill changed"), "{refused}");

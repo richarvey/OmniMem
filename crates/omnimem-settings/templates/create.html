@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Create Memory — OmniMem{% endblock %}
+{% block title %}Create memory — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>New memory</h2>
+    <h1>New memory</h1>
     <p class="page-intro">Write something down for every agent to recall. It's embedded and checked for near-duplicates first.</p>
   </div>
 </header>
@@ -31,14 +31,14 @@
 
 <form method="POST" action="{{ admin }}/create" style="max-width:700px">
   <div class="form-group">
-    <label>Content</label>
-    <textarea name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>
+    <label for="content">Content</label>
+    <textarea id="content" name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="form-group">
-      <label>Namespace</label>
-      <select name="namespace" class="form-select">
+      <label for="namespace">Namespace</label>
+      <select id="namespace" name="namespace" class="form-select">
         <option value="episodic"{% if values.namespace == 'episodic' %} selected{% endif %}>Episodic</option>
         <option value="project"{% if values.namespace == 'project' %} selected{% endif %}>Project</option>
         <option value="knowledge"{% if values.namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
@@ -47,14 +47,14 @@
     </div>
 
     <div class="form-group">
-      <label>Project</label>
-      <input type="text" name="project" class="form-input" placeholder="Optional" value="{{ values.project }}">
+      <label for="project">Project</label>
+      <input type="text" id="project" name="project" class="form-input" placeholder="Optional" value="{{ values.project }}">
     </div>
   </div>
 
   <div class="form-group">
-    <label>Tags (comma-separated)</label>
-    <input type="text" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
+    <label for="tags">Tags (comma-separated)</label>
+    <input type="text" id="tags" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -96,6 +96,6 @@
     <label for="force" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text)">Force save (skip duplicate check)</label>
   </div>
 
-  <button type="submit" class="btn btn-primary">Create Memory</button>
+  <button type="submit" class="btn btn-primary">Create memory</button>
 </form>
 {% endblock %}

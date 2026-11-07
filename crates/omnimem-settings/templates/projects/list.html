@@ -75,7 +75,7 @@
 {% set without_context = projects|rejectattr("has_context")|list %}
 <header class="page-header">
   <div>
-    <h2>Projects <span class="count-chip">{{ total_with_context }}</span>{% if without_context %} <span class="count-note">and {{ without_context|length }} name{{ '' if without_context|length == 1 else 's' }} without a context</span>{% endif %}</h2>
+    <h1>Projects <span class="count-chip">{{ total_with_context }}</span>{% if without_context %} <span class="count-note">with a context, {{ without_context|length }} without</span>{% endif %}</h1>
     <p class="page-intro">Each project's context (stack, goals, where it stands) and the kinds of work it involves. Domains let recall search every project doing the same kind of work.</p>
   </div>
   <div class="header-actions">

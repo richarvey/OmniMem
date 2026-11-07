@@ -1,28 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_new %}New Project{% else %}Edit {{ project.name }}{% endif %} — OmniMem{% endblock %}
+{% block title %}{% if is_new %}New project{% else %}Edit {{ project.name }}{% endif %} — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
-  <h2>{% if is_new %}New Project{% else %}Edit {{ project.name }}{% endif %}</h2>
+  <h1>{% if is_new %}New project{% else %}Edit {{ project.name }}{% endif %}</h1>
 </header>
 
 <form method="POST" action="{{ admin }}{% if is_new %}/projects/new{% else %}/projects/{{ project.name|urlsegment }}/edit{% endif %}" style="max-width:700px">
   {% if is_new %}
   <div class="form-group">
-    <label>Project Name</label>
-    <input type="text" name="name" class="form-input" value="{{ project.name }}" placeholder="my-project" required autofocus>
+    <label for="project-name">Project name</label>
+    <input type="text" id="project-name" name="name" class="form-input" value="{{ project.name }}" placeholder="my-project" required autofocus>
   </div>
   {% endif %}
 
   <div class="form-group">
-    <label>Description</label>
-    <textarea name="description" class="form-textarea" rows="3" placeholder="What the project does">{{ project.description }}</textarea>
+    <label for="project-description">Description</label>
+    <textarea id="project-description" name="description" class="form-textarea" rows="3" placeholder="What the project does">{{ project.description }}</textarea>
   </div>
 
   <div class="form-group">
-    <label>Stack</label>
-    <input type="text" name="stack" class="form-input" value="{{ project.stack }}" placeholder="Rust, SQLite, Docker, etc.">
+    <label for="project-stack">Stack</label>
+    <input type="text" id="project-stack" name="stack" class="form-input" value="{{ project.stack }}" placeholder="Rust, SQLite, Docker, etc.">
   </div>
 
   <div class="form-group">
@@ -55,18 +55,18 @@
   </div>
 
   <div class="form-group">
-    <label>Goals</label>
-    <textarea name="goals" class="form-textarea" rows="3" placeholder="Current objectives">{{ project.goals }}</textarea>
+    <label for="project-goals">Goals</label>
+    <textarea id="project-goals" name="goals" class="form-textarea" rows="3" placeholder="Current objectives">{{ project.goals }}</textarea>
   </div>
 
   <div class="form-group">
-    <label>Current State</label>
-    <textarea name="current_state" class="form-textarea" rows="3" placeholder="What's happening now">{{ project.current_state }}</textarea>
+    <label for="project-current-state">Current state</label>
+    <textarea id="project-current-state" name="current_state" class="form-textarea" rows="3" placeholder="What's happening now">{{ project.current_state }}</textarea>
   </div>
 
   <div class="form-group">
-    <label>Notes</label>
-    <textarea name="notes" class="form-textarea" rows="3" placeholder="Freeform notes for next session">{{ project.notes }}</textarea>
+    <label for="project-notes">Notes</label>
+    <textarea id="project-notes" name="notes" class="form-textarea" rows="3" placeholder="Freeform notes for next session">{{ project.notes }}</textarea>
   </div>
 
   <div style="display:flex;gap:0.5rem">

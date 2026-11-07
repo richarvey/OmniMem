@@ -7,14 +7,14 @@
       <th scope="col">State</th>
       {# Articles all share one project label — the feed they came from is
          the meaningful grouping #}
-      <th>{{ "Feed" if source == "rss" else "Project" }}</th>
-      <th>{{ "Added" if source == "rss" else "Updated" }}</th>
+      <th scope="col">{{ "Feed" if source == "rss" else "Project" }}</th>
+      <th scope="col">{{ "Added" if source == "rss" else "Updated" }}</th>
       <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>
     {% for mem in memories %}
-    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
+    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}"{% if mem.heat == 'hot' %} title="Recalled in the last week"{% elif mem.heat == 'warm' %} title="Recalled in the last month"{% elif mem.heat == 'cool' %} title="Recalled in the last three months"{% endif %}>
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
       <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ back_url|urlquote }}">{{ mem.content }}</a></td>
       <td>
@@ -67,8 +67,9 @@
     {% endfor %}
   </tbody>
 </table>
+<p class="table-legend" aria-hidden="true"><span class="legend-edge legend-hot"></span> recalled this week <span class="legend-edge legend-warm"></span> this month <span class="legend-edge legend-cool"></span> in three months</p>
 
 {% include "partials/pagination.html" %}
 {% else %}
-<p class="empty-state">No memories match the current filters — <a href="{{ admin }}/memories">clear the filters</a> to see everything.</p>
+<p class="empty-state">No memories match the current filters. <a href="{{ admin }}/memories">Clear the filters</a> to see everything.</p>
 {% endif %}

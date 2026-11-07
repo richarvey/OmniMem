@@ -178,7 +178,7 @@ async fn contradictions_list_each_pair_once() {
     assert!(!page.contains("pairs"));
     assert!(page.contains("They disagree"));
     assert!(page.contains("Always squash merge") && page.contains("Never squash merge"));
-    assert!(page.contains("1 contradiction found."));
+    assert!(page.contains("1 pair linked in that run."));
 }
 
 #[tokio::test]
@@ -446,12 +446,12 @@ async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
 
     let page = text(&get(&panel, "/telemetry").await);
     assert!(
-        page.contains(r#"<div class="stat-total">3</div>"#),
+        page.contains(r#"<div class="stat-total" title="3">3</div>"#),
         "{page}"
     );
-    let most = page.find("Most Recalled").unwrap();
-    let gone = page.find("Gone Cold").unwrap();
-    let never = page.find("Never Recalled <span").unwrap();
+    let most = page.find("Most recalled").unwrap();
+    let gone = page.find("Gone cold").unwrap();
+    let never = page.find("Never recalled <span").unwrap();
     assert!(page[most..gone].find("Recalled often") < page[most..gone].find("Recalled long ago"));
     assert!(page[gone..never].contains("Recalled long ago"));
     assert!(page[never..].contains("Never recalled at all"));
@@ -621,6 +621,13 @@ async fn keeping_a_duplicate_archives_only_its_scanned_cluster() {
     // After a scan, the form's `other` is ignored: the cluster decides.
     let scan = text(&get(&panel, "/duplicates?namespace=episodic&scan=1").await);
     assert!(scan.contains("Keep this one"), "{scan}");
+    // The dashboard reports the scan, with its age, until its clusters are settled.
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(
+        dashboard.contains("duplicate cluster</span>")
+            && dashboard.contains("scan of episodic just now"),
+        "{dashboard}"
+    );
     let kept = post(
         &panel,
         "/duplicates/keep",
@@ -655,4 +662,7 @@ async fn keeping_a_duplicate_archives_only_its_scanned_cluster() {
         again.contains("No duplicates found in episodic."),
         "{again}"
     );
+    // Settled from anywhere, the cluster leaves the dashboard too.
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(!dashboard.contains("duplicate cluster"), "{dashboard}");
 }

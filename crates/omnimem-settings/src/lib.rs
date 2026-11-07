@@ -198,7 +198,6 @@ impl Panel {
             .route("/unconfirmed", get(trust::list))
             .route("/unconfirmed/act", post(trust::act))
             .route("/unconfirmed/source", post(trust::confirm_source))
-            .route("/unconfirmed/badge", get(trust::badge))
             .route("/lifecycle/deprioritise", post(lifecycle::deprioritise))
             .route("/lifecycle/archive", post(lifecycle::archive))
             .route("/lifecycle/reinstate", post(lifecycle::reinstate))
@@ -232,7 +231,6 @@ impl Panel {
             .route("/skills/compile", post(skills::compile))
             .route("/skills/commit", post(skills::commit))
             .route("/skills/discard", post(skills::discard))
-            .route("/skills/pending-badge", get(skills::pending_badge))
             .route("/skills/delete", post(skills::delete))
             .route(
                 "/skills/import",

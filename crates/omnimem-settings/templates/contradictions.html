@@ -2,7 +2,7 @@
 
 {% block title %}Contradictions — OmniMem{% endblock %}
 
-{% macro pair_card(pair, open) %}
+{% macro pair_card(pair, open, id) %}
 <details class="pair"{% if open %} open{% endif %}>
   <summary class="pair-summary">
     <span class="pair-side">{% if pair.content_a %}{{ pair.content_a[:110] }}{% if pair.content_a|length > 110 %}…{% endif %}{% else %}<span class="text-dim">(memory no longer exists)</span>{% endif %}</span>
@@ -26,8 +26,8 @@
     <form method="POST" action="{{ admin }}/contradictions/resolve" class="pair-form">
       <input type="hidden" name="key_a" value="{{ pair.key_a }}">
       <input type="hidden" name="key_b" value="{{ pair.key_b }}">
-      <label class="field-label" for="why-{{ pair.key_a|urlquote }}">Why (optional)</label>
-      <input type="text" id="why-{{ pair.key_a|urlquote }}" class="form-input" name="reason" maxlength="2000">
+      <label class="field-label" for="why-{{ id }}">Why (optional)</label>
+      <input type="text" id="why-{{ id }}" class="form-input" name="reason" maxlength="2000">
       <div class="action-bar">
         <button type="submit" name="choice" value="a" class="btn btn-secondary btn-sm">A is current</button>
         <button type="submit" name="choice" value="b" class="btn btn-secondary btn-sm">B is current</button>
@@ -43,13 +43,13 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Contradictions <span class="count-chip">{{ pairs|length + pending|length }}</span>{% if wording %} <span class="count-note">and {{ wording|length }} wording only</span>{% endif %}</h2>
+    <h1>Contradictions <span class="count-chip">{{ pairs|length + pending|length }}</span>{% if wording %} <span class="count-note">and {{ wording|length }} wording only</span>{% endif %}</h1>
     <p class="page-intro">Pairs of memories that disagree. Say which one holds, and recall stops warning about the pair.</p>
   </div>
 </header>
 
 {% if last_maintenance %}
-<p class="note-bar">Last automatic check: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }}, {{ last_maintenance.contradictions_found }} contradiction{{ 's' if last_maintenance.contradictions_found != 1 }} found.</p>
+<p class="note-bar">Last automatic check: <strong>{{ last_maintenance.when }}</strong>, project {{ last_maintenance.project }}: {{ last_maintenance.contradictions_found }} pair{{ 's' if last_maintenance.contradictions_found != 1 }} linked in that run.</p>
 {% endif %}
 
 {% if message %}<div class="flash flash-success" role="status">{{ message }}<button class="flash-close" data-dismiss aria-label="Dismiss">&times;</button></div>{% endif %}
@@ -86,7 +86,7 @@
   <h3 id="model-h" class="section-heading">Confirmed by the model <span class="count-chip">{{ pairs|length }}</span></h3>
   {% if pairs %}
   <p class="field-help">A model read both and judged that they disagree. Open one to settle it.</p>
-  {% for pair in pairs %}{{ pair_card(pair, loop.first and pairs|length < 4) }}{% endfor %}
+  {% for pair in pairs %}{{ pair_card(pair, loop.first and pairs|length < 4, 'm' ~ loop.index) }}{% endfor %}
   {% else %}
   <p class="field-help">None waiting: no model has confirmed a disagreement.</p>
   {% endif %}
@@ -103,8 +103,8 @@
   </div>
   <p class="field-help">The quick check linked these because one says "always" and the other "never", or similar. Most aren't real disagreements, and they never lower a memory's trust.</p>
   <details class="fold"{% if not pairs %} open{% endif %}>
-    <summary class="fold-summary">{{ 'Hide' if not pairs else 'Show' }} the {{ wording|length }} pairs</summary>
-    {% for pair in wording %}{{ pair_card(pair, false) }}{% endfor %}
+    <summary class="fold-summary"><span class="when-closed">Show</span><span class="when-open">Hide</span> the {{ wording|length }} pairs</summary>
+    {% for pair in wording %}{{ pair_card(pair, false, 'w' ~ loop.index) }}{% endfor %}
   </details>
 </section>
 {% endif %}

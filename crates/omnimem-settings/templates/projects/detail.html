@@ -13,7 +13,7 @@
       <span class="badge ns-project">project</span>
       {% if project.has_context %}<span class="badge {{ project.state }}">{{ project.state }}</span>{% else %}<span class="badge deprioritised">no context</span>{% endif %}
     </div>
-    <h2 class="project-title">{{ project.name }}</h2>
+    <h1 class="project-title">{{ project.name }}</h1>
     {% if project.description %}<p class="page-intro">{{ project.description }}</p>{% endif %}
   </div>
   <div class="detail-actions">

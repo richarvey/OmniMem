@@ -853,10 +853,10 @@ impl Store {
             // Articles carry their feed's label as a project; they aren't one.
             let mut stmt = conn.prepare(
                 "SELECT p, COUNT(*), SUM(updated_at >= ?1) FROM (
-                     SELECT COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p, updated_at
+                     SELECT key, COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p, updated_at
                      FROM memories
                      WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL)
-                 ) WHERE p IS NOT NULL GROUP BY p ORDER BY 3 DESC, 2 DESC, p LIMIT 8",
+                 ) WHERE p IS NOT NULL AND key != 'mem:project:' || p GROUP BY p ORDER BY 3 DESC, 2 DESC, p LIMIT 8",
             )?;
             let rows = stmt.query_map(params![recent], |r| {
                 Ok((
@@ -1452,8 +1452,10 @@ mod tests {
                 .iter()
                 .all(|(_, week, _)| (0..26).contains(week))
         );
-        // Articles aren't a project; the context row counts towards its project.
-        assert_eq!(counts.projects[0], ("omnimem".to_owned(), 3, 3));
+        // Articles aren't a project, and a project's context row is the
+        // project, not one of its memories (as `memory_counts_by_project`
+        // counts), so the dashboard and the Projects page agree.
+        assert_eq!(counts.projects[0], ("omnimem".to_owned(), 2, 2));
         assert!(counts.projects.iter().all(|(p, _, _)| p != "RSS"));
         assert_eq!(
             counts.projects.iter().find(|p| p.0 == "other").unwrap().2,

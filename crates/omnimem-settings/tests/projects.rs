@@ -112,7 +112,7 @@ fn tagged(engine: &Engine, content: &str, project: &str, tag: &str) -> String {
 #[tokio::test]
 async fn projects_are_created_listed_filtered_and_edited() {
     let (panel, engine) = setup();
-    assert!(text(&get(&panel, "/projects/new").await).contains("New Project"));
+    assert!(text(&get(&panel, "/projects/new").await).contains("New project"));
     assert_eq!(
         landed(&post(&panel, "/projects/new", "name=++").await),
         "/projects/new"

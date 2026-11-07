@@ -4,10 +4,11 @@
 
 {% block content %}
 <div class="page-header">
-  <h2>Telemetry</h2>
+  <h1>Telemetry</h1>
   <div style="display:flex;gap:0.5rem;align-items:center">
     <form method="GET" action="{{ admin }}/telemetry" style="display:flex;gap:0.5rem;align-items:center">
-      <input type="text" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
+      <label class="visually-hidden" for="telemetry-project">Filter by project</label>
+      <input type="text" id="telemetry-project" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
       <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
     </form>
     <button class="btn btn-secondary btn-sm"
@@ -17,7 +18,7 @@
             hx-swap="innerHTML swap:150ms">
       Refresh
     </button>
-    <a href="{{ admin }}/token-overhead" class="btn btn-secondary btn-sm">Token Overhead</a>
+    <a href="{{ admin }}/token-overhead" class="btn btn-secondary btn-sm">Token overhead</a>
   </div>
 </div>
 

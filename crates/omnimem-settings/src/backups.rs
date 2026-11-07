@@ -307,7 +307,10 @@ pub(crate) async fn restore(
         return starting(&state);
     };
     let name = filename.clone();
-    match blocking(move || engine.restore_from_file(&name, false)).await {
+    let restored = blocking(move || engine.restore_from_file(&name, false)).await;
+    // A restore can bring back facts to confirm and pairs to settle.
+    state.invalidate_counts();
+    match restored {
         Ok(result) if result["status"] == "restored" => {
             info!(file = filename, restored = %result["restored_keys"], "restored a backup");
             let feeds = &result["feeds"];

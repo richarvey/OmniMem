@@ -21,7 +21,7 @@
 {% endif %}
 <form hx-post="{{ admin }}/skills/commit" hx-target="#compile-result" style="margin-top:0.75rem;text-align:right">
   <input type="hidden" name="domain" value="{{ result.domain }}">
-  <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
+  <button type="submit" class="btn btn-primary btn-sm">Accept &amp; write skill</button>
 </form>
 
 {% elif st == "exists" %}

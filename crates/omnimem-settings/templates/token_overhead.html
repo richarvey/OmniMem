@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Token Overhead — OmniMem{% endblock %}
+{% block title %}Token overhead — OmniMem{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h2>Token overhead</h2>
+  <h1>Token overhead</h1>
   <div style="display:flex;gap:0.5rem;align-items:center">
     <form method="GET" action="{{ admin }}/token-overhead" style="display:flex;gap:0.5rem;align-items:center">
-      <input type="text" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
+      <label class="visually-hidden" for="overhead-project">Filter by project</label>
+      <input type="text" id="overhead-project" name="project" value="{{ project_filter }}" placeholder="Filter by project" class="form-input" style="width:180px;height:2rem;font-size:0.8rem">
       <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
     </form>
     <button class="btn btn-secondary btn-sm"
@@ -18,9 +19,9 @@
       Refresh
     </button>
     <form method="POST" action="{{ admin }}/token-overhead/reset" style="display:inline" data-confirm="Reset tool usage counters? This deletes all measured call metrics from the store. Static overhead and memory store figures are unaffected.">
-      <button type="submit" class="btn btn-danger btn-sm">Reset Counters</button>
+      <button type="submit" class="btn btn-danger btn-sm">Reset counters</button>
     </form>
-    <a href="{{ admin }}/telemetry" class="btn btn-secondary btn-sm">Back to Telemetry</a>
+    <a href="{{ admin }}/telemetry" class="btn btn-secondary btn-sm">Back to telemetry</a>
   </div>
 </div>
 

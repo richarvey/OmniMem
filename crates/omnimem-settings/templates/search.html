@@ -5,34 +5,35 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Search</h2>
-    <p class="page-intro">Search by meaning, as an agent's recall does, across every namespace.</p>
+    <h1>Search</h1>
+    <p class="page-intro">Search by meaning, as an agent's recall does, across every namespace or one.</p>
   </div>
 </header>
 
-<form class="filter-bar" hx-get="{{ admin }}/search/results" hx-target="#search-results" hx-indicator="#search-spinner">
+<form class="filter-bar" method="GET" action="{{ admin }}/search" role="search">
   <div class="form-group" style="flex:1;min-width:250px">
-    <label>Query</label>
-    <input type="text" name="query" class="form-input" placeholder="Describe what you're looking for..."
+    <label for="search-query">Query</label>
+    <input type="text" id="search-query" name="query" class="form-input" placeholder="Describe what you're looking for..."
            value="{{ query }}" autofocus>
   </div>
   <div class="form-group">
-    <label>Namespace</label>
-    <select class="form-select" name="namespace">
+    <label for="search-namespace">Namespace</label>
+    <select class="form-select" id="search-namespace" name="namespace">
       <option value="">All</option>
       <option value="episodic"{% if namespace == 'episodic' %} selected{% endif %}>Episodic</option>
       <option value="project"{% if namespace == 'project' %} selected{% endif %}>Project</option>
+      <option value="preference"{% if namespace == 'preference' %} selected{% endif %}>Preference</option>
       <option value="knowledge"{% if namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
     </select>
   </div>
   <div class="form-group">
-    <label>Project</label>
-    <input type="text" name="project" class="form-input" placeholder="Filter by project"
+    <label for="search-project">Project</label>
+    <input type="text" id="search-project" name="project" class="form-input" placeholder="Filter by project"
            value="{{ project }}" style="width:150px">
   </div>
   <div class="form-group">
-    <label>Max results</label>
-    <input type="number" name="top_k" class="form-input" value="{{ top_k }}" min="1" max="50" style="width:80px">
+    <label for="search-top-k">Max results</label>
+    <input type="number" id="search-top-k" name="top_k" class="form-input" value="{{ top_k }}" min="1" max="50" style="width:80px">
   </div>
   <div class="form-group" style="align-self:end">
     <button type="submit" class="btn btn-primary">
@@ -42,7 +43,7 @@
   </div>
 </form>
 
-<div id="search-results">
+<div id="search-results"{% if query %} hx-get="{{ admin }}/search/results?query={{ query|urlquote }}&amp;namespace={{ namespace|urlquote }}&amp;project={{ project|urlquote }}&amp;top_k={{ top_k }}" hx-trigger="load" hx-indicator="#search-spinner"{% endif %}>
   {% if results is not none %}
     {% include "search_results.html" %}
   {% endif %}

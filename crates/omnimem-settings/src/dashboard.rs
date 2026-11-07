@@ -148,7 +148,7 @@ fn pct(part: u64, whole: u64) -> f64 {
 fn charts(counts: &omnimem_store::DashboardCounts, now: f64) -> Value {
     // Namespaces by state, as 100% bars.
     let mut states: Vec<Value> = Vec::new();
-    for ns in ["episodic", "project", "knowledge", "preference", "skill"] {
+    for ns in ["episodic", "project", "knowledge", "preference"] {
         let n = |state: &str| {
             counts
                 .by_namespace_state
@@ -384,24 +384,60 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
             Err(e) => return crate::render::failure(&format!("counting memories: {e}")),
         }
     };
-    // Duplicates a recent scan found, still unsettled: a scan is too costly
-    // to run for the dashboard, so it only reports one that was run.
-    let duplicates: (usize, Vec<String>) = {
+    // Duplicates a scan found, still unsettled: a scan is too costly to run
+    // for the dashboard, so it reports the last one that was run, however
+    // old, with its age. The tile's link rescans once the scan has expired.
+    // Copies archived since, from anywhere but the scan page, drop out of
+    // the cached clusters first, so the count is of what is still waiting.
+    let cached_scans: Vec<_> = state
+        .caches()
+        .duplicates
+        .iter()
+        .map(|(slot, found)| (slot.clone(), found.clone()))
+        .collect();
+    if !cached_scans.is_empty() {
+        let worker = engine.clone();
+        let pruned = off_runtime(move || {
+            cached_scans
+                .into_iter()
+                .map(|(slot, (at, clusters))| {
+                    let kept = crate::management::prune(&worker, &clusters).unwrap_or(clusters);
+                    (slot, (at, kept))
+                })
+                .collect::<Vec<_>>()
+        })
+        .await;
+        if let Ok(pruned) = pruned {
+            let mut caches = state.caches();
+            for (slot, found) in pruned {
+                // A scan run meanwhile is newer than what was pruned.
+                if caches
+                    .duplicates
+                    .get(&slot)
+                    .is_some_and(|(at, _)| *at == found.0)
+                {
+                    caches.duplicates.insert(slot, found);
+                }
+            }
+        }
+    }
+    let duplicates: (usize, Vec<String>, u64) = {
         let caches = state.caches();
         let mut found = 0usize;
         let mut namespaces = Vec::new();
+        let mut newest: Option<Instant> = None;
         for ((ns, _), (at, clusters)) in &caches.duplicates {
-            if at.elapsed() >= crate::management::SCAN_TTL {
-                continue;
-            }
             let n = clusters.as_array().map_or(0, Vec::len);
             if n > 0 {
                 found += n;
                 namespaces.push(ns.clone());
+                newest = Some(newest.map_or(*at, |best| best.max(*at)));
             }
         }
         namespaces.sort();
-        (found, namespaces)
+        namespaces.dedup();
+        let age = newest.map_or(0, |at| at.elapsed().as_secs() / 60);
+        (found, namespaces, age)
     };
     // The queue depth is a store read, so it goes off the workers too.
     let enrichment_pending =
@@ -421,6 +457,7 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
             attention => counts["attention"],
             duplicates_found => duplicates.0,
             duplicates_in => duplicates.1,
+            duplicates_age => duplicates.2,
             stats_age => (!ttl.is_zero()).then(|| computed_at.elapsed().as_secs()),
             health => json!({"store": true, "model": true}),
             enrichment_pending => enrichment_pending,

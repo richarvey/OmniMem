@@ -1,67 +1,67 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import num %}
 
 {% block title %}Dashboard — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Dashboard</h2>
+    <h1>Dashboard</h1>
     <p class="page-intro">
       {{ total|thousands }} memories{% if stats_age is not none %}, counted {{ stats_age }}s ago. <a href="{{ admin }}/?refresh=1">Count again</a>{% endif %}
     </p>
   </div>
   <ul class="health-indicators" aria-label="Health">
-    <li class="indicator {{ 'ok' if health.store else 'err' }}">Store</li>
-    <li class="indicator {{ 'ok' if health.model else 'err' }}">Model</li>
-    <li class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}">Enrichment{% if enrichment_pending > 0 %}: {{ enrichment_pending }} queued{% endif %}</li>
+    <li class="indicator {{ 'ok' if health.store else 'err' }}">Store<span class="visually-hidden"> {{ 'ok' if health.store else 'down' }}</span></li>
+    <li class="indicator {{ 'ok' if health.model else 'err' }}">Model<span class="visually-hidden"> {{ 'ok' if health.model else 'down' }}</span></li>
+    <li class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}">Enrichment{% if enrichment_pending > 0 %}: {{ enrichment_pending }} queued{% else %}<span class="visually-hidden"> ok</span>{% endif %}</li>
   </ul>
 </header>
 
-{# What waits on a person comes first, and only what is waiting. #}
-{% set backlog = enrichment_pending if enrichment_pending > 0 else 0 %}
-{% set waiting = attention.unconfirmed + attention.contradictions + attention.proposals + duplicates_found + backlog %}
+{# What waits on a person comes first: everything a review page would list, and nothing else. #}
+{% set waiting = attention.unconfirmed + attention.contradictions + attention.wording + attention.proposals + duplicates_found %}
 <section class="attention" aria-labelledby="attention-h">
-  <h3 id="attention-h" class="section-heading">Needs you</h3>
+  <h3 id="attention-h" class="section-heading">Requires your attention</h3>
   {% if waiting > 0 %}
   <ul class="attention-grid">
     {% if attention.unconfirmed > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/unconfirmed">
-      <span class="attention-num">{{ attention.unconfirmed|thousands }}</span>
+      <span class="attention-num" title="{{ attention.unconfirmed|thousands }}">{{ num(attention.unconfirmed) }}</span>
       <span class="attention-label">unconfirmed fact{{ '' if attention.unconfirmed == 1 else 's' }}</span>
       <span class="attention-hint">Concluded by OmniMem, waiting for a yes or no</span>
     </a></li>
     {% endif %}
     {% if attention.contradictions > 0 %}
     <li><a class="attention-tile attention-danger" href="{{ admin }}/contradictions">
-      <span class="attention-num">{{ attention.contradictions|thousands }}</span>
-      <span class="attention-label">contradiction{{ '' if attention.contradictions == 1 else 's' }}</span>
-      <span class="attention-hint">Confirmed disagreements, or fixes an agent proposed, to settle{% if attention.wording %}; plus {{ attention.wording }} wording only{% endif %}</span>
+      <span class="attention-num" title="{{ attention.contradictions|thousands }}">{{ num(attention.contradictions) }}</span>
+      <span class="attention-label">contradiction{{ '' if attention.contradictions == 1 else 's' }} to settle</span>
+      <span class="attention-hint">Confirmed by a model, or a fix an agent proposed. Say which memory holds.</span>
+    </a></li>
+    {% endif %}
+    {% if attention.wording > 0 %}
+    <li><a class="attention-tile attention-muted" href="{{ admin }}/contradictions#wording-h">
+      <span class="attention-num" title="{{ attention.wording|thousands }}">{{ num(attention.wording) }}</span>
+      <span class="attention-label">possible contradiction{{ '' if attention.wording == 1 else 's' }}</span>
+      <span class="attention-hint">Linked by the quick wording check. Most aren't real: dismiss them in one go, or settle the ones that are.</span>
     </a></li>
     {% endif %}
     {% if duplicates_found > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/duplicates?namespace={{ duplicates_in[0] }}&amp;scan=1">
-      <span class="attention-num">{{ duplicates_found }}</span>
+      <span class="attention-num" title="{{ duplicates_found|thousands }}">{{ num(duplicates_found) }}</span>
       <span class="attention-label">duplicate cluster{{ '' if duplicates_found == 1 else 's' }}</span>
-      <span class="attention-hint">Found by your last scan of {{ duplicates_in|join(', ') }}</span>
+      <span class="attention-hint">Found by your scan of {{ duplicates_in|join(', ') }}{% if duplicates_age < 1 %} just now{% elif duplicates_age < 60 %} {{ duplicates_age }} min ago{% else %} {{ duplicates_age // 60 }} h ago{% endif %}. Open it to keep one of each.</span>
     </a></li>
     {% endif %}
     {% if attention.proposals > 0 %}
     <li><a class="attention-tile" href="{{ admin }}/skills">
-      <span class="attention-num">{{ attention.proposals }}</span>
+      <span class="attention-num">{{ num(attention.proposals) }}</span>
       <span class="attention-label">skill proposal{{ '' if attention.proposals == 1 else 's' }}</span>
       <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
     </a></li>
     {% endif %}
-    {% if backlog > 0 %}
-    <li><div class="attention-tile attention-info">
-      <span class="attention-num">{{ backlog|thousands }}</span>
-      <span class="attention-label">waiting for enrichment</span>
-      <span class="attention-hint">Memories queued for facts and links. They're recalled meanwhile; this drains on its own.</span>
-    </div></li>
-    {% endif %}
   </ul>
   {% else %}
-  <p class="attention-clear">Nothing is waiting for you. New facts to confirm, contradictions and skill proposals show here when they arrive.{% if attention.wording %} <a href="{{ admin }}/contradictions">{{ attention.wording }} wording-only pairs</a> can be skimmed when you have a minute.{% endif %}</p>
+  <p class="attention-clear">Nothing needs your attention. Facts to confirm, contradictions, duplicates from a scan and skill proposals show here when they arrive.</p>
   {% endif %}
 </section>
 

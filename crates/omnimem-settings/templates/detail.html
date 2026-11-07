@@ -17,7 +17,7 @@
       <span class="badge {{ memory.state }}">{{ memory.state }}</span>
       <span class="badge {{ 'deprioritised' if memory.trust != 'accepted' else 'active' }}" data-trust="{{ memory.trust }}">trust: {{ memory.trust }}</span>
     </div>
-    <h2 class="detail-title">{{ memory.content[:90]|trim }}{% if memory.content|length > 90 %}…{% endif %}</h2>
+    <h1 class="detail-title">{{ memory.content[:90]|trim }}{% if memory.content|length > 90 %}…{% endif %}</h1>
     <p class="detail-key mono">{{ memory.key }}</p>
   </div>
   <div class="detail-actions">

@@ -90,14 +90,17 @@ impl Engine {
                 link["verified"] = true.into();
             }
             existing.push(link);
-            let mut updates = Fields::from([
-                (
-                    "contradictions".to_owned(),
-                    py_json(&Value::Array(existing)),
-                ),
-                ("updated_at".to_owned(), now.clone()),
-            ]);
+            let mut updates = Fields::from([(
+                "contradictions".to_owned(),
+                py_json(&Value::Array(existing)),
+            )]);
+            // A confirmed link changes what the memory is worth, so it is an
+            // update. A heuristic one is a note in the margin: it leaves
+            // `updated_at` alone, as a trust change does, so the maintenance
+            // pass can't push a memory up Recent activity or make a skill's
+            // sources look changed by linking it.
             if verified {
+                updates.insert("updated_at".to_owned(), now.clone());
                 crate::trust::dispute(&data, &mut updates);
             }
             // The explanation is model output that may quote either memory,
@@ -376,6 +379,16 @@ impl Engine {
                     let a = entries[i].1.get("content").map_or("", String::as_str);
                     let b = entries[j].1.get("content").map_or("", String::as_str);
                     if signals_conflict(a, b) {
+                        // Linked as the tool's heuristic tier links them, so
+                        // the pair the summary counts is one the panel lists
+                        // and a person can settle; 6.x only counted it, and
+                        // found it again on every pass.
+                        self.link_contradiction(
+                            &entries[i].0,
+                            &entries[j].0,
+                            omnimem_store::HEURISTIC_LINK_EXPLANATION,
+                            false,
+                        )?;
                         contradictions.push(json!({
                             "key_a": entries[i].0,
                             "key_b": entries[j].0,

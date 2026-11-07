@@ -1,25 +1,27 @@
+{% from "partials/macros.html" import num %}
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-ns">Total Memories</div>
-    <div class="stat-total">{{ total_memories }}</div>
+    <div class="stat-ns">Total memories</div>
+    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Total Recalls</div>
-    <div class="stat-total">{{ total_recalls }}</div>
+    <div class="stat-ns">Total recalls</div>
+    <div class="stat-total" title="{{ total_recalls|thousands }}">{{ num(total_recalls) }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Unique Recalled</div>
-    <div class="stat-total">{{ unique_recalled }}</div>
+    <div class="stat-ns">Unique recalled</div>
+    <div class="stat-total" title="{{ unique_recalled|thousands }}">{{ num(unique_recalled) }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Never Recalled</div>
-    <div class="stat-total">{{ never_recalled }}</div>
+    <div class="stat-ns">Never recalled</div>
+    <div class="stat-total" title="{{ never_recalled|thousands }}">{{ num(never_recalled) }}</div>
   </div>
 </div>
 
 <div class="recent-section">
-  <h3>Most Recalled</h3>
+  <h3>Most recalled</h3>
   {% if most_recalled %}
+  <div class="table-scroll">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -42,6 +44,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty-state">No memories have been recalled yet.</p>
   {% endif %}
@@ -49,7 +52,8 @@
 
 {% if gone_cold %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Gone Cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h3>
+  <h3>Gone cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h3>
+  <div class="table-scroll">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -72,12 +76,14 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Never Recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h3>
+  <h3>Never recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h3>
   {% if never_recalled_list %}
+  <div class="table-scroll">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
@@ -96,6 +102,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty-state">All memories have been recalled at least once.</p>
   {% endif %}

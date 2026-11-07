@@ -5,7 +5,7 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Skills <span class="count-chip">{{ total }}</span></h2>
+    <h1>Skills <span class="count-chip">{{ total }}</span></h1>
     <p class="page-intro">Procedures compiled from experience for a kind of work. A person accepts every one before it is written.</p>
   </div>
   <div style="display:flex;gap:0.75rem;align-items:center">
@@ -14,8 +14,8 @@
       {% if states.deprioritised %}<span class="indicator warn">{{ states.deprioritised }} deprioritised</span>{% endif %}
       {% if states.archived %}<span class="indicator warn">{{ states.archived }} archived</span>{% endif %}
     </div>
-    <button class="btn btn-secondary btn-sm" data-show="import-modal">Import Skill</button>
-    <button class="btn btn-primary btn-sm" data-show="compile-modal">New Skill</button>
+    <button class="btn btn-secondary btn-sm" data-show="import-modal">Import skill</button>
+    <button class="btn btn-primary btn-sm" data-show="compile-modal">New skill</button>
   </div>
 </header>
 
@@ -34,17 +34,18 @@
 <div class="flash flash-error"><span>{{ error }}</span></div>
 {% endif %}
 
-<div id="compile-modal" class="modal-backdrop" style="display:none">
+<dialog id="compile-modal" class="modal-backdrop" data-dialog>
   <div class="modal modal-wide">
-    <h3>Compile a New Skill</h3>
+    <h3>Compile a new skill</h3>
     <p>
       Distils lessons from episodic memories tagged with a domain into a
       SKILL.md. You review the draft here first — nothing is written until you
       accept it.
     </p>
     <form hx-post="{{ admin }}/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
-      <input type="text" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
-      <button type="submit" class="btn btn-primary btn-sm">Compile Draft</button>
+      <label class="visually-hidden" for="compile-domain">Domain</label>
+      <input type="text" id="compile-domain" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Compile draft</button>
     </form>
     <div id="compile-result"></div>
     <div class="modal-actions">
@@ -52,11 +53,11 @@
               data-hide="compile-modal" data-clear="compile-result">Close</button>
     </div>
   </div>
-</div>
+</dialog>
 
-<div id="import-modal" class="modal-backdrop" style="display:none">
+<dialog id="import-modal" class="modal-backdrop" data-dialog>
   <div class="modal modal-wide">
-    <h3>Import a Skill Bundle</h3>
+    <h3>Import a skill bundle</h3>
     <p>
       Upload a <code>.zip</code> exported from another OmniMem instance's
       skills page. The bundle is validated first, then you review exactly
@@ -64,8 +65,9 @@
       overwritten.
     </p>
     <form hx-post="{{ admin }}/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
-      <input type="file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
-      <button type="submit" class="btn btn-primary btn-sm">Validate Bundle</button>
+      <label class="visually-hidden" for="import-file">Skill bundle (.zip)</label>
+      <input type="file" id="import-file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Validate bundle</button>
     </form>
     <div id="import-result"></div>
     <div class="modal-actions">
@@ -73,7 +75,7 @@
               data-hide="import-modal" data-clear="import-result">Close</button>
     </div>
   </div>
-</div>
+</dialog>
 
 {% if proposals %}
 <section class="pending-proposals" id="pending-proposals">
@@ -111,7 +113,7 @@
       {% if not p.stale %}
       <form hx-post="{{ admin }}/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
         <input type="hidden" name="domain" value="{{ p.domain }}">
-        <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
+        <button type="submit" class="btn btn-primary btn-sm">Accept &amp; write skill</button>
       </form>
       {% endif %}
     </div>
@@ -121,6 +123,7 @@
 {% endif %}
 
 {% if skills %}
+<div class="table-scroll">
 <table class="data-table skills-table">
   <thead>
     <tr>
@@ -156,10 +159,11 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty-state">
   No skills compiled yet. Tag episodic memories with a domain, then use the
-  New Skill button (or compile_skill via MCP) to distil them into a SKILL.md.
+  New skill button (or compile_skill via MCP) to distil them into a SKILL.md.
 </p>
 {% endif %}
 {% endblock %}

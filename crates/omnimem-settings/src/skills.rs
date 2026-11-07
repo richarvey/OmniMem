@@ -305,6 +305,8 @@ pub(crate) async fn commit(
         ))
     })
     .await;
+    // The menu's and the dashboard's proposal counts are cached.
+    state.invalidate_counts();
     match result {
         Ok(result) if result["status"] == "written" => hx_redirect(&format!(
             "/skills/{}",
@@ -336,6 +338,7 @@ pub(crate) async fn discard(
         Ok(found)
     })
     .await;
+    state.invalidate_counts();
     match discarded {
         Ok(true) => see_other(&format!("/skills?message={}", quote("Proposal discarded."))),
         Ok(false) => see_other(&format!(
@@ -343,31 +346,6 @@ pub(crate) async fn discard(
             quote("That proposal had already gone.")
         )),
         Err(failure) => failure,
-    }
-}
-
-/// GET `/skills/pending-badge`: the sidebar's count of proposals waiting for
-/// a person, or nothing. Loaded like the version marker, so a page never waits
-/// on it.
-pub(crate) async fn pending_badge(State(state): State<PanelState>) -> Response {
-    let Some(engine) = state.engine() else {
-        return Html("").into_response();
-    };
-    let waiting = blocking(move || {
-        Ok(engine
-            .pending_skill_proposals()?
-            .iter()
-            .filter(|p| !p.stale)
-            .count())
-    })
-    .await;
-    match waiting {
-        Ok(n) if n > 0 => Html(format!(
-            r#"<span class="nav-count" title="{n} skill proposal{} awaiting your approval">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
-        ))
-        .into_response(),
-        _ => Html("").into_response(),
     }
 }
 

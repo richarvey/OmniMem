@@ -590,6 +590,7 @@ pub(crate) async fn delete(
         Ok(())
     })
     .await;
+    state.invalidate_counts();
     match removed {
         Ok(()) => see_other(&target),
         Err(failure) => failure,

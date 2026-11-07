@@ -41,8 +41,9 @@ fn release_build() -> bool {
 /// The marker for v999.1.2, or nothing on a development build.
 fn assert_marker(html: &str) {
     if release_build() {
-        assert!(html.contains("v999.1.2 is available"), "{html}");
-        assert!(html.contains("version-update-wrapper"));
+        assert!(html.contains("v999.1.2 available"), "{html}");
+        assert!(html.contains("class=\"version-update\""), "{html}");
+        assert!(html.contains("/releases/tag/v999.1.2"), "{html}");
     } else {
         assert_eq!(html.trim(), "", "a development build shows no marker");
     }

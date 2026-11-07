@@ -5,13 +5,14 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h2>Graveyard</h2>
+    <h1>Graveyard</h1>
     <p class="page-intro">Approaches that were tried and abandoned. Recall warns before an agent suggests one again.</p>
   </div>
   <a href="{{ admin }}/experience" class="btn btn-secondary btn-sm">&larr; Summary</a>
 </header>
 
 {% if abandoned %}
+<div class="table-scroll">
 <table class="data-table graveyard-table">
   <thead>
     <tr>
@@ -34,6 +35,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty-state">No abandoned approaches recorded yet. That's a good sign.</p>
 {% endif %}

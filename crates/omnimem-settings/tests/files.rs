@@ -111,7 +111,7 @@ async fn the_reading_list_is_edited_mirrored_and_replaced() {
     let f = setup();
     let feeds = f.dir.join("feeds.yml");
     assert!(text(&get(&f.panel, "/feeds").await).contains("No RSS feeds configured."));
-    assert!(text(&get(&f.panel, "/feeds/new").await).contains("Add Feed"));
+    assert!(text(&get(&f.panel, "/feeds/new").await).contains("Add feed"));
 
     assert_eq!(
         landed(&post(&f.panel, "/feeds/new", "name=&url=").await),
@@ -243,7 +243,7 @@ async fn backups_are_made_previewed_restored_and_removed() {
 
     let preview = text(&get(&f.panel, &format!("/backups/{filename}/preview")).await);
     assert!(
-        preview.contains(&format!("Restore Preview: {filename}")),
+        preview.contains(&format!("Restore preview: {filename}")),
         "{preview}"
     );
     assert!(preview.contains("Total Keys"));
