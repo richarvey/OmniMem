@@ -94,14 +94,12 @@
 
 {% if wording %}
 <section class="group" aria-labelledby="wording-h">
-  <div class="group-head">
-    <h2 id="wording-h" class="section-heading">Wording only <span class="count-chip">{{ wording|length }}</span></h2>
-    <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" data-confirm="Mark these {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
-      {% for pair in wording %}<input type="hidden" name="pair" value="{{ pair.key_a }}|{{ pair.key_b }}">{% endfor %}
-      <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>
-    </form>
-  </div>
+  <h2 id="wording-h" class="section-heading">Wording only <span class="count-chip">{{ wording|length }}</span></h2>
   <p class="field-help">The quick check linked these because one says "always" and the other "never", or similar. Most aren't real disagreements, and they never lower a memory's trust.</p>
+  <form method="POST" action="{{ admin }}/contradictions/dismiss-wording" class="group-action" data-confirm="Mark these {{ wording|length }} wording-only pairs as not contradictions? Pairs a model confirmed aren't touched.">
+    {% for pair in wording %}<input type="hidden" name="pair" value="{{ pair.key_a }}|{{ pair.key_b }}">{% endfor %}
+    <button type="submit" class="btn btn-secondary btn-sm">Dismiss all {{ wording|length }} as not contradictions</button>
+  </form>
   <details class="fold"{% if not pairs %} open{% endif %}>
     <summary class="fold-summary"><span class="when-closed">Show</span><span class="when-open">Hide</span> the {{ wording|length }} pairs</summary>
     {% for pair in wording %}{{ pair_card(pair, false, 'w' ~ loop.index) }}{% endfor %}

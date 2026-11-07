@@ -50,7 +50,7 @@
 {% endmacro %}
 
 {% macro project_table(rows, caption) %}
-<div class="table-scroll" tabindex="0">
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table projects-table">
   <caption class="visually-hidden">{{ caption }}</caption>
   <thead>
@@ -116,7 +116,7 @@
   characters of lowercase letters, digits, hyphens, underscores or dots.
 </p>
 {% elif with_context %}
-<p class="result-count" aria-live="polite">{{ with_context|length }} project{{ '' if with_context|length == 1 else 's' }}{% if search or domain_filter or state_filter %} match{% endif %}</p>
+<p class="result-count">{{ with_context|length }} project{{ '' if with_context|length == 1 else 's' }}{% if search or domain_filter or state_filter %} match{% endif %}</p>
 {{ project_table(with_context, "Projects with a context") }}
 {% elif domain_filter %}
 <p class="empty-state">

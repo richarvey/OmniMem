@@ -35,7 +35,7 @@
 <p class="note-bar">Saved to <span class="mono">{{ settings_path }}</span>, secrets to {{ secret_place }}. Changes apply the next time OmniMem starts.</p>
 
 <nav class="jump-list" aria-label="Sections">
-  {% for group in groups %}<a href="#group-{{ loop.index }}" class="domain-pill">{{ group.title }}</a>{% endfor %}
+  {% for group in groups %}<a href="#group-{{ loop.index }}" class="domain-chip">{{ group.title }}</a>{% endfor %}
 </nav>
 
 {% if not secrets_available %}

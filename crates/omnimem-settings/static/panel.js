@@ -28,6 +28,11 @@
     apply(root.classList.contains('sidebar-collapsed'));
   })();
 
+  // The sidebar scrolls on a short window: the current page's item is
+  // always in view.
+  var current = document.querySelector('.sidebar [aria-current="page"]');
+  if (current && current.scrollIntoView) current.scrollIntoView({ block: 'nearest' });
+
   // The menu is a <details>, open in the markup so it works without
   // scripts. On a phone it folds behind its Menu toggle until asked for.
   (function () {
@@ -99,7 +104,11 @@
   // An open row menu closes on Escape, or on a click anywhere else.
   function closeRowMenus(except) {
     document.querySelectorAll('details.row-menu[open]').forEach(function (menu) {
-      if (menu !== except) menu.removeAttribute('open');
+      if (menu === except) return;
+      var hadFocus = menu.contains(document.activeElement);
+      menu.removeAttribute('open');
+      var summary = menu.querySelector('summary');
+      if (hadFocus && summary) summary.focus();
     });
   }
   document.addEventListener('click', function (event) {
@@ -143,7 +152,7 @@
     document.querySelectorAll('.cluster').forEach(function (c) {
       if (c.querySelectorAll('.cluster-row').length < 2) {
         c.classList.add('cluster-settled');
-        c.innerHTML = '<p class="cluster-head">Settled: one copy left.</p>';
+        c.innerHTML = '<p class="cluster-head" role="status">Settled: one copy left.</p>';
       }
     });
     if (cluster) cluster = null;

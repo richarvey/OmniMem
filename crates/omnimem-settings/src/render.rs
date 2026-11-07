@@ -60,11 +60,23 @@ fn compact(value: &Value) -> String {
     }
 }
 
+/// The first `max` characters of a preview, with an ellipsis when that cut
+/// something, on one line.
+pub(crate) fn clip(text: &str, max: usize) -> String {
+    let mut out: String = text.chars().take(max).collect();
+    if text.chars().count() > max {
+        out.push('…');
+    }
+    out.replace('\n', " ")
+}
+
 /// A one-line preview of markdown: heading marks, emphasis, code ticks and
 /// quote marks go, so "# Summary **Who:** x" reads as "Summary Who: x".
 fn plain(text: String) -> String {
     let mut out = String::with_capacity(text.len());
-    for line in text.lines() {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    for (i, line) in lines.iter().enumerate() {
+        let heading = line.trim_start().starts_with('#');
         let line = line
             .trim_start()
             .trim_start_matches(['#', '>'])
@@ -77,6 +89,10 @@ fn plain(text: String) -> String {
             out.push(' ');
         }
         out.extend(line.chars().filter(|c| !matches!(c, '*' | '`')));
+        // "# Summary" then its text reads "Summary: the text".
+        if heading && i + 1 < lines.len() && !out.ends_with([':', '.', '!', '?']) {
+            out.push(':');
+        }
     }
     out
 }
@@ -216,7 +232,11 @@ mod tests {
     fn previews_drop_markdown_marks() {
         assert_eq!(
             plain("# Summary **Who:** the `api` team\n> quoted\n- a point".into()),
-            "Summary Who: the api team quoted a point"
+            "Summary Who: the api team: quoted a point"
+        );
+        assert_eq!(
+            plain("# Summary\nDocker Sandboxes' kits".into()),
+            "Summary: Docker Sandboxes' kits"
         );
         assert_eq!(
             plain("check_contradictions stays".into()),

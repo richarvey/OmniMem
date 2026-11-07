@@ -100,7 +100,11 @@ fn telemetry_data(engine: &Engine, project: &str) -> omnimem_engine::Result<Valu
             if !is_live(&row) || (!project.is_empty() && mem_project != project) {
                 continue;
             }
-            total_memories += 1;
+            // Skills are listed for their recalls but, as on Token overhead,
+            // they aren't memories, so the two pages' totals agree.
+            if namespace != "skill" {
+                total_memories += 1;
+            }
             let recall_count = count(row.get("recall_count"));
             total_recalls += recall_count;
             let mut content = row.get("content").cloned().unwrap_or_default();

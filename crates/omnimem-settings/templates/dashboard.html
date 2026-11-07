@@ -41,12 +41,12 @@
     {% if attention.wording > 0 %}
     <li><a class="attention-tile attention-muted" href="{{ admin }}/contradictions#wording-h">
       <span class="attention-num" title="{{ attention.wording|thousands }}">{{ num(attention.wording) }}</span>
-      <span class="attention-label">possible contradiction{{ '' if attention.wording == 1 else 's' }}</span>
-      <span class="attention-hint">Linked by the quick wording check. Most aren't real: dismiss them in one go, or settle the ones that are.</span>
+      <span class="attention-label">wording-only pair{{ '' if attention.wording == 1 else 's' }}</span>
+      <span class="attention-hint">Possible contradictions from the quick wording check. Most aren't real: dismiss them in one go, or settle the ones that are.</span>
     </a></li>
     {% endif %}
     {% if duplicates_found > 0 %}
-    <li><a class="attention-tile" href="{{ admin }}/duplicates?namespace={{ duplicates_in[0] }}&amp;scan=1">
+    <li><a class="attention-tile" href="{{ admin }}/duplicates?namespace={{ duplicates_in[0] }}{% if duplicates_project %}&amp;project={{ duplicates_project|urlquote }}{% endif %}&amp;scan=1">
       <span class="attention-num" title="{{ duplicates_found|thousands }}">{{ num(duplicates_found) }}</span>
       <span class="attention-label">duplicate cluster{{ '' if duplicates_found == 1 else 's' }}</span>
       <span class="attention-hint">Found by your scan of {{ duplicates_in|join(', ') }}{% if duplicates_age < 1 %} just now{% elif duplicates_age < 60 %} {{ duplicates_age }} min ago{% else %} {{ duplicates_age // 60 }} h ago{% endif %}. Open it to keep one of each.</span>
@@ -101,7 +101,7 @@
     </ul>
     <details class="chart-data">
       <summary>Show data</summary>
-      <div class="table-scroll" tabindex="0">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
       <table class="data-table compact-table">
         <thead><tr><th scope="col">Week of</th><th scope="col">Episodic</th><th scope="col">Knowledge</th><th scope="col">Preference</th><th scope="col">Project</th><th scope="col">Total</th></tr></thead>
         <tbody>{% for c in charts.growth.columns %}<tr><td>{{ c.label }}</td>{% for n in c.by_namespace %}<td>{{ n }}</td>{% endfor %}<td>{{ c.total }}</td></tr>{% endfor %}</tbody>

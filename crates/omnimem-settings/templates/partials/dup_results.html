@@ -11,7 +11,7 @@
     {% for mem in cluster.memories %}
     <li class="cluster-row">
       <div class="cluster-text">
-        <a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}" class="cluster-content">{{ mem.content[:240]|plain }}{% if mem.content|length > 240 %}…{% endif %}</a>
+        <a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}" class="cluster-content">{{ mem.content|plain }}{% if mem.content|length >= 200 %}…{% endif %}</a>
         <span class="cluster-meta">{% if newest != oldest and mem.created_at == newest %}<span class="age-tag">newest</span> {% elif newest != oldest and mem.created_at == oldest %}<span class="age-tag age-old">oldest</span> {% endif %}{% if mem.created_at %}<time>{{ mem.created_at|epoch_date }}</time>{% endif %}{% if mem.project %} &middot; {{ mem.project }}{% endif %}{% if mem.state != 'active' %} &middot; {{ mem.state }}{% endif %} &middot; <span class="mono">{{ mem.key }}</span></span>
       </div>
       <form method="POST" action="{{ admin }}/duplicates/keep" data-confirm="Keep this one and archive the other {{ cluster.memories|length - 1 }}?">

@@ -123,17 +123,17 @@
 {% endif %}
 
 {% if skills %}
-<div class="table-scroll" tabindex="0">
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table skills-table">
   <thead>
     <tr>
-      <th>Name</th>
-      <th>Domain</th>
-      <th>Description</th>
-      <th>State</th>
-      <th>Compiled</th>
-      <th>Loads</th>
-      <th></th>
+      <th scope="col">Name</th>
+      <th scope="col">Domain</th>
+      <th scope="col">Description</th>
+      <th scope="col">State</th>
+      <th scope="col">Compiled</th>
+      <th scope="col">Loads</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>

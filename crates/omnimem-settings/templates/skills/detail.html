@@ -14,6 +14,8 @@
   {% endif %}
 </header>
 
+<h1 class="detail-title">{{ skill.name or skill.key }}</h1>
+
 {% if skill.description %}
 <div class="detail-content" style="border-color:var(--accent)">{{ skill.description }}</div>
 {% endif %}
@@ -65,7 +67,7 @@
     <thead>
       <tr>
         <th style="width:8%">Kind</th>
-        <th>Rule</th>
+        <th scope="col">Rule</th>
         <th style="width:12%">Backing</th>
         <th style="width:24%">Sources</th>
       </tr>

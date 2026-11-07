@@ -163,7 +163,7 @@ pub(crate) async fn list(
             if filled("goals").is_some() || filled("stack").is_some() {
                 let clip = |field: &str| {
                     data.get(field)
-                        .map(|v| v.chars().take(120).collect())
+                        .map(|v| crate::render::clip(v, 120))
                         .unwrap_or_default()
                 };
                 project.description = clip("description");
@@ -312,7 +312,7 @@ pub(crate) async fn detail(
                     "key": key,
                     "namespace": key.split(':').nth(1).unwrap_or(""),
                     "state": row.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
-                    "content": row.get("content").map(|c| c.chars().take(160).collect::<String>()).unwrap_or_default(),
+                    "content": row.get("content").map(|c| crate::render::clip(c, 160)).unwrap_or_default(),
                     "updated_date": date,
                 })
             })

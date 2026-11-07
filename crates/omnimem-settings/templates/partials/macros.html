@@ -1,2 +1,2 @@
 {# A count on a tile: abbreviated so it fits, with the exact figure for a screen reader when they differ. #}
-{% macro num(n) %}{{ n|compact }}{% if n >= 1000 %}<span class="visually-hidden"> ({{ n|thousands }})</span>{% endif %}{% endmacro %}
+{% macro num(n) %}{{ n|compact }}{% if n >= 1000 %}<span class="num-exact">{{ n|thousands }}</span>{% endif %}{% endmacro %}

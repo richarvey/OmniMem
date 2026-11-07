@@ -69,8 +69,9 @@ impl Engine {
         key_b: &str,
         explanation: &str,
         verified: bool,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let now = now_str();
+        let mut linked = false;
         for (src, other) in [(key_a, key_b), (key_b, key_a)] {
             let Some(data) = self.store.get(src)? else {
                 continue;
@@ -111,9 +112,12 @@ impl Engine {
             }
             let _audit = audit_op(Op::new("contradiction_link").detail(detail));
             self.store.set_fields(src, &updates)?;
+            linked = true;
         }
-        info!(key_a, key_b, "linked contradiction");
-        Ok(())
+        if linked {
+            info!(key_a, key_b, "linked contradiction");
+        }
+        Ok(linked)
     }
 
     /// Tier 1 heuristic scan, similarity-gated. With `use_api`, tier 2 asks
@@ -383,12 +387,16 @@ impl Engine {
                         // the pair the summary counts is one the panel lists
                         // and a person can settle; 6.x only counted it, and
                         // found it again on every pass.
-                        self.link_contradiction(
+                        // Found means new: a pair linked on an earlier pass
+                        // is still listed, but not counted again.
+                        if !self.link_contradiction(
                             &entries[i].0,
                             &entries[j].0,
                             omnimem_store::HEURISTIC_LINK_EXPLANATION,
                             false,
-                        )?;
+                        )? {
+                            continue;
+                        }
                         contradictions.push(json!({
                             "key_a": entries[i].0,
                             "key_b": entries[j].0,

@@ -23,18 +23,18 @@
   <button type="submit" class="btn btn-primary btn-sm">Filter</button>
   {% if q or project %}<a href="{{ admin }}/experience/graveyard" class="btn-link">Clear</a>{% endif %}
 </form>
-{% if abandoned %}<p class="result-count" aria-live="polite">{{ abandoned|length }} abandoned approach{{ '' if abandoned|length == 1 else 'es' }}{% if q or project %} match{% endif %}</p>{% endif %}
+{% if abandoned %}<p class="result-count">{{ abandoned|length }} abandoned approach{{ '' if abandoned|length == 1 else 'es' }}{% if q or project %} match{% endif %}</p>{% endif %}
 
 {% if abandoned %}
-<div class="table-scroll" tabindex="0">
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table graveyard-table">
   <thead>
     <tr>
-      <th>Name</th>
-      <th>Type</th>
-      <th>Reason</th>
-      <th>Effort</th>
-      <th>Source</th>
+      <th scope="col">Name</th>
+      <th scope="col">Type</th>
+      <th scope="col">Reason</th>
+      <th scope="col">Effort</th>
+      <th scope="col">Source</th>
     </tr>
   </thead>
   <tbody>

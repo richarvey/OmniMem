@@ -98,7 +98,7 @@ pub(crate) async fn summary(
         }
         let content: String = row
             .get("content")
-            .map(|c| c.chars().take(100).collect())
+            .map(|c| crate::render::clip(c, 100))
             .unwrap_or_default();
         effortful.push(json!({
             "key": key, "content": content, "effort_score": effort, "outcome": outcome,

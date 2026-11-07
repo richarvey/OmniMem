@@ -25,14 +25,6 @@ const PAGE_SIZE: usize = 50;
 /// A candidate's text is cut to this many characters in the list.
 const CLIP: usize = 240;
 
-fn clip(text: &str, max: usize) -> String {
-    let mut out: String = text.chars().take(max).collect();
-    if text.chars().count() > max {
-        out.push('…');
-    }
-    out.replace('\n', " ")
-}
-
 fn field(form: &FormData, name: &str) -> String {
     form.get(name).map_or("", |v| v.trim()).to_owned()
 }
@@ -102,7 +94,7 @@ pub(crate) async fn list(
                 .get("feed_name")
                 .filter(|t| !t.is_empty())
                 .or_else(|| row.get("content"))
-                .map_or_else(String::new, |t| clip(t, 100));
+                .map_or_else(String::new, |t| crate::render::clip(t, 100));
             groups.push(json!({
                 "source": from,
                 "title": title,
@@ -118,7 +110,7 @@ pub(crate) async fn list(
             let item = json!({
                 "key": key,
                 "namespace": key.split(':').nth(1).unwrap_or("unknown"),
-                "content": clip(&get("content"), CLIP),
+                "content": crate::render::clip(&get("content"), CLIP),
                 "project": get("project"),
                 "state": get("state"),
             });

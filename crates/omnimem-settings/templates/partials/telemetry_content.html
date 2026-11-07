@@ -2,34 +2,34 @@
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-ns">Active memories</div>
-    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>{% if total_memories >= 1000 %}<div class="stat-label" aria-hidden="true">{{ total_memories|thousands }}</div>{% endif %}
+    <div class="stat-total" title="{{ total_memories|thousands }}">{{ num(total_memories) }}</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Total recalls</div>
-    <div class="stat-total" title="{{ total_recalls|thousands }}">{{ num(total_recalls) }}</div>{% if total_recalls >= 1000 %}<div class="stat-label" aria-hidden="true">{{ total_recalls|thousands }}</div>{% endif %}
+    <div class="stat-total" title="{{ total_recalls|thousands }}">{{ num(total_recalls) }}</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Unique recalled</div>
-    <div class="stat-total" title="{{ unique_recalled|thousands }}">{{ num(unique_recalled) }}</div>{% if unique_recalled >= 1000 %}<div class="stat-label" aria-hidden="true">{{ unique_recalled|thousands }}</div>{% endif %}
+    <div class="stat-total" title="{{ unique_recalled|thousands }}">{{ num(unique_recalled) }}</div>
   </div>
   <div class="stat-card">
     <div class="stat-ns">Never recalled</div>
-    <div class="stat-total" title="{{ never_recalled|thousands }}">{{ num(never_recalled) }}</div>{% if never_recalled >= 1000 %}<div class="stat-label" aria-hidden="true">{{ never_recalled|thousands }}</div>{% endif %}
+    <div class="stat-total" title="{{ never_recalled|thousands }}">{{ num(never_recalled) }}</div>
   </div>
 </div>
 
 <div class="recent-section">
-  <h2>Most recalled</h2>
+  <h2 id="most-recalled-h">Most recalled</h2>
   {% if most_recalled %}
-  <div class="table-scroll" tabindex="0">
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="most-recalled-h">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
-        <th>Namespace</th>
-        <th>Content</th>
-        <th>Project</th>
-        <th>Count</th>
-        <th>Last Recalled</th>
+        <th scope="col">Namespace</th>
+        <th scope="col">Content</th>
+        <th scope="col">Project</th>
+        <th scope="col">Count</th>
+        <th scope="col">Last Recalled</th>
       </tr>
     </thead>
     <tbody>
@@ -52,16 +52,16 @@
 
 {% if gone_cold %}
 <div class="recent-section" style="margin-top:2rem">
-  <h2>Gone cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h2>
-  <div class="table-scroll" tabindex="0">
+  <h2 id="gone-cold-h">Gone cold <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(recalled but not in last {{ cold_days }} days)</span></h2>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="gone-cold-h">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
-        <th>Namespace</th>
-        <th>Content</th>
-        <th>Project</th>
-        <th>Count</th>
-        <th>Last Recalled</th>
+        <th scope="col">Namespace</th>
+        <th scope="col">Content</th>
+        <th scope="col">Project</th>
+        <th scope="col">Count</th>
+        <th scope="col">Last Recalled</th>
       </tr>
     </thead>
     <tbody>
@@ -81,15 +81,15 @@
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h2>Never recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h2>
+  <h2 id="never-recalled-h">Never recalled <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">(candidates for review)</span></h2>
   {% if never_recalled_list %}
-  <div class="table-scroll" tabindex="0">
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="never-recalled-h">
   <table class="data-table telemetry-table">
     <thead>
       <tr>
-        <th>Namespace</th>
-        <th>Content</th>
-        <th>Project</th>
+        <th scope="col">Namespace</th>
+        <th scope="col">Content</th>
+        <th scope="col">Project</th>
       </tr>
     </thead>
     <tbody>

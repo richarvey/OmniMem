@@ -97,7 +97,7 @@ pub(crate) async fn results(
                     "key": r.key,
                     "namespace": r.namespace,
                     "weak_match": r.weak_match || r.score < floor,
-                    "content": r.content.chars().take(300).collect::<String>(),
+                    "content": crate::render::clip(&r.content, 300),
                     "score": round_to(r.adjusted_score, 4),
                     "state": r.state,
                     "project": r.project.unwrap_or_default(),

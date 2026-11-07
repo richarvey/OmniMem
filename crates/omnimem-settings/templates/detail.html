@@ -142,7 +142,7 @@
     <section class="detail-section">
       <h2 class="eyebrow-heading">History</h2>
       {% if history %}
-      <div class="table-scroll" tabindex="0">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
       <table class="data-table">
         <thead>
           <tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Action</th><th scope="col">Change</th><th scope="col">Reason</th></tr>
@@ -219,7 +219,6 @@
         <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/trust" class="stack-form">
           {{ back_field() }}
           <input type="hidden" name="action" value="reject">
-          <label for="reject-reason" class="visually-hidden">Reason for rejecting</label>
           <label class="field-label" for="reject-reason">Why (optional)</label>
           <input type="text" id="reject-reason" class="form-input" name="reason">
           <button type="submit" class="btn btn-secondary btn-sm">Reject as wrong</button>

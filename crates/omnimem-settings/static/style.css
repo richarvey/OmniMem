@@ -2211,17 +2211,15 @@ details[open] > .fold-summary .when-open { display: inline; }
 /* A focused field never hides under the sticky save bar (WCAG 2.4.11). */
 .config-form .form-input, .config-form .form-select, .config-form textarea, .config-form input[type="checkbox"] { scroll-margin-bottom: 5rem; }
 /* The sidebar scrolls on its own; a fade at its foot says there is more. */
-.nav-menu-body::after { content: ""; display: block; position: sticky; bottom: 0; height: 2.5rem; margin-top: -2.5rem; background: linear-gradient(transparent, var(--bg-sidebar)); pointer-events: none; }
 @media (max-width: 768px) {
   a, button, input, select, textarea, summary { scroll-margin-top: 4.5rem; }
-  .nav-menu-body::after { display: none; }
 }
 @media (max-width: 640px) {
   .memories-table .content-cell { white-space: normal; }
   .count-note { display: block; margin-top: 0.2rem; }
   /* Wide data tables scroll sideways inside their wrapper rather than crushing their columns. */
   .table-scroll > .skills-table, .table-scroll > .graveyard-table, .table-scroll > .effortful-table,
-  .table-scroll > .telemetry-table, .table-scroll > .tool-metrics-table, .table-scroll > .overhead-table { min-width: 640px; }
+  .table-scroll > .telemetry-table, .table-scroll > .tool-metrics-table { min-width: 640px; }
   .tool-metrics-table td:first-child, .skills-table .skill-actions, .graveyard-table .badge, .effortful-table .badge { white-space: nowrap; }
 }
 .table-legend { margin-top: 0.5rem; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: center; }
@@ -2241,14 +2239,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 19%; }
 .skills-table th:nth-child(7), .skills-table td:nth-child(7) { width: 16%; }
 .skills-table td:nth-child(1) { overflow-wrap: anywhere; white-space: normal; }
-/* The whole menu fits a 900 px window. */
+/* A tighter menu, so most of it fits a 900 px window; the sidebar scrolls for the rest. */
 .nav-link { min-height: 28px; padding-top: 3px; padding-bottom: 3px; }
 .nav-section-label { margin-top: 0.75rem; padding-top: 0.45rem; padding-bottom: 0.2rem; }
 .nav-create { margin-top: 0.5rem; margin-bottom: 0.25rem; }
 .sidebar-foot { margin-top: 0.5rem; padding-top: 0.6rem; }
 @media (max-width: 640px) {
   /* A table wider than the phone says so, in place of looking cut off. */
-  .table-scroll:has(> .skills-table, > .graveyard-table, > .effortful-table, > .telemetry-table, > .tool-metrics-table, > .overhead-table)::before {
+  .table-scroll:has(> .skills-table, > .graveyard-table, > .effortful-table, > .telemetry-table, > .tool-metrics-table)::before {
     content: "Swipe sideways for the rest of the table"; display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 0.35rem;
   }
 }
@@ -2256,9 +2254,35 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .recent-section h2 { font-size: 17.5px; font-weight: 600; letter-spacing: -0.012em; color: var(--text-heading); margin-bottom: 1rem; }
 .modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-bright); }
 .domain-pills > .domain-pill { min-width: 2.5rem; margin-right: 0; }
-.detail-rail { max-height: calc(100vh - 2rem); overflow-y: auto; }
 .btn { white-space: nowrap; }
 .inline-form { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .domain-pill, .stat-label, .memory-count-badge { font-size: 11px; }
 .breakthrough-link { text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
 .breakthrough-link:hover { text-decoration-color: var(--accent); }
+/* Round 5e */
+.detail-rail { max-height: none; overflow-y: visible; }
+@media (min-width: 901px) { .detail-rail { max-height: calc(100vh - 2rem); overflow-y: auto; } }
+.skills-table td:nth-child(2) .badge { overflow-wrap: break-word; white-space: normal; }
+/* Round 5f */
+.nav-link { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
+.nav-section-label { margin-top: 0.55rem; padding-top: 0.4rem; padding-bottom: 0.15rem; }
+.nav-list { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.nav-create { margin-top: 0.4rem; margin-bottom: 0.1rem; }
+.sidebar-header { padding-bottom: 0.6rem; }
+.search-breakthrough { margin-top: 0.35rem; font-size: 13px; color: var(--green); overflow-wrap: anywhere; }
+.num-exact { display: block; font-family: var(--font-mono); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-muted); line-height: 1.4; margin-top: 0.15rem; }
+.attention-num .num-exact { display: inline; margin-left: 0.4rem; }
+.telemetry-table th:first-child, .telemetry-table td:first-child { width: 7.5rem; }
+.group-action { margin: 0.5rem 0 0.75rem; }
+/* Round 5g */
+.skills-table th:nth-child(2), .skills-table td:nth-child(2) { width: 18%; }
+.skills-table th:nth-child(3), .skills-table td:nth-child(3) { width: 16%; }
+.skills-table th:nth-child(5), .skills-table td:nth-child(5) { width: 10%; }
+.skills-table td:nth-child(2) .badge { hyphens: manual; }
+.sidebar-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+.sidebar-foot .logout-form { margin: 0; }
+.sidebar-foot .sidebar-links { margin: 0; }
+.dash-grid { align-items: start; }
+@media (max-width: 640px) {
+  .table-scroll > .graveyard-table { min-width: 760px; }
+}

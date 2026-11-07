@@ -27,13 +27,13 @@
 <div class="recent-section" style="margin-top:2rem">
   <h2>Static overhead breakdown</h2>
   <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
-  <div class="table-scroll" tabindex="0">
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table overhead-table">
     <thead>
       <tr>
-        <th>Component</th>
-        <th>Characters</th>
-        <th>Tokens</th>
+        <th scope="col">Component</th>
+        <th scope="col">Characters</th>
+        <th scope="col">Tokens</th>
       </tr>
     </thead>
     <tbody>
@@ -66,17 +66,17 @@
 <div class="recent-section" style="margin-top:2rem">
   <h2>Tool usage</h2>
   <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
-  <div class="table-scroll" tabindex="0">
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
-        <th>Tool</th>
-        <th>Calls</th>
-        <th>Avg Duration</th>
-        <th>Avg Tokens</th>
-        <th>Total Tokens</th>
-        <th>Errors</th>
-        <th>Last Called</th>
+        <th scope="col">Tool</th>
+        <th scope="col">Calls</th>
+        <th scope="col">Avg Duration</th>
+        <th scope="col">Avg Tokens</th>
+        <th scope="col">Total Tokens</th>
+        <th scope="col">Errors</th>
+        <th scope="col">Last Called</th>
       </tr>
     </thead>
     <tbody>
@@ -114,12 +114,12 @@
 <div class="recent-section" style="margin-top:2rem">
   <h2>Memory store</h2>
   <p class="section-note">Data held in OmniMem's store.</p>
-  <div class="table-scroll" tabindex="0">
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table overhead-table">
     <thead>
       <tr>
-        <th>Metric</th>
-        <th>Value</th>
+        <th scope="col">Metric</th>
+        <th scope="col">Value</th>
       </tr>
     </thead>
     <tbody>

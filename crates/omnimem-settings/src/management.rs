@@ -452,44 +452,54 @@ pub(crate) const SCAN_MEMORY: std::time::Duration = std::time::Duration::from_se
 /// namespace's, so the unscoped scan speaks for it where there is one, else
 /// the newest. That is also the scan the dashboard tile opens. A scan older
 /// than the cache keeps it is ignored here as it would be there.
-pub(crate) fn cached_duplicates(caches: &crate::Caches) -> (usize, Vec<String>, u64) {
-    let mut by_namespace: HashMap<&str, (bool, &std::time::Instant, &Value)> = HashMap::new();
+pub(crate) fn cached_duplicates(caches: &crate::Caches) -> CachedDuplicates {
+    let mut by_namespace: HashMap<(&str, &str), (bool, &std::time::Instant, &Value)> =
+        HashMap::new();
     for ((ns, project), (at, clusters)) in &caches.duplicates {
         if at.elapsed() >= SCAN_MEMORY {
             continue;
         }
         let unscoped = project.is_empty();
-        let wins = by_namespace
-            .get(ns.as_str())
-            .is_none_or(|(best_unscoped, best_at, _)| (unscoped, at) > (*best_unscoped, *best_at));
+        let current = by_namespace
+            .iter()
+            .find(|((n, _), _)| *n == ns.as_str())
+            .map(|(slot, pick)| (*slot, *pick));
+        let wins = current.is_none_or(|(_, (best_unscoped, best_at, _))| {
+            (unscoped, at) > (best_unscoped, best_at)
+        });
         if wins {
-            by_namespace.insert(ns, (unscoped, at, clusters));
+            if let Some((slot, _)) = current {
+                by_namespace.remove(&slot);
+            }
+            by_namespace.insert((ns, project), (unscoped, at, clusters));
         }
     }
     let mut found = 0usize;
-    let mut namespaces = Vec::new();
+    let mut scans: Vec<(String, String)> = Vec::new();
     let mut newest: Option<std::time::Instant> = None;
-    for (ns, (_, at, clusters)) in by_namespace {
+    for ((ns, project), (_, at, clusters)) in by_namespace {
         let n = clusters.as_array().map_or(0, Vec::len);
         if n > 0 {
             found += n;
-            namespaces.push(ns.to_owned());
+            scans.push((ns.to_owned(), project.to_owned()));
             newest = Some(newest.map_or(*at, |best| best.max(*at)));
         }
     }
-    namespaces.sort();
+    scans.sort();
     let age = newest.map_or(0, |at| at.elapsed().as_secs() / 60);
-    (found, namespaces, age)
+    (found, scans, age)
 }
 
-fn nav_badge(id: &str, n: usize, what: &str) -> String {
+/// Clusters still waiting, the `(namespace, project)` of each scan counted
+/// (the project empty for a whole-namespace scan), and the newest scan's
+/// age in minutes.
+pub(crate) type CachedDuplicates = (usize, Vec<(String, String)>, u64);
+
+fn nav_badge(id: &str, n: usize, one: &str, many: &str) -> String {
     let inner = if n > 0 {
-        format!(
-            r#"<span class="nav-count" title="{} {what}{}">{}</span>"#,
-            crate::render::thousands(&minijinja::Value::from(n)),
-            if n == 1 { "" } else { "s" },
-            crate::render::thousands(&minijinja::Value::from(n))
-        )
+        let count = crate::render::thousands(&minijinja::Value::from(n));
+        let what = if n == 1 { one } else { many };
+        format!(r#"<span class="nav-count" title="{count} {what}">{count}</span>"#)
     } else {
         String::new()
     };
@@ -533,24 +543,32 @@ pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
     };
     let n = |name: &str| usize::try_from(counts[name].as_u64().unwrap_or(0)).unwrap_or(0);
     // The scan cache is in memory, so this one is never stale.
-    let (duplicates, _, _) = cached_duplicates(&state.caches());
+    let duplicates = cached_duplicates(&state.caches());
     Html(format!(
         "{}{}{}{}",
         nav_badge(
             "nav-count-unconfirmed",
             n("unconfirmed"),
-            "unconfirmed fact"
+            "unconfirmed fact",
+            "unconfirmed facts"
         ),
         nav_badge(
             "nav-count-contradictions",
             n("contradictions"),
-            "contradiction to settle"
+            "contradiction to settle",
+            "contradictions to settle"
         ),
-        nav_badge("nav-count-skills", n("proposals"), "skill proposal waiting"),
+        nav_badge(
+            "nav-count-skills",
+            n("proposals"),
+            "skill proposal waiting",
+            "skill proposals waiting"
+        ),
         nav_badge(
             "nav-count-duplicates",
-            duplicates,
-            "duplicate cluster from your last scan"
+            duplicates.0,
+            "duplicate cluster from your last scan",
+            "duplicate clusters from your last scan"
         ),
     ))
     .into_response()
