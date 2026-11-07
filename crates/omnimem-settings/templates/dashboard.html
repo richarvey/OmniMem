@@ -68,6 +68,7 @@
     {% if charts.growth.total > 0 %}
     {% set g = charts.growth %}
     <div class="chart-wrap">
+      <div class="chart-plot">
       <span class="chart-y" style="top: 0">{{ g.peak|thousands }}</span>
       <span class="chart-y" style="top: {{ (g.half_y / g.height * 100)|round(1) }}%">{{ g.half|thousands }}</span>
       <span class="chart-y" style="top: 100%">0</span>
@@ -83,6 +84,7 @@
         </g>
         {% endfor %}
       </svg>
+      </div>
       <div class="chart-x" aria-hidden="true">
         {% for c in g.columns %}{% if c.tick %}<span style="left: {{ c.left }}%">{{ c.label }}</span>{% endif %}{% endfor %}
       </div>
@@ -180,7 +182,7 @@
     <p class="mini-heading">Effort per attempt <span class="text-dim">(average {{ e.effort_avg }})</span></p>
     <div class="effort-cols" role="img" aria-label="{% for f in e.efforts %}{{ f.count }} at effort {{ f.score }}{% if not loop.last %}, {% endif %}{% endfor %}">
       {% for f in e.efforts %}
-      <span class="effort-col"><span class="effort-n">{{ f.count }}</span><span class="effort-bar" style="height: {{ f.pct }}%"></span></span>
+      <span class="effort-col"><span class="effort-n">{{ f.count }}</span><span class="effort-bar" style="height: {{ (f.pct * 0.85)|round(1) }}px"></span></span>
       {% endfor %}
     </div>
     <div class="effort-axis" aria-hidden="true"><span>1 easy</span><span>2</span><span>3</span><span>4</span><span>5 hard</span></div>
@@ -227,7 +229,7 @@
     <li class="recent-row">
       <span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>
       <a class="recent-content" href="{{ admin }}{{ '/skills/' if mem.namespace == 'skill' else '/memory/' }}{{ mem.key|urlquote }}?back={{ here|urlquote }}">{{ mem.content }}</a>
-      {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% endif %}
+      {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% else %}<span aria-hidden="true"></span>{% endif %}
       <span class="recent-meta">{% if mem.project %}{{ mem.project }} &middot; {% endif %}<time>{{ mem.updated_date }} {{ mem.updated_time }}</time></span>
     </li>
     {% endfor %}

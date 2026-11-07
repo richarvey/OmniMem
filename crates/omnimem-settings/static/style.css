@@ -1927,7 +1927,9 @@ button.footer-link {
 .fill-skill { background: var(--ns-skill); fill: var(--ns-skill); }
 .fill-graveyard { background: var(--ns-graveyard); fill: var(--ns-graveyard); }
 
-.chart-wrap { position: relative; padding: 0 0 1.6rem 2.75rem; }
+.chart-wrap { position: relative; padding-left: 2.75rem; }
+.chart-plot { position: relative; }
+.chart-plot > .chart-y { left: -2.75rem; }
 .chart { display: block; width: 100%; height: 200px; overflow: visible; }
 .chart-grid { stroke: var(--border-subtle); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-y {
@@ -1935,7 +1937,7 @@ button.footer-link {
   font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); line-height: 1;
 }
 .chart-wrap > .chart-y { margin-top: 0; }
-.chart-x { position: absolute; left: 2.75rem; right: 0; bottom: 0; height: 1.2rem; }
+.chart-x { position: relative; height: 1.4rem; margin-top: 0.35rem; }
 .chart-x span {
   position: absolute; top: 0; white-space: nowrap;
   font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
@@ -1985,6 +1987,7 @@ button.footer-link {
 .dash-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .effort-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; height: 110px; align-items: end; }
+.effort-col > .effort-bar { width: 100%; }
 .effort-col { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; text-align: center; }
 .effort-axis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin-top: 0.3rem; border-top: 1px solid var(--border-strong); padding-top: 0.3rem; }
 .effort-axis span { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); text-align: center; }
