@@ -102,11 +102,11 @@ fn telemetry_data(engine: &Engine, project: &str) -> omnimem_engine::Result<Valu
             }
             // Skills are listed for their recalls but, as on Token overhead,
             // they aren't memories, so the two pages' totals agree.
+            let recall_count = count(row.get("recall_count"));
             if namespace != "skill" {
                 total_memories += 1;
+                total_recalls += recall_count;
             }
-            let recall_count = count(row.get("recall_count"));
-            total_recalls += recall_count;
             let mut content = row.get("content").cloned().unwrap_or_default();
             if content.is_empty() && namespace == "skill" {
                 // Skills carry no content: show their discovery metadata.

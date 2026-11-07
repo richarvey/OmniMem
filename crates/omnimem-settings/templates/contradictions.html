@@ -64,8 +64,8 @@
     <p><strong>{{ p.outcome }}</strong>{% if p.winner %}, current: <span class="mono">{{ p.winner }}</span>{% endif %}{% if p.retire != 'no' %}, then {{ p.retire }} the other{% endif %}</p>
     {% if p.reason %}<p class="callout-note">{{ p.reason }}</p>{% endif %}
     <div class="pair-grid">
-      <div class="pair-col"><span class="mono pair-key">{{ p.key_a }}</span><div class="pair-text">{{ p.content_a }}</div></div>
-      <div class="pair-col"><span class="mono pair-key">{{ p.key_b }}</span><div class="pair-text">{{ p.content_b }}</div></div>
+      <div class="pair-col"><span class="mono pair-key">{{ p.key_a }}</span><div class="pair-text">{{ p.content_a }}{% if p.content_a|length >= pair_preview_chars %}…{% endif %}</div></div>
+      <div class="pair-col"><span class="mono pair-key">{{ p.key_b }}</span><div class="pair-text">{{ p.content_b }}{% if p.content_b|length >= pair_preview_chars %}…{% endif %}</div></div>
     </div>
     <div class="action-bar">
       <form method="POST" action="{{ admin }}/contradictions/accept">

@@ -650,7 +650,6 @@ impl Store {
         Ok(deleted)
     }
 
-    /// Every live key starting with `prefix`, memories and others, sorted.
     /// The memory keys under `prefix` whose `field` is set and not empty, in
     /// key order: what a listing of contradiction links reads instead of
     /// every memory's row.
@@ -669,6 +668,7 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Every live key starting with `prefix`, memories and others, sorted.
     pub fn scan_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let upper = format!("{prefix}\u{10FFFF}");
         let conn = self.conn();

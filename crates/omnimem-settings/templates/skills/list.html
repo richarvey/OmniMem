@@ -141,7 +141,7 @@
     <tr>
       <td class="name-cell">
         <a href="{{ admin }}/skills/{{ s.key }}" class="project-name" title="{{ s.name }}">{{ s.name }}</a>
-        {% if s.generated %}<span class="badge generated" title="Compiler output — never hand-edited">gen</span>{% endif %}
+        {% if s.generated %}<span class="badge generated" title="Compiler output, never hand-edited">gen</span>{% endif %}
       </td>
       <td><span class="badge ns-skill">{{ s.domain or "—" }}</span></td>
       <td class="content-cell" title="{{ s.description }}">{{ s.description }}</td>
