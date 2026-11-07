@@ -18,7 +18,8 @@
 </header>
 
 {# What waits on a person comes first, and only what is waiting. #}
-{% set waiting = attention.unconfirmed + attention.contradictions + attention.resolutions + attention.proposals %}
+{% set backlog = enrichment_pending if enrichment_pending > 0 else 0 %}
+{% set waiting = attention.unconfirmed + attention.contradictions + attention.resolutions + attention.proposals + backlog %}
 <section class="attention" aria-labelledby="attention-h">
   <h3 id="attention-h" class="section-heading">Needs you</h3>
   {% if waiting > 0 %}
@@ -44,6 +45,13 @@
       <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
     </a></li>
     {% endif %}
+    {% if backlog > 0 %}
+    <li><div class="attention-tile attention-info">
+      <span class="attention-num">{{ backlog|thousands }}</span>
+      <span class="attention-label">waiting for enrichment</span>
+      <span class="attention-hint">Memories queued for facts and links. They're recalled meanwhile; this drains on its own.</span>
+    </div></li>
+    {% endif %}
   </ul>
   {% else %}
   <p class="attention-clear">Nothing is waiting for you. New facts to confirm, contradictions and skill proposals show here when they arrive.</p>
@@ -58,17 +66,27 @@
       <span class="panel-meta">{{ charts.growth.total|thousands }} in the last {{ charts.growth.weeks }} weeks</span>
     </div>
     {% if charts.growth.total > 0 %}
-    <svg class="chart" viewBox="0 0 {{ charts.growth.width }} {{ charts.growth.height + 22 }}" role="img" aria-labelledby="growth-h growth-desc" preserveAspectRatio="none">
-      <desc id="growth-desc">Memories created each week for {{ charts.growth.weeks }} weeks, the busiest week {{ charts.growth.peak }}.</desc>
-      <line x1="0" x2="{{ charts.growth.width }}" y1="{{ charts.growth.height }}" y2="{{ charts.growth.height }}" class="chart-axis"/>
-      {% for c in charts.growth.columns %}
-      <g>
-        <title>Week of {{ c.label }}: {{ c.total }} memor{{ 'y' if c.total == 1 else 'ies' }}</title>
-        {% for s in c.segments %}<rect x="{{ c.x }}" y="{{ s.y }}" width="{{ c.w }}" height="{{ s.h }}" class="fill-{{ s.namespace }}"/>{% endfor %}
-        {% if c.tick %}<text x="{{ c.x }}" y="{{ charts.growth.height + 16 }}" class="chart-label">{{ c.label }}</text>{% endif %}
-      </g>
-      {% endfor %}
-    </svg>
+    {% set g = charts.growth %}
+    <div class="chart-wrap">
+      <span class="chart-y" style="top: 0">{{ g.peak|thousands }}</span>
+      <span class="chart-y" style="top: {{ (g.half_y / g.height * 100)|round(1) }}%">{{ g.half|thousands }}</span>
+      <span class="chart-y" style="top: 100%">0</span>
+      <svg class="chart" viewBox="0 0 {{ g.width }} {{ g.height }}" role="img" aria-labelledby="growth-h growth-desc" preserveAspectRatio="none">
+        <desc id="growth-desc">Memories created each week for {{ g.weeks }} weeks; the busiest week had {{ g.peak }}.</desc>
+        <line x1="0" x2="{{ g.width }}" y1="0.5" y2="0.5" class="chart-grid"/>
+        <line x1="0" x2="{{ g.width }}" y1="{{ g.half_y }}" y2="{{ g.half_y }}" class="chart-grid"/>
+        <line x1="0" x2="{{ g.width }}" y1="{{ g.height }}" y2="{{ g.height }}" class="chart-axis"/>
+        {% for c in g.columns %}
+        <g>
+          <title>Week of {{ c.label }}: {{ c.total }} memor{{ 'y' if c.total == 1 else 'ies' }}</title>
+          {% for s in c.segments %}<rect x="{{ c.x }}" y="{{ s.y }}" width="{{ c.w }}" height="{{ s.h }}" class="fill-{{ s.namespace }}"/>{% endfor %}
+        </g>
+        {% endfor %}
+      </svg>
+      <div class="chart-x" aria-hidden="true">
+        {% for c in g.columns %}{% if c.tick %}<span style="left: {{ c.left }}%">{{ c.label }}</span>{% endif %}{% endfor %}
+      </div>
+    </div>
     <ul class="legend" aria-hidden="true">
       {% for ns in ["episodic", "knowledge", "preference", "project"] %}<li><span class="swatch fill-{{ ns }}"></span>{{ ns }}</li>{% endfor %}
     </ul>
@@ -90,7 +108,11 @@
   <section class="panel" aria-labelledby="states-h">
     <div class="panel-head">
       <h3 id="states-h" class="section-heading">By namespace</h3>
-      <span class="panel-meta">active, deprioritised, archived</span>
+      <ul class="legend legend-inline" aria-label="Bar segments">
+        <li><span class="swatch swatch-active"></span>active</li>
+        <li><span class="swatch seg-depri"></span>deprioritised</li>
+        <li><span class="swatch seg-archived"></span>archived</li>
+      </ul>
     </div>
     <ul class="state-bars">
       {% for s in charts.states %}
@@ -106,7 +128,7 @@
       {% endfor %}
     </ul>
     <p class="panel-foot">
-      {{ ns_stats.project.distinct }} projects: {{ ns_stats.project.projects.active }} active, {{ ns_stats.project.projects.deprioritised }} deprioritised{% if ns_stats.project.projects.archived %}, {{ ns_stats.project.projects.archived }} archived{% endif %}
+      <a href="{{ admin }}/projects">{{ projects.distinct }} projects</a>: {{ projects.states.active }} active, {{ projects.states.deprioritised }} deprioritised{% if projects.states.archived %}, {{ projects.states.archived }} archived{% endif %}
     </p>
   </section>
 
@@ -117,13 +139,14 @@
       <a class="panel-link" href="{{ admin }}/projects">All projects</a>
     </div>
     {% if charts.projects %}
+    <p class="panel-caption">{% if charts.projects_by_recent %}Memories updated in the last {{ charts.recent_days }} days, of each project's total{% else %}Memories per project{% endif %}</p>
     <ol class="hbars">
       {% for p in charts.projects %}
       <li>
-        <a class="hbar-row" href="{{ admin }}/projects/{{ p.name|urlquote }}">
+        <a class="hbar-row" href="{{ admin }}/projects/{{ p.name|urlsegment }}?back={{ here|urlquote }}">
           <span class="hbar-name">{{ p.name }}</span>
           <span class="hbar-track" aria-hidden="true"><span class="hbar" style="width: {{ p.pct }}%"></span></span>
-          <span class="hbar-value">{{ p.total|thousands }}<span class="visually-hidden"> memories</span>{% if p.recent %} <span class="hbar-recent">+{{ p.recent }} in {{ charts.recent_days }} days</span>{% endif %}</span>
+          <span class="hbar-value">{% if charts.projects_by_recent %}<span class="hbar-recent">{{ p.recent|thousands }}</span><span class="visually-hidden"> updated in {{ charts.recent_days }} days,</span> <span class="hbar-total">of {{ p.total|thousands }}</span>{% else %}{{ p.total|thousands }}<span class="visually-hidden"> memories</span>{% endif %}</span>
         </a>
       </li>
       {% endfor %}
@@ -133,6 +156,9 @@
     {% endif %}
   </section>
 
+</div>
+
+<div class="dash-grid dash-grid-3">
   {# Experience: how attempts ended, and how hard they were. #}
   <section class="panel" aria-labelledby="exp-h">
     <div class="panel-head">
@@ -142,7 +168,7 @@
     {% set e = charts.experience %}
     {% if e.total > 0 %}
     <span class="split-bar" role="img" aria-label="{{ e.succeeded }} succeeded, {{ e.pivoted }} pivoted, {{ e.abandoned }} abandoned">
-      <span class="seg fill-episodic" style="width: {{ e.succeeded_pct }}%"></span><span class="seg fill-preference" style="width: {{ e.pivoted_pct }}%"></span><span class="seg fill-graveyard" style="width: {{ e.abandoned_pct }}%"></span>
+      <span class="seg fill-episodic" style="width: {{ e.succeeded_pct }}%"></span><span class="seg fill-preference" style="width: {{ e.pivoted_pct }}%"></span><span class="seg fill-graveyard{% if e.abandoned %} seg-min{% endif %}" style="width: {{ e.abandoned_pct }}%"></span>
     </span>
     <ul class="legend legend-values">
       <li><span class="swatch fill-episodic"></span>{{ e.succeeded }} succeeded</li>
@@ -151,12 +177,13 @@
     </ul>
     {% endif %}
     {% if e.effort_n > 0 %}
-    <p class="mini-heading">Effort, 1 easy to 5 hard. Average {{ e.effort_avg }}</p>
+    <p class="mini-heading">Effort per attempt <span class="text-dim">(average {{ e.effort_avg }})</span></p>
     <div class="effort-cols" role="img" aria-label="{% for f in e.efforts %}{{ f.count }} at effort {{ f.score }}{% if not loop.last %}, {% endif %}{% endfor %}">
       {% for f in e.efforts %}
-      <span class="effort-col"><span class="effort-bar" style="height: {{ f.pct }}%"></span><span class="effort-n">{{ f.count }}</span><span class="effort-score">{{ f.score }}</span></span>
+      <span class="effort-col"><span class="effort-n">{{ f.count }}</span><span class="effort-bar" style="height: {{ f.pct }}%"></span></span>
       {% endfor %}
     </div>
+    <div class="effort-axis" aria-hidden="true"><span>1 easy</span><span>2</span><span>3</span><span>4</span><span>5 hard</span></div>
     {% endif %}
     {% if e.total == 0 and e.effort_n == 0 %}
     <p class="empty-state">No experience recorded yet. Agents record it with <code>record_experience</code>.</p>

@@ -10,7 +10,7 @@
       {% if i.state != 'active' %}<span class="badge {{ i.state }}">{{ i.state }}</span>{% endif %}
       {% if i.project %}<span class="review-project">{{ i.project }}</span>{% endif %}
     </div>
-    <a href="{{ admin }}/memory/{{ i.key|urlquote }}?back={{ here|urlquote }}" class="review-content">{{ i.content }}</a>
+    <a href="{{ admin }}/memory/{{ i.key|urlsegment }}?back={{ here|urlquote }}" class="review-content">{{ i.content }}</a>
   </div>
   <div class="review-actions">
     {% for action, label, class in [('confirm', 'Confirm', 'btn-primary'), ('reject', 'Reject', 'btn-secondary')] %}
@@ -52,7 +52,7 @@
 
 
 {% if source %}
-<p class="note-bar">Showing only what came from <a href="{{ admin }}/memory/{{ source|urlquote }}?back={{ here|urlquote }}" class="mono">{{ source }}</a>. <a href="{{ admin }}/unconfirmed">Show everything</a></p>
+<p class="note-bar">Showing only what came from <a href="{{ admin }}/memory/{{ source|urlsegment }}?back={{ here|urlquote }}" class="mono">{{ source }}</a>. <a href="{{ admin }}/unconfirmed">Show everything</a></p>
 {% endif %}
 
 {% for g in groups %}
@@ -60,7 +60,7 @@
   <header class="review-group-head">
     <div class="review-group-title">
       <span class="field-label">From</span>
-      {% if g.exists %}<a href="{{ admin }}/memory/{{ g.source|urlquote }}?back={{ here|urlquote }}" class="review-source">{{ g.title or g.source }}</a>{% else %}<span class="review-source">{{ g.title or g.source }} <span class="text-dim">(gone)</span></span>{% endif %}
+      {% if g.exists %}<a href="{{ admin }}/memory/{{ g.source|urlsegment }}?back={{ here|urlquote }}" class="review-source">{{ g.title or g.source }}</a>{% else %}<span class="review-source">{{ g.title or g.source }} <span class="text-dim">(gone)</span></span>{% endif %}
       <span class="count-chip">{{ g.total }}</span>
     </div>
     <div class="review-group-actions">

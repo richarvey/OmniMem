@@ -14,12 +14,12 @@
     <div class="pair-grid">
       <div class="pair-col">
         <span class="pair-label">A</span>
-        <a href="{{ admin }}/memory/{{ pair.key_a|urlquote }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
+        <a href="{{ admin }}/memory/{{ pair.key_a|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
         <div class="pair-text">{{ pair.content_a }}</div>
       </div>
       <div class="pair-col">
         <span class="pair-label">B</span>
-        <a href="{{ admin }}/memory/{{ pair.key_b|urlquote }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
+        <a href="{{ admin }}/memory/{{ pair.key_b|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
         <div class="pair-text">{{ pair.content_b }}</div>
       </div>
     </div>

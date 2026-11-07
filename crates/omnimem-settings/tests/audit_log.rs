@@ -128,7 +128,7 @@ async fn the_audit_page_lists_and_filters_the_log() {
     post(&f.panel, "/lifecycle/archive", &format!("key={second}")).await;
 
     let page = text(&get(&f.panel, "/audit").await);
-    assert!(page.contains("Audit Log"), "{page}");
+    assert!(page.contains("Audit log"), "{page}");
     assert!(page.contains("Recording at the <strong>writes</strong> level"));
     assert!(page.contains(&first) && page.contains(&second));
     assert!(page.contains("state: active -&gt; archived"), "{page}");

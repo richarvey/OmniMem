@@ -4,7 +4,7 @@
 
 {% block content %}
 <nav class="back-nav" aria-label="Back">
-  <a href="{{ admin }}/projects" class="back-link">&larr; Projects</a>
+  <a href="{{ admin }}{{ back }}" class="back-link">&larr; {{ back_label }}</a>
 </nav>
 
 <header class="detail-head">
@@ -18,20 +18,20 @@
   </div>
   <div class="detail-actions">
     {% if project.has_context %}
-    <a href="{{ admin }}/projects/{{ project.name|urlquote }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+    <a href="{{ admin }}/projects/{{ project.name|urlsegment }}/edit" class="btn btn-secondary btn-sm">Edit</a>
     {% if project.state == "deprioritised" %}
-    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlquote }}/reinstate" data-confirm="Reinstate project &quot;{{ project.name }}&quot;? All its deprioritised memories return to full recall visibility.">
+    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlsegment }}/reinstate" data-confirm="Reinstate project &quot;{{ project.name }}&quot;? All its deprioritised memories return to full recall visibility.">
       <input type="hidden" name="next" value="{{ here }}">
       <button type="submit" class="btn btn-secondary btn-sm">Reinstate</button>
     </form>
     {% else %}
-    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlquote }}/deprioritise" data-confirm="Deprioritise project &quot;{{ project.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
+    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlsegment }}/deprioritise" data-confirm="Deprioritise project &quot;{{ project.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
       <input type="hidden" name="next" value="{{ here }}">
       <button type="submit" class="btn btn-secondary btn-sm">Deprioritise</button>
     </form>
     {% endif %}
-    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlquote }}/delete" data-confirm="Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.">
-      <input type="hidden" name="next" value="/projects">
+    <form method="POST" action="{{ admin }}/projects/{{ project.name|urlsegment }}/delete" data-confirm="Delete project &quot;{{ project.name }}&quot;? This removes the project context but not memories tagged with this project.">
+      <input type="hidden" name="next" value="{{ back }}">
       <button type="submit" class="btn btn-danger btn-sm">Delete context</button>
     </form>
     {% else %}
@@ -77,7 +77,7 @@
         {% for mem in project.recent %}
         <li class="recent-row">
           <span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>
-          <a class="recent-content" href="{{ admin }}/memory/{{ mem.key|urlquote }}?back={{ here|urlquote }}">{{ mem.content }}</a>
+          <a class="recent-content" href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}">{{ mem.content }}</a>
           {% if mem.state != 'active' %}<span class="badge {{ mem.state }}">{{ mem.state }}</span>{% else %}<span></span>{% endif %}
           <span class="recent-meta"><time>{{ mem.updated_date }}</time></span>
         </li>
@@ -117,7 +117,7 @@
       </div>
       <p class="field-help">The kinds of work in this project. <code>recall(query, domain_filter="{{ project.domains[0].name }}")</code> searches every project declaring the same domain.</p>
       {% else %}
-      <p class="field-help">None yet. Declaring domains lets recall search across every project doing the same kind of work.{% if project.has_context %} The <a href="{{ admin }}/projects/{{ project.name|urlquote }}/edit">edit page</a> can suggest them from the stack and this project's memories.{% endif %}</p>
+      <p class="field-help">None yet. Declaring domains lets recall search across every project doing the same kind of work.{% if project.has_context %} The <a href="{{ admin }}/projects/{{ project.name|urlsegment }}/edit">edit page</a> can suggest them from the stack and this project's memories.{% endif %}</p>
       {% endif %}
     </section>
 

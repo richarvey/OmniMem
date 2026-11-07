@@ -85,10 +85,14 @@
     }
   });
 
-  // A file input that submits its form as soon as a file is chosen.
+  // A file input that submits its form as soon as a file is chosen, and a
+  // filter form whose selects apply as soon as they change.
   document.addEventListener('change', function (event) {
     var input = event.target.closest('[data-submit-on-change]');
-    if (input && input.form) input.form.submit();
+    if (input && input.form) { input.form.submit(); return; }
+    var select = event.target.closest('select');
+    var auto = select && select.form && select.form.hasAttribute('data-auto-submit');
+    if (auto) select.form.submit();
   });
 
   // Destructive forms ask first. The question is plain text in an
@@ -106,6 +110,19 @@
       if (note) note.textContent = 'Scanning…';
       busy.querySelectorAll('button[type="submit"]').forEach(function (b) { b.disabled = true; });
     }
+  });
+
+  // A duplicate cluster left with one member after an in-place archive is
+  // settled: say so instead of showing a cluster of one.
+  document.addEventListener('htmx:afterSwap', function (event) {
+    var cluster = event.target.closest ? event.target.closest('.cluster') : null;
+    document.querySelectorAll('.cluster').forEach(function (c) {
+      if (c.querySelectorAll('.cluster-row').length < 2) {
+        c.classList.add('cluster-settled');
+        c.innerHTML = '<p class="cluster-head">Settled: one copy left.</p>';
+      }
+    });
+    if (cluster) cluster = null;
   });
 
   // The starting page polls until the services are up.

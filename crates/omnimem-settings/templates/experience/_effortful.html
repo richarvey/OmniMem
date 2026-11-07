@@ -12,7 +12,7 @@
     <tr>
       <td><span class="score">{{ m.effort_score }}/5</span></td>
       <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'abandoned' }}">{{ m.outcome }}</span></td>
-      <td class="content-cell"><a href="{{ admin }}/memory/{{ m.key|urlquote }}?back={{ here|urlquote }}">{{ m.content }}</a></td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ m.key|urlsegment }}?back={{ here|urlquote }}">{{ m.content }}</a></td>
     </tr>
     {% endfor %}
   </tbody>

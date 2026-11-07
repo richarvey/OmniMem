@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Audit Log <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+  <div>
+    <h2>Audit log <span class="count-chip">{{ total|thousands }}</span></h2>
+    <p class="page-intro">Every change to a memory: who made it, when, and why.</p>
+  </div>
 </header>
 
 {% if is_off %}
@@ -70,7 +73,7 @@
       <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
       <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
       <td>{{ e.action }}</td>
-      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key|urlquote }}?back={{ here|urlquote }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
+      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key|urlsegment }}?back={{ here|urlquote }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
       <td>{{ e.summary }}</td>
       <td style="color:var(--text-dim)">{{ e.reason }}</td>
     </tr>

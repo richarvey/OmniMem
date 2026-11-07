@@ -3,7 +3,7 @@
 {% block title %}{{ memory.key }} — OmniMem{% endblock %}
 
 {% macro back_field() %}<input type="hidden" name="back" value="{{ back }}">{% endmacro %}
-{% macro memory_link(key) %}<a href="{{ admin }}/memory/{{ key|urlquote }}?back={{ back|urlquote }}" class="mono key-link">{{ key }}</a>{% endmacro %}
+{% macro memory_link(key) %}<a href="{{ admin }}/memory/{{ key|urlsegment }}?back={{ back|urlquote }}" class="mono key-link">{{ key }}</a>{% endmacro %}
 
 {% block content %}
 <nav class="back-nav" aria-label="Back">
@@ -17,7 +17,8 @@
       <span class="badge {{ memory.state }}">{{ memory.state }}</span>
       <span class="badge {{ 'deprioritised' if memory.trust != 'accepted' else 'active' }}" data-trust="{{ memory.trust }}">trust: {{ memory.trust }}</span>
     </div>
-    <h2 class="detail-title mono">{{ memory.key }}</h2>
+    <h2 class="detail-title">{{ memory.content[:90]|trim }}{% if memory.content|length > 90 %}…{% endif %}</h2>
+    <p class="detail-key mono">{{ memory.key }}</p>
   </div>
   <div class="detail-actions">
     {% if memory.state == 'active' %}
@@ -86,43 +87,6 @@
     </section>
     {% endif %}
 
-    <section class="detail-section" id="trust">
-      <h3 class="eyebrow-heading">Trust</h3>
-      <p class="section-text">
-        {% if memory.trust == 'candidate' %}OmniMem concluded this itself and nobody has confirmed it yet.
-        {% elif memory.trust == 'accepted' %}This memory is believed.
-        {% elif memory.trust == 'disputed' %}This memory is in a contradiction that hasn't been settled.
-        {% elif memory.trust == 'superseded' %}A newer memory replaced this one{% if memory.superseded_by %}: {{ memory_link(memory.superseded_by) }}{% endif %}.
-        {% elif memory.trust == 'rejected' %}Someone judged this memory wrong, so it isn't recalled.
-        {% endif %}
-        {% if memory.trust_prior and memory.trust != 'accepted' %}<span class="text-dim">It goes back to <strong>{{ memory.trust_prior }}</strong> if that is undone.</span>{% endif %}
-      </p>
-      <div class="action-bar">
-        {% if memory.trust == 'candidate' %}
-        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/trust">
-          {{ back_field() }}
-          <input type="hidden" name="action" value="confirm">
-          <button type="submit" class="btn btn-primary btn-sm">Confirm</button>
-        </form>
-        {% endif %}
-        {% if memory.trust == 'rejected' %}
-        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/trust">
-          {{ back_field() }}
-          <input type="hidden" name="action" value="restore">
-          <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
-        </form>
-        {% else %}
-        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/trust" class="inline-form">
-          {{ back_field() }}
-          <input type="hidden" name="action" value="reject">
-          <label for="reject-reason" class="visually-hidden">Reason for rejecting</label>
-          <input type="text" id="reject-reason" class="form-input" name="reason" placeholder="Why it's wrong (optional)">
-          <button type="submit" class="btn btn-danger btn-sm">Reject</button>
-        </form>
-        {% endif %}
-      </div>
-      {% if trust_error %}<p role="alert" class="form-error">{{ trust_error }}</p>{% endif %}
-    </section>
 
     {% if memory.contradictions %}
     <section class="detail-section">
@@ -207,7 +171,7 @@
   <aside class="detail-rail" aria-label="Properties">
     <dl class="props">
       {% if memory.project %}
-      <div><dt>Project</dt><dd><a href="{{ admin }}/projects/{{ memory.project|urlquote }}">{{ memory.project }}</a></dd></div>
+      <div><dt>Project</dt><dd><a href="{{ admin }}/projects/{{ memory.project|urlsegment }}?back={{ self_url|urlquote }}">{{ memory.project }}</a></dd></div>
       {% endif %}
       <div><dt>Created</dt><dd class="mono">{{ memory.created_at }}</dd></div>
       <div><dt>Updated</dt><dd class="mono">{{ memory.updated_at }}</dd></div>
@@ -226,11 +190,49 @@
       {% endif %}
     </dl>
 
+    <section class="rail-section rail-trust" id="trust">
+      <h3 class="eyebrow-heading">Trust</h3>
+      <p class="section-text">
+        {% if memory.trust == 'candidate' %}OmniMem concluded this itself and nobody has confirmed it yet.
+        {% elif memory.trust == 'accepted' %}This memory is believed.
+        {% elif memory.trust == 'disputed' %}This memory is in a contradiction that hasn't been settled.
+        {% elif memory.trust == 'superseded' %}A newer memory replaced this one{% if memory.superseded_by %}: {{ memory_link(memory.superseded_by) }}{% endif %}.
+        {% elif memory.trust == 'rejected' %}Someone judged this memory wrong, so it isn't recalled.
+        {% endif %}
+        {% if memory.trust_prior and memory.trust != 'accepted' %}<span class="text-dim">It goes back to <strong>{{ memory.trust_prior }}</strong> if that is undone.</span>{% endif %}
+      </p>
+      <div class="action-bar">
+        {% if memory.trust == 'candidate' %}
+        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/trust">
+          {{ back_field() }}
+          <input type="hidden" name="action" value="confirm">
+          <button type="submit" class="btn btn-primary btn-sm">Confirm</button>
+        </form>
+        {% endif %}
+        {% if memory.trust == 'rejected' %}
+        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/trust">
+          {{ back_field() }}
+          <input type="hidden" name="action" value="restore">
+          <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
+        </form>
+        {% else %}
+        <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/trust" class="stack-form">
+          {{ back_field() }}
+          <input type="hidden" name="action" value="reject">
+          <label for="reject-reason" class="visually-hidden">Reason for rejecting</label>
+          <input type="text" id="reject-reason" class="form-input" name="reason" placeholder="Why it's wrong (optional)">
+          <button type="submit" class="btn btn-secondary btn-sm">Reject as wrong</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if trust_error %}<p role="alert" class="form-error">{{ trust_error }}</p>{% endif %}
+    </section>
+
     {% if memory.namespace != 'skill' %}
     <section class="rail-section">
       <h3 class="eyebrow-heading">Tags</h3>
       {% if memory.tags %}<div class="tag-row">{% for tag in memory.tags %}<span class="badge tag">{{ tag }}</span>{% endfor %}</div>{% endif %}
-      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/tags" class="stack-form">
+      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/tags" class="stack-form">
         {{ back_field() }}
         <label for="tags-input" class="field-label">Edit tags, comma separated</label>
         <input type="text" id="tags-input" name="tags" class="form-input" value="{{ memory.tags | join(', ') }}" placeholder="e.g. python, bug-fix, working">
@@ -242,7 +244,7 @@
     <section class="rail-section">
       <h3 class="eyebrow-heading">Redistribution rights</h3>
       <p class="field-help">May this be shared outside this instance? Own work and open sources can; paywalled or all-rights-reserved sources can't.</p>
-      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/licence" class="stack-form">
+      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/licence" class="stack-form">
         {{ back_field() }}
         <label for="licence-select" class="field-label">Licence</label>
         <select id="licence-select" name="licence" class="form-select">
@@ -261,7 +263,7 @@
     <section class="rail-section">
       <h3 class="eyebrow-heading">Provenance</h3>
       <p class="field-help">Retrieved from a source, concluded by OmniMem, or asserted by you. Mark a memory you vouch for as asserted.</p>
-      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlquote }}/provenance" class="stack-form">
+      <form method="POST" action="{{ admin }}/memory/{{ memory.key|urlsegment }}/provenance" class="stack-form">
         {{ back_field() }}
         <label for="provenance-select" class="field-label">Provenance</label>
         <select id="provenance-select" name="provenance" class="form-select">

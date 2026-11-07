@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>RSS Feeds</h2>
+  <div>
+    <h2>RSS feeds</h2>
+    <p class="page-intro">The reading list OmniMem summarises into knowledge, kept in <code>feeds.yml</code>.</p>
+  </div>
   <div style="display:flex;gap:0.5rem;align-items:center">
     <a href="{{ admin }}/feeds/new" class="btn btn-primary btn-sm">Add Feed</a>
     <a href="{{ admin }}/feeds/download" class="btn btn-secondary btn-sm" title="Download feeds.yml" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">

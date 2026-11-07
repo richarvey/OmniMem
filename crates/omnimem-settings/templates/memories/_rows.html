@@ -16,13 +16,13 @@
     {% for mem in memories %}
     <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
       <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlquote }}?back={{ back_url|urlquote }}">{{ mem.content }}</a></td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ back_url|urlquote }}">{{ mem.content }}</a></td>
       <td>
         <span class="badge {{ mem.state }}">{{ mem.state }}</span>
         {# Only the unclassified case gets a pill: it is the one that asks
            for action. The class itself is on the detail page. #}
         {% if mem.licence == 'unknown' %}
-        <span class="badge licence-unknown" title="Redistribution rights not yet classified">unclassified</span>
+        <span class="badge licence-unknown" title="Nobody has said whether this may be shared outside this instance">licence unknown</span>
         {% endif %}
       </td>
       <td class="content-cell">{{ (mem.feed_name if source == "rss" else mem.project) or "—" }}</td>
@@ -32,7 +32,7 @@
       </td>
       <td class="actions-cell">
         <details class="row-menu">
-          <summary class="btn btn-secondary btn-sm" aria-label="Actions for this memory">&middot;&middot;&middot;</summary>
+          <summary class="btn btn-secondary btn-sm" aria-label="Actions: {{ mem.content[:40] }}">&middot;&middot;&middot;</summary>
           <div class="row-menu-body">
             {% if mem.state == 'active' %}
             <form method="POST" action="{{ admin }}/lifecycle/deprioritise">

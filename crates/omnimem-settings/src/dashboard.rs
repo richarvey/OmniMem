@@ -33,136 +33,53 @@ fn zero_states() -> Map<String, Value> {
     STATES.iter().map(|s| ((*s).to_owned(), json!(0))).collect()
 }
 
-fn bump(counts: &mut Map<String, Value>, state: &str) {
-    if let Some(n) = counts.get_mut(state) {
-        *n = json!(n.as_u64().unwrap_or(0) + 1);
-    }
-}
-
-/// One state per project: the context entry's when it has one, otherwise the
-/// most-alive state among its memories.
-fn project_state(context_state: Option<&str>, member_states: &[String]) -> String {
-    if let Some(state) = context_state {
-        return state.to_owned();
-    }
-    for state in ["active", "deprioritised"] {
-        if member_states.iter().any(|s| s == state) {
-            return state.to_owned();
-        }
-    }
-    "archived".to_owned()
-}
-
-struct Candidate {
-    key: String,
-    namespace: String,
-    state: String,
-    updated_at: f64,
-}
-
 pub(crate) fn compute(engine: &Engine) -> omnimem_engine::Result<Value> {
     let store = engine.store();
-    let mut ns_stats = Map::new();
-    let mut total = 0usize;
-    let mut candidates: Vec<Candidate> = Vec::new();
-    let number = |v: Option<&String>| v.and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(0.0);
-
-    for ns in NAMESPACES {
-        let keys = store.scan_prefix(&format!("mem:{ns}:"))?;
+    let now = Local::now().timestamp() as f64;
+    let counts = store.dashboard_counts(now, GROWTH_WEEKS, RECENT_DAYS)?;
+    let count = |ns: &str, state: Option<&str>| {
+        counts
+            .by_namespace_state
+            .iter()
+            .filter(|(n, s, _)| n == ns && state.is_none_or(|st| s == st))
+            .map(|r| r.2)
+            .sum::<u64>()
+    };
+    let states_of = |ns: &str| {
         let mut states = zero_states();
-        let mut projects: Vec<(String, Option<String>, Vec<String>)> = Vec::new();
-        let fields: &[&str] = if ns == "project" {
-            &["state", "updated_at", "project_name", "project"]
-        } else {
-            &["state", "updated_at"]
-        };
-        for (key, row) in keys.iter().zip(store.get_fields_multi(&keys, fields)?) {
-            let row = row.unwrap_or_default();
-            let state = row
-                .get("state")
-                .cloned()
-                .unwrap_or_else(|| "active".to_owned());
-            bump(&mut states, &state);
-            if ns == "project" {
-                let name = row
-                    .get("project_name")
-                    .filter(|n| !n.is_empty())
-                    .or_else(|| row.get("project").filter(|n| !n.is_empty()))
-                    .cloned()
-                    .unwrap_or_else(|| key.rsplit(':').next().unwrap_or("").to_owned());
-                let index = if let Some(i) = projects.iter().position(|(n, _, _)| *n == name) {
-                    i
-                } else {
-                    projects.push((name.clone(), None, Vec::new()));
-                    projects.len() - 1
-                };
-                if key.strip_prefix("mem:project:") == Some(name.as_str()) {
-                    projects[index].1 = Some(state.clone());
-                } else {
-                    projects[index].2.push(state.clone());
-                }
-            }
-            candidates.push(Candidate {
-                key: key.clone(),
-                namespace: ns.to_owned(),
-                state,
-                updated_at: number(row.get("updated_at")),
-            });
+        for state in STATES {
+            states.insert(state.to_owned(), json!(count(ns, Some(state))));
         }
-        let mut entry = Map::new();
-        entry.insert("total".into(), json!(keys.len()));
-        entry.insert("states".into(), Value::Object(states));
-        if ns == "project" {
-            let mut by_state = zero_states();
-            for (_, context_state, members) in &projects {
-                bump(
-                    &mut by_state,
-                    &project_state(context_state.as_deref(), members),
-                );
-            }
-            entry.insert("distinct".into(), json!(projects.len()));
-            entry.insert("projects".into(), Value::Object(by_state));
+        states
+    };
+    let total: u64 = NAMESPACES.iter().map(|ns| count(ns, None)).sum();
+    let mut projects = zero_states();
+    for (state, n) in &counts.project_contexts {
+        if let Some(slot) = projects.get_mut(state) {
+            *slot = json!(n);
         }
-        ns_stats.insert(ns.to_owned(), Value::Object(entry));
-        total += keys.len();
     }
+    let distinct: u64 = counts.project_contexts.iter().map(|p| p.1).sum();
 
-    let skill_keys = store.scan_prefix("mem:skill:")?;
-    let mut skill_states = zero_states();
-    for (key, row) in skill_keys
+    let rows = store.get_fields_multi(
+        &counts.recent,
+        &[
+            "content",
+            "project",
+            "name",
+            "description",
+            "state",
+            "updated_at",
+        ],
+    )?;
+    let recent: Vec<Value> = counts
+        .recent
         .iter()
-        .zip(store.get_fields_multi(&skill_keys, &["state", "updated_at"])?)
-    {
-        let row = row.unwrap_or_default();
-        let state = row
-            .get("state")
-            .cloned()
-            .unwrap_or_else(|| "active".to_owned());
-        bump(&mut skill_states, &state);
-        candidates.push(Candidate {
-            key: key.clone(),
-            namespace: "skill".to_owned(),
-            state,
-            updated_at: number(row.get("updated_at")),
-        });
-    }
-    let proposals = store.scan_prefix("meta:skill:proposal:")?.len();
-
-    candidates.sort_by(|a, b| {
-        b.updated_at
-            .partial_cmp(&a.updated_at)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    candidates.truncate(10);
-    let recent_keys: Vec<String> = candidates.iter().map(|c| c.key.clone()).collect();
-    let details =
-        store.get_fields_multi(&recent_keys, &["content", "project", "name", "description"])?;
-    let recent: Vec<Value> = candidates
-        .iter()
-        .zip(details)
-        .map(|(candidate, row)| {
+        .zip(rows)
+        .map(|(key, row)| {
             let row: HashMap<String, String> = row.unwrap_or_default().into_iter().collect();
-            let content = if candidate.namespace == "skill" {
+            let namespace = key.split(':').nth(1).unwrap_or("").to_owned();
+            let content = if namespace == "skill" {
                 ["name", "description"]
                     .iter()
                     .filter_map(|f| row.get(*f).filter(|v| !v.is_empty()))
@@ -172,19 +89,22 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_engine::Result<Value> {
             } else {
                 row.get("content").cloned().unwrap_or_default()
             };
-            let (date, time) = match Local.timestamp_opt(candidate.updated_at as i64, 0).single() {
-                Some(t) if candidate.updated_at > 0.0 => (
+            let updated = row
+                .get("updated_at")
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(0.0);
+            let (date, time) = match Local.timestamp_opt(updated as i64, 0).single() {
+                Some(t) if updated > 0.0 => (
                     t.format("%-d %b %Y").to_string(),
                     t.format("%H:%M").to_string(),
                 ),
                 _ => ("—".to_owned(), String::new()),
             };
             json!({
-                "key": candidate.key,
-                "namespace": candidate.namespace,
-                "state": candidate.state,
-                "updated_at": candidate.updated_at,
-                "content": content.chars().take(100).collect::<String>(),
+                "key": key,
+                "namespace": namespace,
+                "state": row.get("state").cloned().unwrap_or_else(|| "active".to_owned()),
+                "content": content.chars().take(140).collect::<String>(),
                 "project": row.get("project").cloned().unwrap_or_default(),
                 "updated_date": date,
                 "updated_time": time,
@@ -192,13 +112,16 @@ pub(crate) fn compute(engine: &Engine) -> omnimem_engine::Result<Value> {
         })
         .collect();
 
-    let now = Local::now().timestamp() as f64;
-    let charts = charts(engine, now)?;
     let attention = attention(engine)?;
+    let charts = charts(&counts, now);
     Ok(json!({
-        "ns_stats": ns_stats,
         "total": total,
-        "skills": {"total": skill_keys.len(), "states": skill_states, "proposals": proposals},
+        "projects": {"distinct": distinct, "states": projects},
+        "skills": {
+            "total": count("skill", None),
+            "states": states_of("skill"),
+            "proposals": attention["proposals"],
+        },
         "recent": recent,
         "charts": charts,
         "attention": attention,
@@ -222,11 +145,7 @@ fn pct(part: u64, whole: u64) -> f64 {
 
 /// Everything the dashboard's charts and attention strip need, worked out
 /// here so the template only places shapes.
-fn charts(engine: &Engine, now: f64) -> omnimem_engine::Result<Value> {
-    let counts = engine
-        .store()
-        .dashboard_counts(now, GROWTH_WEEKS, RECENT_DAYS)?;
-
+fn charts(counts: &omnimem_store::DashboardCounts, now: f64) -> Value {
     // Namespaces by state, as 100% bars.
     let mut states: Vec<Value> = Vec::new();
     for ns in ["episodic", "project", "knowledge", "preference", "skill"] {
@@ -305,6 +224,7 @@ fn charts(engine: &Engine, now: f64) -> omnimem_engine::Result<Value> {
         let total: u64 = week.iter().sum();
         growth_total += total;
         columns.push(json!({
+            "left": (i as f64 * 1000.0 / GROWTH_WEEKS as f64).round() / 10.0,
             "x": (i as f64 * column + gap / 2.0),
             "w": column - gap,
             "segments": segments,
@@ -315,19 +235,27 @@ fn charts(engine: &Engine, now: f64) -> omnimem_engine::Result<Value> {
         }));
     }
 
-    // Busiest projects as horizontal bars.
-    let busiest = counts
+    // Busiest projects: the bars are the last month's updates, which is
+    // what the list is ordered by; the total is shown beside them.
+    let recent_peak = counts.projects.iter().map(|p| p.2).max().unwrap_or(0);
+    let total_peak = counts
         .projects
         .iter()
         .map(|p| p.1)
         .max()
         .unwrap_or(0)
         .max(1);
+    let by_recent = recent_peak > 0;
     let projects: Vec<Value> = counts
         .projects
         .iter()
         .map(|(name, total, recent)| {
-            json!({"name": name, "total": total, "recent": recent, "pct": pct(*total, busiest)})
+            let pct_of = if by_recent {
+                pct(*recent, recent_peak)
+            } else {
+                pct(*total, total_peak)
+            };
+            json!({"name": name, "total": total, "recent": recent, "pct": pct_of})
         })
         .collect();
 
@@ -394,10 +322,11 @@ fn charts(engine: &Engine, now: f64) -> omnimem_engine::Result<Value> {
             .map(|t| t.1)
             .sum::<u64>()
     };
-    Ok(json!({
+    json!({
         "states": states,
-        "growth": {"columns": columns, "peak": peak, "total": growth_total, "weeks": GROWTH_WEEKS, "width": width, "height": height},
+        "growth": {"columns": columns, "peak": peak, "half": peak.div_ceil(2), "half_y": height - (peak.div_ceil(2) as f64 / peak as f64 * height), "total": growth_total, "weeks": GROWTH_WEEKS, "width": width, "height": height},
         "projects": projects,
+        "projects_by_recent": by_recent,
         "recent_days": RECENT_DAYS,
         "experience": {
             "succeeded": succeeded, "pivoted": pivoted, "abandoned": abandoned, "total": outcomes_total,
@@ -408,7 +337,7 @@ fn charts(engine: &Engine, now: f64) -> omnimem_engine::Result<Value> {
         },
         "articles": {"month": articles_month, "spark": spark.join(" ")},
         "disputed": trust("disputed"),
-    }))
+    })
 }
 
 /// What waits on a person, read live: these are the dashboard's first row.
@@ -466,7 +395,7 @@ pub(crate) async fn page_handler(state: PanelState, refresh: bool) -> Response {
         "dashboard.html",
         context! {
             current_page => "dashboard",
-            ns_stats => counts["ns_stats"],
+            projects => counts["projects"],
             total => counts["total"],
             skills => counts["skills"],
             recent => counts["recent"],

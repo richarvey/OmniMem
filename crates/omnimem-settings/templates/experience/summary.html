@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Experience Tracking</h2>
+  <div>
+    <h2>Experience</h2>
+    <p class="page-intro">How past attempts went: what worked, how hard it was, and what was learned.</p>
+  </div>
   <a href="{{ admin }}/experience/graveyard" class="btn btn-secondary btn-sm">Graveyard</a>
 </header>
 
@@ -31,13 +34,10 @@
 <section style="margin-bottom:2rem">
   <h3 style="font-size:0.95rem;font-weight:600;color:var(--text-bright);margin-bottom:1rem">Breakthroughs</h3>
   {% for b in breakthroughs %}
-  <div class="search-result" style="border-color:var(--green)">
-    <div class="search-result-header">
-      <span class="score">effort {{ b.effort_score }}/5</span>
-      <span class="badge active">{{ b.outcome }}</span>
-    </div>
-    <div style="color:var(--green);font-size:0.9rem;margin-bottom:0.25rem">{{ b.breakthrough }}</div>
-    <div class="search-result-content"><a href="{{ admin }}/memory/{{ b.key|urlquote }}?back={{ here|urlquote }}" style="color:var(--text-dim);text-decoration:none">{{ b.content }}</a></div>
+  <div class="callout callout-accent breakthrough">
+    <div class="breakthrough-meta"><span class="badge active">{{ b.outcome }}</span><span class="text-dim">effort {{ b.effort_score }}/5</span></div>
+    <p class="breakthrough-text">{{ b.breakthrough }}</p>
+    <a href="{{ admin }}/memory/{{ b.key|urlsegment }}?back={{ here|urlquote }}" class="callout-note breakthrough-link">{{ b.content }}</a>
   </div>
   {% endfor %}
 </section>

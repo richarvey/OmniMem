@@ -84,6 +84,11 @@ pub struct StaticOverhead {
 #[derive(Default)]
 struct Caches {
     dashboard: Option<(Instant, Value)>,
+    /// Duplicate scans by `(namespace, project)`, so an Archive that returns
+    /// to the same scan doesn't compare every vector again.
+    duplicates: std::collections::HashMap<(String, String), (Instant, Value)>,
+    /// The menu's review counts.
+    nav_counts: Option<(Instant, Value)>,
 }
 
 pub(crate) struct Shared {
@@ -231,8 +236,10 @@ impl Panel {
             .route("/skills/{key}", get(skills::detail))
             .route("/duplicates", get(management::duplicates))
             .route("/duplicates/scan", get(management::duplicates_scan))
+            .route("/duplicates/keep", post(management::keep_duplicate))
             .route("/contradictions", get(management::contradictions))
             .route("/contradictions/badge", get(management::badge))
+            .route("/nav-counts", get(management::nav_counts))
             .route(
                 "/contradictions/dismiss-wording",
                 post(management::dismiss_wording),

@@ -230,7 +230,7 @@ pub(crate) fn section_of(path: &str) -> &'static str {
 }
 
 /// What the Back link says: the page it returns to, in the menu's words.
-fn back_label(path: &str) -> &'static str {
+pub(crate) fn back_label(path: &str) -> &'static str {
     match section_of(path) {
         "dashboard" => "Dashboard",
         "search" => "Search",

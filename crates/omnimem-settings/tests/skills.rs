@@ -195,7 +195,7 @@ async fn skills_list_show_and_delete() {
 
     let list = text(&get(&panel, "/skills").await);
     assert!(
-        list.contains(r#"<span class="badge" style="font-size:0.75rem">1</span>"#),
+        list.contains(r#"<span class="count-chip">1</span>"#),
         "{list}"
     );
     assert!(list.contains(&format!(
@@ -214,10 +214,7 @@ async fn skills_list_show_and_delete() {
             || detail.contains("(1 do · 0 watch · 0 don't)"),
         "{detail}"
     );
-    assert!(detail.contains(&format!(
-        r#"<a href="/admin/memory/{}?back="#,
-        source.replace(':', "%3A")
-    )));
+    assert!(detail.contains(&format!(r#"<a href="/admin/memory/{}?back="#, source)));
     assert!(detail.contains("# Rust"));
     assert_eq!(
         get(&panel, "/skills/mem:skill:gen:nothing").await.status(),
@@ -358,8 +355,14 @@ async fn pending_proposals_list_with_their_draft_and_count() {
     assert!(list.contains("# Rust"), "the draft is shown: {list}");
     assert!(list.contains("Accept &amp; Write Skill"));
     assert!(list.contains(r#"action="/admin/skills/discard""#));
-    // The sidebar loads its count like the version marker.
-    assert!(list.contains(r#"hx-get="/admin/skills/pending-badge""#));
+    // The sidebar loads every review count in one request, out of band.
+    assert!(list.contains(r#"hx-get="/admin/nav-counts""#));
+    let counts = text(&get(&panel, "/nav-counts").await);
+    assert!(
+        counts.contains(r#"id="nav-count-skills" hx-swap-oob="true"><span class="nav-count""#)
+            && counts.contains(">1</span>"),
+        "{counts}"
+    );
     let badge = text(&get(&panel, "/skills/pending-badge").await);
     assert!(badge.contains(">1</span>"), "{badge}");
     std::fs::remove_dir_all(dir).unwrap();

@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Create Memory</h2>
+  <div>
+    <h2>New memory</h2>
+    <p class="page-intro">Write something down for every agent to recall. It's embedded and checked for near-duplicates first.</p>
+  </div>
 </header>
 
 {% if error %}
@@ -20,7 +23,7 @@
     <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
     <button class="flash-close" data-dismiss>&times;</button>
   </div>
-  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="{{ admin }}/memory/{{ duplicate.key|urlquote }}?back={{ here|urlquote }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
+  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="{{ admin }}/memory/{{ duplicate.key|urlsegment }}?back={{ here|urlquote }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
   <p style="margin:0;font-size:0.85rem;color:var(--text-dim)">{{ duplicate.content }}</p>
   <p style="margin:0.5rem 0 0;font-size:0.8rem">Check "Force save" below and submit again to store anyway.</p>
 </div>

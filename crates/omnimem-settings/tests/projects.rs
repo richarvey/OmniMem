@@ -155,7 +155,9 @@ async fn projects_are_created_listed_filtered_and_edited() {
 
     let list = text(&get(&panel, "/projects").await);
     assert!(
-        list.contains(r#"<a href="/admin/projects/omnimem" class="project-name">omnimem</a>"#),
+        list.contains(
+            r#"<a href="/admin/projects/omnimem?back=/projects" class="project-name">omnimem</a>"#
+        ),
         "{list}"
     );
     // A name without a context is a link too, folded under its own heading,
@@ -165,7 +167,9 @@ async fn projects_are_created_listed_filtered_and_edited() {
         "{list}"
     );
     assert!(
-        list.contains(r#"<a href="/admin/projects/other" class="project-name">other</a>"#),
+        list.contains(
+            r#"<a href="/admin/projects/other?back=/projects" class="project-name">other</a>"#
+        ),
         "{list}"
     );
     assert!(

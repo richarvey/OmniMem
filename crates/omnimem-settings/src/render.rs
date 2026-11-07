@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
+use chrono::TimeZone as _;
 use minijinja::{AutoEscape, Environment, Value};
 use tracing::error;
 
@@ -68,6 +69,23 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
     env.add_filter("thousands", thousands);
     // For a value going into a query string, before HTML escaping.
     env.add_filter("urlquote", |value: String| crate::pages::quote(&value));
+    // For a value that is one path segment (a project name, a memory key):
+    // a `/` is encoded too, so it can't add segments.
+    env.add_filter("urlsegment", |value: String| {
+        crate::pages::quote_segment(&value)
+    });
+    // An epoch timestamp (seconds, as a string or number) as "7 Nov 2026".
+    env.add_filter("epoch_date", |value: Value| {
+        let seconds = value
+            .as_str()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .or_else(|| f64::try_from(value.clone()).ok())
+            .filter(|s| *s > 0.0);
+        seconds
+            .and_then(|s| chrono::Local.timestamp_opt(s as i64, 0).single())
+            .map(|t| t.format("%-d %b %Y").to_string())
+            .unwrap_or_default()
+    });
     env.add_global("version", env!("CARGO_PKG_VERSION"));
     // Where the panel is served: every link a template writes starts here.
     env.add_global("admin", crate::ADMIN_ROOT);

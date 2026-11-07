@@ -129,7 +129,7 @@ async fn the_list_filters_pages_and_answers_htmx_with_rows() {
         queue.contains("An article nobody has classified"),
         "{queue}"
     );
-    assert!(queue.contains("unclassified"));
+    assert!(queue.contains("licence unknown"));
     assert!(!queue.contains("episodic note number"));
     assert!(queue.contains("aria-current=\"page\"><span class=\"nav-label\">Articles"));
     assert!(
@@ -370,7 +370,7 @@ async fn create_stores_or_shows_the_duplicate() {
 async fn search_shows_results_with_weak_matches_marked() {
     let (panel, engine) = setup();
     remember(&engine, "Searchable memory", "episodic", None);
-    assert!(text(&get(&panel, "/search").await).contains("Semantic Search"));
+    assert!(text(&get(&panel, "/search").await).contains("Search by meaning"));
     assert!(text(&get(&panel, "/search/results?query=+").await).contains("Enter a search query."));
     let found = text(&get(&panel, "/search/results?query=searchable+memor&top_k=5").await);
     assert!(found.contains("Searchable memory"), "{found}");

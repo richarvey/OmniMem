@@ -737,7 +737,8 @@ impl Store {
             }
         }
         let mut stmt = conn.prepare(&format!(
-            "SELECT key FROM memories WHERE {filter} ORDER BY updated_at DESC LIMIT ?2"
+            "SELECT key FROM memories WHERE {filter} AND COALESCE(state, '') != 'archived'
+             ORDER BY updated_at DESC LIMIT ?2"
         ))?;
         let keys = stmt
             .query_map(params![project, limit as i64], |r| r.get::<_, String>(0))?
@@ -754,7 +755,7 @@ impl Store {
             "SELECT p, COUNT(*) FROM (
                  SELECT key, COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p
                  FROM memories
-                 WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND feed_name IS NOT NULL)
+                 WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL)
              ) WHERE p IS NOT NULL AND key != 'mem:project:' || p GROUP BY p",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -841,7 +842,7 @@ impl Store {
                 "SELECT p, COUNT(*), SUM(updated_at >= ?1) FROM (
                      SELECT COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p, updated_at
                      FROM memories
-                     WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND feed_name IS NOT NULL)
+                     WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL)
                  ) WHERE p IS NOT NULL GROUP BY p ORDER BY 3 DESC, 2 DESC, p LIMIT 8",
             )?;
             let rows = stmt.query_map(params![recent], |r| {
@@ -871,11 +872,27 @@ impl Store {
         let month = now - 30.0 * DAY;
         let articles_daily = buckets(
             "SELECT CAST((created_at - ?1) / ?2 AS INTEGER), COUNT(*) FROM memories
-             WHERE namespace = 'knowledge' AND feed_name IS NOT NULL AND created_at >= ?1 AND created_at < ?3
+             WHERE namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL AND created_at >= ?1 AND created_at < ?3
              GROUP BY 1",
             &[&month, &DAY, &now],
         )?;
         let trust = pairs("SELECT trust, COUNT(*) FROM memories GROUP BY 1", &[])?;
+        // A project is a context entry: one with goals or a stack, whatever
+        // its key, as the projects page decides.
+        let project_contexts = pairs(
+            "SELECT COALESCE(NULLIF(state, ''), 'active'), COUNT(*) FROM memories
+             WHERE namespace = 'project'
+               AND (COALESCE(json_extract(fields, '$.goals'), '') != ''
+                    OR COALESCE(json_extract(fields, '$.stack'), '') != '')
+             GROUP BY 1",
+            &[],
+        )?;
+        let recent = {
+            let mut stmt =
+                conn.prepare("SELECT key FROM memories ORDER BY updated_at DESC LIMIT 10")?;
+            stmt.query_map([], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
         Ok(DashboardCounts {
             by_namespace_state,
             created_weekly,
@@ -884,6 +901,8 @@ impl Store {
             efforts,
             articles_daily,
             trust,
+            project_contexts,
+            recent,
         })
     }
 
@@ -1300,6 +1319,10 @@ pub struct DashboardCounts {
     pub articles_daily: Vec<(i64, u64)>,
     /// `(trust, count)` across every namespace.
     pub trust: Vec<(String, u64)>,
+    /// Project contexts `(state, count)`.
+    pub project_contexts: Vec<(String, u64)>,
+    /// The ten most recently updated keys, newest first.
+    pub recent: Vec<String>,
 }
 
 #[cfg(test)]

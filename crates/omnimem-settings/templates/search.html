@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Semantic Search</h2>
+  <div>
+    <h2>Search</h2>
+    <p class="page-intro">Search by meaning, as an agent's recall does, across every namespace.</p>
+  </div>
 </header>
 
 <form class="filter-bar" hx-get="{{ admin }}/search/results" hx-target="#search-results" hx-indicator="#search-spinner">

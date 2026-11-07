@@ -32,14 +32,14 @@
         <li><a href="{{ admin }}/" class="nav-link{% if current_page == 'dashboard' %} active{% endif %}"{% if current_page == 'dashboard' %} aria-current="page"{% endif %}><span class="nav-label">Dashboard</span></a></li>
         <li><a href="{{ admin }}/search" class="nav-link{% if current_page == 'search' %} active{% endif %}"{% if current_page == 'search' %} aria-current="page"{% endif %}><span class="nav-label">Search</span></a></li>
         <li class="nav-section-label" role="presentation">Review</li>
-        <li><a href="{{ admin }}/unconfirmed" class="nav-link{% if current_page == 'unconfirmed' %} active{% endif %}"{% if current_page == 'unconfirmed' %} aria-current="page"{% endif %}><span class="nav-label">Unconfirmed</span><span class="nav-badge" hx-get="{{ admin }}/unconfirmed/badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
-        <li><a href="{{ admin }}/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}"{% if current_page == 'contradictions' %} aria-current="page"{% endif %}><span class="nav-label">Contradictions</span><span class="nav-badge" hx-get="{{ admin }}/contradictions/badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
+        <li><a href="{{ admin }}/unconfirmed" class="nav-link{% if current_page == 'unconfirmed' %} active{% endif %}"{% if current_page == 'unconfirmed' %} aria-current="page"{% endif %}><span class="nav-label">Unconfirmed</span><span class="nav-badge" id="nav-count-unconfirmed"></span></a></li>
+        <li><a href="{{ admin }}/contradictions" class="nav-link{% if current_page == 'contradictions' %} active{% endif %}"{% if current_page == 'contradictions' %} aria-current="page"{% endif %}><span class="nav-label">Contradictions</span><span class="nav-badge" id="nav-count-contradictions"></span></a></li>
         <li><a href="{{ admin }}/duplicates" class="nav-link{% if current_page == 'duplicates' %} active{% endif %}"{% if current_page == 'duplicates' %} aria-current="page"{% endif %}><span class="nav-label">Duplicates</span></a></li>
         <li class="nav-section-label" role="presentation">Memory</li>
         <li><a href="{{ admin }}/memories" class="nav-link{% if current_page == 'memories' %} active{% endif %}"{% if current_page == 'memories' %} aria-current="page"{% endif %}><span class="nav-label">Memories</span></a></li>
         <li><a href="{{ admin }}/memories?namespace=preference" class="nav-link{% if current_page == 'preferences' %} active{% endif %}"{% if current_page == 'preferences' %} aria-current="page"{% endif %}><span class="nav-label">Preferences</span></a></li>
         <li><a href="{{ admin }}/projects" class="nav-link{% if current_page == 'projects' %} active{% endif %}"{% if current_page == 'projects' %} aria-current="page"{% endif %}><span class="nav-label">Projects</span></a></li>
-        <li><a href="{{ admin }}/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}"{% if current_page == 'skills' %} aria-current="page"{% endif %}><span class="nav-label">Skills</span><span class="nav-badge" hx-get="{{ admin }}/skills/pending-badge" hx-trigger="load" hx-swap="innerHTML"></span></a></li>
+        <li><a href="{{ admin }}/skills" class="nav-link{% if current_page == 'skills' %} active{% endif %}"{% if current_page == 'skills' %} aria-current="page"{% endif %}><span class="nav-label">Skills</span><span class="nav-badge" id="nav-count-skills"></span></a></li>
         <li class="nav-section-label" role="presentation">Learning</li>
         <li><a href="{{ admin }}/experience" class="nav-link{% if current_page == 'experience' %} active{% endif %}"{% if current_page == 'experience' %} aria-current="page"{% endif %}><span class="nav-label">Experience</span></a></li>
         <li><a href="{{ admin }}/experience/graveyard" class="nav-link{% if current_page == 'graveyard' %} active{% endif %}"{% if current_page == 'graveyard' %} aria-current="page"{% endif %}><span class="nav-label">Graveyard</span></a></li>
@@ -54,6 +54,7 @@
         <li><a href="{{ admin }}/backups" class="nav-link{% if current_page == 'backups' %} active{% endif %}"{% if current_page == 'backups' %} aria-current="page"{% endif %}><span class="nav-label">Backups</span></a></li>
         <li><a href="{{ admin }}/configuration" class="nav-link{% if current_page == 'configuration' %} active{% endif %}"{% if current_page == 'configuration' %} aria-current="page"{% endif %}><span class="nav-label">Configuration</span></a></li>
           </ul>
+          <span hx-get="{{ admin }}/nav-counts" hx-trigger="load" hx-swap="none" hidden></span>
           <div class="sidebar-foot">
             <div class="sidebar-version">
               <span class="version-badge">v{{ version }}</span>

@@ -257,9 +257,30 @@ pub(crate) async fn remember_here(
         });
     let here = from_htmx
         .or(Some(own))
+        .map(|p| without_notices(&p))
         .and_then(|p| local_path(&p))
         .unwrap_or_else(|| "/".to_owned());
     HERE.scope(here, next.run(request)).await
+}
+
+/// A path without the one-off notices a redirect added (`message`, `error`,
+/// `tag_error` and the like), so a link back doesn't show them again.
+fn without_notices(path: &str) -> String {
+    let Some((route, query)) = path.split_once('?') else {
+        return path.to_owned();
+    };
+    let kept: Vec<&str> = query
+        .split('&')
+        .filter(|pair| {
+            let name = pair.split('=').next().unwrap_or("");
+            !(name == "message" || name == "error" || name.ends_with("_error"))
+        })
+        .collect();
+    if kept.is_empty() {
+        route.to_owned()
+    } else {
+        format!("{route}?{}", kept.join("&"))
+    }
 }
 
 /// The page being rendered, as a panel path: `/` outside a request.
@@ -293,6 +314,19 @@ mod return_path_tests {
             local_path("/administrators").as_deref(),
             Some("/administrators")
         );
+    }
+
+    #[test]
+    fn notices_are_not_part_of_where_a_page_is() {
+        assert_eq!(
+            without_notices("/memory/k?back=/x&tag_error=bad"),
+            "/memory/k?back=/x"
+        );
+        assert_eq!(
+            without_notices("/contradictions?message=Resolved."),
+            "/contradictions"
+        );
+        assert_eq!(without_notices("/memories?page=2"), "/memories?page=2");
     }
 
     #[test]

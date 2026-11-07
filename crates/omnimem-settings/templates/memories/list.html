@@ -50,30 +50,35 @@
     </select>
   </div>
   <div class="toolbar-field">
-    <label for="filter-licence" class="field-label">Licence</label>
-    <select id="filter-licence" class="form-select" name="licence">
-      <option value="">All</option>
-      {% for value, label in licence_classes %}
-      <option value="{{ value }}"{% if licence == value %} selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="toolbar-field">
-    <label for="filter-provenance" class="field-label">Provenance</label>
-    <select id="filter-provenance" class="form-select" name="provenance">
-      <option value="">All</option>
-      {% for value, label in provenance_classes %}
-      <option value="{{ value }}"{% if provenance == value %} selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="toolbar-field">
     <label for="filter-sort" class="field-label">Sort</label>
     <select id="filter-sort" class="form-select" name="sort">
       <option value="newest"{% if sort == 'newest' %} selected{% endif %}>Newest</option>
       <option value="oldest"{% if sort == 'oldest' %} selected{% endif %}>Oldest</option>
     </select>
   </div>
+  <details class="more-filters"{% if licence or provenance %} open{% endif %}>
+    <summary class="btn btn-secondary btn-sm">More filters{% if licence or provenance %} (on){% endif %}</summary>
+    <div class="more-filters-body">
+      <div class="toolbar-field">
+        <label for="filter-licence" class="field-label">Licence</label>
+        <select id="filter-licence" class="form-select" name="licence">
+          <option value="">All</option>
+          {% for value, label in licence_classes %}
+          <option value="{{ value }}"{% if licence == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="toolbar-field">
+        <label for="filter-provenance" class="field-label">Provenance</label>
+        <select id="filter-provenance" class="form-select" name="provenance">
+          <option value="">All</option>
+          {% for value, label in provenance_classes %}
+          <option value="{{ value }}"{% if provenance == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </details>
   <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
 </form>
 

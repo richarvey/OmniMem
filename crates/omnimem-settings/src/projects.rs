@@ -22,9 +22,10 @@ use serde_json::{Map, Value, json};
 use tracing::{info, warn};
 
 use crate::PanelState;
+use crate::detail::{back_label, section_of};
 use crate::format::{date_and_time, number, timestamp};
 use crate::lifecycle::redirect_target;
-use crate::pages::{blocking, quote, quote_segment, see_other, starting};
+use crate::pages::{back_of, blocking, quote, quote_segment, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
@@ -40,6 +41,11 @@ const MAX_PROJECT_NAME_CHARS: usize = 200;
 pub(crate) fn check_project_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.chars().count() > MAX_PROJECT_NAME_CHARS {
         return Err("Project name must be 1-200 characters".to_owned());
+    }
+    // `.` and `..` are valid characters but not usable names: a browser
+    // folds them out of a URL, so the project's page couldn't be reached.
+    if name.trim_matches('.').is_empty() {
+        return Err("Project name can't be only dots".to_owned());
     }
     let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ' ');
     if !name.chars().all(allowed) {
@@ -250,7 +256,12 @@ pub(crate) async fn list(
 /// How many of a project's latest memories its page lists.
 const PROJECT_RECENT: usize = 12;
 
-pub(crate) async fn detail(State(state): State<PanelState>, Path(name): Path<String>) -> Response {
+pub(crate) async fn detail(
+    State(state): State<PanelState>,
+    Path(name): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let back = back_of(&query).unwrap_or_else(|| "/projects".to_owned());
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
@@ -330,7 +341,13 @@ pub(crate) async fn detail(State(state): State<PanelState>, Path(name): Path<Str
         Ok(Some((project, skill_user))) => page(
             state.templates(),
             "projects/detail.html",
-            context! { project, current_page => "projects", skill_user },
+            context! {
+                project,
+                current_page => section_of(&back),
+                back_label => back_label(&back),
+                back,
+                skill_user,
+            },
         ),
         Ok(None) => project_not_found(&state),
         Err(failure) => failure,

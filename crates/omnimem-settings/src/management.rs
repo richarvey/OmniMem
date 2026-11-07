@@ -94,29 +94,122 @@ pub(crate) async fn duplicates(
     let project = query.get("project").cloned().unwrap_or_default();
     let scanned = query.get("scan").is_some_and(|s| s == "1");
     let wanted = namespace.clone();
-    match blocking(move || {
-        let clusters = if scanned {
-            scan(&engine, &wanted, &project)?
-        } else {
-            json!([])
+    let slot = (namespace.clone(), project.clone());
+    // A scan compares every vector, so the page an Archive returns to reuses
+    // the last one, minus what has been archived since.
+    let cached = state
+        .caches()
+        .duplicates
+        .get(&slot)
+        .filter(|(at, _)| at.elapsed() < SCAN_TTL)
+        .map(|(_, clusters)| clusters.clone());
+    let fresh = query.get("fresh").is_some_and(|f| f == "1");
+    let found = blocking(move || {
+        let clusters = match (scanned, cached) {
+            (false, _) => json!([]),
+            (true, Some(clusters)) if !fresh => prune(&engine, &clusters)?,
+            (true, _) => scan(&engine, &wanted, &project)?,
         };
         Ok((clusters, last_maintenance(&engine)?))
     })
-    .await
-    {
-        Ok((clusters, last)) => page(
-            state.templates(),
-            "duplicates.html",
-            context! {
-                current_page => "duplicates",
-                clusters,
-                namespace,
-                scanned,
-                last_maintenance => last,
-            },
-        ),
+    .await;
+    let (clusters, last) = match found {
+        Ok(found) => found,
+        Err(failure) => return failure,
+    };
+    if scanned {
+        let mut caches = state.caches();
+        caches
+            .duplicates
+            .retain(|_, (at, _)| at.elapsed() < SCAN_TTL);
+        caches
+            .duplicates
+            .insert(slot, (std::time::Instant::now(), clusters.clone()));
+    }
+    page(
+        state.templates(),
+        "duplicates.html",
+        context! {
+            current_page => "duplicates",
+            clusters,
+            namespace,
+            scanned,
+            last_maintenance => last,
+        },
+    )
+}
+
+/// POST `/duplicates/keep`: keep one member of a cluster and archive the
+/// rest (each `other`), then return to the scan.
+pub(crate) async fn keep_duplicate(
+    State(state): State<PanelState>,
+    Form(form): Form<Vec<(String, String)>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let value = |name: &str| form.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+    let keep = value("key").unwrap_or_default();
+    let target = value("next")
+        .and_then(|n| crate::pages::local_path(&n))
+        .unwrap_or_else(|| "/duplicates".to_owned());
+    let others: Vec<String> = form
+        .iter()
+        .filter(|(k, v)| k == "other" && *v != keep && v.starts_with("mem:"))
+        .map(|(_, v)| v.clone())
+        .collect();
+    let done = blocking(move || {
+        let reason = format!("Duplicate of {keep}, archived from the settings panel");
+        for key in &others {
+            if let Err(e) =
+                engine.transition(key, omnimem_engine::MemoryState::Archived, Some(&reason))
+            {
+                warn!(key, error = %e, "could not archive a duplicate");
+            }
+        }
+        Ok(())
+    })
+    .await;
+    match done {
+        Ok(()) => see_other(&target),
         Err(failure) => failure,
     }
+}
+
+/// A cached scan as it stands now: members archived or deleted since are
+/// gone, and a cluster left with one member is settled.
+fn prune(engine: &Engine, clusters: &Value) -> omnimem_engine::Result<Value> {
+    let Some(list) = clusters.as_array() else {
+        return Ok(json!([]));
+    };
+    let mut kept = Vec::new();
+    for cluster in list {
+        let members = cluster["memories"].as_array().cloned().unwrap_or_default();
+        let keys: Vec<String> = members
+            .iter()
+            .filter_map(|m| m["key"].as_str().map(str::to_owned))
+            .collect();
+        let states = engine.store().get_fields_multi(&keys, &["state"])?;
+        let live: Vec<Value> = members
+            .into_iter()
+            .zip(states)
+            .filter(|(_, row)| {
+                row.as_ref().is_some_and(|r| {
+                    !matches!(
+                        r.get("state").map(String::as_str),
+                        Some("archived" | "deleted")
+                    )
+                })
+            })
+            .map(|(m, _)| m)
+            .collect();
+        if live.len() > 1 {
+            let mut cluster = cluster.clone();
+            cluster["memories"] = Value::Array(live);
+            kept.push(cluster);
+        }
+    }
+    Ok(Value::Array(kept))
 }
 
 /// GET `/duplicates/scan`: the htmx form of the same scan.
@@ -247,6 +340,70 @@ pub(crate) async fn badge(State(state): State<PanelState>) -> Response {
         .into_response(),
         _ => Html("").into_response(),
     }
+}
+
+/// How long the menu's counts and a duplicate scan are reused.
+const NAV_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn nav_badge(id: &str, n: usize, what: &str) -> String {
+    let inner = if n > 0 {
+        format!(
+            r#"<span class="nav-count" title="{n} {what}{}">{n}</span>"#,
+            if n == 1 { "" } else { "s" }
+        )
+    } else {
+        String::new()
+    };
+    format!(r#"<span class="nav-badge" id="{id}" hx-swap-oob="true">{inner}</span>"#)
+}
+
+/// GET `/nav-counts`: every review count the menu shows, in one request
+/// and reused for a short while, swapped into the menu out of band.
+pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return Html("").into_response();
+    };
+    let cached = state
+        .caches()
+        .nav_counts
+        .clone()
+        .filter(|(at, _)| at.elapsed() < NAV_TTL);
+    let counts = if let Some((_, counts)) = cached {
+        counts
+    } else {
+        let counted = blocking(move || {
+            Ok(json!({
+                "unconfirmed": engine.unconfirmed_from(None, usize::MAX)?.len(),
+                "contradictions": engine.open_contradictions()?.len() + engine.pending_resolutions()?.len(),
+                "proposals": engine.pending_skill_proposals()?.iter().filter(|p| !p.stale).count(),
+            }))
+        })
+        .await;
+        match counted {
+            Ok(counts) => {
+                state.caches().nav_counts = Some((std::time::Instant::now(), counts.clone()));
+                counts
+            }
+            Err(_) => return Html("").into_response(),
+        }
+    };
+    let n = |name: &str| usize::try_from(counts[name].as_u64().unwrap_or(0)).unwrap_or(0);
+    Html(format!(
+        "{}{}{}",
+        nav_badge(
+            "nav-count-unconfirmed",
+            n("unconfirmed"),
+            "unconfirmed fact"
+        ),
+        nav_badge(
+            "nav-count-contradictions",
+            n("contradictions"),
+            "contradiction to settle"
+        ),
+        nav_badge("nav-count-skills", n("proposals"), "skill proposal waiting"),
+    ))
+    .into_response()
 }
 
 fn form_value(form: &HashMap<String, String>, name: &str) -> String {

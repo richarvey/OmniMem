@@ -44,7 +44,7 @@ async fn act(
     headers: HeaderMap,
     form: FormData,
     fallback: impl FnOnce(&str) -> String,
-    action: impl FnOnce(&Engine, &str, &FormData) + Send + 'static,
+    action: impl FnOnce(&Engine, &str, &FormData) -> bool + Send + 'static,
 ) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
@@ -52,17 +52,19 @@ async fn act(
     let key = form.get("key").cloned().unwrap_or_default();
     let target = redirect_target(&form, fallback(&key));
     let worker_key = key.clone();
-    if let Err(failure) = blocking(move || {
-        action(&engine, &worker_key, &form);
-        Ok(())
-    })
-    .await
-    {
-        return failure;
-    }
-    // An htmx request removes its own row, so it wants no page back.
+    let done = match blocking(move || Ok(action(&engine, &worker_key, &form))).await {
+        Ok(done) => done,
+        Err(failure) => return failure,
+    };
+    // An htmx request removes its own row, so it wants no page back. A
+    // refusal answers 409, which htmx doesn't swap, so the row stays.
     if headers.contains_key("hx-request") {
-        return StatusCode::OK.into_response();
+        let status = if done {
+            StatusCode::OK
+        } else {
+            StatusCode::CONFLICT
+        };
+        return status.into_response();
     }
     see_other(&target)
 }
@@ -82,7 +84,9 @@ pub(crate) async fn deprioritise(
             .map_or("Deprioritised via web UI", String::as_str);
         if let Err(e) = engine.transition(key, MemoryState::Deprioritised, Some(reason)) {
             warn!(key, error = %e, "could not deprioritise");
+            return false;
         }
+        true
     })
     .await
 }
@@ -95,7 +99,9 @@ pub(crate) async fn archive(
     act(state, headers, form, to_memory, |engine, key, _| {
         if let Err(e) = engine.transition(key, MemoryState::Archived, Some("Archived via web UI")) {
             warn!(key, error = %e, "could not archive");
+            return false;
         }
+        true
     })
     .await
 }
@@ -115,7 +121,9 @@ pub(crate) async fn reinstate(
             .and_then(|_| Ok(engine.store().set_fields(key, &reset)?));
         if let Err(e) = result {
             warn!(key, error = %e, "could not reinstate");
+            return false;
         }
+        true
     })
     .await
 }
@@ -140,13 +148,15 @@ pub(crate) async fn delete(
                         key,
                         "refusing to delete a key outside the memory namespaces"
                     );
-                    return;
+                    return false;
                 }
                 if let Err(e) = engine.store().delete(key) {
                     warn!(key, error = %e, "could not delete");
+                    return false;
                 }
             }
             engine.invalidate_abandoned_cache();
+            true
         },
     )
     .await

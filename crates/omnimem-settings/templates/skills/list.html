@@ -4,7 +4,10 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Compiled Skills <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+  <div>
+    <h2>Skills <span class="count-chip">{{ total }}</span></h2>
+    <p class="page-intro">Procedures compiled from experience for a kind of work. A person accepts every one before it is written.</p>
+  </div>
   <div style="display:flex;gap:0.75rem;align-items:center">
     <div class="health-indicators">
       <span class="indicator ok">{{ states.active }} active</span>
@@ -74,7 +77,7 @@
 
 {% if proposals %}
 <section class="pending-proposals" id="pending-proposals">
-  <h3>Pending proposals <span class="badge" style="font-size:0.75rem">{{ proposals|length }}</span></h3>
+  <h3 class="section-heading">Pending proposals <span class="count-chip">{{ proposals|length }}</span></h3>
   <p class="section-note">
     Drafts waiting for a person, including any an agent proposed over MCP.
     Nothing here is written until you accept it, and each one expires on its

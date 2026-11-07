@@ -8,9 +8,15 @@
     {% for mem in cluster.memories %}
     <li class="cluster-row">
       <div class="cluster-text">
-        <a href="{{ admin }}/memory/{{ mem.key|urlquote }}?back={{ here|urlquote }}" class="cluster-content">{{ mem.content[:240] }}{% if mem.content|length > 240 %}…{% endif %}</a>
-        <span class="mono cluster-key">{{ mem.key }}</span>
+        <a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}" class="cluster-content">{{ mem.content[:240] }}{% if mem.content|length > 240 %}…{% endif %}</a>
+        <span class="cluster-meta">{% if mem.created_at %}<time>{{ mem.created_at|epoch_date }}</time>{% endif %}{% if mem.project %} &middot; {{ mem.project }}{% endif %}{% if mem.state != 'active' %} &middot; {{ mem.state }}{% endif %} &middot; <span class="mono">{{ mem.key }}</span></span>
       </div>
+      <form method="POST" action="{{ admin }}/duplicates/keep" data-confirm="Keep this one and archive the other {{ cluster.memories|length - 1 }}?">
+        <input type="hidden" name="key" value="{{ mem.key }}">
+        {% for other in cluster.memories %}{% if other.key != mem.key %}<input type="hidden" name="other" value="{{ other.key }}">{% endif %}{% endfor %}
+        <input type="hidden" name="next" value="{{ here }}">
+        <button type="submit" class="btn btn-secondary btn-sm" aria-label="Keep {{ mem.key }} and archive the others">Keep this one</button>
+      </form>
       <form method="POST" action="{{ admin }}/lifecycle/archive"
             hx-post="{{ admin }}/lifecycle/archive" hx-target="closest .cluster-row" hx-swap="outerHTML">
         <input type="hidden" name="key" value="{{ mem.key }}">

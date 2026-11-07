@@ -5,7 +5,7 @@
 {% macro project_row(p) %}
 <tr>
   <td class="project-cell">
-    <a href="{{ admin }}/projects/{{ p.name|urlquote }}" class="project-name">{{ p.name }}</a>
+    <a href="{{ admin }}/projects/{{ p.name|urlsegment }}?back={{ here|urlquote }}" class="project-name">{{ p.name }}</a>
     {% if p.description %}<span class="project-desc">{{ p.description }}</span>{% endif %}
   </td>
   <td>{% if p.state != 'active' %}<span class="badge {{ p.state }}">{{ p.state }}</span>{% else %}<span class="badge active">active</span>{% endif %}</td>
@@ -14,7 +14,7 @@
   </td>
   <td class="domains-cell">
     {% for d in p.domains[:3] %}<a href="{{ admin }}/projects?domain={{ d|urlquote }}" class="domain-pill">{{ d }}</a>{% endfor %}
-    {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlquote }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}">+{{ p.domains|length - 3 }}</a>{% endif %}
+    {% if p.domains|length > 3 %}<a href="{{ admin }}/projects/{{ p.name|urlsegment }}" class="domain-pill domain-more" title="{{ p.domains[3:]|join(', ') }}">+{{ p.domains|length - 3 }}</a>{% endif %}
     {% if not p.domains %}<span class="text-dim">&mdash;</span>{% endif %}
   </td>
   <td class="date-cell"><span class="date-main">{{ p.updated_date }}</span></td>
@@ -23,19 +23,19 @@
     <details class="row-menu">
       <summary class="btn btn-secondary btn-sm" aria-label="Actions for {{ p.name }}">&middot;&middot;&middot;</summary>
       <div class="row-menu-body">
-        <a href="{{ admin }}/projects/{{ p.name|urlquote }}/edit" class="row-menu-item row-menu-link">Edit</a>
+        <a href="{{ admin }}/projects/{{ p.name|urlsegment }}/edit" class="row-menu-item row-menu-link">Edit</a>
         {% if p.state == "deprioritised" %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/reinstate" data-confirm="Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.">
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlsegment }}/reinstate" data-confirm="Reinstate project &quot;{{ p.name }}&quot;? All its deprioritised memories return to full recall visibility.">
           <input type="hidden" name="next" value="{{ here }}">
           <button type="submit" class="row-menu-item">Reinstate</button>
         </form>
         {% else %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/deprioritise" data-confirm="Deprioritise project &quot;{{ p.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlsegment }}/deprioritise" data-confirm="Deprioritise project &quot;{{ p.name }}&quot;? Its memories stay stored but drop to 0.2x recall visibility. Reversible.">
           <input type="hidden" name="next" value="{{ here }}">
           <button type="submit" class="row-menu-item">Deprioritise</button>
         </form>
         {% endif %}
-        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlquote }}/delete" data-confirm="Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.">
+        <form method="POST" action="{{ admin }}/projects/{{ p.name|urlsegment }}/delete" data-confirm="Delete project &quot;{{ p.name }}&quot;? This removes the project context but not memories tagged with this project.">
           <input type="hidden" name="next" value="{{ here }}">
           <button type="submit" class="row-menu-item row-menu-danger">Delete context</button>
         </form>
@@ -80,7 +80,7 @@
   </div>
 </header>
 
-<form method="GET" action="{{ admin }}/projects" class="toolbar" role="search">
+<form method="GET" action="{{ admin }}/projects" class="toolbar" role="search" data-auto-submit>
   <div class="toolbar-field toolbar-grow">
     <label for="project-q" class="field-label">Search</label>
     <input type="search" id="project-q" name="q" class="form-input" value="{{ search }}" placeholder="Name or description">
@@ -103,7 +103,7 @@
       <option value="archived"{% if state_filter == 'archived' %} selected{% endif %}>Archived</option>
     </select>
   </div>
-  <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+  <button type="submit" class="btn btn-primary btn-sm">Search</button>
   {% if search or domain_filter or state_filter %}<a href="{{ admin }}/projects" class="btn-link">Clear</a>{% endif %}
 </form>
 
