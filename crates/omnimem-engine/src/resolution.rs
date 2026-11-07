@@ -556,8 +556,8 @@ impl Engine {
             pending.push(json!({
                 "key_a": request.key_a,
                 "key_b": request.key_b,
-                "content_a": take_chars(&review.content_a, 150),
-                "content_b": take_chars(&review.content_b, 150),
+                "content_a": take_chars(&review.content_a, crate::PAIR_PREVIEW_CHARS),
+                "content_b": take_chars(&review.content_b, crate::PAIR_PREVIEW_CHARS),
                 "outcome": request.outcome.as_str(),
                 "winner": request.winner.unwrap_or_default(),
                 "reason": request.reason.unwrap_or_default(),
@@ -607,11 +607,15 @@ impl Engine {
     /// episodic alone, so a pair found in knowledge or a preference was
     /// never shown anywhere.
     pub fn open_contradictions(&self) -> Result<Vec<Value>> {
+        // Only the memories that carry links, then content for the linked
+        // ones: a store with no disputes costs nothing to list.
         let mut keys = Vec::new();
         for namespace in ["episodic", "knowledge", "preference", "project"] {
-            keys.extend(self.store.scan_prefix(&format!("mem:{namespace}:"))?);
+            keys.extend(
+                self.store
+                    .keys_with_field(&format!("mem:{namespace}:"), "contradictions")?,
+            );
         }
-        // Links first, for every memory; content only for the linked ones.
         let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;
         let sorted = |a: &str, b: &str| {
             let mut pair = [a.to_owned(), b.to_owned()];
@@ -704,9 +708,9 @@ impl Engine {
                     });
                 json!({
                     "key_a": key,
-                    "content_a": take_chars(&content_a, 150),
+                    "content_a": take_chars(&content_a, crate::PAIR_PREVIEW_CHARS),
                     "key_b": other,
-                    "content_b": take_chars(&content_b, 150),
+                    "content_b": take_chars(&content_b, crate::PAIR_PREVIEW_CHARS),
                     "explanation": entry.get("explanation").cloned().unwrap_or_else(|| json!("")),
                     "similarity": entry.get("similarity").cloned().unwrap_or(Value::Null),
                 })

@@ -651,6 +651,24 @@ impl Store {
     }
 
     /// Every live key starting with `prefix`, memories and others, sorted.
+    /// The memory keys under `prefix` whose `field` is set and not empty, in
+    /// key order: what a listing of contradiction links reads instead of
+    /// every memory's row.
+    pub fn keys_with_field(&self, prefix: &str, field: &str) -> Result<Vec<String>> {
+        let Some(path) = json_paths(&[field]).and_then(|p| p.into_iter().next()) else {
+            return Err(StoreError::InvalidField(field.to_owned()));
+        };
+        let upper = format!("{prefix}\u{10FFFF}");
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT key FROM memories WHERE key >= ?1 AND key < ?2
+             AND json_extract(fields, ?3) IS NOT NULL AND json_extract(fields, ?3) != ''
+             ORDER BY key",
+        )?;
+        let rows = stmt.query_map(params![prefix, upper, path], |r| r.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn scan_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let upper = format!("{prefix}\u{10FFFF}");
         let conn = self.conn();
@@ -1375,6 +1393,39 @@ mod tests {
         let just_fits = format!("mem:episodic:{}", "a".repeat(MAX_KEY_BYTES - 13));
         assert_eq!(just_fits.len(), MAX_KEY_BYTES);
         assert!(validate_key(&just_fits).is_ok());
+    }
+
+    #[test]
+    fn keys_with_field_finds_only_rows_where_it_is_set() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let put = |key: &str, links: Option<&str>| {
+            let mut fields = Fields::from([("content".to_owned(), key.to_owned())]);
+            if let Some(links) = links {
+                fields.insert("contradictions".to_owned(), links.to_owned());
+            }
+            store.upsert(key, &fields, None).unwrap();
+        };
+        put("mem:episodic:01A", Some(r#"[{"key": "mem:episodic:01B"}]"#));
+        put("mem:episodic:01B", Some(r#"[{"key": "mem:episodic:01A"}]"#));
+        put("mem:episodic:01C", Some(""));
+        put("mem:episodic:01D", None);
+        put(
+            "mem:knowledge:01E",
+            Some(r#"[{"key": "mem:episodic:01A"}]"#),
+        );
+        assert_eq!(
+            store
+                .keys_with_field("mem:episodic:", "contradictions")
+                .unwrap(),
+            ["mem:episodic:01A", "mem:episodic:01B"]
+        );
+        assert_eq!(
+            store
+                .keys_with_field("mem:knowledge:", "contradictions")
+                .unwrap(),
+            ["mem:knowledge:01E"]
+        );
+        assert!(store.keys_with_field("mem:", "bad\"field").is_err());
     }
 
     #[test]

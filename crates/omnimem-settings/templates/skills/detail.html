@@ -3,18 +3,26 @@
 {% block title %}{{ skill.name }} — Skills — OmniMem{% endblock %}
 
 {% block content %}
-<header class="detail-header">
-  <a href="{{ admin }}/skills" class="btn btn-secondary btn-sm">&larr; Back</a>
-  <span class="badge ns-skill">skill</span>
-  <span class="badge {{ skill.state }}">{{ skill.state }}</span>
-  {% if skill.generated %}<span class="badge generated" title="Compiler output — never hand-edited">generated</span>{% endif %}
-  <span class="detail-key">{{ skill.key }}</span>
+<nav class="back-nav" aria-label="Back">
+  <a href="{{ admin }}/skills" class="back-link">&larr; Skills</a>
+</nav>
+
+<header class="detail-head">
+  <div class="detail-head-main">
+    <div class="detail-badges">
+      <span class="badge ns-skill">skill</span>
+      <span class="badge {{ skill.state }}">{{ skill.state }}</span>
+      {% if skill.generated %}<span class="badge generated" title="Compiler output, never hand-edited">generated</span>{% endif %}
+    </div>
+    <h1 class="detail-title">{{ skill.name or skill.key }}</h1>
+    <p class="detail-key mono">{{ skill.key }}</p>
+  </div>
   {% if skill.generated %}
-  <a href="{{ admin }}/skills/export/{{ skill.key }}" class="btn btn-secondary btn-sm" style="margin-left:auto" title="Download this skill and its source memories as a portable zip bundle">Export</a>
+  <div class="detail-actions">
+    <a href="{{ admin }}/skills/export/{{ skill.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
+  </div>
   {% endif %}
 </header>
-
-<h1 class="detail-title">{{ skill.name or skill.key }}</h1>
 
 {% if skill.description %}
 <div class="detail-content" style="border-color:var(--accent)">{{ skill.description }}</div>

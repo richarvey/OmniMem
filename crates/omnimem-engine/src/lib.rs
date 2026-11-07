@@ -45,6 +45,12 @@ pub mod transfer;
 pub mod trust;
 
 pub use llm::ExtractedFact;
+
+/// How much of each side a listed contradiction pair carries, and how much
+/// of each copy a duplicate cluster does: the panel's templates read these
+/// to know when a preview was cut.
+pub const PAIR_PREVIEW_CHARS: usize = 150;
+pub const CLUSTER_PREVIEW_CHARS: usize = 200;
 pub use projects::{Suggestion, migrate_project_domains};
 
 use std::collections::BTreeMap;

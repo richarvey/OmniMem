@@ -155,6 +155,12 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
             .unwrap_or_default()
     });
     env.add_global("version", env!("CARGO_PKG_VERSION"));
+    // Where the engine cut a preview, so a template can end it with an ellipsis.
+    env.add_global("pair_preview_chars", omnimem_engine::PAIR_PREVIEW_CHARS);
+    env.add_global(
+        "cluster_preview_chars",
+        omnimem_engine::CLUSTER_PREVIEW_CHARS,
+    );
     // Where the panel is served: every link a template writes starts here.
     env.add_global("admin", crate::ADMIN_ROOT);
     // Read at render time, so a note set after start-up reaches every page.

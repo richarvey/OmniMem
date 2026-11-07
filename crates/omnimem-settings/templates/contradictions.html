@@ -15,12 +15,12 @@
       <div class="pair-col">
         <span class="pair-label">A</span>
         <a href="{{ admin }}/memory/{{ pair.key_a|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_a }}</a>
-        <div class="pair-text">{{ pair.content_a or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_a|length >= 150 %}…{% endif %}</div>
+        <div class="pair-text">{{ pair.content_a or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_a|length >= pair_preview_chars %}…{% endif %}</div>
       </div>
       <div class="pair-col">
         <span class="pair-label">B</span>
         <a href="{{ admin }}/memory/{{ pair.key_b|urlsegment }}?back={{ here|urlquote }}" class="mono key-link">{{ pair.key_b }}</a>
-        <div class="pair-text">{{ pair.content_b or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_b|length >= 150 %}…{% endif %}</div>
+        <div class="pair-text">{{ pair.content_b or "This memory no longer exists. Mark the pair as not a contradiction to clear it." }}{% if pair.content_b|length >= pair_preview_chars %}…{% endif %}</div>
       </div>
     </div>
     <form method="POST" action="{{ admin }}/contradictions/resolve" class="pair-form">

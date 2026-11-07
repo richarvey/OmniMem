@@ -177,7 +177,11 @@ impl Engine {
                     m.insert("key".into(), key.as_str().into());
                     m.insert(
                         "content".into(),
-                        take_chars(data.get("content").map_or("", String::as_str), 200).into(),
+                        take_chars(
+                            data.get("content").map_or("", String::as_str),
+                            crate::CLUSTER_PREVIEW_CHARS,
+                        )
+                        .into(),
                     );
                     m.insert(
                         "project".into(),
