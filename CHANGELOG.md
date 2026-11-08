@@ -2,6 +2,13 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.10] - 2026-11-08
+
+One fix: a contradiction whose other memory no longer exists can be cleared. There's no schema change, so you can go back to 7.0.9 without a backup.
+
+### Fixed
+- **A pair whose other memory had been deleted could never be resolved.** Resolving a contradiction loaded both memories and refused with "Memory key not found" when one was gone, so the pair stayed on the panel's contradictions page and in the briefing for good: the panel's own advice, "Mark the pair as not a contradiction to clear it", failed, as did the CLI and `check_contradictions(mode="resolve")`. Deleting a memory has settled its links since 7.0.6, but links left by deletions before that, and by every 6.x deletion carried over in an import, pointed at nothing. Now `false_positive` and `both_valid` clear such a pair, writing the resolution onto the surviving memory, and the other outcomes say the memory no longer exists rather than that its key wasn't found. The maintenance pass a briefing runs also settles any open link to a memory that no longer exists as `other_forgotten`, the way a deletion does, so older stores tidy themselves without anyone clicking
+
 ## [7.0.9] - 2026-11-05
 
 Fixes from the OmniMem test harness's 7.0.8 findings (`omnimem-test-harness/docs/findings-7.0.8.md`): the contradiction scan now sees new memories on a full store, a forget takes the recall log entries that found the memory, a person can settle a contradiction no scan linked, and the keyless heuristic recognises a changed value as well as a negation.
