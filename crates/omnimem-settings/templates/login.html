@@ -11,10 +11,11 @@
   <meta name="robots" content="noindex">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'">
   <link rel="stylesheet" href="{{ admin }}/static/style.css">
+  <script src="{{ admin }}/static/theme.js"></script>
 </head>
 <body class="login-body">
   <main class="login-card">
-    <h1 class="login-logo"><img src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="175" height="34" alt="&lt;omnimem&gt;"></h1>
+    <h1 class="login-logo"><img class="logo-for-dark" src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="175" height="34" alt="&lt;omnimem&gt;"><img class="logo-for-light" src="{{ admin }}/static/images/omnimem-logo-horizontal-light.png" width="175" height="34" alt="&lt;omnimem&gt;"></h1>
     <span class="login-eyebrow">Settings</span>
     {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
     {% if password_sign_in %}

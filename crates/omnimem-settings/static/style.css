@@ -94,6 +94,63 @@
   --sidebar-width: 236px;
 }
 
+/* The light theme: the same system on paper. Grounds step down from white,
+   and every hue is darkened until it reads at 4.5:1 or better as text on
+   white and on the raised grounds, so a namespace keeps its colour. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --bg-alt: #eceef2;
+  --surface: #ffffff;
+  --surface-card: #ffffff;
+  --surface-terminal: #ffffff;
+  --surface-bar: #f0f2f5;
+  --surface-raised: #eef0f3;
+  --surface-chip: #eceff3;
+  --surface-hover: #e5e8ed;
+  --border-card: #dadee4;
+  --border-subtle: #e2e5ea;
+  --border-row: #eaecf0;
+  --text-heading: #12151a;
+  --text-soft: #2a2f37;
+  --text-body: #424953;
+  --text-muted: #535a65;
+  --text-faint: #5f6671;
+  --accent-wash: rgba(31, 122, 70, 0.05);
+  --accent-tint: rgba(31, 122, 70, 0.1);
+  --accent-edge: rgba(31, 122, 70, 0.3);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --shadow-window: 0 24px 60px -20px rgba(16, 24, 40, 0.18);
+  --halo-dot: 0 0 0 3px rgba(31, 122, 70, 0.16);
+  --border: #d3d8df;
+  --border-strong: #868d98;  /* 3.3:1 on white */
+  --border-focus: #1f7a46;
+  --text: #1a1e25;
+  --accent: #1f7a46;          /* 5.4:1 on white */
+  --accent-strong: #1f7a46;
+  --accent-text: #1f7a46;
+  --accent-hover: #155a33;
+  --accent-fill-hover: #18663a;
+  --on-accent: #ffffff;
+  --green: #1f7a46;
+  --yellow: #8a5a00;
+  --red: #b0381f;
+  --orange: #8a5a00;
+  --cyan: #2c5cb5;
+  --pink: #8646a6;
+  --ns-episodic: #1f7a46;
+  --ns-knowledge: #2c5cb5;
+  --ns-preference: #8a5a00;
+  --ns-project: #8646a6;
+  --ns-skill: #19747a;
+  --ns-graveyard: #b0381f;
+}
+
+/* Each theme shows its own logo. */
+.logo-for-light { display: none !important; }
+:root[data-theme="light"] .logo-for-light { display: block !important; }
+:root[data-theme="light"] .logo-for-dark { display: none !important; }
+
 body {
   font-family: var(--font-sans);
   background: var(--bg);
@@ -103,7 +160,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: var(--accent-edge); color: #fff; }
+::selection { background: var(--accent-edge); color: var(--text-heading); }
 
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -2283,3 +2340,32 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .stat-ns { font-size: 11px; letter-spacing: 0.08em; }
   .graveyard-table td:nth-child(1) { overflow-wrap: anywhere; hyphens: auto; }
 }
+
+/* The theme switch, beside the version under the logo. */
+.sidebar-version { flex-wrap: wrap; row-gap: 0.35rem; }
+.theme-toggle {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem;
+  background: none; border: 0; padding: 2px 2px; cursor: pointer;
+  font-family: var(--font-sans); font-size: 12px; color: var(--text-muted);
+  border-radius: var(--radius-pill);
+}
+.theme-toggle:hover { color: var(--text); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-toggle-track {
+  position: relative; width: 28px; height: 16px; flex-shrink: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill); background: var(--surface-raised);
+}
+.theme-toggle-thumb {
+  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--text-muted); transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.theme-toggle[aria-checked="true"] .theme-toggle-track { border-color: var(--accent); background: var(--accent-tint); }
+.theme-toggle[aria-checked="true"] .theme-toggle-thumb { transform: translateX(12px); background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .theme-toggle-thumb { transition: none; } }
+
+/* Shadows and scrims soften on paper; the update pill takes the accent's ink. */
+.version-update, .version-update:hover { color: var(--on-accent); }
+:root[data-theme="light"] .save-bar { box-shadow: 0 -12px 24px -12px rgba(16, 24, 40, 0.18); }
+:root[data-theme="light"] .modal-backdrop { background: rgba(16, 24, 40, 0.35); }
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .stat-card { box-shadow: var(--shadow-inset), 0 1px 2px rgba(16, 24, 40, 0.05); }

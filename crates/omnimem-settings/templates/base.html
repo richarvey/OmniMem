@@ -20,11 +20,12 @@
   <div class="layout">
     <nav class="sidebar" aria-label="Main">
       <div class="sidebar-header">
-        <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
+        <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img class="logo-for-dark" src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"><img class="logo-for-light" src="{{ admin }}/static/images/omnimem-logo-horizontal-light.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
         <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Hide sidebar" aria-expanded="true">&laquo;</button>
         <div class="sidebar-version">
           <span class="version-badge">v{{ version }}</span>
           <span hx-get="{{ admin }}/version-check" hx-trigger="load" hx-swap="innerHTML"></span>
+          {% include "partials/theme_toggle.html" %}
         </div>
       </div>
       <details class="nav-menu" open data-nav-menu>

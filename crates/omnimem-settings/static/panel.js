@@ -28,6 +28,26 @@
     apply(root.classList.contains('sidebar-collapsed'));
   })();
 
+  // Light or dark, remembered per browser; theme.js picked it before paint
+  // and follows the system until the switch is used.
+  (function () {
+    var theme = window.omnimemTheme;
+    var toggles = document.querySelectorAll('[data-theme-toggle]');
+    if (!theme) return;
+    function sync() {
+      var light = theme.current() === 'light';
+      toggles.forEach(function (btn) { btn.setAttribute('aria-checked', String(light)); });
+    }
+    toggles.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        theme.set(theme.current() === 'light' ? 'dark' : 'light');
+        sync();
+      });
+    });
+    theme.watch(sync);
+    sync();
+  })();
+
   // The sidebar scrolls on a short window: the current page's item is
   // always in view.
   var current = document.querySelector('.sidebar [aria-current="page"]');
