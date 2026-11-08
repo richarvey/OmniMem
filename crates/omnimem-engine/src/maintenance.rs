@@ -329,6 +329,9 @@ impl Engine {
             Err(e) => error!(project, error = %e, "maintenance dedup phase failed"),
         }
 
+        if let Err(e) = self.settle_dangling_links() {
+            error!(error = %e, "could not settle links to memories that no longer exist");
+        }
         let mut contradictions = Vec::new();
         let mut scan = || -> Result<()> {
             // Newest first, so a busy project's latest memories are compared.
