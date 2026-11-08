@@ -11,11 +11,14 @@
       {{ total|thousands }} memories{% if stats_age is not none %}, counted {{ stats_age }}s ago. <a href="{{ admin }}/?refresh=1">Count again</a>{% endif %}
     </p>
   </div>
-  <ul class="health-indicators" aria-label="Health">
-    <li class="indicator {{ 'ok' if health.store else 'err' }}">Store<span class="visually-hidden"> {{ 'ok' if health.store else 'down' }}</span></li>
-    <li class="indicator {{ 'ok' if health.model else 'err' }}">Model<span class="visually-hidden"> {{ 'ok' if health.model else 'down' }}</span></li>
-    <li class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}">Enrichment{% if enrichment_pending > 0 %}: {{ enrichment_pending }} queued{% else %}<span class="visually-hidden"> ok</span>{% endif %}</li>
-  </ul>
+  <div class="page-header-side">
+    <ul class="health-indicators" aria-label="Health">
+      <li class="indicator {{ 'ok' if health.store else 'err' }}">Store<span class="visually-hidden"> {{ 'ok' if health.store else 'down' }}</span></li>
+      <li class="indicator {{ 'ok' if health.model else 'err' }}">Model<span class="visually-hidden"> {{ 'ok' if health.model else 'down' }}</span></li>
+      <li class="indicator {{ 'ok' if enrichment_pending == 0 else 'warn' }}">Enrichment{% if enrichment_pending > 0 %}: {{ enrichment_pending }} queued{% else %}<span class="visually-hidden"> ok</span>{% endif %}</li>
+    </ul>
+    {% include "partials/theme_toggle.html" %}
+  </div>
 </header>
 
 {# What waits on a person comes first: everything a review page would list, and nothing else. #}

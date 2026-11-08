@@ -2341,14 +2341,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .graveyard-table td:nth-child(1) { overflow-wrap: anywhere; hyphens: auto; }
 }
 
-/* The theme switch, beside the version under the logo. */
-.sidebar-version { flex-wrap: wrap; row-gap: 0.35rem; }
+/* The theme switch, under the health chips at the top of the dashboard. */
+.page-header-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.55rem; }
 .theme-toggle {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem;
+  display: inline-flex; align-items: center; gap: 0.45rem;
   background: none; border: 0; padding: 2px 2px; cursor: pointer;
   font-family: var(--font-sans); font-size: 12px; color: var(--text-muted);
   border-radius: var(--radius-pill);
 }
+@media (max-width: 640px) { .page-header-side { align-items: flex-start; } }
 .theme-toggle:hover { color: var(--text); }
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .theme-toggle-track {
@@ -2369,3 +2370,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 :root[data-theme="light"] .modal-backdrop { background: rgba(16, 24, 40, 0.35); }
 :root[data-theme="light"] .panel,
 :root[data-theme="light"] .stat-card { box-shadow: var(--shadow-inset), 0 1px 2px rgba(16, 24, 40, 0.05); }
+
+/* Sign out on the left, the outside links as a row of icons on the right. */
+.sidebar-foot { justify-content: space-between; }
+.sidebar-foot .sidebar-links { list-style: none; padding: 0; display: flex; gap: 0.25rem; }
+.sidebar-links a {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: var(--radius-nav); color: var(--text-muted);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.sidebar-links a:hover { color: var(--accent-text); background: var(--surface-hover); }
+.sidebar-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sidebar-links .icon { display: block; width: 15px; height: 15px; }
+@media (prefers-reduced-motion: reduce) { .sidebar-links a { transition: none; } }
