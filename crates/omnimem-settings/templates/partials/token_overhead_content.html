@@ -8,12 +8,12 @@
     <div class="stat-label">tokens/session</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Total tool calls</div>
+    <div class="stat-ns">Tool calls</div>
     <div class="stat-total">{{ num(total_tool_calls) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card stat-card-highlight">
-    <div class="stat-ns">Total tool tokens</div>
+    <div class="stat-ns">Tool tokens</div>
     <div class="stat-total">~{{ num(total_tool_tokens) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>

@@ -2280,6 +2280,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 }
 .sidebar-foot { margin-top: 0.2rem; padding-top: 0.25rem; }
 @media (max-width: 640px) {
-  .stat-ns { font-size: 10px; letter-spacing: 0.08em; }
+  .stat-ns { font-size: 11px; letter-spacing: 0.08em; }
   .graveyard-table td:nth-child(1) { overflow-wrap: anywhere; hyphens: auto; }
 }
