@@ -284,21 +284,27 @@ impl Engine {
         self.load_pair(request).map(|(review, _, _)| review)
     }
 
+    /// Both rows of a pair, checked. A side that no longer exists comes back
+    /// as `None`: a pair that outlived one of its memories (deleted before
+    /// deletion settled its links, or under 6.x, which never did) can still
+    /// be cleared, but only as not a contradiction, since there is nothing
+    /// left to supersede, reject or reopen.
     #[allow(clippy::type_complexity)]
-    fn load_pair(&self, r: &ResolveRequest) -> Result<(ResolutionReview, Fields, Fields)> {
+    fn load_pair(
+        &self,
+        r: &ResolveRequest,
+    ) -> Result<(ResolutionReview, Option<Fields>, Option<Fields>)> {
         for key in [&r.key_a, &r.key_b] {
             validate_writable_key(key, "resolve contradictions of")?;
         }
         if r.key_a == r.key_b {
             return Err(invalid("A memory can't contradict itself: give two keys."));
         }
-        let row = |key: &str| -> Result<Fields> {
-            self.store
-                .get(key)?
-                .filter(|d| !d.is_empty())
-                .ok_or_else(|| invalid(format!("Memory key not found: {key}")))
+        let row = |key: &str| -> Result<Option<Fields>> {
+            Ok(self.store.get(key)?.filter(|d| !d.is_empty()))
         };
         let (row_a, row_b) = (row(&r.key_a)?, row(&r.key_b)?);
+        let not_found = |key: &str| invalid(format!("Memory key not found: {key}"));
         if let Some(reason) = &r.reason {
             validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
@@ -323,12 +329,34 @@ impl Engine {
                 "retire_loser only applies to supersedes and both_wrong.",
             ));
         }
-        let find = |row: &Fields, other: &str| {
-            parse_links(row.get("contradictions"))
+        let find = |row: &Option<Fields>, other: &str| {
+            parse_links(row.as_ref()?.get("contradictions"))
                 .into_iter()
                 .find(|l| l.get("key").and_then(Value::as_str) == Some(other))
         };
         let (link_a, link_b) = (find(&row_a, &r.key_b), find(&row_b, &r.key_a));
+        match (&row_a, &row_b) {
+            (None, None) => return Err(not_found(&r.key_a)),
+            (Some(_), Some(_)) => {}
+            (survivor, _) => {
+                let (gone, link) = if survivor.is_some() {
+                    (&r.key_b, &link_a)
+                } else {
+                    (&r.key_a, &link_b)
+                };
+                // Only a pair the surviving memory still points at can be
+                // cleared; any other missing key is a mistyped one.
+                if link.is_none() {
+                    return Err(not_found(gone));
+                }
+                if !matches!(r.outcome, Outcome::FalsePositive | Outcome::BothValid) {
+                    return Err(invalid(format!(
+                        "{gone} no longer exists, so this pair can only be cleared: \
+                         resolve it as false_positive or both_valid."
+                    )));
+                }
+            }
+        }
         // A person saying one memory replaces another, or that both are
         // wrong, is the strongest evidence of a conflict there is, so those
         // outcomes link the pair themselves (marked as recorded by a
@@ -349,7 +377,11 @@ impl Engine {
                 "That pair isn't resolved, so there is nothing to reopen.",
             ));
         }
-        let content = |row: &Fields| row.get("content").cloned().unwrap_or_default();
+        let content = |row: &Option<Fields>| {
+            row.as_ref()
+                .and_then(|r| r.get("content").cloned())
+                .unwrap_or_default()
+        };
         let review = ResolutionReview {
             request: r.clone(),
             content_a: content(&row_a),
@@ -403,6 +435,8 @@ impl Engine {
             (&request.key_a, &request.key_b, &row_a),
             (&request.key_b, &request.key_a, &row_b),
         ] {
+            // A side that no longer exists has nothing to write to.
+            let Some(row) = row else { continue };
             let mut links = parse_links(row.get("contradictions"));
             put_resolution(&mut links, other, resolution.clone(), &now);
             let mut updates = Fields::new();
@@ -716,6 +750,89 @@ impl Engine {
                 })
             })
             .collect())
+    }
+
+    /// Settle every open link that points at a memory which no longer
+    /// exists, as `other_forgotten`, the way a deletion settles them now.
+    /// Links like that come from memories deleted before deletion settled
+    /// its links, 6.x included, and nothing else would ever clear them.
+    /// Returns how many links it settled.
+    pub fn settle_dangling_links(&self) -> Result<usize> {
+        let keys = self.store.scan_prefix("mem:")?;
+        let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;
+        let linked: Vec<(&String, Vec<String>)> = keys
+            .iter()
+            .zip(&rows)
+            .filter_map(|(key, row)| {
+                let others: Vec<String> =
+                    parse_links(row.as_ref().and_then(|r| r.get("contradictions")))
+                        .iter()
+                        .filter(|l| !link_is_resolved(l))
+                        .filter_map(|l| l.get("key").and_then(Value::as_str).map(str::to_owned))
+                        .collect();
+                (!others.is_empty()).then_some((key, others))
+            })
+            .collect();
+        let mut wanted: Vec<String> = linked.iter().flat_map(|(_, o)| o.clone()).collect();
+        wanted.sort();
+        wanted.dedup();
+        let present: std::collections::HashSet<&String> = wanted
+            .iter()
+            .zip(self.store.get_fields_multi(&wanted, &["content"])?)
+            .filter(|(_, row)| row.as_ref().is_some_and(|r| !r.is_empty()))
+            .map(|(key, _)| key)
+            .collect();
+
+        let now = now_str();
+        let mut settled = 0;
+        let mut writes: Vec<(String, Fields)> = Vec::new();
+        for (key, others) in linked {
+            let gone: Vec<&String> = others.iter().filter(|o| !present.contains(o)).collect();
+            if gone.is_empty() {
+                continue;
+            }
+            let Some(row) = self.store.get(key)?.filter(|d| !d.is_empty()) else {
+                continue;
+            };
+            let mut links = parse_links(row.get("contradictions"));
+            for other in &gone {
+                let resolution = json!({
+                    "outcome": "other_forgotten",
+                    "reason": "the other memory no longer exists",
+                    "resolved_at": now,
+                    "resolved_by": "system",
+                });
+                put_resolution(&mut links, other, resolution, &now);
+                settled += 1;
+            }
+            let mut updates = Fields::new();
+            trust::undispute(&row, &links, &mut updates);
+            // Each step reads the row as the steps before left it, so two
+            // missing memories don't undo each other's changes.
+            let mut current = row.clone();
+            for other in &gone {
+                trust::unsupersede(&current, other, &mut updates);
+                supersession_updates(&current, other, false, false, &mut updates);
+                current.extend(updates.clone());
+            }
+            updates.insert("contradictions".to_owned(), py_json(&Value::Array(links)));
+            updates.insert("updated_at".to_owned(), now.clone());
+            writes.push((key.clone(), updates));
+        }
+        if !writes.is_empty() {
+            let _audit = audit_op(
+                Op::new("contradiction_resolve")
+                    .at(AuditLevel::Lifecycle)
+                    .reason(Some("the other memory no longer exists"))
+                    .detail(json!({"outcome": "other_forgotten", "resolved_by": "system"})),
+            );
+            self.store.set_fields_each(&writes)?;
+            info!(
+                settled,
+                "settled contradiction links to memories that no longer exist"
+            );
+        }
+        Ok(settled)
     }
 
     /// A memory is about to be deleted: every memory that was linked to it

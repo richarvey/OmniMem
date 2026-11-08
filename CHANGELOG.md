@@ -45,6 +45,13 @@ The settings panel moves out of the desktop app's window and onto HTTP, at `/adm
 - **Forms redirect with a 303**, now that no webview stands in the way
 - **The desktop app no longer embeds a webview.** wry, WebKitGTK, WebView2 and the `omnimem://` scheme are gone, so the Linux tray app needs only GTK 3 and libayatana-appindicator3, and the Flatpak drops its GPU and Downloads permissions. Opening OmniMem a second time opens the panel; on GNOME without a tray it opens as soon as the services are running. The smoke test signs in to the panel over HTTP instead of driving a window
 
+## [7.0.10] - 2026-11-08
+
+One fix: a contradiction whose other memory no longer exists can be cleared. There's no schema change, so you can go back to 7.0.9 without a backup.
+
+### Fixed
+- **A pair whose other memory had been deleted could never be resolved.** Resolving a contradiction loaded both memories and refused with "Memory key not found" when one was gone, so the pair stayed on the panel's contradictions page and in the briefing for good: the panel's own advice, "Mark the pair as not a contradiction to clear it", failed, as did the CLI and `check_contradictions(mode="resolve")`. Deleting a memory has settled its links since 7.0.6, but links left by deletions before that, and by every 6.x deletion carried over in an import, pointed at nothing. Now `false_positive` and `both_valid` clear such a pair, writing the resolution onto the surviving memory, and the other outcomes say the memory no longer exists rather than that its key wasn't found. The maintenance pass a briefing runs also settles any open link to a memory that no longer exists as `other_forgotten`, the way a deletion does, so older stores tidy themselves without anyone clicking
+
 ## [7.0.9] - 2026-11-05
 
 Fixes from the OmniMem test harness's 7.0.8 findings (`omnimem-test-harness/docs/findings-7.0.8.md`): the contradiction scan now sees new memories on a full store, a forget takes the recall log entries that found the memory, a person can settle a contradiction no scan linked, and the keyless heuristic recognises a changed value as well as a negation.

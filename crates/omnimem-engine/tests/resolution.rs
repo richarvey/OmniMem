@@ -399,6 +399,82 @@ fn forgetting_one_side_settles_the_survivor() {
     assert_eq!(links(&e, &a)[0]["resolution"]["outcome"], "supersedes");
 }
 
+/// A pair whose other memory was deleted without its links being settled,
+/// as 6.x deletions and anything before `settle_links_to_deleted` left them.
+fn dangling(e: &Engine) -> (String, String) {
+    let (a, b) = linked(e);
+    e.store().delete_many(std::slice::from_ref(&b)).unwrap();
+    assert_eq!(e.open_contradictions().unwrap().len(), 1);
+    (a, b)
+}
+
+#[test]
+fn a_pair_whose_other_memory_is_gone_can_still_be_cleared() {
+    for outcome in ["false_positive", "both_valid"] {
+        let e = engine();
+        let (a, b) = dangling(&e);
+        let done = e
+            .resolve_contradiction(&request(&a, &b, outcome, None, Retire::No), "panel")
+            .unwrap();
+        assert_eq!(done["status"], "resolved");
+        assert_eq!(links(&e, &a)[0]["resolution"]["outcome"], outcome);
+        assert!(e.store().get(&b).unwrap().is_none_or(|r| r.is_empty()));
+        assert!(e.open_contradictions().unwrap().is_empty());
+        // Either way round.
+        let e = engine();
+        let (a, b) = dangling(&e);
+        e.resolve_contradiction(&request(&b, &a, outcome, None, Retire::No), "cli")
+            .unwrap();
+        assert!(e.open_contradictions().unwrap().is_empty());
+    }
+
+    // Nothing is left to supersede, reject or reopen.
+    let e = engine();
+    let (a, b) = dangling(&e);
+    for (outcome, winner) in [("supersedes", Some(a.as_str())), ("both_wrong", None)] {
+        let err = e
+            .resolve_contradiction(&request(&a, &b, outcome, winner, Retire::No), "panel")
+            .unwrap_err();
+        assert!(matches!(err, EngineError::Invalid(_)), "{err}");
+        assert!(err.to_string().contains("no longer exists"), "{err}");
+    }
+    assert_eq!(e.open_contradictions().unwrap().len(), 1);
+
+    // A missing key the survivor doesn't point at is still a mistake.
+    let c = remember(&e, "the deploy runs on fridays");
+    let err = e
+        .resolve_contradiction(
+            &request(
+                &c,
+                "mem:episodic:01NOTAREALKEY000000000000",
+                "false_positive",
+                None,
+                Retire::No,
+            ),
+            "panel",
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("Memory key not found"), "{err}");
+}
+
+#[test]
+fn maintenance_settles_links_to_memories_that_are_gone() {
+    let e = engine();
+    let (a, b) = dangling(&e);
+    assert_eq!(e.settle_dangling_links().unwrap(), 1);
+    let r = &links(&e, &a)[0]["resolution"];
+    assert_eq!(r["outcome"], "other_forgotten");
+    assert_eq!(r["resolved_by"], "system");
+    assert!(e.open_contradictions().unwrap().is_empty());
+    assert!(e.store().get(&b).unwrap().is_none_or(|r| r.is_empty()));
+    // Once settled there is nothing more to do, and a live pair is left alone.
+    assert_eq!(e.settle_dangling_links().unwrap(), 0);
+    let e = engine();
+    linked(&e);
+    assert_eq!(e.settle_dangling_links().unwrap(), 0);
+    assert_eq!(e.open_contradictions().unwrap().len(), 1);
+}
+
 #[test]
 fn a_chain_of_supersessions_keeps_each_link() {
     let e = engine();
