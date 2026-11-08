@@ -4,7 +4,7 @@ The [Agent Memory Atlas](https://neoneye.github.io/agent-memory-atlas/systems/om
 
 This page is the other half: for each mark, where the code that earns it is and which test fails without it, so a re-pin can check the claim in minutes rather than hunting for it. The status column is OmniMem's own reading. Only the Atlas's says whether a mark is held.
 
-Line numbers are for 7.0.9. Update this page in any release that touches a mark.
+Line numbers are for 7.0.10. Update this page in any release that touches a mark.
 
 | Mark | Status | Where | Test | Notes |
 |---|---|---|---|---|
