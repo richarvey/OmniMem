@@ -58,7 +58,7 @@ omnimem audit --action forget --json       # one JSON object per line
 
 `--since` takes `30m`, `12h`, `7d`, `2w`, a date (`2026-11-03`) or a date and time (`2026-11-03T14:30`, UTC). The command reads the database itself, so it works whether or not the server is running; run it as the service's user on a server install (`sudo -u omnimem omnimem audit`).
 
-**`explain_memory`.** When the log is on and has rows for a memory, the result gains a `history` list, newest first, up to 20 entries. There's no new tool, so the 48 stay 48, and with the log off the result is the 6.x one.
+**`explain_memory`.** When the log is on and has rows for a memory, the result gains a `history` list, newest first, up to 20 entries. There's no separate tool for it, and with the log off the result is the 6.x one.
 
 ## Backups
 

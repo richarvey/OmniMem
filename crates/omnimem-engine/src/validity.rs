@@ -23,6 +23,7 @@
 //! `retired_at` ([`Engine::cascade_interval`]).
 
 use omnimem_store::{AuditLevel, Fields, MemoryFilter, Op, op, time_of, trust_of};
+use serde_json::Value;
 
 use crate::error::invalid;
 use crate::pyfmt::{py_float, take_chars};
@@ -150,6 +151,66 @@ pub(crate) fn follow_trust(row: &Fields, updates: &mut Fields, now: &str) {
 }
 
 impl Engine {
+    /// End a memory's validity without a successor (#34): "we stopped
+    /// using Traefik" has no new memory to supersede it with. `valid_to`
+    /// defaults to now. Validity is a claim about the world rather than a
+    /// verdict on belief, so this needs no person's approval and leaves trust
+    /// alone; it is audited at `lifecycle` with the reason, bumps
+    /// `updated_at` so a restore and the skill compiler see the change, and
+    /// carries to the facts extracted from the memory.
+    pub fn end_validity(
+        &self,
+        key: &str,
+        valid_to: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<Value> {
+        crate::tools::validate_writable_key(key, "end the validity of")?;
+        if let Some(reason) = reason {
+            crate::tools::validate_text("reason", reason, crate::tools::MAX_SHORT_TEXT)?;
+        }
+        let Some(row) = self.store.get(key)?.filter(|r| !r.is_empty()) else {
+            return Err(invalid(format!(
+                "Memory key not found: {}",
+                take_chars(key, 80)
+            )));
+        };
+        let now = crate::pyfmt::now_secs();
+        let end = instant_arg("valid_to", valid_to)?.unwrap_or(now);
+        if let Some(from) = omnimem_store::valid_from_of(&row)
+            && end <= from
+        {
+            return Err(invalid(format!(
+                "valid_to must be after the memory became true ({})",
+                iso(from).unwrap_or_default()
+            )));
+        }
+        let was = time_of(&row, VALID_TO);
+        let stamp = py_float(now);
+        let updates = Fields::from([
+            (VALID_TO.to_owned(), py_float(end)),
+            (VALID_TO_RECORDED.to_owned(), stamp.clone()),
+            ("updated_at".to_owned(), stamp),
+        ]);
+        {
+            let _audit = op(Op::new("end_validity")
+                .at(AuditLevel::Lifecycle)
+                .reason(reason));
+            self.store.set_fields(key, &updates)?;
+        }
+        let derived = self.cascade_interval(key)?;
+        let mut result = serde_json::Map::new();
+        result.insert("status".into(), "ended".into());
+        result.insert("key".into(), key.into());
+        result.insert("valid_to".into(), iso(end).unwrap_or_default().into());
+        if let Some(was) = was.and_then(iso) {
+            result.insert("previous_valid_to".into(), was.into());
+        }
+        if derived > 0 {
+            result.insert("derived_facts".into(), derived.into());
+        }
+        Ok(Value::Object(result))
+    }
+
     /// An extracted fact or preference takes its source's `valid_to` and
     /// `retired_at` (#27), as it follows its state: "the server is at
     /// <ip>" stops being true when the memory it came from does. A fact

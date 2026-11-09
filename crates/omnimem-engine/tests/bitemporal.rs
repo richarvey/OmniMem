@@ -540,3 +540,100 @@ fn known_at_judges_trust_as_it_stood() {
         "not yet recorded"
     );
 }
+
+// ---------------------------------------------------------------------------
+// #34: end_validity
+
+#[test]
+fn end_validity_closes_a_memory_with_no_successor() {
+    let (e, _) = engine();
+    let traefik = remember_valid(&e, "We route traffic through Traefik", None, None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    set_times(&e, &traefik, "2026-01-10");
+    fact(
+        &e,
+        "mem:knowledge:t1",
+        "The proxy is Traefik",
+        &traefik,
+        &[],
+    );
+    let before = get(&e, &traefik);
+
+    let ended = e
+        .end_validity(
+            &traefik,
+            Some("2026-06-01T00:00:00Z"),
+            Some("moved to Caddy"),
+        )
+        .unwrap();
+    assert_eq!(ended["status"], "ended");
+    assert_eq!(ended["valid_to"], "2026-06-01T00:00:00Z");
+    assert_eq!(ended["derived_facts"], 1);
+    let row = get(&e, &traefik);
+    assert_eq!(time_of(&row, "valid_to"), Some(utc("2026-06-01")));
+    assert!(time_of(&row, "valid_to_recorded_at").is_some());
+    // Still believed: validity isn't a verdict on belief.
+    assert_eq!(trust_of(&row), "accepted");
+    assert_eq!(time_of(&row, "retired_at"), None);
+    // updated_at moves, so a restore and the skill compiler see it.
+    assert!(time_of(&row, "updated_at") > time_of(&before, "updated_at"));
+    // The fact follows.
+    assert_eq!(
+        valid_to_of(&get(&e, "mem:knowledge:t1")),
+        Some(utc("2026-06-01"))
+    );
+
+    // Audited at lifecycle, with the reason and the new value.
+    let rows = e
+        .store()
+        .audit_entries(&AuditQuery {
+            key: Some(traefik.clone()),
+            limit: 10,
+            ..AuditQuery::default()
+        })
+        .unwrap();
+    let end = rows
+        .iter()
+        .find(|r| r.action == "end_validity")
+        .expect("audited");
+    assert_eq!(end.reason, "moved to Caddy");
+    assert!(end.to["valid_to"].as_str().is_some(), "{:?}", end.to);
+
+    // It still comes back for the time it held, and not after.
+    let q = "how do we route traffic";
+    let at = |day: &str| {
+        let as_of = omnimem_engine::AsOf::parse(Some(day), None).unwrap();
+        keys(
+            e.recall_at(q, 5, None, Some("alpha"), Some(false), None, as_of)
+                .unwrap()
+                .as_array()
+                .unwrap(),
+        )
+    };
+    assert_eq!(at("2026-03-01"), vec![traefik.clone()]);
+    assert!(at("2026-07-01").is_empty());
+
+    // Again, later: the earlier end is reported.
+    let again = e.end_validity(&traefik, Some("2026-05-01"), None).unwrap();
+    assert_eq!(again["previous_valid_to"], "2026-06-01T00:00:00Z");
+}
+
+#[test]
+fn end_validity_refuses_what_it_cant_end() {
+    let (e, _) = engine();
+    let key = remember_valid(&e, LISBON, Some("2026-04-01T00:00:00Z"), None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let refused =
+        |key: &str, to: Option<&str>| e.end_validity(key, to, None).unwrap_err().to_string();
+    assert!(refused(&key, Some("2026-03-01")).contains("after"));
+    assert!(refused(&key, Some("whenever")).contains("valid_to"));
+    assert!(refused("mem:episodic:nope", None).contains("not found"));
+    assert!(refused("mem:skill:gen:x", None).contains("Cannot"));
+    // With no date, it ends now.
+    let now = e.end_validity(&key, None, None).unwrap();
+    assert!(now["valid_to"].as_str().is_some());
+}

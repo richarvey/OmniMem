@@ -1,6 +1,6 @@
 # MCP Tool Reference
 
-All 48 tools, grouped by what they're for. The names, parameters and defaults are exactly what 6.x sent, so an agent that knew OmniMem 6 knows OmniMem 7. The descriptions are shorter: the `Args:` blocks repeated the schema the client already has, and the longer guidance moved to `docs/agent-guide.md`.
+All 49 tools, grouped by what they're for. The names, parameters and defaults of the 48 that came from 6.x are what 6.x sent, plus a few optional parameters, so an agent that knew OmniMem 6 knows OmniMem 7. `end_validity` is the one new tool. The descriptions are shorter: the `Args:` blocks repeated the schema the client already has, and the longer guidance moved to `docs/agent-guide.md`.
 
 You don't have to teach your agent any of this. The server sends its operating instructions in the MCP `instructions` field on connect, and each tool carries its own description, so agents pick most of it up by themselves. This page is for you.
 
@@ -17,6 +17,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 | `recall_detail(keys)` | Full content for chosen keys, usually after `recall_index()` |
 | `deprioritise(key_or_query, reason, reinstate_hints?)` | Turn a memory down to 0.2x without deleting it. Hints bring it back when a later query matches them. Facts extracted from it go with it (as they do for `archive` and `forget`), and `reinstate` brings them back |
 | `archive(key_or_query, reason?)` | Keep it stored but out of recall |
+| `end_validity(key, valid_to?, reason?)` | Record that a memory stopped being true when nothing replaces it ("we stopped using Traefik"). `valid_to` defaults to now. The memory stays believed: an ordinary recall ranks it lower and shows its `valid_to`, and `valid_at` still finds it for the time it held. New in 7.0.12, the one tool 6.x didn't have. When a newer memory replaces it, resolve the pair with `supersedes` instead ([bi-temporal memory](bitemporal.md)) |
 | `reinstate(key_or_query)` | Bring a deprioritised or archived memory back to active |
 | `retag(key, tags?, add?, remove?)` | Replace (`tags`, `[]` clears) or adjust (`add`, `remove`) a memory's tags without re-embedding |
 | `forget(key_or_query, confirm?)` | Permanent delete. Without `confirm=True` it only previews, and the preview's `hint` says so |

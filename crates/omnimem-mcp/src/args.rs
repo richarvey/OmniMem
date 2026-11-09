@@ -174,6 +174,18 @@ pub struct Archive {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct EndValidity {
+    pub key: String,
+    /// When it stopped being true: an ISO date, a timestamp or a phrase.
+    /// Defaults to now.
+    #[serde(default)]
+    pub valid_to: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct KeyOrQuery {
     pub key_or_query: String,
 }

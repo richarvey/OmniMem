@@ -150,6 +150,8 @@ pub const MEMORY_AUDIT: &str = r"Summary of all memories grouped by state. Usefu
     The state counts always cover the whole store; the per-memory ``entries``
     list is paginated so a large store doesn't return thousands of rows at once.";
 
+pub const END_VALIDITY: &str = r"Record that a memory stopped being true, when nothing replaces it ('we stopped using Traefik'). valid_to defaults to now. The memory stays believed and recallable, ranked lower and carrying its valid_to; recall with valid_at still finds it for the time it held. When a newer memory replaces it, propose check_contradictions(mode='resolve', outcome='supersedes') instead.";
+
 pub const WHY_DID_YOU_MENTION: &str = r"Explain why a topic surfaced by searching recall logs.";
 
 pub const EXPLAIN_MEMORY: &str = r"Return full metadata for a memory key.";

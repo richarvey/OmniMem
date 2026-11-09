@@ -26,6 +26,7 @@ Valid time is `[valid_from, valid_to)` and record time is `[created_at, retired_
 
 You don't have to do anything for most memories. Nearly everything is true from when it's recorded until further notice, and the empty defaults say exactly that.
 
+- **`end_validity`** ends a memory's validity when nothing replaces it: "we stopped using Traefik" has no newer memory to supersede it with. `valid_to` defaults to now. It doesn't change whether the memory is believed (it was true, it just isn't any more), so it needs no approval, and the facts extracted from it follow.
 - **`remember`** takes `valid_from` and `valid_to`, as an ISO date (`2026-04-01`), a timestamp, or a phrase recall would understand ("last March", "3 weeks ago"). Use `valid_from` when something became true before you recorded it, and `valid_to` when you're recording something that has already ended.
 - **Resolving a contradiction** with `supersedes` ends the loser's validity when the winner says it began (its `valid_from`), or now if it doesn't say, and retires the loser. A loser that already had an earlier end keeps it. In the example, settling "moved to Lisbon" over "lives in Berlin" closes Berlin at 1 April.
 - **`both_wrong`** retires both memories but ends neither's validity: they were never true, so there's nothing to end.
@@ -78,4 +79,4 @@ None of this moves anything for a memory with no `valid_to`. That covers every m
 - When a dispute began isn't recorded, so under `known_at` a memory that's disputed now reads as disputed then too.
 - Archiving and deprioritising aren't timed, so `known_at` judges a memory's state as it is now, not as it was.
 - If the memory that superseded another is deleted, the loser is believed again (its `retired_at` clears) but keeps the end of validity the supersession gave it.
-- There's no way yet to end a memory's validity without a successor ("we stopped using Traefik"). That's [#34](https://github.com/richarvey/OmniMem/issues/34), planned for 7.0.12.
+- Since 7.0.12, `end_validity(key, valid_to?, reason?)` ends a memory's validity when nothing replaces it ("we stopped using Traefik"). It leaves trust alone, needs no approval, is audited and bumps `updated_at`.

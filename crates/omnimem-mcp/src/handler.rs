@@ -22,11 +22,12 @@ use tracing::{error, info, warn};
 use crate::approval::{self, APPROVAL_TIMEOUT, Answer};
 use crate::args::{
     Archive, Bless, Briefing, BulkProject, CheckContradictions, CompileProject, CompileSkill,
-    Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, FindDuplicates, FindSkills, Forget,
-    GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs, OptionalProject,
-    ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex, RecentKnowledge,
-    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, RetireArg,
-    SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
+    Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, EndValidity, FindDuplicates,
+    FindSkills, Forget, GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs,
+    OptionalProject, ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex,
+    RecentKnowledge, RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag,
+    RetireArg, SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic,
+    UpdateProjectState,
 };
 use crate::descriptions as d;
 
@@ -147,6 +148,7 @@ pub(crate) fn tools() -> Vec<Tool> {
             schema::<Query>(),
         ),
         Tool::new("explain_memory", d::EXPLAIN_MEMORY, schema::<Key>()),
+        Tool::new("end_validity", d::END_VALIDITY, schema::<EndValidity>()),
         Tool::new("reindex", d::REINDEX, schema::<Reindex>()),
         Tool::new("set_licence", d::SET_LICENCE, schema::<SetLicence>()),
         Tool::new(
@@ -381,6 +383,10 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
             )?
         }
         "why_did_you_mention" => e.why_did_you_mention(&parse::<Query>(args)?.query)?,
+        "end_validity" => {
+            let a: EndValidity = parse(args)?;
+            e.end_validity(&a.key, a.valid_to.as_deref(), a.reason.as_deref())?
+        }
         "explain_memory" => e.explain_memory(&parse::<Key>(args)?.key)?,
         "reindex" => e.reindex(parse::<Reindex>(args)?.namespace.as_deref())?,
         "set_licence" => {
@@ -870,7 +876,7 @@ mod tests {
     #[test]
     fn every_listed_tool_dispatches() {
         let names: Vec<String> = tools().iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(names.len(), 48);
+        assert_eq!(names.len(), 49);
         for name in names {
             let schema = tools()
                 .into_iter()

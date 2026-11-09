@@ -2,6 +2,11 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.12] - unreleased
+
+### Added
+- **`end_validity`, for something that stopped being true with nothing to replace it** ([#34](https://github.com/richarvey/OmniMem/issues/34)). "We stopped using Traefik" has no newer memory to supersede it with, so `supersedes` couldn't close it. `end_validity(key, valid_to?, reason?)` sets its `valid_to` (now, by default) and carries it to the facts extracted from it. It leaves trust alone, since the memory was right while it held, so it needs no approval. It's audited at `lifecycle` and bumps `updated_at` so a restore and the skill compiler see it. It's the first tool 6.x didn't have, so there are 49
+
 ## [7.0.11] - unreleased
 
 Bi-temporal memory, and the Agent Memory Atlas's other 7.0.8 findings: every memory now says when it was true and when OmniMem believed it, recall can ask about either, suppressed topics stay out of the briefing and the graveyard, and the audit log keeps every row.

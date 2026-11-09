@@ -107,7 +107,7 @@ Similarity on its own isn't enough, so lifecycle state, age, how hard a lesson w
 
 ## Works with any MCP agent
 
-One memory for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md) and [Open Design](guides/open-design.md). 48 tools, served over streamable HTTP.
+One memory for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md) and [Open Design](guides/open-design.md). 49 tools, served over streamable HTTP.
 
 Run it on one machine and put it behind a reverse proxy, and every laptop and agent you use shares the same memory. A shared token covers your own clients; OAuth 2.1 with a login page covers claude.ai and anything else that signs in. See [multiple machines](docs/remote-access.md).
 
@@ -196,7 +196,7 @@ The tools, the vectors and your compiled skills behave as they did, so nothing n
 | [Configuration](docs/configuration.md) | Every setting, for the desktop app and headless installs |
 | [Features in depth](docs/features.md) | Lifecycle, graveyard, experience scoring, dedup, contradictions, briefing |
 | [The skill compiler](docs/skill-compiler.md) | Compiling experience into loadable skills |
-| [MCP tool reference](docs/mcp-tools.md) | All 48 tools |
+| [MCP tool reference](docs/mcp-tools.md) | All 49 tools |
 | [RSS and knowledge](docs/rss-knowledge.md) | Passive knowledge ingestion and promotion |
 | [Multiple machines](docs/remote-access.md) | Reverse proxies, OAuth 2.1 for claude.ai, troubleshooting |
 | [Settings panel](docs/settings-panel.md) | The desktop app's window, page by page |
