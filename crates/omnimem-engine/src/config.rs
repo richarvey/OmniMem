@@ -145,6 +145,10 @@ pub struct EngineConfig {
     /// `TRUST_CANDIDATE_WEIGHT`: the same for an extracted fact or preference
     /// no person has confirmed. 0.9 is about what 90 days of recency costs.
     pub trust_candidate_weight: f64,
+    /// `VALIDITY_EXPIRED_WEIGHT`: how much a memory whose `valid_to` has
+    /// passed counts in an ordinary recall (#29). It still comes back,
+    /// carrying its `valid_to`, so it can't read as true today.
+    pub validity_expired_weight: f64,
     /// `DEDUP_SIMILARITY_THRESHOLD`
     pub dedup_threshold: f64,
     /// `CONTRADICTION_SIMILARITY_THRESHOLD`
@@ -220,6 +224,7 @@ impl Default for EngineConfig {
             deprioritised_weight: 0.2,
             trust_disputed_weight: 0.8,
             trust_candidate_weight: 0.9,
+            validity_expired_weight: 0.8,
             dedup_threshold: 0.92,
             contradiction_threshold: 0.7,
             ingest_mode: "full".to_owned(),
@@ -370,6 +375,11 @@ impl EngineConfig {
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
             trust_disputed_weight: float("TRUST_DISPUTED_WEIGHT", d.trust_disputed_weight, UNIT),
             trust_candidate_weight: float("TRUST_CANDIDATE_WEIGHT", d.trust_candidate_weight, UNIT),
+            validity_expired_weight: float(
+                "VALIDITY_EXPIRED_WEIGHT",
+                d.validity_expired_weight,
+                UNIT,
+            ),
             dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
             contradiction_threshold: float(
                 "CONTRADICTION_SIMILARITY_THRESHOLD",

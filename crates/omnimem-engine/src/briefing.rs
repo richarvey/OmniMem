@@ -71,6 +71,8 @@ impl Engine {
                 crate::trust::DISPUTED.to_owned(),
             ],
             project: project.map(str::to_owned),
+            // Only what is still true (#29), as only what is believed.
+            valid_at: Some(now),
             ..MemoryFilter::default()
         };
         let rows = self.store.list_memories(
@@ -174,6 +176,7 @@ impl Engine {
         let filter = MemoryFilter {
             states: vec!["active".to_owned()],
             trusts: vec![crate::trust::ACCEPTED.to_owned()],
+            valid_at: Some(now_secs()),
             created_at_min: Some(cutoff),
             ..MemoryFilter::default()
         };

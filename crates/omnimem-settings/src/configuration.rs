@@ -341,6 +341,13 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "How much a memory in an open contradiction the model confirmed counts in recall. A contradiction only the quick check found doesn't lower anything. Resolve it on the Contradictions page and the weight goes.",
             ),
             setting(
+                "VALIDITY_EXPIRED_WEIGHT",
+                "No longer true weight",
+                Kind::Decimal,
+                "0.8",
+                "How much a memory that has stopped being true (its valid to date has passed) counts in recall. It still comes back, with the date it ended, so an agent can tell. 1.0 ranks it like everything else.",
+            ),
+            setting(
                 "DEDUP_SIMILARITY_THRESHOLD",
                 "Duplicate similarity",
                 Kind::Decimal,

@@ -973,6 +973,16 @@ impl Engine {
                     _ => 1.0,
                 };
                 adjusted *= trust_weight;
+                // A memory that has stopped being true still comes back in
+                // an ordinary recall, ranked lower and carrying its
+                // `valid_to` (#29). A superseded one is left to the fold.
+                // A store where nothing has a `valid_to` scores as before.
+                if as_of.is_now()
+                    && trust != trust::SUPERSEDED
+                    && omnimem_store::valid_to_of(doc).is_some_and(|to| to <= scope.now)
+                {
+                    adjusted *= self.config.validity_expired_weight;
+                }
 
                 let mut reinstate = false;
                 if state == "deprioritised"
