@@ -6,6 +6,7 @@ Format: [version] - date - description
 
 ### Added
 - **`end_validity`, for something that stopped being true with nothing to replace it** ([#34](https://github.com/richarvey/OmniMem/issues/34)). "We stopped using Traefik" has no newer memory to supersede it with, so `supersedes` couldn't close it. `end_validity(key, valid_to?, reason?)` sets its `valid_to` (now, by default) and carries it to the facts extracted from it. It leaves trust alone, since the memory was right while it held, so it needs no approval. It's audited at `lifecycle` and bumps `updated_at` so a restore and the skill compiler see it. It's the first tool 6.x didn't have, so there are 49
+- **`remember` points out a likely supersession** ([#35](https://github.com/richarvey/OmniMem/issues/35)). When a new memory says something changed ("moved to Lisbon", "switched to Caddy", "now at 10.0.0.9") and a neighbour above `CONTRADICTION_SIMILARITY_THRESHOLD` is still believed, the result carries `may_supersede` with its key, content and similarity, so the agent can ask you whether to resolve the pair as `supersedes`. It's only a hint. Nothing closes until a resolution goes through, under `HUMAN_APPROVAL` as before. With the real model, "Sam lives in Berlin" and "Sam moved to Lisbon" score about 0.70, right at the default threshold, so a pair worded less alike isn't flagged
 
 ## [7.0.11] - unreleased
 

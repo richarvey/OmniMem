@@ -637,3 +637,94 @@ fn end_validity_refuses_what_it_cant_end() {
     let now = e.end_validity(&key, None, None).unwrap();
     assert!(now["valid_to"].as_str().is_some());
 }
+
+// ---------------------------------------------------------------------------
+// #35: remember hints may_supersede
+
+#[test]
+fn remember_hints_that_a_changed_fact_may_supersede() {
+    // The word-count embedder scores these pairs low, so the bar is lowered
+    // to where the real model puts "lives in Berlin" against "moved to
+    // Lisbon" (0.70) relative to an unrelated pair.
+    let (e, _) = engine_with(EngineConfig {
+        contradiction_threshold: 0.2,
+        ..config()
+    });
+    let soft = |content: &str| {
+        e.remember(
+            content,
+            Some("alpha"),
+            None,
+            "episodic",
+            false,
+            Some("raw"),
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    let berlin = soft(BERLIN)["key"].as_str().unwrap().to_owned();
+
+    let lisbon = soft(LISBON);
+    let hint = &lisbon["may_supersede"];
+    assert_eq!(hint["key"], berlin.as_str(), "{lisbon}");
+    assert!(hint["similarity"].as_f64().unwrap() >= 0.2);
+    // A hint only: nothing about either memory changed.
+    assert_eq!(trust(&e, &berlin), "accepted");
+    assert_eq!(time_of(&get(&e, &berlin), "valid_to"), None);
+    assert_eq!(trust(&e, lisbon["key"].as_str().unwrap()), "accepted");
+
+    // An unrelated neighbour, even one that says "now", gets no hint.
+    let unrelated = soft("We now deploy with Helm charts");
+    assert!(unrelated.get("may_supersede").is_none(), "{unrelated}");
+
+    // The marker has to be in the new statement, not the old one.
+    let (e2, _) = engine_with(EngineConfig {
+        contradiction_threshold: 0.2,
+        ..config()
+    });
+    let soft2 = |content: &str| {
+        e2.remember(
+            content,
+            Some("alpha"),
+            None,
+            "episodic",
+            false,
+            Some("raw"),
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    soft2("Sam moved to Lisbon last spring");
+    let plain = soft2("Sam lives in Lisbon");
+    assert!(plain.get("may_supersede").is_none(), "{plain}");
+
+    // A neighbour already superseded isn't offered again.
+    let (e3, _) = engine_with(EngineConfig {
+        contradiction_threshold: 0.2,
+        ..config()
+    });
+    let old = remember_valid(&e3, BERLIN, None, None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mid = remember_valid(&e3, "Sam lived in Porto", None, None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    resolve(&e3, &old, &mid, "supersedes", Some(&mid));
+    let again = e3
+        .remember(
+            "Sam moved to Berlin again",
+            Some("alpha"),
+            None,
+            "episodic",
+            false,
+            Some("raw"),
+            None,
+            None,
+        )
+        .unwrap();
+    assert_ne!(again["may_supersede"]["key"], old.as_str(), "{again}");
+}

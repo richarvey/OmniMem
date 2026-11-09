@@ -542,6 +542,19 @@ impl Engine {
             result.insert(name.clone(), value.clone().into());
         }
         if let Some(c) = contradiction {
+            if c.may_supersede {
+                // #35: the agent proposes the resolution; nothing here
+                // changes either memory.
+                result.insert(
+                    "may_supersede".into(),
+                    json!({
+                        "key": c.existing_key,
+                        "content": c.existing_content,
+                        "similarity": round_to(c.similarity, 4),
+                        "suggestion": "If this replaces that memory, propose check_contradictions(mode=\"resolve\", outcome=\"supersedes\") with this one as the winner; a person confirms it.",
+                    }),
+                );
+            }
             result.insert(
                 "contradiction_warning".into(),
                 json!({
