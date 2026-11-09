@@ -1017,6 +1017,7 @@ impl Engine {
             if let Some(winner) = data.get("superseded_by").filter(|w| !w.is_empty()) {
                 e.insert("superseded_by".into(), winner.as_str().into());
             }
+            crate::validity::insert_times(&mut e, &data);
             if let Some(p) = data.get("project").filter(|p| !p.is_empty()) {
                 e.insert("project".into(), p.as_str().into());
             }

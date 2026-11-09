@@ -728,3 +728,18 @@ fn remember_hints_that_a_changed_fact_may_supersede() {
         .unwrap();
     assert_ne!(again["may_supersede"]["key"], old.as_str(), "{again}");
 }
+
+/// #36: `explain_memory` and `recall_detail` show both intervals.
+#[test]
+fn explain_and_detail_show_both_intervals() {
+    let (e, berlin, lisbon) = march();
+    let explained = e.explain_memory(&berlin).unwrap();
+    assert_eq!(explained["valid_to"], "2026-04-01T00:00:00Z", "{explained}");
+    assert_eq!(explained["valid_from"], "2026-01-10T00:00:00Z");
+    assert_eq!(explained["recorded_at"], "2026-01-10T00:00:00Z");
+    assert_eq!(explained["retired_at"], "2026-05-10T00:00:00Z");
+    let detail = e.recall_detail(std::slice::from_ref(&lisbon)).unwrap();
+    assert_eq!(detail[0]["valid_from"], "2026-04-01T00:00:00Z", "{detail}");
+    assert!(detail[0].get("valid_to").is_none());
+    assert!(detail[0].get("retired_at").is_none());
+}

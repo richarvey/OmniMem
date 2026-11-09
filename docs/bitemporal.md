@@ -70,6 +70,19 @@ The briefing and the skill compiler only use memories that are still true, the s
 
 None of this moves anything for a memory with no `valid_to`. That covers every memory from 6.x and from 7.x before 7.0.11, so an upgrade changes no scores until something has an end.
 
+## In the settings window and the CLI
+
+Each memory's page has a **When it was true** section: when it became true and stopped, when OmniMem recorded it and, if it has, when it stopped believing it. Two date fields set or clear either end of validity (an empty field means "from when it was recorded" or "still true"), with an optional reason. The change is audited as the panel's, and the facts extracted from the memory follow it. The Search page has **True on** and **Known on** date fields, which are `valid_at` and `known_at`, and a result that has stopped being true says since when.
+
+`omnimem search` takes the same two, for a look at the raw store:
+
+```bash
+omnimem search "where does Sam live" --valid-at 2026-03-01
+omnimem search "where does Sam live" --known-at 2026-04-15 --json
+```
+
+`explain_memory` and `recall_detail` show `valid_from`, `valid_to`, `recorded_at` (the memory's `created_at`) and `retired_at` as ISO times, leaving out an end the memory doesn't have.
+
 ## What forget means for history
 
 `forget` is still erasure. A forgotten memory has no record time because it no longer exists, and the audit log loses its text too. That's deliberate: when someone asks for something to be deleted, privacy beats history. If you want a memory to stop counting but keep the record of it, reject it or supersede it instead: it stays in the store, and a `known_at` from before then still finds it.

@@ -135,7 +135,7 @@ The binary has a few other commands worth knowing:
 | `omnimem export <file>` | Write every memory to a backup in the same format (`--feeds` to include the RSS reading list, `--audit` for the audit log) |
 | `omnimem audit` | Show the audit log, newest first (`--key`, `--since`, `--actor`, `--action`, `--json`). Empty until `AUDIT_LOG` is on |
 | `omnimem stats` | Records and vectors per namespace |
-| `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--json`) |
+| `omnimem search "<query>"` | Raw similarity search, handy for checking an import (`--namespace`, `--top-k`, `--project`, `--all-states`, `--valid-at`, `--known-at`, `--json`) |
 | `omnimem rss` | Run one feed check now (`--dry-run` shows what it would ingest) |
 | `omnimem embed "<text>"` | Embed some text and print the start of the vector |
 | `omnimem hook [session-start\|session-end]` | Answer a Claude Code hook, so memory works without the agent choosing to use it. See [the hooks guide](claude-code-hook.md) |

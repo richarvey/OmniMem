@@ -28,6 +28,14 @@
            value="{{ project }}" style="width:150px">
   </div>
   <div class="form-group">
+    <label for="search-valid-at" title="Only what was true on this day">True on</label>
+    <input type="date" id="search-valid-at" name="valid_at" class="form-input" value="{{ valid_at }}">
+  </div>
+  <div class="form-group">
+    <label for="search-known-at" title="Only what OmniMem believed on this day">Known on</label>
+    <input type="date" id="search-known-at" name="known_at" class="form-input" value="{{ known_at }}">
+  </div>
+  <div class="form-group">
     <label>Max results</label>
     <input type="number" name="top_k" class="form-input" value="{{ top_k }}" min="1" max="50" style="width:80px">
   </div>

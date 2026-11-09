@@ -62,6 +62,13 @@
     <div class="meta-value mono">{{ memory.updated_at }}</div>
   </div>
 
+  {% if memory.retired_at %}
+  <div class="meta-item">
+    <div class="meta-label">No longer believed since</div>
+    <div class="meta-value mono">{{ memory.retired_at }}</div>
+  </div>
+  {% endif %}
+
   <div class="meta-item">
     <div class="meta-label">Recall Count</div>
     <div class="meta-value">{{ memory.recall_count }}</div>
@@ -246,6 +253,30 @@
   </div>
   {% if trust_error %}
   <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ trust_error }}</p>
+  {% endif %}
+</div>
+
+<div style="margin-bottom:1.5rem" id="validity">
+  <h3 style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">When it was true</h3>
+  <p style="font-size:0.85rem">
+    {% if memory.valid_from %}True from <span class="mono">{{ memory.valid_from }}</span>{% else %}True from when it was recorded (<span class="mono">{{ memory.created_at }}</span>){% endif %}{% if memory.valid_to %}, until <span class="mono">{{ memory.valid_to }}</span>{% if memory.expired %}, so no longer true{% endif %}{% else %}, and still true{% endif %}.
+    {% if memory.retired_at %}<span style="color:var(--text-dim)">OmniMem recorded it on <span class="mono">{{ memory.created_at }}</span> and stopped believing it on <span class="mono">{{ memory.retired_at }}</span>.</span>{% endif %}
+  </p>
+  <form method="POST" action="/memory/{{ memory.key }}/validity" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-top:0.5rem">
+    <label style="display:flex;flex-direction:column;font-size:0.8rem;color:var(--text-dim)">True from
+      <input type="date" name="valid_from" value="{{ memory.valid_from_date }}">
+    </label>
+    <label style="display:flex;flex-direction:column;font-size:0.8rem;color:var(--text-dim)">True until
+      <input type="date" name="valid_to" value="{{ memory.valid_to_date }}">
+    </label>
+    <label style="display:flex;flex-direction:column;font-size:0.8rem;color:var(--text-dim)">Why (optional)
+      <input type="text" name="reason" style="min-width:14rem">
+    </label>
+    <button type="submit" class="btn btn-secondary btn-sm">Save dates</button>
+  </form>
+  <p style="font-size:0.75rem;color:var(--text-dim);margin-top:0.35rem">Leave a date empty for "from when it was recorded" or "still true".</p>
+  {% if validity_error %}
+  <p role="alert" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem">{{ validity_error }}</p>
   {% endif %}
 </div>
 

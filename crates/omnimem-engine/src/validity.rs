@@ -81,6 +81,24 @@ pub fn iso(at: f64) -> Option<String> {
         .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
+/// A memory's two intervals for `explain_memory` and `recall_detail` (#36),
+/// as ISO times: `valid_from` and `recorded_at` (its `created_at`) always,
+/// `valid_to` and `retired_at` where it has them. `valid_from` reads as when
+/// it was recorded where nobody gave one.
+pub(crate) fn insert_times(map: &mut serde_json::Map<String, Value>, data: &Fields) {
+    let times = [
+        ("valid_from", omnimem_store::valid_from_of(data)),
+        ("valid_to", omnimem_store::valid_to_of(data)),
+        ("recorded_at", time_of(data, "created_at")),
+        ("retired_at", omnimem_store::retired_at_of(data)),
+    ];
+    for (name, at) in times {
+        if let Some(iso) = at.and_then(iso) {
+            map.insert(name.into(), iso.into());
+        }
+    }
+}
+
 /// A time a caller gave: seconds since the epoch, an ISO 8601 date or
 /// timestamp (a date alone is local midnight), or the prose forms recall
 /// understands in a query ("last March", "3 weeks ago", "1 April 2026").
@@ -209,6 +227,75 @@ impl Engine {
             result.insert("derived_facts".into(), derived.into());
         }
         Ok(Value::Object(result))
+    }
+
+    /// A person sets or clears a memory's validity (#36), from the settings
+    /// window. `None` leaves an end as it is; an empty string clears it;
+    /// anything else is read by [`parse_instant`]. Audited at `lifecycle`,
+    /// bumps `updated_at`, and carries a changed end to extracted facts.
+    /// Returns whether anything changed.
+    pub fn set_validity(
+        &self,
+        key: &str,
+        valid_from: Option<&str>,
+        valid_to: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<bool> {
+        crate::tools::validate_writable_key(key, "change the validity of")?;
+        let Some(row) = self.store.get(key)?.filter(|r| !r.is_empty()) else {
+            return Err(invalid(format!(
+                "Memory key not found: {}",
+                take_chars(key, 80)
+            )));
+        };
+        let read = |name: &str, raw: Option<&str>| -> Result<Option<Option<f64>>> {
+            match raw.map(str::trim) {
+                None => Ok(None),
+                Some("") => Ok(Some(None)),
+                Some(text) => instant_arg(name, Some(text)).map(Some),
+            }
+        };
+        let from = read(VALID_FROM, valid_from)?.unwrap_or_else(|| time_of(&row, VALID_FROM));
+        let to = read(VALID_TO, valid_to)?.unwrap_or_else(|| time_of(&row, VALID_TO));
+        let start = from.or_else(|| time_of(&row, "created_at"));
+        if let (Some(start), Some(end)) = (start, to)
+            && end <= start
+        {
+            return Err(invalid(format!(
+                "The end ({}) must be after it became true ({})",
+                iso(end).unwrap_or_default(),
+                iso(start).unwrap_or_default()
+            )));
+        }
+        let now = py_float(crate::pyfmt::now_secs());
+        let mut updates = Fields::new();
+        let as_field = |t: Option<f64>| t.map(py_float).unwrap_or_default();
+        if from != time_of(&row, VALID_FROM) {
+            updates.insert(VALID_FROM.to_owned(), as_field(from));
+        }
+        if to != time_of(&row, VALID_TO) {
+            updates.insert(VALID_TO.to_owned(), as_field(to));
+            updates.insert(
+                VALID_TO_RECORDED.to_owned(),
+                if to.is_some() {
+                    now.clone()
+                } else {
+                    String::new()
+                },
+            );
+        }
+        if updates.is_empty() {
+            return Ok(false);
+        }
+        updates.insert("updated_at".to_owned(), now);
+        {
+            let _audit = op(Op::new("set_validity")
+                .at(AuditLevel::Lifecycle)
+                .reason(reason));
+            self.store.set_fields(key, &updates)?;
+        }
+        self.cascade_interval(key)?;
+        Ok(true)
     }
 
     /// An extracted fact or preference takes its source's `valid_to` and
