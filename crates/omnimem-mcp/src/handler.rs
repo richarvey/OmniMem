@@ -822,8 +822,10 @@ impl ServerHandler for OmniMemServer {
         let mode = args.get("mode").and_then(Value::as_str);
         let skill_write = name == "compile_skill" && mode == Some("write");
         let resolves = name == "check_contradictions" && mode.map(str::trim) == Some("resolve");
-        let needs_person =
-            (skill_write || resolves) && engine.config().human_approval == HumanApproval::Human;
+        // Each gate has its own setting (#38), defaulting to HUMAN_APPROVAL.
+        let needs_person = (skill_write
+            && engine.config().skill_approval() == HumanApproval::Human)
+            || (resolves && engine.config().contradiction_approval() == HumanApproval::Human);
         let outcome = if needs_person {
             let started = Instant::now();
             let result = if resolves {

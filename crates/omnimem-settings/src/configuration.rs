@@ -465,7 +465,21 @@ const GROUPS: &[(&str, &[Setting])] = &[
                 "Who approves changes",
                 Kind::Choice(&["human", "agent"]),
                 "human",
-                "Human means an agent can propose a skill, or the resolution of a contradiction, but a person has to accept it: your client asks you, or the proposal waits under Pending proposals on the Skills page or Pending on the Contradictions page. Agent lets the agent's own call commit it, as 6.x did.",
+                "Human means an agent can propose a skill, or the resolution of a contradiction, but a person has to accept it: your client asks you, or the proposal waits under Pending proposals on the Skills page or Pending on the Contradictions page. Agent lets the agent's own call commit it, as 6.x did. The two settings below set each gate on its own.",
+            ),
+            setting(
+                "HUMAN_APPROVAL_SKILLS",
+                "Who approves skill writes",
+                Kind::Choice(&["human", "agent"]),
+                "",
+                "Only for skill writes. Not set follows Who approves changes.",
+            ),
+            setting(
+                "HUMAN_APPROVAL_CONTRADICTIONS",
+                "Who approves contradiction resolutions",
+                Kind::Choice(&["human", "agent"]),
+                "",
+                "Only for settling contradictions. Not set follows Who approves changes.",
             ),
             setting(
                 "OMNIMEM_USER",

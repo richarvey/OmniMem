@@ -70,13 +70,20 @@ fn seed(engine: &Engine) {
 }
 
 async fn start(approval: HumanApproval) -> (Arc<Engine>, String, CancellationToken) {
+    start_with(EngineConfig {
+        human_approval: approval,
+        ..EngineConfig::default()
+    })
+    .await
+}
+
+async fn start_with(config: EngineConfig) -> (Arc<Engine>, String, CancellationToken) {
     let engine = Arc::new(Engine::new(
         Arc::new(Store::open_in_memory().unwrap()),
         Arc::new(Words),
         EngineConfig {
-            human_approval: approval,
             skill_scan_interval_hours: 0.0,
-            ..EngineConfig::default()
+            ..config
         },
     ));
     seed(&engine);
@@ -652,4 +659,54 @@ async fn the_default_call_is_the_scan_and_a_bad_resolve_is_refused_unasked() {
     }
     assert!(resolution(&engine, KEY_A).is_none());
     stop.cancel();
+}
+
+/// #38: each gate opens and closes on its own. With one gate set to the
+/// agent and the other left to a person, the agent's call commits through
+/// the open one and asks through the closed one.
+#[tokio::test]
+async fn each_gate_opens_and_closes_on_its_own() {
+    for (skills, contradictions) in [
+        (HumanApproval::Agent, HumanApproval::Human),
+        (HumanApproval::Human, HumanApproval::Agent),
+    ] {
+        // HUMAN_APPROVAL says the opposite of the skills gate, so a gate
+        // that read it instead of its own setting would fail here.
+        let base_setting = if skills == HumanApproval::Agent {
+            HumanApproval::Human
+        } else {
+            HumanApproval::Agent
+        };
+        let (engine, base, stop) = start_with(EngineConfig {
+            human_approval: base_setting,
+            human_approval_skills: Some(skills),
+            human_approval_contradictions: Some(contradictions),
+            ..EngineConfig::default()
+        })
+        .await;
+        link_pair(&engine);
+        let mut client = Client::connect(&base, true).await;
+
+        propose(&mut client).await;
+        let (written, asked) = client
+            .call("compile_skill", write_args(), &Reply::Decline)
+            .await;
+        let (resolved, asked_too) = client
+            .call("check_contradictions", resolve_args(), &Reply::Decline)
+            .await;
+        if skills == HumanApproval::Agent {
+            assert_eq!(written["status"], "written", "{written}");
+            assert!(asked.is_empty());
+            assert_eq!(resolved["status"], "declined", "{resolved}");
+            assert_eq!(asked_too.len(), 1);
+            assert!(resolution(&engine, KEY_A).is_none());
+        } else {
+            assert_eq!(written["status"], "declined", "{written}");
+            assert_eq!(asked.len(), 1);
+            assert!(stored_body(&engine).is_none());
+            assert_eq!(resolved["status"], "resolved", "{resolved}");
+            assert!(asked_too.is_empty());
+        }
+        stop.cancel();
+    }
 }

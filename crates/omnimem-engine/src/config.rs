@@ -99,8 +99,16 @@ impl EnrichmentTrust {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
     /// `HUMAN_APPROVAL`: `human` (the default) makes an agent's skill write
-    /// wait for a person; `agent` lets the call commit, as 6.x did.
+    /// and contradiction resolution wait for a person; `agent` lets the call
+    /// commit, as 6.x did. Each gate can be set apart (#38).
     pub human_approval: HumanApproval,
+    /// `HUMAN_APPROVAL_SKILLS`: the skill gate's own setting. `None` follows
+    /// `human_approval`. Read through [`EngineConfig::skill_approval`].
+    pub human_approval_skills: Option<HumanApproval>,
+    /// `HUMAN_APPROVAL_CONTRADICTIONS`: the contradiction gate's own
+    /// setting. `None` follows `human_approval`. Read through
+    /// [`EngineConfig::contradiction_approval`].
+    pub human_approval_contradictions: Option<HumanApproval>,
     /// `TRUST_ENRICHMENT`: what an extracted fact or preference starts as.
     pub trust_enrichment: EnrichmentTrust,
     /// `FACT_EXTRACTION_MODEL`
@@ -207,6 +215,8 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             human_approval: HumanApproval::Human,
+            human_approval_skills: None,
+            human_approval_contradictions: None,
             trust_enrichment: EnrichmentTrust::Candidate,
             fact_extraction_model: "claude-haiku-5-5".to_owned(),
             query_expansion_model: "claude-haiku-5-5".to_owned(),
@@ -316,6 +326,32 @@ fn human_approval(default: HumanApproval) -> HumanApproval {
     }
 }
 
+/// One gate's own setting: `None` when unset, so it follows
+/// `HUMAN_APPROVAL`, and `human` (the safe side) on a value that is neither,
+/// with a warning. A typo never opens a gate.
+fn gate_approval(name: &str) -> Option<HumanApproval> {
+    let raw = text(name)?;
+    Some(HumanApproval::parse(&raw).unwrap_or_else(|| {
+        warn!("{name}={raw:?} is not human or agent; asking a person");
+        HumanApproval::Human
+    }))
+}
+
+impl EngineConfig {
+    /// Who approves an agent's skill write: `HUMAN_APPROVAL_SKILLS`, else
+    /// `HUMAN_APPROVAL`.
+    pub fn skill_approval(&self) -> HumanApproval {
+        self.human_approval_skills.unwrap_or(self.human_approval)
+    }
+
+    /// Who approves an agent's contradiction resolution:
+    /// `HUMAN_APPROVAL_CONTRADICTIONS`, else `HUMAN_APPROVAL`.
+    pub fn contradiction_approval(&self) -> HumanApproval {
+        self.human_approval_contradictions
+            .unwrap_or(self.human_approval)
+    }
+}
+
 /// `TRUST_ENRICHMENT`, falling back to the default (`candidate`, the side
 /// that asks a person) with a warning on a value that isn't one.
 fn trust_enrichment(default: EnrichmentTrust) -> EnrichmentTrust {
@@ -358,6 +394,8 @@ impl EngineConfig {
             .unwrap_or(d.skill_user);
         Self {
             human_approval: human_approval(d.human_approval),
+            human_approval_skills: gate_approval("HUMAN_APPROVAL_SKILLS"),
+            human_approval_contradictions: gate_approval("HUMAN_APPROVAL_CONTRADICTIONS"),
             trust_enrichment: trust_enrichment(d.trust_enrichment),
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
@@ -610,5 +648,47 @@ mod tests {
         assert_eq!(read("agent"), HumanApproval::Agent);
         assert_eq!(read("Human"), HumanApproval::Human);
         assert_eq!(read("robot"), HumanApproval::Human);
+    }
+
+    /// #38: each gate follows HUMAN_APPROVAL unless set on its own, and a
+    /// bad value for one gate asks a person rather than opening it.
+    #[test]
+    fn each_gate_defaults_to_human_approval_and_can_be_set_apart() {
+        let d = EngineConfig::default();
+        assert_eq!(
+            (d.skill_approval(), d.contradiction_approval()),
+            (HumanApproval::Human, HumanApproval::Human)
+        );
+        let read = |vars: &[(&str, &str)]| {
+            fn nest(vars: &[(&str, &str)]) -> EngineConfig {
+                match vars.split_first() {
+                    None => EngineConfig::from_env(PathBuf::from("backups")),
+                    Some(((name, value), rest)) => with_var(name, value, || nest(rest)),
+                }
+            }
+            let c = nest(vars);
+            (c.skill_approval(), c.contradiction_approval())
+        };
+        use HumanApproval::{Agent, Human};
+        assert_eq!(read(&[("HUMAN_APPROVAL", "agent")]), (Agent, Agent));
+        assert_eq!(
+            read(&[
+                ("HUMAN_APPROVAL", "agent"),
+                ("HUMAN_APPROVAL_SKILLS", "human")
+            ]),
+            (Human, Agent)
+        );
+        assert_eq!(
+            read(&[("HUMAN_APPROVAL_CONTRADICTIONS", "agent")]),
+            (Human, Agent)
+        );
+        assert_eq!(read(&[("HUMAN_APPROVAL_SKILLS", "agent")]), (Agent, Human));
+        assert_eq!(
+            read(&[
+                ("HUMAN_APPROVAL", "agent"),
+                ("HUMAN_APPROVAL_CONTRADICTIONS", "maybe")
+            ]),
+            (Agent, Human)
+        );
     }
 }
