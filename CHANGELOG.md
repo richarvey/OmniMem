@@ -2,7 +2,7 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.0.12] - unreleased
+## [7.0.12] - 2026-11-09
 
 ### Security
 - **The person-only CLI commands need a person at a terminal** ([#37](https://github.com/richarvey/OmniMem/issues/37)). `omnimem trust confirm`, `reject`, `restore` and `confirm-source`, and `omnimem contradictions resolve` and `accept`, settle what an agent may only propose, but an agent with a shell on the same machine could run them. They now refuse unless stdin and stdout are a terminal, and ask you to type the last six characters of the key. It's a speed bump, not a wall: a program can fake a terminal with `script` or `expect`. What it stops is an agent piping in a command it thought of, and it makes the step a deliberate one. Listing, `discard` and every other command run as before. The README's bulk-confirm loop now reads its file on another descriptor so each source can ask
@@ -15,7 +15,9 @@ Format: [version] - date - description
 - **`remember` points out a likely supersession** ([#35](https://github.com/richarvey/OmniMem/issues/35)). When a new memory says something changed ("moved to Lisbon", "switched to Caddy", "now at 10.0.0.9") and a neighbour above `CONTRADICTION_SIMILARITY_THRESHOLD` is still believed, the result carries `may_supersede` with its key, content and similarity, so the agent can ask you whether to resolve the pair as `supersedes`. It's only a hint. Nothing closes until a resolution goes through, under `HUMAN_APPROVAL` as before. With the real model, "Sam lives in Berlin" and "Sam moved to Lisbon" score about 0.70, right at the default threshold, so a pair worded less alike isn't flagged
 - **Bi-temporal dates in the settings window and the CLI** ([#36](https://github.com/richarvey/OmniMem/issues/36)). Each memory's page has a **When it was true** section showing when it became true and stopped, when it was recorded and when OmniMem stopped believing it, with two date fields to set or clear either end. The change is audited as the panel's and carries to extracted facts. The Search page gets **True on** and **Known on**, and a result that has stopped being true says since when. `omnimem search` takes `--valid-at` and `--known-at`, and `explain_memory` and `recall_detail` show `valid_from`, `valid_to`, `recorded_at` and `retired_at`. On 7.1 these reach the HTTP panel through the merge
 
-## [7.0.11] - unreleased
+## [7.0.11] - not released on its own
+
+Its changes ship in 7.0.12, the first release after 7.0.10.
 
 Bi-temporal memory, and the Agent Memory Atlas's other 7.0.8 findings: every memory now says when it was true and when OmniMem believed it, recall can ask about either, suppressed topics stay out of the briefing and the graveyard, and the audit log keeps every row.
 
