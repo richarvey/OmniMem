@@ -37,7 +37,7 @@ pub const VALID_KEY_PREFIXES: [&str; 10] = [
 pub(crate) const IN_CHUNK: usize = 500;
 
 /// Which memories a search may return. Empty lists mean "no restriction".
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SearchFilter {
     /// Allowed `state` values. A record with no state counts as `active`.
     pub states: Vec<String>,
@@ -46,11 +46,20 @@ pub struct SearchFilter {
     /// Allowed `trust` values; a record with none has the one
     /// [`trust_of`] gives it.
     pub trusts: Vec<String>,
+    /// Only memories true at this instant, as [`valid_at`] reads them.
+    pub valid_at: Option<f64>,
+    /// Only memories OmniMem believed at this instant, as [`known_at`]
+    /// reads them.
+    pub known_at: Option<f64>,
 }
 
 impl SearchFilter {
     fn is_empty(&self) -> bool {
-        self.states.is_empty() && self.projects.is_empty() && self.trusts.is_empty()
+        self.states.is_empty()
+            && self.projects.is_empty()
+            && self.trusts.is_empty()
+            && self.valid_at.is_none()
+            && self.known_at.is_none()
     }
 }
 
@@ -64,6 +73,57 @@ pub fn trust_of(fields: &Fields) -> &str {
         _ if fields.get("enriched_from").is_some_and(|f| !f.is_empty()) => "candidate",
         _ => "accepted",
     }
+}
+
+/// A field read as a time in seconds: empty, missing or unparseable is
+/// `None`, as the generated columns in `schema.rs` read it.
+pub fn time_of(fields: &Fields, name: &str) -> Option<f64> {
+    fields
+        .get(name)
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+}
+
+/// When a memory became true (#26): `valid_from`, or for none, when it was
+/// recorded. `None` only for a record with neither, which reads as always.
+pub fn valid_from_of(fields: &Fields) -> Option<f64> {
+    time_of(fields, "valid_from").or_else(|| time_of(fields, "created_at"))
+}
+
+/// When a memory stopped being true: `valid_to`, or for a superseded record
+/// with none, its `updated_at`. `None` is still true. The `valid_to` column
+/// in `schema.rs` spells the same rule.
+pub fn valid_to_of(fields: &Fields) -> Option<f64> {
+    time_of(fields, "valid_to").or_else(|| {
+        (trust_of(fields) == "superseded")
+            .then(|| time_of(fields, "updated_at"))
+            .flatten()
+    })
+}
+
+/// When OmniMem stopped believing a memory: `retired_at`, or for a
+/// superseded or rejected record with none, its `updated_at`. `None` is
+/// still believed. The `retired_at` column spells the same rule.
+pub fn retired_at_of(fields: &Fields) -> Option<f64> {
+    time_of(fields, "retired_at").or_else(|| {
+        matches!(trust_of(fields), "superseded" | "rejected")
+            .then(|| time_of(fields, "updated_at"))
+            .flatten()
+    })
+}
+
+/// Whether a memory was true at `t`: `[valid_from, valid_to)`.
+pub fn valid_at(fields: &Fields, t: f64) -> bool {
+    valid_from_of(fields).is_none_or(|from| from <= t)
+        && valid_to_of(fields).is_none_or(|to| t < to)
+}
+
+/// Whether OmniMem believed a memory at `t`: `[created_at, retired_at)`.
+pub fn known_at(fields: &Fields, t: f64) -> bool {
+    time_of(fields, "created_at").is_none_or(|at| at <= t)
+        && retired_at_of(fields).is_none_or(|end| t < end)
 }
 
 /// Which memories a listing returns. Every condition is evaluated by
@@ -80,6 +140,8 @@ pub struct MemoryFilter {
     pub states: Vec<String>,
     /// Allowed `trust` values, read as [`trust_of`] reads them.
     pub trusts: Vec<String>,
+    /// Only memories true at this instant, as [`valid_at`] reads them.
+    pub valid_at: Option<f64>,
     /// The project a memory belongs to: `project` when set and non-empty,
     /// else `project_name`. An empty name matches nothing.
     pub project: Option<String>,
@@ -430,6 +492,7 @@ impl Store {
         }
         push_state_filter(&mut sql, &mut args, &filter.states);
         push_trust_filter(&mut sql, &mut args, &filter.trusts);
+        push_time_filter(&mut sql, &mut args, filter.valid_at, None);
         if let Some(project) = &filter.project {
             if project.is_empty() {
                 // Neither field can equal a name the engine reads as "none".
@@ -815,6 +878,7 @@ impl Store {
         let mut args: Vec<SqlValue> = vec![SqlValue::Text(namespace.as_str().to_owned())];
         push_state_filter(&mut sql, &mut args, &filter.states);
         push_trust_filter(&mut sql, &mut args, &filter.trusts);
+        push_time_filter(&mut sql, &mut args, filter.valid_at, filter.known_at);
         if !filter.projects.is_empty() {
             let marks = placeholders(filter.projects.len());
             let _ = write!(
@@ -955,6 +1019,28 @@ fn push_state_filter(sql: &mut String, args: &mut Vec<SqlValue>, states: &[Strin
 }
 
 /// The generated `trust` column always has a value, so this is a plain IN.
+/// The bi-temporal conditions (#26). Each is the SQL spelling of
+/// [`valid_at`] and [`known_at`], over the generated columns.
+fn push_time_filter(
+    sql: &mut String,
+    args: &mut Vec<SqlValue>,
+    valid: Option<f64>,
+    known: Option<f64>,
+) {
+    if let Some(t) = valid {
+        sql.push_str(
+            " AND COALESCE(valid_from, created_at, 0) <= ? AND (valid_to IS NULL OR valid_to > ?)",
+        );
+        args.extend([SqlValue::Real(t), SqlValue::Real(t)]);
+    }
+    if let Some(t) = known {
+        sql.push_str(
+            " AND COALESCE(created_at, 0) <= ? AND (retired_at IS NULL OR retired_at > ?)",
+        );
+        args.extend([SqlValue::Real(t), SqlValue::Real(t)]);
+    }
+}
+
 fn push_trust_filter(sql: &mut String, args: &mut Vec<SqlValue>, trusts: &[String]) {
     if trusts.is_empty() {
         return;

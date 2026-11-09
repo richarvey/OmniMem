@@ -142,6 +142,7 @@ fn search_orders_filters_and_projects() {
         states: vec!["active".into(), "deprioritised".into()],
         projects: vec![],
         trusts: Vec::new(),
+        ..SearchFilter::default()
     };
     let keys: Vec<String> = s
         .search(Namespace::Episodic, &q, 10, &live, None)
@@ -163,6 +164,7 @@ fn search_orders_filters_and_projects() {
         states: vec!["active".into()],
         projects: vec!["omnimem".into()],
         trusts: Vec::new(),
+        ..SearchFilter::default()
     };
     let keys: Vec<String> = s
         .search(Namespace::Episodic, &q, 10, &scoped, None)
@@ -198,6 +200,7 @@ fn project_filter_matches_project_name_too() {
         states: vec![],
         projects: vec!["omnimem".into()],
         trusts: Vec::new(),
+        ..SearchFilter::default()
     };
     assert_eq!(
         s.search(Namespace::Project, &unit([1.0, 0.0, 0.0]), 5, &filter, None)
@@ -765,5 +768,63 @@ fn another_connections_writes_are_found_without_reopening() {
     drop(server);
     for suffix in ["", "-wal", "-shm"] {
         let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
+
+/// #26: `valid_at` and `known_at` filter in SQL as the Rust readers do.
+#[test]
+fn search_filters_on_validity_and_belief() {
+    let s = store();
+    let v = unit([1.0, 0.0, 0.0]);
+    for (id, f) in [
+        (
+            "berlin",
+            vec![
+                ("created_at", "100"),
+                ("valid_to", "250"),
+                ("retired_at", "300"),
+            ],
+        ),
+        ("lisbon", vec![("created_at", "300"), ("valid_from", "250")]),
+        ("open", vec![("created_at", "50")]),
+    ] {
+        s.upsert(&format!("mem:episodic:{id}"), &fields(&f), Some(&v))
+            .unwrap();
+    }
+    let keys = |filter: SearchFilter| -> Vec<String> {
+        let mut k: Vec<String> = s
+            .search(Namespace::Episodic, &v, 10, &filter, None)
+            .unwrap()
+            .into_iter()
+            .map(|h| h.key.trim_start_matches("mem:episodic:").to_owned())
+            .collect();
+        k.sort();
+        k
+    };
+    let at = |valid: Option<f64>, known: Option<f64>| SearchFilter {
+        valid_at: valid,
+        known_at: known,
+        ..SearchFilter::default()
+    };
+    assert_eq!(keys(at(Some(200.0), None)), ["berlin", "open"]);
+    assert_eq!(keys(at(Some(260.0), None)), ["lisbon", "open"]);
+    assert_eq!(keys(at(None, Some(200.0))), ["berlin", "open"]);
+    assert_eq!(keys(at(None, Some(310.0))), ["lisbon", "open"]);
+    assert_eq!(keys(at(Some(260.0), Some(260.0))), ["open"]);
+    assert_eq!(keys(at(Some(260.0), Some(400.0))), ["lisbon", "open"]);
+    for id in ["berlin", "lisbon", "open"] {
+        let row = s.get(&format!("mem:episodic:{id}")).unwrap().unwrap();
+        for t in [200.0, 260.0, 310.0] {
+            assert_eq!(
+                keys(at(Some(t), None)).contains(&id.to_owned()),
+                omnimem_store::valid_at(&row, t),
+                "{id} valid at {t}"
+            );
+            assert_eq!(
+                keys(at(None, Some(t))).contains(&id.to_owned()),
+                omnimem_store::known_at(&row, t),
+                "{id} known at {t}"
+            );
+        }
     }
 }

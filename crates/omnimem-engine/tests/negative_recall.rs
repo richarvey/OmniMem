@@ -858,7 +858,10 @@ fn a_rejected_memorys_dead_ends_never_warn() {
         (warning_keys(&results).contains(&g.own), hook)
     };
     let (in_recall, hook) = warned(&g);
-    assert!(in_recall, "control: the dead end warns before the rejection");
+    assert!(
+        in_recall,
+        "control: the dead end warns before the rejection"
+    );
     assert!(hook.iter().any(|t| t.contains("Celery")), "{hook:?}");
     assert!(
         hook.iter().all(|t| !t.contains("The memory it comes from")),

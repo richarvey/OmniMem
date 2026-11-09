@@ -93,8 +93,14 @@ impl Engine {
         let (mut stale, mut reinstate, mut contradictions) = (Vec::new(), Vec::new(), Vec::new());
         for (key, data) in &rows {
             if !suppressed.is_empty() {
-                let lower = data.get("content").map_or("", String::as_str).to_lowercase();
-                if suppressed.iter().any(|t| crate::recall::mentions(&lower, t)) {
+                let lower = data
+                    .get("content")
+                    .map_or("", String::as_str)
+                    .to_lowercase();
+                if suppressed
+                    .iter()
+                    .any(|t| crate::recall::mentions(&lower, t))
+                {
                     continue;
                 }
             }

@@ -830,6 +830,7 @@ impl Engine {
             ]
             .map(str::to_owned)
             .to_vec(),
+            ..SearchFilter::default()
         };
         let mut results = Vec::new();
         for ns in scope.namespaces {

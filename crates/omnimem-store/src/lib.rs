@@ -31,10 +31,10 @@ pub use error::StoreError;
 pub use migrations::MigrationReport;
 pub use oauth::{OAuthStore, TokenKind, secret_hash};
 pub use schema::{HEURISTIC_EXPLANATION, HEURISTIC_LINK_EXPLANATION};
-pub use store::trust_of;
 pub use store::{
     Fields, MAX_KEY_BYTES, MemoryFilter, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES,
     discovery_text,
 };
+pub use store::{known_at, retired_at_of, time_of, trust_of, valid_at, valid_from_of, valid_to_of};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

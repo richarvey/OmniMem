@@ -855,6 +855,7 @@ fn search(
         // `omnimem search` is a raw look at the store, so it shows every
         // trust; each hit says which.
         trusts: Vec::new(),
+        ..SearchFilter::default()
     };
     for hit in store.search(namespace, &vector, top_k, &filter, None)? {
         let text = hit
