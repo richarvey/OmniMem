@@ -10,7 +10,7 @@ use omnimem_engine::{
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
-    ServerCapabilities, ServerInfo, Tool,
+    ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::schemars::JsonSchema;
 use rmcp::service::{Peer, RequestContext};
@@ -777,8 +777,8 @@ impl OmniMemServer {
 }
 
 impl ServerHandler for OmniMemServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("omnimem", env!("CARGO_PKG_VERSION")))
             .with_instructions(crate::INSTRUCTIONS)
     }
