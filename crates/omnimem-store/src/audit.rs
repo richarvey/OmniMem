@@ -369,7 +369,7 @@ fn wanted(name: &str, full: bool) -> bool {
 // facts that moved, a suppression, a contradiction link's other side, a
 // resolution's choice, a project and the scrub count itself. Everything
 // else in a row that isn't in `KEPT` is a field only `full` records.
-const BOOKKEEPING: [&str; 15] = [
+const BOOKKEEPING: [&str; 16] = [
     "namespace",
     "trust_action",
     "other_fields",
@@ -385,6 +385,7 @@ const BOOKKEEPING: [&str; 15] = [
     "project",
     "derived_facts",
     "scrubbed",
+    "trust_offered",
 ];
 
 fn scrub_map(map: &mut Map<String, Value>) -> bool {
@@ -701,6 +702,27 @@ impl Recorder {
             None => "update",
         };
         self.insert(conn, action, key, &from, &to)
+    }
+
+    /// A restore offered a trust it may not raise a memory to, and the store
+    /// kept its own (#39). One row at `lifecycle`: the trust kept and the one
+    /// the backup carried.
+    pub(crate) fn trust_refused(
+        &self,
+        conn: &Connection,
+        key: &str,
+        kept: &str,
+        offered: &str,
+    ) -> Result<()> {
+        if self.level < AuditLevel::Lifecycle {
+            return Ok(());
+        }
+        let from = Map::from_iter([("trust".to_owned(), Value::from(kept))]);
+        let to = Map::from_iter([
+            ("trust".to_owned(), Value::from(kept)),
+            ("trust_offered".to_owned(), Value::from(offered)),
+        ]);
+        self.insert(conn, "restore_trust_refused", key, &from, &to)
     }
 
     /// Topics added to or removed from the suppressed set, one row each.

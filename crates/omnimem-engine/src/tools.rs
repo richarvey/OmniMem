@@ -1589,6 +1589,14 @@ impl Engine {
             "re_embedded": report.embedded,
             "filename": filename,
         });
+        // #39: said only when it happened, so an ordinary restore's result
+        // is the 6.x one.
+        if report.trust_kept > 0 {
+            result["trust_kept"] = report.trust_kept.into();
+        }
+        if report.trust_capped > 0 {
+            result["trust_capped"] = report.trust_capped.into();
+        }
         // Only a backup that carries feeds adds anything here, so a 6.x
         // backup's result is exactly what 6.x returned.
         if let Some(feeds) = &backup.feeds {
