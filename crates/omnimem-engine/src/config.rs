@@ -132,7 +132,8 @@ pub struct EngineConfig {
     /// `full` is the only level that keeps memory text.
     pub audit_log: AuditLevel,
     /// `AUDIT_RETENTION_DAYS`: audit rows older than this are pruned by the
-    /// maintenance pass; 0 keeps them for ever.
+    /// maintenance pass; 0, the default since 7.0.11, keeps them for ever,
+    /// since `known_at` reads history only as far back as the log goes.
     pub audit_retention_days: u32,
     /// `DEPRIORITISED_WEIGHT`
     pub deprioritised_weight: f64,
@@ -215,7 +216,7 @@ impl Default for EngineConfig {
             abandoned_cache_ttl: Duration::from_secs(60),
             graveyard_scope: GraveyardScope::Project,
             audit_log: AuditLevel::Lifecycle,
-            audit_retention_days: 90,
+            audit_retention_days: 0,
             deprioritised_weight: 0.2,
             trust_disputed_weight: 0.8,
             trust_candidate_weight: 0.9,
@@ -534,7 +535,7 @@ mod tests {
     fn audit_settings_parse_and_a_bad_level_keeps_the_lifecycle_log() {
         let d = EngineConfig::default();
         assert_eq!(d.audit_log, AuditLevel::Lifecycle);
-        assert_eq!(d.audit_retention_days, 90);
+        assert_eq!(d.audit_retention_days, 0);
 
         let level = |value: &str| {
             with_var("AUDIT_LOG", value, || {
@@ -561,8 +562,8 @@ mod tests {
         };
         assert_eq!(days("30"), 30);
         assert_eq!(days("0"), 0);
-        assert_eq!(days("-5"), 90, "not a count of days, so the default");
-        assert_eq!(days("soon"), 90);
+        assert_eq!(days("-5"), 0, "not a count of days, so the default");
+        assert_eq!(days("soon"), 0);
     }
 
     #[test]

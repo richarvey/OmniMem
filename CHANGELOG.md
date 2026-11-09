@@ -2,6 +2,15 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.0.11] - unreleased
+
+Bi-temporal memory, and the Agent Memory Atlas's other 7.0.8 findings: every memory now says when it was true and when OmniMem believed it, recall can ask about either, suppressed topics stay out of the briefing and the graveyard, and the audit log keeps every row.
+
+**Before upgrading**, one default changes: `AUDIT_RETENTION_DAYS` is 0, which keeps every audit row, where 7.0.10 pruned after 90 days ([#31](https://github.com/richarvey/OmniMem/issues/31)). A `lifecycle` row is about 340 bytes, so a store with 50 state changes a day grows by about 6 MB a year. Set `AUDIT_RETENTION_DAYS=90` to keep the 7.0.10 behaviour.
+
+### Changed
+- **The audit log keeps every row by default** ([#31](https://github.com/richarvey/OmniMem/issues/31)). Ninety days could say what changed this quarter, not why the store believes something it learnt last year, and a `known_at` recall can only look back as far as the log goes. Pruning is now opt-in: set `AUDIT_RETENTION_DAYS` to a number of days
+
 ## [7.0.10] - 2026-11-08
 
 One fix: a contradiction whose other memory no longer exists can be cleared. There's no schema change, so you can go back to 7.0.9 without a backup.
