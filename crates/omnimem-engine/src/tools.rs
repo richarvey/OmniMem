@@ -26,7 +26,7 @@ use crate::lifecycle::{
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
 use crate::tags::validate_tags;
-use crate::validity::Validity;
+use crate::validity::{AsOf, Validity};
 use crate::{Engine, EngineError, Result};
 
 pub const MAX_CONTENT_LENGTH: usize = 50_000;
@@ -342,6 +342,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     if let Some(date) = r.event_date {
         e.insert("event_date".into(), json!(date));
     }
+    insert_intervals(&mut e, r);
     for (name, value) in [
         ("enriched_from", &r.enriched_from),
         ("as_of", &r.as_of),
@@ -354,6 +355,20 @@ fn recall_entry(r: &RecallResult) -> Value {
         }
     }
     Value::Object(e)
+}
+
+/// A hit's validity and retirement (#28), as ISO 8601 UTC times, only where
+/// it has them, so a memory with neither reads as it did in 6.x.
+fn insert_intervals(e: &mut Map<String, Value>, r: &RecallResult) {
+    for (name, at) in [
+        ("valid_from", r.valid_from),
+        ("valid_to", r.valid_to),
+        ("retired_at", r.retired_at),
+    ] {
+        if let Some(iso) = at.and_then(crate::validity::iso) {
+            e.insert(name.into(), iso.into());
+        }
+    }
 }
 
 /// A trailing notice listing results whose licence is still unknown.
@@ -778,6 +793,29 @@ impl Engine {
         expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
+        self.recall_at(
+            query,
+            top_k,
+            namespaces,
+            project_filter,
+            expand_queries,
+            domain_filter,
+            AsOf::default(),
+        )
+    }
+
+    /// `recall` at a point in valid time, record time or both (#28).
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_at(
+        &self,
+        query: &str,
+        top_k: i64,
+        namespaces: Option<&[String]>,
+        project_filter: Option<&str>,
+        expand_queries: Option<bool>,
+        domain_filter: Option<&DomainFilter>,
+        as_of: AsOf,
+    ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
         Self::validate_recall_namespaces(namespaces)?;
         let (projects, notice, empty_scope) =
@@ -785,13 +823,14 @@ impl Engine {
         if empty_scope {
             return Ok(Value::Array(notice.into_iter().collect()));
         }
-        let results = self.recall_results(
+        let results = self.recall_results_at(
             query,
             namespaces,
             Some(top_k),
             &projects,
             None,
             expand_queries,
+            as_of,
         )?;
         let mut output: Vec<Value> = notice.into_iter().collect();
         output.extend(results.iter().map(recall_entry));
@@ -812,6 +851,31 @@ impl Engine {
         expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
+        self.recall_index_at(
+            query,
+            top_k,
+            namespaces,
+            project_filter,
+            snippet_length,
+            expand_queries,
+            domain_filter,
+            AsOf::default(),
+        )
+    }
+
+    /// `recall_index` at a point in valid time, record time or both (#28).
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_index_at(
+        &self,
+        query: &str,
+        top_k: i64,
+        namespaces: Option<&[String]>,
+        project_filter: Option<&str>,
+        snippet_length: i64,
+        expand_queries: Option<bool>,
+        domain_filter: Option<&DomainFilter>,
+        as_of: AsOf,
+    ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
         Self::validate_recall_namespaces(namespaces)?;
         let (projects, notice, empty_scope) =
@@ -824,13 +888,14 @@ impl Engine {
             }));
         }
         let snippet_length = snippet_length.clamp(50, 500) as usize;
-        let results = self.recall_results(
+        let results = self.recall_results_at(
             query,
             namespaces,
             Some(top_k),
             &projects,
             None,
             expand_queries,
+            as_of,
         )?;
 
         let mut output = Vec::new();
@@ -878,6 +943,7 @@ impl Engine {
                 let keys: Vec<Value> = r.replaces.iter().map(|x| x["key"].clone()).collect();
                 e.insert("replaces".into(), keys.into());
             }
+            insert_intervals(&mut e, r);
             index_tokens += snippet.chars().count() / 4 + 10;
             output.push(Value::Object(e));
         }

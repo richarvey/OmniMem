@@ -113,6 +113,14 @@ pub struct Recall {
     pub expand_queries: Option<bool>,
     #[serde(default)]
     pub domain_filter: Option<DomainArg>,
+    /// Only what was true at this time ("where did Sam live last March"):
+    /// an ISO date, a timestamp or a phrase.
+    #[serde(default)]
+    pub valid_at: Option<String>,
+    /// Only what OmniMem believed at this time ("what did we think in
+    /// March"), with trust as it stood then.
+    #[serde(default)]
+    pub known_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -131,6 +139,14 @@ pub struct RecallIndex {
     pub expand_queries: Option<bool>,
     #[serde(default)]
     pub domain_filter: Option<DomainArg>,
+    /// Only what was true at this time ("where did Sam live last March"):
+    /// an ISO date, a timestamp or a phrase.
+    #[serde(default)]
+    pub valid_at: Option<String>,
+    /// Only what OmniMem believed at this time ("what did we think in
+    /// March"), with trust as it stood then.
+    #[serde(default)]
+    pub known_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

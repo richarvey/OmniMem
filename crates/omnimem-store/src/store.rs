@@ -47,6 +47,8 @@ pub struct SearchFilter {
     /// [`trust_of`] gives it.
     pub trusts: Vec<String>,
     /// Only memories true at this instant, as [`valid_at`] reads them.
+    /// With `known_at` as well, the end of validity is left to the caller
+    /// to check with [`valid_at_as_known`], so the rows are a superset.
     pub valid_at: Option<f64>,
     /// Only memories OmniMem believed at this instant, as [`known_at`]
     /// reads them.
@@ -112,6 +114,59 @@ pub fn retired_at_of(fields: &Fields) -> Option<f64> {
             .then(|| time_of(fields, "updated_at"))
             .flatten()
     })
+}
+
+/// When OmniMem learnt a memory's `valid_to`: `valid_to_recorded_at`, or
+/// for none, when it was retired if it is superseded (the resolution that
+/// ended it), else when it was recorded.
+pub fn valid_to_recorded_at(fields: &Fields) -> Option<f64> {
+    time_of(fields, "valid_to_recorded_at").or_else(|| {
+        if trust_of(fields) == "superseded" {
+            retired_at_of(fields)
+        } else {
+            time_of(fields, "created_at")
+        }
+    })
+}
+
+/// A memory's `valid_to` as OmniMem knew it at `known`: an end recorded
+/// later wasn't known yet, so the memory read as still true.
+pub fn valid_to_known_at(fields: &Fields, known: f64) -> Option<f64> {
+    valid_to_of(fields).filter(|_| valid_to_recorded_at(fields).is_none_or(|at| at <= known))
+}
+
+/// The full bi-temporal question: was a memory true at `valid`, as
+/// OmniMem believed things at `known`? With `known` absent it is
+/// [`valid_at`]; with both, the memory must also have been believed then.
+pub fn valid_at_as_known(fields: &Fields, valid: f64, known: Option<f64>) -> bool {
+    let Some(known) = known else {
+        return valid_at(fields, valid);
+    };
+    known_at(fields, known)
+        && valid_from_of(fields).is_none_or(|from| from <= valid)
+        && valid_to_known_at(fields, known).is_none_or(|to| valid < to)
+}
+
+/// A memory's trust as it stood at `known`: one superseded or rejected
+/// after then was still believed, so it reads as what it went back from
+/// (`trust_prior`, or its default). Trust is otherwise taken as it is now:
+/// when a dispute began isn't recorded.
+pub fn trust_at(fields: &Fields, known: f64) -> String {
+    let now = trust_of(fields);
+    if matches!(now, "superseded" | "rejected")
+        && retired_at_of(fields).is_some_and(|at| at > known)
+    {
+        let mut before = fields.clone();
+        let prior = fields.get("trust_prior").cloned().unwrap_or_default();
+        let prior = if prior == "disputed" {
+            String::new()
+        } else {
+            prior
+        };
+        before.insert("trust".to_owned(), prior);
+        return trust_of(&before).to_owned();
+    }
+    now.to_owned()
 }
 
 /// Whether a memory was true at `t`: `[valid_from, valid_to)`.
@@ -1028,10 +1083,15 @@ fn push_time_filter(
     known: Option<f64>,
 ) {
     if let Some(t) = valid {
-        sql.push_str(
-            " AND COALESCE(valid_from, created_at, 0) <= ? AND (valid_to IS NULL OR valid_to > ?)",
-        );
-        args.extend([SqlValue::Real(t), SqlValue::Real(t)]);
+        sql.push_str(" AND COALESCE(valid_from, created_at, 0) <= ?");
+        args.push(SqlValue::Real(t));
+        // With `known` too, an end recorded after `known` doesn't count,
+        // which the columns can't say: the end is checked by the caller
+        // ([`valid_at_as_known`]) and the SQL stays a superset.
+        if known.is_none() {
+            sql.push_str(" AND (valid_to IS NULL OR valid_to > ?)");
+            args.push(SqlValue::Real(t));
+        }
     }
     if let Some(t) = known {
         sql.push_str(

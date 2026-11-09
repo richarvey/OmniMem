@@ -35,6 +35,9 @@ pub use store::{
     Fields, MAX_KEY_BYTES, MemoryFilter, SearchFilter, SearchHit, Store, VALID_KEY_PREFIXES,
     discovery_text,
 };
-pub use store::{known_at, retired_at_of, time_of, trust_of, valid_at, valid_from_of, valid_to_of};
+pub use store::{
+    known_at, retired_at_of, time_of, trust_at, trust_of, valid_at, valid_at_as_known,
+    valid_from_of, valid_to_known_at, valid_to_of, valid_to_recorded_at,
+};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

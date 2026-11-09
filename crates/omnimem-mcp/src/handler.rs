@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use omnimem_engine::{
-    DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
+    AsOf, DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
     ResolveRequest, Retire, SkillReview,
 };
 use rmcp::model::{
@@ -240,19 +240,22 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         "recall" => {
             let a: Recall = parse(args)?;
             let domains = domain(a.domain_filter);
-            e.recall(
+            let as_of = AsOf::parse(a.valid_at.as_deref(), a.known_at.as_deref())?;
+            e.recall_at(
                 &a.query,
                 a.top_k,
                 a.namespaces.as_deref(),
                 a.project_filter.as_deref(),
                 a.expand_queries,
                 domains.as_ref(),
+                as_of,
             )?
         }
         "recall_index" => {
             let a: RecallIndex = parse(args)?;
             let domains = domain(a.domain_filter);
-            e.recall_index(
+            let as_of = AsOf::parse(a.valid_at.as_deref(), a.known_at.as_deref())?;
+            e.recall_index_at(
                 &a.query,
                 a.top_k,
                 a.namespaces.as_deref(),
@@ -260,6 +263,7 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
                 a.snippet_length,
                 a.expand_queries,
                 domains.as_ref(),
+                as_of,
             )?
         }
         "recall_detail" => e.recall_detail(&parse::<RecallDetail>(args)?.keys)?,

@@ -810,7 +810,15 @@ fn search_filters_on_validity_and_belief() {
     assert_eq!(keys(at(Some(260.0), None)), ["lisbon", "open"]);
     assert_eq!(keys(at(None, Some(200.0))), ["berlin", "open"]);
     assert_eq!(keys(at(None, Some(310.0))), ["lisbon", "open"]);
-    assert_eq!(keys(at(Some(260.0), Some(260.0))), ["open"]);
+    // Both together: the store can't tell an end recorded later from one
+    // known then, so its rows are a superset the caller narrows.
+    assert_eq!(keys(at(Some(260.0), Some(260.0))), ["berlin", "open"]);
+    let berlin = s.get("mem:episodic:berlin").unwrap().unwrap();
+    assert!(!omnimem_store::valid_at_as_known(
+        &berlin,
+        260.0,
+        Some(260.0)
+    ));
     assert_eq!(keys(at(Some(260.0), Some(400.0))), ["lisbon", "open"]);
     for id in ["berlin", "lisbon", "open"] {
         let row = s.get(&format!("mem:episodic:{id}")).unwrap().unwrap();

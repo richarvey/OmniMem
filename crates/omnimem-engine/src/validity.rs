@@ -32,6 +32,9 @@ use crate::{Engine, Result};
 pub const VALID_FROM: &str = "valid_from";
 pub const VALID_TO: &str = "valid_to";
 pub const RETIRED_AT: &str = "retired_at";
+/// When OmniMem learnt `valid_to`, so a `known_at` read can tell an end it
+/// knew of from one written later ([`omnimem_store::valid_to_known_at`]).
+pub const VALID_TO_RECORDED: &str = "valid_to_recorded_at";
 
 /// The field on a fact that says its `name` came from its source, so
 /// clearing the source's clears only what it gave: `valid_to_from` and
@@ -46,6 +49,35 @@ pub(crate) fn inherited_marker(name: &str) -> String {
 pub struct Validity {
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
+}
+
+/// The two times a recall can ask about (#28). `valid_at` is "what was
+/// true then", `known_at` is "what did we believe then"; both together is
+/// "what did we believe then about then". Neither is an ordinary recall.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AsOf {
+    pub valid_at: Option<f64>,
+    pub known_at: Option<f64>,
+}
+
+impl AsOf {
+    /// From the strings a caller gave, each read by [`parse_instant`].
+    pub fn parse(valid_at: Option<&str>, known_at: Option<&str>) -> Result<Self> {
+        Ok(Self {
+            valid_at: instant_arg("valid_at", valid_at)?,
+            known_at: instant_arg("known_at", known_at)?,
+        })
+    }
+
+    pub fn is_now(&self) -> bool {
+        self.valid_at.is_none() && self.known_at.is_none()
+    }
+}
+
+/// A time as ISO 8601 in UTC, to the second (`2026-04-01T00:00:00Z`).
+pub fn iso(at: f64) -> Option<String> {
+    chrono::DateTime::from_timestamp(at.floor() as i64, 0)
+        .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 /// A time a caller gave: seconds since the epoch, an ISO 8601 date or
@@ -132,6 +164,7 @@ impl Engine {
         };
         let give = |name: &str| time_of(&src, name).map(py_float);
         let (valid_to, retired_at) = (give(VALID_TO), give(RETIRED_AT));
+        let now = crate::pyfmt::now_str();
         let mut writes: Vec<(String, Fields)> = Vec::new();
         for ns in [
             omnimem_core::Namespace::Knowledge,
@@ -167,6 +200,9 @@ impl Engine {
                         Some(v) if own.is_none() || inherited => {
                             if own != Some(v) {
                                 updates.insert(name.to_owned(), v.clone());
+                                if name == VALID_TO {
+                                    updates.insert(VALID_TO_RECORDED.to_owned(), now.clone());
+                                }
                             }
                             if !inherited {
                                 updates.insert(marker, source.to_owned());
@@ -175,6 +211,9 @@ impl Engine {
                         None if inherited => {
                             updates.insert(name.to_owned(), String::new());
                             updates.insert(marker, String::new());
+                            if name == VALID_TO {
+                                updates.insert(VALID_TO_RECORDED.to_owned(), String::new());
+                            }
                         }
                         _ => {}
                     }

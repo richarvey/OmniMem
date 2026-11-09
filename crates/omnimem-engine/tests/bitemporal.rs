@@ -384,3 +384,159 @@ fn an_extracted_fact_takes_its_validity_from_the_text_or_its_source() {
         "a backwards interval is dropped"
     );
 }
+
+// ---------------------------------------------------------------------------
+// #28: the reads
+
+fn utc(day: &str) -> f64 {
+    omnimem_engine::validity::parse_instant(&format!("{day}T00:00:00Z")).unwrap()
+}
+
+fn set_times(e: &Engine, key: &str, created: &str) {
+    let at = format!("{:.1}", utc(created));
+    e.store()
+        .set_fields(
+            key,
+            &Fields::from([
+                ("created_at".to_owned(), at.clone()),
+                ("updated_at".to_owned(), at),
+            ]),
+        )
+        .unwrap();
+}
+
+/// Berlin is recorded in January. In May, "moved to Lisbon" is recorded,
+/// true from 1 April, and supersedes Berlin.
+fn march() -> (Engine, String, String) {
+    let (e, _) = engine();
+    let berlin = remember_valid(&e, BERLIN, None, None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    set_times(&e, &berlin, "2026-01-10");
+    let lisbon = remember_valid(&e, LISBON, Some("2026-04-01T00:00:00Z"), None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    set_times(&e, &lisbon, "2026-05-10");
+    resolve(&e, &berlin, &lisbon, "supersedes", Some(&lisbon));
+    // The resolution ran now; the scenario has it in May, as Lisbon was
+    // recorded.
+    let may = format!("{:.1}", utc("2026-05-10"));
+    e.store()
+        .set_fields(
+            &berlin,
+            &Fields::from([
+                ("retired_at".to_owned(), may.clone()),
+                ("valid_to_recorded_at".to_owned(), may),
+            ]),
+        )
+        .unwrap();
+    (e, berlin, lisbon)
+}
+
+const WHERE: &str = "where does Sam live";
+
+fn ask(e: &Engine, valid: Option<&str>, known: Option<&str>) -> Vec<Value> {
+    let as_of = omnimem_engine::AsOf::parse(valid, known).unwrap();
+    let out = e
+        .recall_at(WHERE, 10, None, Some("alpha"), Some(false), None, as_of)
+        .unwrap();
+    out.as_array().unwrap().clone()
+}
+
+fn keys(results: &[Value]) -> Vec<String> {
+    results
+        .iter()
+        .filter_map(|r| r["key"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn the_march_scenario() {
+    let (e, berlin, lisbon) = march();
+
+    // What was true then.
+    assert_eq!(
+        keys(&ask(&e, Some("2026-03-01"), None)),
+        vec![berlin.clone()]
+    );
+    assert_eq!(
+        keys(&ask(&e, Some("2026-05-01"), None)),
+        vec![lisbon.clone()]
+    );
+
+    // What we believed then: the move wasn't recorded yet, so Berlin, as
+    // believed, with what happened to it afterwards attached.
+    let then = ask(&e, None, Some("2026-04-15"));
+    assert_eq!(keys(&then), vec![berlin.clone()]);
+    assert_eq!(then[0]["trust"], "accepted", "{then:?}");
+    assert_eq!(then[0]["superseded_by"], lisbon.as_str());
+    assert!(then[0]["retired_at"].as_str().is_some());
+
+    // What we believed then about then: the end of Berlin's validity was
+    // written in May, so in April it was still true as far as we knew.
+    assert_eq!(
+        keys(&ask(&e, Some("2026-04-15"), Some("2026-04-15"))),
+        vec![berlin.clone()]
+    );
+    // Asked from June about mid-April, the move is known.
+    assert_eq!(
+        keys(&ask(&e, Some("2026-04-15"), Some("2026-06-01"))),
+        vec![lisbon.clone()]
+    );
+
+    // An ordinary recall: Lisbon, with Berlin folded in.
+    let now = ask(&e, None, None);
+    assert_eq!(keys(&now), vec![lisbon.clone()]);
+    assert_eq!(now[0]["replaces"][0]["key"], berlin.as_str());
+    assert_eq!(now[0]["valid_from"], "2026-04-01T00:00:00Z");
+
+    // recall_index takes the same times.
+    let index = e
+        .recall_index_at(
+            WHERE,
+            10,
+            None,
+            Some("alpha"),
+            100,
+            Some(false),
+            None,
+            omnimem_engine::AsOf::parse(Some("2026-03-01"), None).unwrap(),
+        )
+        .unwrap();
+    let index_keys: Vec<&str> = index["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["key"].as_str())
+        .collect();
+    assert_eq!(index_keys, [berlin.as_str()]);
+
+    // A time that can't be read is refused, not ignored.
+    assert!(omnimem_engine::AsOf::parse(Some("whenever"), None).is_err());
+}
+
+/// Under `known_at`, a memory rejected later was believed then, and one
+/// rejected earlier wasn't.
+#[test]
+fn known_at_judges_trust_as_it_stood() {
+    let (e, _) = engine();
+    let key = remember_valid(&e, BERLIN, None, None)["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    set_times(&e, &key, "2026-01-10");
+    e.set_trust(&key, TrustAction::Reject, None).unwrap();
+    assert!(
+        keys(&ask(&e, None, None)).is_empty(),
+        "rejected: never a hit now"
+    );
+    let then = ask(&e, None, Some("2026-02-01"));
+    assert_eq!(keys(&then), vec![key.clone()]);
+    assert_eq!(then[0]["trust"], "accepted");
+    assert!(
+        keys(&ask(&e, None, Some("2025-12-01"))).is_empty(),
+        "not yet recorded"
+    );
+}

@@ -507,6 +507,10 @@ impl Engine {
                                 == Some(closed)
                         {
                             updates.insert(crate::validity::VALID_TO.to_owned(), String::new());
+                            updates.insert(
+                                crate::validity::VALID_TO_RECORDED.to_owned(),
+                                String::new(),
+                            );
                         }
                     } else {
                         trust::dispute(row, &mut updates);
@@ -515,6 +519,7 @@ impl Engine {
             }
             if loses && let Some(bound) = &closes {
                 updates.insert(crate::validity::VALID_TO.to_owned(), bound.clone());
+                updates.insert(crate::validity::VALID_TO_RECORDED.to_owned(), now.clone());
             }
             crate::validity::follow_trust(row, &mut updates, &now);
             updates.insert("contradictions".to_owned(), py_json(&Value::Array(links)));
