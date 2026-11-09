@@ -20,7 +20,7 @@ The server lives at `http://127.0.0.1:8765/mcp` (streamable HTTP; SSE has gone).
 | `reinstate(key_or_query)` | Bring a deprioritised or archived memory back to active |
 | `retag(key, tags?, add?, remove?)` | Replace (`tags`, `[]` clears) or adjust (`add`, `remove`) a memory's tags without re-embedding |
 | `forget(key_or_query, confirm?)` | Permanent delete. Without `confirm=True` it only previews, and the preview's `hint` says so |
-| `suppress_topic(topic, reason?)` | Filter a topic out of every recall until you lift it |
+| `suppress_topic(topic, reason?)` | Filter a topic out of every recall, the briefing and the dead-end warnings (the hook's refusals and `warn_if_abandoned` included) until you lift it |
 | `unsuppress_topic(topic)` | Lift a suppression |
 | `list_suppressions()` | What's currently suppressed, with a `reasons` map for the topics that were given one |
 | `find_duplicates(namespace?, threshold?, project_filter?)` | Clusters of near-identical memories (threshold 0.92 by default) |

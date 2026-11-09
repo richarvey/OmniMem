@@ -87,8 +87,17 @@ impl Engine {
                 "enriched_from",
             ],
         )?;
+        // A memory on a suppressed topic stays out of every list (#32), as it
+        // stays out of recall.
+        let suppressed = self.suppressed_lower()?;
         let (mut stale, mut reinstate, mut contradictions) = (Vec::new(), Vec::new(), Vec::new());
         for (key, data) in &rows {
+            if !suppressed.is_empty() {
+                let lower = data.get("content").map_or("", String::as_str).to_lowercase();
+                if suppressed.iter().any(|t| crate::recall::mentions(&lower, t)) {
+                    continue;
+                }
+            }
             let content = take_chars(data.get("content").map_or("", String::as_str), 80);
             let believed = omnimem_store::trust_of(data) == crate::trust::ACCEPTED;
             match data.get("state").map(String::as_str) {

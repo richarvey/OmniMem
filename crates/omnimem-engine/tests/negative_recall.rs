@@ -790,11 +790,9 @@ fn an_empty_domain_and_project_intersection_returns_nothing() {
 }
 
 // ---------------------------------------------------------------------------
-// Known gaps, to be fixed in 7.1.1 (the Atlas review). Written as the
-// behaviour we want; run with `--ignored` to see them fail today.
+// Suppression reaches the briefing and the graveyard (#32, the Atlas review).
 
 #[test]
-#[ignore = "known gap: briefing ignores suppressed topics; fixed in 7.1.1"]
 fn briefing_skips_memories_on_a_suppressed_topic() {
     let e = engine_with(quiet());
     let control = remember(&e, "old note about the staging cluster", "alpha");
@@ -818,7 +816,6 @@ fn briefing_skips_memories_on_a_suppressed_topic() {
 }
 
 #[test]
-#[ignore = "known gap: graveyard warnings ignore suppressed topics; fixed in 7.1.1"]
 fn graveyard_warnings_skip_a_suppressed_topic() {
     let g = graveyard(EngineConfig::default());
     g.engine.suppress_topic("celery", Some("test")).unwrap();

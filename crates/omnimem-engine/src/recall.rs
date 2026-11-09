@@ -146,6 +146,9 @@ pub(crate) struct AbandonedEntry {
     pub lesson: Option<String>,
     /// When it was abandoned, so age can be ranked on and stated.
     pub created_at: Option<f64>,
+    /// The memory's text, the approach's name and its reason, lowercased:
+    /// what a suppressed topic is matched against (#32).
+    pub haystack: String,
 }
 
 /// The sentence a dead end gets when it surfaces, in recall or at a hook.
@@ -410,6 +413,7 @@ impl Engine {
                 "breakthrough",
                 "lesson",
                 "created_at",
+                "content",
             ],
         )?;
         let mut entries = Vec::new();
@@ -436,21 +440,28 @@ impl Engine {
                 else {
                     continue;
                 };
+                let reason = approach
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let haystack = format!(
+                    "{}\n{name}\n{reason}",
+                    row.get("content").map_or("", String::as_str)
+                )
+                .to_lowercase();
                 entries.push(AbandonedEntry {
                     memory_key: key.clone(),
                     name_lower: normalise_name(name),
                     abandoned_name: name.to_owned(),
-                    reason: approach
-                        .get("reason")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned(),
+                    reason,
                     effort_score: effort,
                     project: row.get("project").cloned(),
                     scope_project: scope_project.clone(),
                     breakthrough: row.get("breakthrough").cloned().filter(|v| !v.is_empty()),
                     lesson: row.get("lesson").cloned().filter(|v| !v.is_empty()),
                     created_at: row.get("created_at").and_then(|v| v.parse::<f64>().ok()),
+                    haystack,
                 });
             }
         }
@@ -463,8 +474,25 @@ impl Engine {
         Ok(entries)
     }
 
+    /// The suppressed topics, trimmed and lowercased. Topics stored before
+    /// suppression was validated may be too short to match anything but
+    /// noise; they are skipped rather than honoured.
+    pub(crate) fn suppressed_lower(&self) -> Result<Vec<String>> {
+        Ok(self
+            .suppressed_topics()?
+            .into_iter()
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| t.chars().count() >= MIN_TOPIC_CHARS)
+            .collect())
+    }
+
     /// Abandoned approaches whose name the query mentions, or which mention
     /// it, on word boundaries. A blank query matches nothing.
+    ///
+    /// A dead end on a suppressed topic (its memory, name or reason mentions
+    /// one) never matches (#32): suppression is the person saying "stop
+    /// bringing this up", and that covers recall's warnings, the hook's
+    /// refusals and `warn_if_abandoned` alike.
     ///
     /// `projects` is where the caller is working. Under `GRAVEYARD_SCOPE=project`
     /// (the default) only dead ends from those projects, or with no project,
@@ -479,11 +507,15 @@ impl Engine {
             return Ok(Vec::new());
         }
         let entries = self.abandoned_entries()?;
+        let suppressed = self.suppressed_lower()?;
         let scoped = self.config.graveyard_scope == GraveyardScope::Project;
         let mut seen: HashSet<(&str, &str)> = HashSet::new();
         let mut matches = Vec::new();
         for entry in entries.iter() {
             if scoped && entry.elsewhere(projects).is_some() {
+                continue;
+            }
+            if suppressed.iter().any(|t| mentions(&entry.haystack, t)) {
                 continue;
             }
             let name = &entry.name_lower;
@@ -567,14 +599,7 @@ impl Engine {
 
         let vector = self.embed_query(query)?;
         let now = now_secs();
-        // Topics stored before suppression was validated may be too short to
-        // match anything but noise; they are skipped rather than honoured.
-        let suppressed: Vec<String> = self
-            .suppressed_topics()?
-            .into_iter()
-            .map(|t| t.trim().to_lowercase())
-            .filter(|t| t.chars().count() >= MIN_TOPIC_CHARS)
-            .collect();
+        let suppressed = self.suppressed_lower()?;
         let scope = Scope {
             namespaces: &namespaces,
             projects,

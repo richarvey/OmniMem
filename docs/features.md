@@ -34,7 +34,7 @@ When you say "forget about X" you rarely mean destroy it. You mean stop bringing
 
 Deprioritise a memory with an effort score of 4 or more and OmniMem will point that out first. It isn't blocking you, just checking you meant to bury something that was properly hard to figure out.
 
-You can also suppress whole topics. `suppress_topic("pisource.org")` keeps anything mentioning it out of every recall, in every session, until you lift it. And `deprioritise_project` turns an entire project down in one go (reversibly, with `reinstate_project`).
+You can also suppress whole topics. `suppress_topic("pisource.org")` keeps anything mentioning it out of every recall, the briefing and the dead-end warnings, in every session, until you lift it. And `deprioritise_project` turns an entire project down in one go (reversibly, with `reinstate_project`).
 
 The full storage model is in the [memory type specifications](memory-types.md).
 

@@ -8,6 +8,9 @@ Bi-temporal memory, and the Agent Memory Atlas's other 7.0.8 findings: every mem
 
 **Before upgrading**, one default changes: `AUDIT_RETENTION_DAYS` is 0, which keeps every audit row, where 7.0.10 pruned after 90 days ([#31](https://github.com/richarvey/OmniMem/issues/31)). A `lifecycle` row is about 340 bytes, so a store with 50 state changes a day grows by about 6 MB a year. Set `AUDIT_RETENTION_DAYS=90` to keep the 7.0.10 behaviour.
 
+### Fixed
+- **A suppressed topic still reached the briefing and the graveyard** ([#32](https://github.com/richarvey/OmniMem/issues/32)). `suppress_topic` kept a topic out of recall, but the briefing's stale, contradiction and reinstate lists and the dead-end warnings never read the set, so a topic you'd asked to stop hearing about came back at every session start and in every warning. Both now skip it: a memory that mentions a suppressed topic stays out of the briefing, and a dead end whose memory, name or reason mentions one no longer warns in recall, in `warn_if_abandoned` or from the Claude Code hook, which no longer refuses a call over it either. The two `#[ignore]` tests that described the gap now run
+
 ### Changed
 - **The audit log keeps every row by default** ([#31](https://github.com/richarvey/OmniMem/issues/31)). Ninety days could say what changed this quarter, not why the store believes something it learnt last year, and a `known_at` recall can only look back as far as the log goes. Pruning is now opt-in: set `AUDIT_RETENTION_DAYS` to a number of days
 
