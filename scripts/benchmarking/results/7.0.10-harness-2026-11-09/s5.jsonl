@@ -1,0 +1,11 @@
+{"case_id": "recency:0d", "category": "recency", "elapsed_ms": 304.3, "expected": 1.0, "label": "PASS", "measured": 1.0}
+{"case_id": "recency:30d", "category": "recency", "elapsed_ms": 44.3, "expected": 0.9667, "label": "PASS", "measured": 0.9667}
+{"case_id": "recency:45d", "category": "recency", "elapsed_ms": 47.6, "expected": 0.95, "label": "PASS", "measured": 0.95}
+{"case_id": "recency:90d", "category": "recency", "elapsed_ms": 47.8, "expected": 0.9, "label": "PASS", "measured": 0.9}
+{"case_id": "recency:150d", "category": "recency", "elapsed_ms": 47.3, "expected": 0.8, "label": "PASS", "measured": 0.8}
+{"case_id": "recency:200d", "category": "recency", "elapsed_ms": 43.4, "expected": 0.7167, "label": "PASS", "measured": 0.7167}
+{"case_id": "recency:400d", "category": "recency", "elapsed_ms": 44.5, "expected": 0.3833, "label": "PASS", "measured": 0.3833}
+{"case_id": "recency:900d", "category": "recency", "elapsed_ms": 46.9, "expected": 0.3, "label": "PASS", "measured": 0.3}
+{"case_id": "deprioritise", "category": "deprioritise", "elapsed_ms": 263.6, "expected": 0.2, "label": "PASS", "measured": 0.2}
+{"case_id": "expiry:2", "category": "expiry", "elapsed_ms": 87.3, "label": "PASS", "recalled": false, "state": "archived"}
+{"case_id": "expiry:3", "category": "expiry", "elapsed_ms": 87.7, "label": "PASS", "recalled": false, "state": "archived"}

@@ -1,5 +1,7 @@
 # OmniMem benchmarking
 
+Published results, with the version, commit, model and date of each run, are in [`results/`](results/README.md).
+
 A benchmark harness that drives OmniMem 6.x and 7.x through the same MCP
 client, scores them on published memory benchmarks, and produces a PDF report
 intended to survive a sceptical reader.
