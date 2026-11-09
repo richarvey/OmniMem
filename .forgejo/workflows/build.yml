@@ -268,9 +268,11 @@ jobs:
   release:
     name: Publish
     # Only once every build has passed, and only from one job, so nothing
-    # deletes another job's files from a release it is replacing.
+    # deletes another job's files from a release it is replacing. A run
+    # started by hand publishes too, so a tag or branch whose push Forgejo
+    # didn't turn into a run can still be released by dispatching it.
     needs: [linux, macos, windows]
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref != 'refs/heads/main'
     runs-on: [linux, amd64]
     timeout-minutes: 20
     env:
