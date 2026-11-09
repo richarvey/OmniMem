@@ -26,7 +26,7 @@ Early versions treated `mode="write"` as the accept, which meant an agent could 
 
 Either way the stale check still applies: if the stored skill changed after the proposal, nothing is written. And if the agent replaces the proposal while you're reading the old one, your yes doesn't carry over to the new one.
 
-`HUMAN_APPROVAL` is deliberately not skill-specific. Resolving contradictions goes through the same switch and the same question (see [contradiction detection](features.md#contradiction-detection)), and everything below applies to both.
+`HUMAN_APPROVAL` is deliberately not skill-specific. Resolving contradictions goes through the same switch and the same question (see [contradiction detection](features.md#contradiction-detection)), and everything below applies to both. Since 7.0.12 each gate can also be set on its own, with `HUMAN_APPROVAL_SKILLS` and `HUMAN_APPROVAL_CONTRADICTIONS`. Each follows `HUMAN_APPROVAL` when unset, so one flag still turns both off, but you no longer have to open both to open one.
 
 ### Which clients can ask
 

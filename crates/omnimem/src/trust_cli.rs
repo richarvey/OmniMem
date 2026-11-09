@@ -117,6 +117,12 @@ fn run_with(engine: &Engine, command: TrustCommand) -> Result<()> {
             Ok(())
         }
         TrustCommand::Confirm { keys, reason } => {
+            let what = if keys.len() == 1 {
+                "confirm this memory".to_owned()
+            } else {
+                format!("confirm these {} memories", keys.len())
+            };
+            crate::in_person::confirm(&what, &keys[0])?;
             // Go on past a refusal so one stale key doesn't strand the rest,
             // then fail if any were refused.
             let mut refused = 0;
@@ -131,9 +137,19 @@ fn run_with(engine: &Engine, command: TrustCommand) -> Result<()> {
             }
             Ok(())
         }
-        TrustCommand::Reject { key, reason } => act(&key, TrustAction::Reject, reason.as_deref()),
-        TrustCommand::Restore { key, reason } => act(&key, TrustAction::Restore, reason.as_deref()),
+        TrustCommand::Reject { key, reason } => {
+            crate::in_person::confirm("reject this memory", &key)?;
+            act(&key, TrustAction::Reject, reason.as_deref())
+        }
+        TrustCommand::Restore { key, reason } => {
+            crate::in_person::confirm("restore this memory", &key)?;
+            act(&key, TrustAction::Restore, reason.as_deref())
+        }
         TrustCommand::ConfirmSource { source_key, reason } => {
+            crate::in_person::confirm(
+                "confirm everything extracted from this memory",
+                &source_key,
+            )?;
             let n = engine
                 .confirm_from_source(&source_key, reason.as_deref())
                 .map_err(|e| anyhow!("{e}"))?;

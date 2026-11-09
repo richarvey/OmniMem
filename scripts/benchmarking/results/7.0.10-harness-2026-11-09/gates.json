@@ -1,0 +1,62 @@
+{
+  "gates": [
+    {
+      "detail": "0 leaks",
+      "held": true,
+      "name": "zero cross-project leaks",
+      "suite": "s8"
+    },
+    {
+      "detail": "16 cases",
+      "held": true,
+      "name": "every gated cell in the \u00a74.3 table holds",
+      "suite": "s6"
+    },
+    {
+      "detail": "0 invented",
+      "held": true,
+      "name": "off-topic questions return nothing above the weak band",
+      "suite": "s7"
+    },
+    {
+      "detail": "all archived",
+      "held": true,
+      "name": "expired articles are archived by one maintenance pass",
+      "suite": "s5"
+    },
+    {
+      "detail": "no stale value",
+      "held": true,
+      "name": "zero STALE after resolution, maintenance and re-entry",
+      "suite": "s2"
+    },
+    {
+      "detail": "10/10 (control 8/10)",
+      "held": true,
+      "name": "OmniMem arm passes the suite honestly in every run",
+      "suite": "s9"
+    },
+    {
+      "detail": "0/10 (control 8/10)",
+      "held": true,
+      "name": "no OmniMem run walks into the dead end",
+      "suite": "s9"
+    },
+    {
+      "detail": "-30.6%, fewer in 8 of 10 pairs",
+      "held": true,
+      "name": "OmniMem arm uses fewer tokens (median)",
+      "suite": "s9"
+    }
+  ],
+  "status": "PASSED",
+  "suites": {
+    "s2": "PASSED",
+    "s4": "PASSED",
+    "s5": "PASSED",
+    "s6": "PASSED",
+    "s7": "PASSED",
+    "s8": "PASSED",
+    "s9": "PASSED"
+  }
+}

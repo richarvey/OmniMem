@@ -73,7 +73,7 @@
       </div>
       {% elif s.kind == "flag" %}
       <select id="setting-{{ s.name }}" name="{{ s.name }}" class="form-select field-narrow">
-        <option value="">Default ({{ s.default }})</option>
+        <option value="">{% if s.default %}Default ({{ s.default }}){% else %}Not set{% endif %}</option>
         <option value="true"{% if s.value == "true" %} selected{% endif %}>On</option>
         <option value="false"{% if s.value == "false" %} selected{% endif %}>Off</option>
       </select>

@@ -68,6 +68,13 @@ pub struct Remember {
     pub licence: Option<String>,
     #[serde(default)]
     pub provenance: Option<String>,
+    /// When the claim became true, if not when it is recorded: an ISO date
+    /// (2026-04-01), a timestamp, or a phrase ("last March").
+    #[serde(default)]
+    pub valid_from: Option<String>,
+    /// When the claim stopped being true, if it already has.
+    #[serde(default)]
+    pub valid_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -106,6 +113,14 @@ pub struct Recall {
     pub expand_queries: Option<bool>,
     #[serde(default)]
     pub domain_filter: Option<DomainArg>,
+    /// Only what was true at this time ("where did Sam live last March"):
+    /// an ISO date, a timestamp or a phrase.
+    #[serde(default)]
+    pub valid_at: Option<String>,
+    /// Only what OmniMem believed at this time ("what did we think in
+    /// March"), with trust as it stood then.
+    #[serde(default)]
+    pub known_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -124,6 +139,14 @@ pub struct RecallIndex {
     pub expand_queries: Option<bool>,
     #[serde(default)]
     pub domain_filter: Option<DomainArg>,
+    /// Only what was true at this time ("where did Sam live last March"):
+    /// an ISO date, a timestamp or a phrase.
+    #[serde(default)]
+    pub valid_at: Option<String>,
+    /// Only what OmniMem believed at this time ("what did we think in
+    /// March"), with trust as it stood then.
+    #[serde(default)]
+    pub known_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -145,6 +168,18 @@ pub struct Deprioritise {
 #[schemars(crate = "rmcp::schemars")]
 pub struct Archive {
     pub key_or_query: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EndValidity {
+    pub key: String,
+    /// When it stopped being true: an ISO date, a timestamp or a phrase.
+    /// Defaults to now.
+    #[serde(default)]
+    pub valid_to: Option<String>,
     #[serde(default)]
     pub reason: Option<String>,
 }

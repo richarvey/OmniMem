@@ -80,7 +80,7 @@ You should get back the record and vector counts per namespace, whether the embe
 - **Connected but no tools**: there's been a bug where OpenCode shows a green "connected" status but registers nothing. Restart OpenCode and check the terminal output.
 - **OAuth auto-negotiation**: OpenCode watches for 401 responses and starts OAuth. With a plain access token, keep `"oauth": false`.
 - **The 5 second default timeout**: the first call after OmniMem starts can take longer while the embedding model loads. `"timeout": 15000` gives it room.
-- **Context cost**: every tool description goes into the model's context on each request, and OmniMem has 48 tools. Set `"enabled": false` to switch OmniMem off for a session if you need the tokens back.
+- **Context cost**: every tool description goes into the model's context on each request, and OmniMem has 49 tools. Set `"enabled": false` to switch OmniMem off for a session if you need the tokens back.
 
 ## Notes
 

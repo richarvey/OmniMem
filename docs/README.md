@@ -14,10 +14,11 @@ These pages describe OmniMem 7, the single Rust binary, first released as 7.0.3.
 ## Using OmniMem
 
 - [Features in depth](features.md): the memory lifecycle, the graveyard, experience scoring, deduplication, contradiction detection, the session briefing, auto-maintenance
+- [Bi-temporal memory](bitemporal.md): when a memory was true, when OmniMem believed it, and recall's `valid_at` and `known_at`
 - [The audit log](audit-log.md): a record of who changed what, on by default for state changes and deletes, with levels, and where to read it
 - [The skill compiler](skill-compiler.md): compiling experience into SKILL.md documents, the propose-and-accept gate, promoted reference material
 - [RSS feeds and the knowledge base](rss-knowledge.md): passive knowledge ingestion and promotion
-- [MCP tool reference](mcp-tools.md): all 48 tools with their parameters
+- [MCP tool reference](mcp-tools.md): all 49 tools with their parameters
 - [Claude Code hooks](claude-code-hook.md): briefing a session at its start, stopping a known dead end before it runs, and recording what a session did
 - [The agent guide](agent-guide.md): the long-form guidance an agent gets, which the tool descriptions point at
 - [The settings panel](settings-panel.md): the desktop app's window, page by page

@@ -195,6 +195,7 @@ impl Panel {
             .route("/memory/{key}/licence", post(detail::licence))
             .route("/memory/{key}/provenance", post(detail::provenance))
             .route("/memory/{key}/trust", post(trust::memory_trust))
+            .route("/memory/{key}/validity", post(detail::validity))
             .route("/unconfirmed", get(trust::list))
             .route("/unconfirmed/act", post(trust::act))
             .route("/unconfirmed/source", post(trust::confirm_source))

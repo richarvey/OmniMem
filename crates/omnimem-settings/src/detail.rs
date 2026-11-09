@@ -44,6 +44,19 @@ fn fmt_ts(raw: Option<&String>) -> String {
         )
 }
 
+fn fmt_secs(ts: f64) -> String {
+    fmt_ts(Some(&ts.to_string()))
+}
+
+/// A time as the local date a date field shows.
+fn day(ts: f64) -> String {
+    Local
+        .timestamp_opt(ts as i64, 0)
+        .single()
+        .map(|t| t.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
 pub(crate) async fn handler(
     State(state): State<PanelState>,
     Path(key): Path<String>,
@@ -112,6 +125,13 @@ pub(crate) async fn handler(
         },
         "created_at": fmt_ts(data.get("created_at")),
         "updated_at": fmt_ts(data.get("updated_at")),
+        // #36: both intervals. The form's fields want a local date.
+        "valid_from": omnimem_store::time_of(&data, "valid_from").map(fmt_secs),
+        "valid_to": omnimem_store::valid_to_of(&data).map(fmt_secs),
+        "retired_at": omnimem_store::retired_at_of(&data).map(fmt_secs),
+        "valid_from_date": omnimem_store::time_of(&data, "valid_from").map(day).unwrap_or_default(),
+        "valid_to_date": omnimem_store::time_of(&data, "valid_to").map(day).unwrap_or_default(),
+        "expired": omnimem_store::valid_to_of(&data).is_some_and(|to| to <= chrono::Utc::now().timestamp() as f64),
     });
     // The memory's history, once the log is being kept. Rows from before it
     // was switched off still show, so the section stays while any exist.
@@ -150,6 +170,7 @@ pub(crate) async fn handler(
             history_on,
             history,
             trust_error => param("trust_error"),
+            validity_error => param("validity_error"),
             tag_error => param("tag_error"),
             licence_error => param("licence_error"),
             licence_classes => LICENCE_CHOICES,
@@ -361,5 +382,30 @@ pub(crate) async fn provenance(
             Ok(refused(&result).map_or(Outcome::Done, Outcome::Refused))
         },
     )
+    .await
+}
+
+/// POST `/memory/{key}/validity`: a person sets or clears when the memory was
+/// true (#36). An empty field clears that end.
+pub(crate) async fn validity(
+    State(state): State<PanelState>,
+    Path(key): Path<String>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let back = back_of(&form);
+    run_form(state, key, back, "validity_error", move |engine, key| {
+        let current = engine.store().get(key)?.unwrap_or_default();
+        let field = |name: &str| form.get(name).map(String::as_str).map(str::trim);
+        // A date field shows the stored time as a local date; sent back
+        // unchanged, the stored time stays rather than becoming midnight.
+        let changed = |name: &str| {
+            field(name).filter(|sent| {
+                omnimem_store::time_of(&current, name).map(day).as_deref() != Some(*sent)
+            })
+        };
+        let reason = field("reason").filter(|r| !r.is_empty());
+        engine.set_validity(key, changed("valid_from"), changed("valid_to"), reason)?;
+        Ok(Outcome::Done)
+    })
     .await
 }

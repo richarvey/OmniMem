@@ -1,0 +1,36 @@
+{
+  "config": {},
+  "enrichment": false,
+  "finished_at": "2026-11-09T11:55:48+0000",
+  "harness": {
+    "commit": "de1e67133fe80eab9ba36dba8c64bd440a1d2d99",
+    "dirty": false
+  },
+  "host": {
+    "arch": "x86_64",
+    "os": "Linux",
+    "python": "3.13.18"
+  },
+  "name": "test-7.0.10-pairs10",
+  "omnimem": {
+    "asset": "omnimem-7.0.10-linux-amd64.tar.gz",
+    "reported_version": "7.0.10",
+    "sha256": "0fe80a00411d6c59445db13a06fe8f1fe1b958e784d315a4e0941a99d1532e85",
+    "source": "release",
+    "url": "https://code.squarecows.com/ric/omnimem/releases/download/v7.0.10/omnimem-7.0.10-linux-amd64.tar.gz",
+    "version": "7.0.10"
+  },
+  "started_at": "2026-11-09T10:56:04+0000",
+  "suites": [
+    "s8",
+    "s6",
+    "s7",
+    "s5",
+    "s2",
+    "s4",
+    "s9"
+  ],
+  "vendor_omnimem": {
+    "commit": "ae72d64bc22ae6deeb0d4c765888e444c3b5ea9f"
+  }
+}

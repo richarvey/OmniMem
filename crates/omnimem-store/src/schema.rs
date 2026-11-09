@@ -24,6 +24,113 @@ pub(crate) const TRUST_EXPR: &str = "COALESCE(NULLIF(json_extract(fields, '$.tru
      CASE WHEN COALESCE(json_extract(fields, '$.enriched_from'), '') <> '' \
      THEN 'candidate' ELSE 'accepted' END)";
 
+/// A memory field read as a time: a number of seconds, with an empty or
+/// missing value as NULL.
+fn time_field(name: &str) -> String {
+    format!("CAST(NULLIF(json_extract(fields, '$.{name}'), '') AS REAL)")
+}
+
+/// When OmniMem stopped believing a memory (#26): its `retired_at` field,
+/// or for a superseded or rejected record with none (a 6.x import, a 7.0
+/// backup), its `updated_at`, which a resolution bumps as it supersedes.
+/// [`crate::retired_at_of`] spells the same rule.
+pub(crate) fn retired_at_expr() -> String {
+    format!(
+        "COALESCE({}, CASE WHEN {TRUST_EXPR} IN ('superseded', 'rejected') \
+         THEN CAST(json_extract(fields, '$.updated_at') AS REAL) END)",
+        time_field("retired_at")
+    )
+}
+
+/// When a memory stopped being true (#26): its `valid_to` field, or for a
+/// superseded record with none, the moment it was superseded.
+/// [`crate::valid_to_of`] spells the same rule.
+pub(crate) fn valid_to_expr() -> String {
+    format!(
+        "COALESCE({}, CASE WHEN {TRUST_EXPR} = 'superseded' \
+         THEN CAST(json_extract(fields, '$.updated_at') AS REAL) END)",
+        time_field("valid_to")
+    )
+}
+
+/// The memories that carry contradiction links, so listing them is a walk
+/// of the links rather than of every memory. Shared with 7.1, whose
+/// version 6 was this index alone.
+pub(crate) const LINKED_CONDITION: &str = "json_extract(fields, '$.contradictions') IS NOT NULL AND json_extract(fields, '$.contradictions') <> ''";
+
+/// Version 6, the same on 7.0.11 and 7.1 (#26): bi-temporal validity.
+/// `valid_from` and `valid_to` are when a memory was true in the world,
+/// `created_at` and `retired_at` when OmniMem believed it. Generated
+/// columns, so `SearchFilter::valid_at` and `known_at` run in SQL, plus 7.1's
+/// `memories_linked` index (with `IF NOT EXISTS`, since a 7.1 development
+/// store already has it).
+///
+/// The data part writes the exact time a superseded loser stopped being
+/// believed and stopped being true, from its resolution's `resolved_at`,
+/// and a rejected memory's from its `both_wrong` resolution where it has
+/// one. Everything else keeps the defaults above, and `valid_from` stays
+/// empty: nobody knows it, and a made-up date would be worse than none.
+fn v6_bitemporal() -> String {
+    let valid_from = time_field("valid_from");
+    let valid_to = valid_to_expr();
+    let retired_at = retired_at_expr();
+    let resolved = |outcome: &str, also: &str| {
+        format!(
+            "(SELECT CAST(json_extract(link.value, '$.resolution.resolved_at') AS TEXT)
+                FROM json_each(CASE WHEN json_valid(json_extract(fields, '$.contradictions'))
+                              THEN json_extract(fields, '$.contradictions') ELSE '[]' END) AS link
+               WHERE json_extract(link.value, '$.resolution.outcome') = '{outcome}' {also}
+               ORDER BY CAST(json_extract(link.value, '$.resolution.resolved_at') AS REAL) DESC
+               LIMIT 1)"
+        )
+    };
+    let superseded_at = resolved(
+        "supersedes",
+        "AND json_extract(link.value, '$.key') = json_extract(fields, '$.superseded_by')",
+    );
+    let wrong_at = resolved("both_wrong", "");
+    format!(
+        r"
+ALTER TABLE memories ADD COLUMN valid_from REAL GENERATED ALWAYS AS ({valid_from}) VIRTUAL;
+ALTER TABLE memories ADD COLUMN valid_to REAL GENERATED ALWAYS AS ({valid_to}) VIRTUAL;
+ALTER TABLE memories ADD COLUMN retired_at REAL GENERATED ALWAYS AS ({retired_at}) VIRTUAL;
+CREATE INDEX memories_namespace_valid_to ON memories (namespace, valid_to);
+CREATE INDEX memories_namespace_retired ON memories (namespace, retired_at);
+
+UPDATE memories
+   SET fields = json_set(fields, '$.retired_at', {superseded_at}, '$.valid_to', {superseded_at})
+ WHERE trust = 'superseded'
+   AND COALESCE(json_extract(fields, '$.retired_at'), '') = ''
+   AND json_valid(json_extract(fields, '$.contradictions'))
+   AND {superseded_at} IS NOT NULL;
+
+UPDATE memories
+   SET fields = json_set(fields, '$.retired_at', {wrong_at})
+ WHERE trust = 'rejected'
+   AND COALESCE(json_extract(fields, '$.retired_at'), '') = ''
+   AND json_valid(json_extract(fields, '$.contradictions'))
+   AND {wrong_at} IS NOT NULL;
+"
+    )
+}
+
+fn v6() -> String {
+    format!(
+        "{}\nCREATE INDEX IF NOT EXISTS memories_linked ON memories (key) WHERE {LINKED_CONDITION};",
+        v6_bitemporal()
+    )
+}
+
+/// Whether `memories` has the bi-temporal columns. A store a `dev-v7.1.x`
+/// build opened is at version 6 with only the `memories_linked` index, and
+/// `ADD COLUMN` has no `IF NOT EXISTS`, so the repair reads the table rather
+/// than the version. It can go once 7.1.0 is out.
+fn has_bitemporal_columns(conn: &Connection) -> Result<bool> {
+    let mut stmt =
+        conn.prepare("SELECT 1 FROM pragma_table_xinfo('memories') WHERE name = 'valid_from'")?;
+    Ok(stmt.exists([])?)
+}
+
 /// Version 5: `trust`, whether OmniMem believes a memory (#23), beside
 /// `state`, which only says whether it is visible. A generated column like
 /// `state`, so `MemoryFilter::trusts` runs in SQL. The data part writes the
@@ -170,16 +277,6 @@ CREATE TABLE store_meta (
 ) STRICT;
 ";
 
-/// Version 6: a partial index of the memories that carry contradiction
-/// links, so listing them is a walk of the links rather than of every
-/// memory. [`crate::Store::keys_with_contradictions`] spells the same
-/// condition, which is what lets SQLite use it.
-pub(crate) const LINKED_CONDITION: &str = "json_extract(fields, '$.contradictions') IS NOT NULL AND json_extract(fields, '$.contradictions') <> ''";
-
-fn v6() -> String {
-    format!("CREATE INDEX memories_linked ON memories (key) WHERE {LINKED_CONDITION};")
-}
-
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version > SCHEMA_VERSION {
@@ -207,6 +304,10 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
     if version < 6 {
         let v6 = v6();
         conn.execute_batch(&format!("BEGIN; {v6} PRAGMA user_version = 6; COMMIT;"))?;
+    } else if !has_bitemporal_columns(conn)? {
+        // A 7.1 development store: version 6 with the index and nothing else.
+        let repair = v6_bitemporal();
+        conn.execute_batch(&format!("BEGIN; {repair} COMMIT;"))?;
     }
     Ok(())
 }
@@ -404,5 +505,197 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(read(&conn), before);
+    }
+
+    fn v5_store() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let v5 = v5();
+        conn.execute_batch(&format!(
+            "BEGIN; {V1} {V2} {V3} {V4} {v5} PRAGMA user_version = 5; COMMIT;"
+        ))
+        .unwrap();
+        conn
+    }
+
+    fn insert(conn: &Connection, id: &str, fields: &serde_json::Value) {
+        conn.execute(
+            "INSERT INTO memories (key, namespace, fields) VALUES (?1, 'episodic', ?2)",
+            params![format!("mem:episodic:{id}"), fields.to_string()],
+        )
+        .unwrap();
+    }
+
+    type Times = (Option<f64>, Option<f64>, Option<f64>);
+
+    fn times(conn: &Connection, id: &str) -> Times {
+        conn.query_row(
+            "SELECT valid_from, valid_to, retired_at FROM memories WHERE key = ?1",
+            params![format!("mem:episodic:{id}")],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+    }
+
+    fn fields_of(conn: &Connection, id: &str) -> crate::Fields {
+        let raw: String = conn
+            .query_row(
+                "SELECT fields FROM memories WHERE key = ?1",
+                params![format!("mem:episodic:{id}")],
+                |r| r.get(0),
+            )
+            .unwrap();
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    fn bitemporal_rows(conn: &Connection) {
+        let resolved = |other: &str, outcome: &str, at: &str| {
+            serde_json::json!([{"key": format!("mem:episodic:{other}"),
+                "resolution": {"outcome": outcome, "resolved_at": at}}])
+            .to_string()
+        };
+        insert(
+            conn,
+            "plain",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "150.0"}),
+        );
+        insert(
+            conn,
+            "winner",
+            &serde_json::json!({"content": "x", "created_at": "200.0", "updated_at": "300.0",
+            "contradictions": resolved("loser", "supersedes", "300.0")}),
+        );
+        insert(
+            conn,
+            "loser",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "310.0",
+            "trust": "superseded", "superseded_by": "mem:episodic:winner",
+            "contradictions": resolved("winner", "supersedes", "300.0")}),
+        );
+        insert(
+            conn,
+            "wrong1",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "410.0",
+            "trust": "rejected", "contradictions": resolved("wrong2", "both_wrong", "400.0")}),
+        );
+        insert(
+            conn,
+            "wrong2",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "410.0",
+            "trust": "rejected", "contradictions": resolved("wrong1", "both_wrong", "400.0")}),
+        );
+        insert(
+            conn,
+            "fact",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "500.0",
+            "trust": "rejected", "enriched_from": "mem:episodic:plain"}),
+        );
+        insert(
+            conn,
+            "broken",
+            &serde_json::json!({"content": "x", "created_at": "100.0", "updated_at": "600.0",
+            "trust": "superseded", "superseded_by": "mem:episodic:gone", "contradictions": "not json"}),
+        );
+    }
+
+    /// #26: version 6 gives every memory its two intervals. A superseded
+    /// loser stops being true and believed when it was superseded, both
+    /// sides of `both_wrong` stop being believed but were never true to
+    /// stop, a rejected fact falls back to `updated_at`, and a plain memory
+    /// keeps both intervals open. The Rust readers agree with the columns.
+    #[test]
+    fn version_6_gives_each_memory_its_intervals() {
+        let conn = v5_store();
+        bitemporal_rows(&conn);
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 6);
+
+        let expect: [(&str, Times); 7] = [
+            ("plain", (None, None, None)),
+            ("winner", (None, None, None)),
+            ("loser", (None, Some(300.0), Some(300.0))),
+            ("wrong1", (None, None, Some(400.0))),
+            ("wrong2", (None, None, Some(400.0))),
+            ("fact", (None, None, Some(500.0))),
+            ("broken", (None, Some(600.0), Some(600.0))),
+        ];
+        for (id, want) in expect {
+            assert_eq!(times(&conn, id), want, "{id}");
+            let fields = fields_of(&conn, id);
+            assert_eq!(crate::valid_to_of(&fields), want.1, "{id} valid_to in Rust");
+            assert_eq!(
+                crate::retired_at_of(&fields),
+                want.2,
+                "{id} retired_at in Rust"
+            );
+            assert_eq!(
+                crate::valid_from_of(&fields),
+                Some(if id == "winner" { 200.0 } else { 100.0 })
+            );
+        }
+        // The exact times are written into the record, not only derived.
+        assert_eq!(fields_of(&conn, "loser")["retired_at"], "300.0");
+        assert_eq!(fields_of(&conn, "loser")["valid_to"], "300.0");
+        assert!(!fields_of(&conn, "fact").contains_key("retired_at"));
+        let linked: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'memories_linked'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(linked, 1);
+
+        // The readers in both languages agree on what was true and believed.
+        let loser = fields_of(&conn, "loser");
+        assert!(crate::valid_at(&loser, 250.0) && !crate::valid_at(&loser, 300.0));
+        assert!(crate::known_at(&loser, 250.0) && !crate::known_at(&loser, 350.0));
+        assert!(!crate::known_at(&loser, 50.0), "not yet recorded");
+
+        // Again changes nothing.
+        let before: Vec<Times> = expect.iter().map(|(id, _)| times(&conn, id)).collect();
+        migrate(&conn).unwrap();
+        let after: Vec<Times> = expect.iter().map(|(id, _)| times(&conn, id)).collect();
+        assert_eq!(before, after);
+    }
+
+    /// A store a `dev-v7.1.x` build opened is at version 6 with only the
+    /// `memories_linked` index. It gets the columns and the data step, once.
+    #[test]
+    fn a_71_development_store_at_version_6_is_repaired() {
+        let conn = v5_store();
+        bitemporal_rows(&conn);
+        conn.execute_batch(&format!(
+            "BEGIN; CREATE INDEX memories_linked ON memories (key) WHERE {LINKED_CONDITION}; PRAGMA user_version = 6; COMMIT;"
+        ))
+        .unwrap();
+        assert!(!has_bitemporal_columns(&conn).unwrap());
+        migrate(&conn).unwrap();
+        assert!(has_bitemporal_columns(&conn).unwrap());
+        assert_eq!(times(&conn, "loser"), (None, Some(300.0), Some(300.0)));
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 6);
+        migrate(&conn).unwrap();
+        assert_eq!(times(&conn, "loser"), (None, Some(300.0), Some(300.0)));
+    }
+
+    /// A 7.0.10 build supports version 5 and refuses this one, as this build
+    /// refuses anything past 6.
+    #[test]
+    fn version_6_is_past_what_7_0_10_supports() {
+        assert_eq!(SCHEMA_VERSION, 6);
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA user_version = 7").unwrap();
+        assert!(matches!(
+            migrate(&conn),
+            Err(StoreError::SchemaTooNew {
+                found: 7,
+                supported: 6
+            })
+        ));
     }
 }

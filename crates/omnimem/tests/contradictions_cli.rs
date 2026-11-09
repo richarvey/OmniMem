@@ -11,6 +11,8 @@ const KEY_B: &str = "mem:episodic:01B";
 
 /// A scratch folder with an empty settings file, so no setting on the
 /// machine running the tests reaches the binary.
+mod common;
+
 struct Scratch(PathBuf);
 
 impl Scratch {
@@ -28,6 +30,32 @@ impl Scratch {
 
     /// As `run`, with `AUDIT_LOG` set to `level`.
     fn run_logged(&self, db: &Path, args: &[&str], level: Option<&str>) -> Output {
+        // A person-only command runs at a terminal, answered as a person.
+        if let Some(key) = common::person_only_key(args) {
+            let mut all: Vec<std::ffi::OsString> = vec!["--db".into(), db.into()];
+            all.extend(args.iter().map(Into::into));
+            let mut envs = vec![(
+                "OMNIMEM_ENV_FILE",
+                self.0.join("empty.env").into_os_string(),
+            )];
+            let mut remove = vec!["OMNIMEM_DB"];
+            match level {
+                Some(level) => envs.push(("AUDIT_LOG", level.into())),
+                None => remove.push("AUDIT_LOG"),
+            }
+            return common::as_output(common::in_terminal(
+                Path::new(env!("CARGO_BIN_EXE_omnimem")),
+                &all,
+                &envs,
+                &remove,
+                &common::tail(key),
+            ));
+        }
+        self.piped(db, args, level)
+    }
+
+    /// With stdin and stdout piped, as an agent's shell runs it.
+    fn piped(&self, db: &Path, args: &[&str], level: Option<&str>) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_omnimem"));
         if let Some(level) = level {
             command.env("AUDIT_LOG", level);
@@ -251,4 +279,36 @@ impl omnimem_core::TextEmbedder for NoEmbedder {
     fn embed_texts(&self, _: &[&str]) -> Result<Vec<Vec<f32>>, omnimem_core::EmbeddingError> {
         Err("not needed here".into())
     }
+}
+
+/// #37: `resolve` and `accept` refuse without a terminal and write nothing.
+#[test]
+fn resolve_and_accept_need_a_terminal() {
+    let scratch = Scratch::new("tty");
+    let db = linked(&scratch);
+    let piped = scratch.piped(
+        &db,
+        &[
+            "contradictions",
+            "resolve",
+            KEY_A,
+            KEY_B,
+            "--outcome",
+            "both_valid",
+        ],
+        None,
+    );
+    assert!(!piped.status.success());
+    assert!(
+        String::from_utf8_lossy(&piped.stderr).contains("only from a terminal"),
+        "{}",
+        String::from_utf8_lossy(&piped.stderr)
+    );
+    let accept = scratch.piped(&db, &["contradictions", "accept", KEY_A, KEY_B], None);
+    assert!(!accept.status.success());
+    // Still open: nothing was written.
+    assert!(stdout(&scratch.run(&db, &["contradictions"])).contains("open"));
+    // Discarding a proposal is not a decision about the memories.
+    let discard = scratch.piped(&db, &["contradictions", "discard", KEY_A, KEY_B], None);
+    assert!(!String::from_utf8_lossy(&discard.stderr).contains("only from a terminal"));
 }

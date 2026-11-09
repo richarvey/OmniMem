@@ -790,11 +790,9 @@ fn an_empty_domain_and_project_intersection_returns_nothing() {
 }
 
 // ---------------------------------------------------------------------------
-// Known gaps, to be fixed in 7.1.1 (the Atlas review). Written as the
-// behaviour we want; run with `--ignored` to see them fail today.
+// Suppression reaches the briefing and the graveyard (#32, the Atlas review).
 
 #[test]
-#[ignore = "known gap: briefing ignores suppressed topics; fixed in 7.1.1"]
 fn briefing_skips_memories_on_a_suppressed_topic() {
     let e = engine_with(quiet());
     let control = remember(&e, "old note about the staging cluster", "alpha");
@@ -818,7 +816,6 @@ fn briefing_skips_memories_on_a_suppressed_topic() {
 }
 
 #[test]
-#[ignore = "known gap: graveyard warnings ignore suppressed topics; fixed in 7.1.1"]
 fn graveyard_warnings_skip_a_suppressed_topic() {
     let g = graveyard(EngineConfig::default());
     g.engine.suppress_topic("celery", Some("test")).unwrap();
@@ -838,4 +835,144 @@ fn graveyard_warnings_skip_a_suppressed_topic() {
         warnings.iter().all(|w| !w.text.contains("Celery")),
         "a suppressed topic still warned on the hook path: {warnings:?}"
     );
+}
+
+/// #33: a rejected memory's dead ends never warn, in recall or on the hook
+/// path, and come back when a person restores it. A memory that isn't
+/// accepted for another reason still warns and says why.
+#[test]
+fn a_rejected_memorys_dead_ends_never_warn() {
+    let g = graveyard(EngineConfig::default());
+    let warned = |g: &Graveyard| -> (bool, Vec<String>) {
+        let results = g
+            .engine
+            .recall(DEAD_END_QUERY, 10, None, Some("alpha"), None, None)
+            .unwrap();
+        let hook: Vec<String> = g
+            .engine
+            .abandoned_warnings(DEAD_END_QUERY, &["alpha".to_owned()])
+            .unwrap()
+            .into_iter()
+            .map(|w| w.text)
+            .collect();
+        (warning_keys(&results).contains(&g.own), hook)
+    };
+    let (in_recall, hook) = warned(&g);
+    assert!(
+        in_recall,
+        "control: the dead end warns before the rejection"
+    );
+    assert!(hook.iter().any(|t| t.contains("Celery")), "{hook:?}");
+    assert!(
+        hook.iter().all(|t| !t.contains("The memory it comes from")),
+        "an accepted memory's warning reads as before: {hook:?}"
+    );
+
+    g.engine
+        .set_trust(&g.own, TrustAction::Reject, Some("test"))
+        .unwrap();
+    let (in_recall, hook) = warned(&g);
+    assert!(!in_recall, "a rejected memory's dead end warned in recall");
+    assert!(
+        hook.iter().all(|t| !t.contains("Celery")),
+        "a rejected memory's dead end warned on the hook path: {hook:?}"
+    );
+    assert_eq!(
+        g.engine.warn_if_abandoned("celery").unwrap()["status"],
+        "clear"
+    );
+
+    g.engine
+        .set_trust(&g.own, TrustAction::Restore, Some("test"))
+        .unwrap();
+    let (in_recall, _) = warned(&g);
+    assert!(in_recall, "a restored memory's dead end warns again");
+
+    // A disputed memory still warns, and says so.
+    g.engine
+        .store()
+        .set_fields(
+            &g.own,
+            &Fields::from([("trust".to_owned(), "disputed".to_owned())]),
+        )
+        .unwrap();
+    g.engine.invalidate_abandoned_cache();
+    let (in_recall, hook) = warned(&g);
+    assert!(in_recall);
+    assert!(
+        hook.iter()
+            .any(|t| t.contains("Celery") && t.contains("The memory it comes from is disputed")),
+        "{hook:?}"
+    );
+}
+
+/// #29: a memory whose `valid_to` has passed still comes back from an
+/// ordinary recall, carrying its `valid_to`, at `VALIDITY_EXPIRED_WEIGHT`
+/// of the score an identical memory with no interval gets; the control, with
+/// no interval, scores exactly as it did. The briefing leaves it out.
+#[test]
+fn an_expired_memory_ranks_lower_and_says_so() {
+    let e = engine_with(quiet());
+    let expired = remember(&e, &format!("{QUERY} on the old cluster"), "alpha");
+    let control = remember(&e, &format!("{QUERY} on the old cluster"), "beta");
+    let before = e.recall(QUERY, 10, None, None, Some(false), None).unwrap();
+    let score_of = |results: &Value, key: &str| -> f64 {
+        results
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["key"] == key)
+            .unwrap()["score"]
+            .as_f64()
+            .unwrap()
+    };
+    let control_before = score_of(&before, &control);
+    assert!((score_of(&before, &expired) - control_before).abs() < 1e-9);
+
+    let past = (omnimem_now() - 86_400.0).to_string();
+    e.store()
+        .set_fields(&expired, &Fields::from([("valid_to".to_owned(), past)]))
+        .unwrap();
+    let after = e.recall(QUERY, 10, None, None, Some(false), None).unwrap();
+    let hit = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["key"] == expired.as_str())
+        .expect("an expired memory still comes back");
+    assert!(hit["valid_to"].as_str().is_some(), "{hit}");
+    let control_after = score_of(&after, &control);
+    assert!(
+        (control_after - control_before).abs() < 1e-9,
+        "the control didn't move"
+    );
+    let weight = EngineConfig::default().validity_expired_weight;
+    assert!((score_of(&after, &expired) - control_before * weight).abs() < 1e-9);
+    assert!(
+        after
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|r| r["key"] == control.as_str())
+            < after
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|r| r["key"] == expired.as_str())
+    );
+
+    // Out of the briefing, like anything else no longer believed.
+    let long_ago = (omnimem_now() - 400.0 * 86_400.0).to_string();
+    for key in [&expired, &control] {
+        e.store()
+            .set_fields(
+                key,
+                &Fields::from([("updated_at".to_owned(), long_ago.clone())]),
+            )
+            .unwrap();
+    }
+    let keys = briefing_keys(&e.briefing(Some("alpha"), false).unwrap());
+    assert!(!keys.contains(&expired), "{keys:?}");
+    let keys = briefing_keys(&e.briefing(Some("beta"), false).unwrap());
+    assert!(keys.contains(&control), "{keys:?}");
 }

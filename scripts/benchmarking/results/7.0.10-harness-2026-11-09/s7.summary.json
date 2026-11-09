@@ -1,0 +1,49 @@
+{
+  "counts": {
+    "NEAR_MISS_RETURNED": 5,
+    "PASS": 20
+  },
+  "extra": {
+    "baseline": {
+      "fixture_sha256": "e10c8f8408e64097824c1e26248410cea2c69e2e011bbbef7161f9e91ac99719",
+      "projects": [
+        "proukoul",
+        "drilsael",
+        "gethdom"
+      ],
+      "records": 875
+    }
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true
+  },
+  "gates": [
+    {
+      "detail": "0 invented",
+      "held": true,
+      "name": "off-topic questions return nothing above the weak band",
+      "suite": "s7"
+    }
+  ],
+  "latency_ms": {
+    "count": 25,
+    "max": 135.81733778119087,
+    "mean": 61.75425764173269,
+    "p50": 43.71289815753698,
+    "p95": 132.34695279970765,
+    "p99": 135.81733778119087
+  },
+  "notes": [],
+  "settle_ms": {
+    "count": 6,
+    "max": 44.50732842087746,
+    "mean": 44.08855588796238,
+    "p50": 44.27810711786151,
+    "p95": 44.50732842087746,
+    "p99": 44.50732842087746
+  },
+  "status": "PASSED",
+  "suite": "s7"
+}

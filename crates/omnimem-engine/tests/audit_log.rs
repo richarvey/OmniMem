@@ -557,9 +557,12 @@ fn retention_prunes_old_rows_and_zero_keeps_them() {
             "retention of {days} days"
         );
     }
-    // The log can be off and still age out.
+    // The log can be off and still age out, once a retention is set: the
+    // default, 0, keeps everything (#31).
+    assert_eq!(EngineConfig::default().audit_retention_days, 0);
     let e = engine_with(EngineConfig {
         audit_log: AuditLevel::Off,
+        audit_retention_days: 90,
         ..EngineConfig::default()
     });
     assert_eq!(e.audit_level(), AuditLevel::Off);

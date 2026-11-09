@@ -46,6 +46,8 @@ pub(crate) async fn form(
             namespace => text("namespace"),
             project => text("project"),
             top_k => top_k,
+            valid_at => text("valid_at"),
+            known_at => text("known_at"),
             current_page => "search",
         },
     )
@@ -73,8 +75,18 @@ pub(crate) async fn results(
         .unwrap_or(10)
         .clamp(1, 50);
 
+    // #36: "true on" and "known on", each a date field; an empty one is
+    // an ordinary search.
+    let date = |name: &str| {
+        params
+            .get(name)
+            .map(|d| d.trim().to_owned())
+            .filter(|d| !d.is_empty())
+    };
+    let (valid_at, known_at) = (date("valid_at"), date("known_at"));
     let worker_query = query.clone();
     let found = blocking(move || {
+        let as_of = omnimem_engine::AsOf::parse(valid_at.as_deref(), known_at.as_deref())?;
         let namespaces = (!namespace.is_empty()).then(|| vec![namespace]);
         let projects = if project.is_empty() {
             Vec::new()
@@ -82,13 +94,14 @@ pub(crate) async fn results(
             vec![project]
         };
         let floor = engine.config().recall_min_score;
-        let results = engine.recall_results(
+        let results = engine.recall_results_at(
             &worker_query,
             namespaces.as_deref(),
             Some(top_k),
             &projects,
             Some(0.0),
             None,
+            as_of,
         )?;
         Ok(results
             .into_iter()
@@ -107,6 +120,10 @@ pub(crate) async fn results(
                     "effort_score": r.effort_score,
                     "outcome": r.outcome,
                     "breakthrough": r.breakthrough,
+                    "trust": r.trust,
+                    "valid_to": r.valid_to.and_then(omnimem_engine::validity::iso),
+                    "expired": r.valid_to.is_some_and(|to| to <= omnimem_engine::pyfmt::now_secs()),
+                    "retired_at": r.retired_at.and_then(omnimem_engine::validity::iso),
                 })
             })
             .collect::<Vec<_>>())

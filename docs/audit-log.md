@@ -15,9 +15,9 @@ Set `AUDIT_LOG` on the Configuration page, in `omnimem.env`, or in the environme
 | `writes` | Everything in `lifecycle`, plus every other write: new memories (key, namespace, project and tags, but not what they say), retags, licence and provenance changes, contradiction links, extracted facts, feed items, restores, project context edits, experience records |
 | `full` | Everything in `writes`, plus the text of a memory before and after each change |
 
-`AUDIT_RETENTION_DAYS` says how long rows are kept. The default is 90, and 0 keeps them for ever. The maintenance pass prunes the old ones, and so does starting OmniMem, so a log you've switched off still ages out.
+`AUDIT_RETENTION_DAYS` says how long rows are kept. The default is 0, which keeps them for ever: a log that forgets after 90 days can say what changed this quarter, but not why the store believes something it learnt last year, and a `known_at` recall can only look back as far as the log goes. Set a number of days if you'd rather prune. The maintenance pass then removes older rows, and so does starting OmniMem, so a log you've switched off still ages out. Up to 7.0.10 the default was 90.
 
-A `lifecycle` row is about 340 bytes on disk, indexes included (measured from 6,000 deprioritise and archive rows). A busy store that sees 50 state changes a day writes about 6 MB a year, and with the default 90 days it holds about 1.5 MB at any time. A plain `remember` writes no `lifecycle` row, so the log grows with what happens to memories, not with how many you store.
+A `lifecycle` row is about 340 bytes on disk, indexes included (measured from 6,000 deprioritise and archive rows). A busy store that sees 50 state changes a day writes about 6 MB a year, and keeps all of it by default. A plain `remember` writes no `lifecycle` row, so the log grows with what happens to memories, not with how many you store.
 
 ### Privacy at `full`
 
@@ -58,7 +58,7 @@ omnimem audit --action forget --json       # one JSON object per line
 
 `--since` takes `30m`, `12h`, `7d`, `2w`, a date (`2026-11-03`) or a date and time (`2026-11-03T14:30`, UTC). The command reads the database itself, so it works whether or not the server is running; run it as the service's user on a server install (`sudo -u omnimem omnimem audit`).
 
-**`explain_memory`.** When the log is on and has rows for a memory, the result gains a `history` list, newest first, up to 20 entries. There's no new tool, so the 48 stay 48, and with the log off the result is the 6.x one.
+**`explain_memory`.** When the log is on and has rows for a memory, the result gains a `history` list, newest first, up to 20 entries. There's no separate tool for it, and with the log off the result is the 6.x one.
 
 ## Backups
 

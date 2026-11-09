@@ -79,7 +79,7 @@ By default Claude Code asks before every OmniMem tool call, which gets old fast.
 }
 ```
 
-That covers all 48 tools (`remember`, `recall`, `briefing` and the rest).
+That covers all 49 tools (`remember`, `recall`, `briefing` and the rest).
 
 ## Auto-loaded instructions
 

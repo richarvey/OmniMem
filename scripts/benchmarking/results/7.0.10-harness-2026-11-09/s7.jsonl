@@ -1,0 +1,25 @@
+{"case_id": "off-topic:00", "category": "off_topic", "elapsed_ms": 43.5, "hits": 2, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1698}
+{"case_id": "off-topic:01", "category": "off_topic", "elapsed_ms": 51.6, "hits": 3, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1685}
+{"case_id": "off-topic:02", "category": "off_topic", "elapsed_ms": 43.4, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:03", "category": "off_topic", "elapsed_ms": 43.8, "hits": 1, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1557}
+{"case_id": "off-topic:04", "category": "off_topic", "elapsed_ms": 43.7, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:05", "category": "off_topic", "elapsed_ms": 43.7, "hits": 1, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1928}
+{"case_id": "off-topic:06", "category": "off_topic", "elapsed_ms": 43.7, "hits": 4, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1831}
+{"case_id": "off-topic:07", "category": "off_topic", "elapsed_ms": 44.0, "hits": 5, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.2258}
+{"case_id": "off-topic:08", "category": "off_topic", "elapsed_ms": 43.6, "hits": 5, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.2113}
+{"case_id": "off-topic:09", "category": "off_topic", "elapsed_ms": 43.5, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:10", "category": "off_topic", "elapsed_ms": 43.5, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:11", "category": "off_topic", "elapsed_ms": 43.9, "hits": 5, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.2367}
+{"case_id": "off-topic:12", "category": "off_topic", "elapsed_ms": 43.7, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:13", "category": "off_topic", "elapsed_ms": 43.4, "hits": 2, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1911}
+{"case_id": "off-topic:14", "category": "off_topic", "elapsed_ms": 43.9, "hits": 4, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1997}
+{"case_id": "off-topic:15", "category": "off_topic", "elapsed_ms": 43.7, "hits": 2, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1539}
+{"case_id": "off-topic:16", "category": "off_topic", "elapsed_ms": 43.9, "hits": 1, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1501}
+{"case_id": "off-topic:17", "category": "off_topic", "elapsed_ms": 43.5, "hits": 0, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": null}
+{"case_id": "off-topic:18", "category": "off_topic", "elapsed_ms": 44.0, "hits": 5, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.3917}
+{"case_id": "off-topic:19", "category": "off_topic", "elapsed_ms": 43.6, "hits": 5, "label": "PASS", "strong": 0, "strong_hits": [], "top_similarity": 0.1944}
+{"case_id": "near-miss:00", "category": "near_miss", "elapsed_ms": 131.6, "hits": 5, "label": "NEAR_MISS_RETURNED", "strong": 3, "strong_hits": ["The tousktroux gateway logs to kumvon with a 253-day retention.", "The halvorn gateway listens on port 9123 and terminates TLS itself.", "The tousktroux ledger logs to venqosk with a 836-day retention."], "top_similarity": 0.4691}
+{"case_id": "near-miss:01", "category": "near_miss", "elapsed_ms": 131.7, "hits": 5, "label": "NEAR_MISS_RETURNED", "strong": 4, "strong_hits": ["The trevask importer runs every night at 02:30 from cron.", "The tousktroux uploader logs to stexmir with a 727-day retention.", "The kaethvux importer logs to zuvstisk with a 190-day retention.", "The pevtaesk team measured 748 ms for praevbon on the cache."], "top_similarity": 0.512}
+{"case_id": "near-miss:02", "category": "near_miss", "elapsed_ms": 135.8, "hits": 5, "label": "NEAR_MISS_RETURNED", "strong": 1, "strong_hits": ["The mordale cache evicts entries after 300 seconds."], "top_similarity": 0.597}
+{"case_id": "near-miss:03", "category": "near_miss", "elapsed_ms": 130.9, "hits": 5, "label": "NEAR_MISS_RETURNED", "strong": 1, "strong_hits": ["The zelvar router sends mobile traffic to the edge cluster."], "top_similarity": 0.5886}
+{"case_id": "near-miss:04", "category": "near_miss", "elapsed_ms": 132.3, "hits": 5, "label": "NEAR_MISS_RETURNED", "strong": 1, "strong_hits": ["The brennox ledger is backed up to cold storage on Fridays."], "top_similarity": 0.4327}

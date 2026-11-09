@@ -1,0 +1,49 @@
+{
+  "counts": {
+    "EXPECTED": 1,
+    "PASS": 150
+  },
+  "extra": {
+    "baseline": {
+      "fixture_sha256": "e10c8f8408e64097824c1e26248410cea2c69e2e011bbbef7161f9e91ac99719",
+      "projects": [
+        "proukoul",
+        "drilsael",
+        "gethdom"
+      ],
+      "records": 875
+    }
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true
+  },
+  "gates": [
+    {
+      "detail": "0 leaks",
+      "held": true,
+      "name": "zero cross-project leaks",
+      "suite": "s8"
+    }
+  ],
+  "latency_ms": {
+    "count": 151,
+    "max": 287.19570208340883,
+    "mean": 44.47814960353422,
+    "p50": 43.63482818007469,
+    "p95": 49.82358776032925,
+    "p99": 258.8845528662205
+  },
+  "notes": [],
+  "settle_ms": {
+    "count": 1,
+    "max": 43.829865753650665,
+    "mean": 43.829865753650665,
+    "p50": 43.829865753650665,
+    "p95": 43.829865753650665,
+    "p99": 43.829865753650665
+  },
+  "status": "PASSED",
+  "suite": "s8"
+}

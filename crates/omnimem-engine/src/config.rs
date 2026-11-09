@@ -99,8 +99,16 @@ impl EnrichmentTrust {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineConfig {
     /// `HUMAN_APPROVAL`: `human` (the default) makes an agent's skill write
-    /// wait for a person; `agent` lets the call commit, as 6.x did.
+    /// and contradiction resolution wait for a person; `agent` lets the call
+    /// commit, as 6.x did. Each gate can be set apart (#38).
     pub human_approval: HumanApproval,
+    /// `HUMAN_APPROVAL_SKILLS`: the skill gate's own setting. `None` follows
+    /// `human_approval`. Read through [`EngineConfig::skill_approval`].
+    pub human_approval_skills: Option<HumanApproval>,
+    /// `HUMAN_APPROVAL_CONTRADICTIONS`: the contradiction gate's own
+    /// setting. `None` follows `human_approval`. Read through
+    /// [`EngineConfig::contradiction_approval`].
+    pub human_approval_contradictions: Option<HumanApproval>,
     /// `TRUST_ENRICHMENT`: what an extracted fact or preference starts as.
     pub trust_enrichment: EnrichmentTrust,
     /// `FACT_EXTRACTION_MODEL`
@@ -132,7 +140,8 @@ pub struct EngineConfig {
     /// `full` is the only level that keeps memory text.
     pub audit_log: AuditLevel,
     /// `AUDIT_RETENTION_DAYS`: audit rows older than this are pruned by the
-    /// maintenance pass; 0 keeps them for ever.
+    /// maintenance pass; 0, the default since 7.0.11, keeps them for ever,
+    /// since `known_at` reads history only as far back as the log goes.
     pub audit_retention_days: u32,
     /// `DEPRIORITISED_WEIGHT`
     pub deprioritised_weight: f64,
@@ -144,6 +153,10 @@ pub struct EngineConfig {
     /// `TRUST_CANDIDATE_WEIGHT`: the same for an extracted fact or preference
     /// no person has confirmed. 0.9 is about what 90 days of recency costs.
     pub trust_candidate_weight: f64,
+    /// `VALIDITY_EXPIRED_WEIGHT`: how much a memory whose `valid_to` has
+    /// passed counts in an ordinary recall (#29). It still comes back,
+    /// carrying its `valid_to`, so it can't read as true today.
+    pub validity_expired_weight: f64,
     /// `DEDUP_SIMILARITY_THRESHOLD`
     pub dedup_threshold: f64,
     /// `CONTRADICTION_SIMILARITY_THRESHOLD`
@@ -202,6 +215,8 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             human_approval: HumanApproval::Human,
+            human_approval_skills: None,
+            human_approval_contradictions: None,
             trust_enrichment: EnrichmentTrust::Candidate,
             fact_extraction_model: "claude-haiku-5-5".to_owned(),
             query_expansion_model: "claude-haiku-5-5".to_owned(),
@@ -215,10 +230,11 @@ impl Default for EngineConfig {
             abandoned_cache_ttl: Duration::from_secs(60),
             graveyard_scope: GraveyardScope::Project,
             audit_log: AuditLevel::Lifecycle,
-            audit_retention_days: 90,
+            audit_retention_days: 0,
             deprioritised_weight: 0.2,
             trust_disputed_weight: 0.8,
             trust_candidate_weight: 0.9,
+            validity_expired_weight: 0.8,
             dedup_threshold: 0.92,
             contradiction_threshold: 0.7,
             ingest_mode: "full".to_owned(),
@@ -310,6 +326,32 @@ fn human_approval(default: HumanApproval) -> HumanApproval {
     }
 }
 
+/// One gate's own setting: `None` when unset, so it follows
+/// `HUMAN_APPROVAL`, and `human` (the safe side) on a value that is neither,
+/// with a warning. A typo never opens a gate.
+fn gate_approval(name: &str) -> Option<HumanApproval> {
+    let raw = text(name)?;
+    Some(HumanApproval::parse(&raw).unwrap_or_else(|| {
+        warn!("{name}={raw:?} is not human or agent; asking a person");
+        HumanApproval::Human
+    }))
+}
+
+impl EngineConfig {
+    /// Who approves an agent's skill write: `HUMAN_APPROVAL_SKILLS`, else
+    /// `HUMAN_APPROVAL`.
+    pub fn skill_approval(&self) -> HumanApproval {
+        self.human_approval_skills.unwrap_or(self.human_approval)
+    }
+
+    /// Who approves an agent's contradiction resolution:
+    /// `HUMAN_APPROVAL_CONTRADICTIONS`, else `HUMAN_APPROVAL`.
+    pub fn contradiction_approval(&self) -> HumanApproval {
+        self.human_approval_contradictions
+            .unwrap_or(self.human_approval)
+    }
+}
+
 /// `TRUST_ENRICHMENT`, falling back to the default (`candidate`, the side
 /// that asks a person) with a warning on a value that isn't one.
 fn trust_enrichment(default: EnrichmentTrust) -> EnrichmentTrust {
@@ -352,6 +394,8 @@ impl EngineConfig {
             .unwrap_or(d.skill_user);
         Self {
             human_approval: human_approval(d.human_approval),
+            human_approval_skills: gate_approval("HUMAN_APPROVAL_SKILLS"),
+            human_approval_contradictions: gate_approval("HUMAN_APPROVAL_CONTRADICTIONS"),
             trust_enrichment: trust_enrichment(d.trust_enrichment),
             fact_extraction_model: text("FACT_EXTRACTION_MODEL").unwrap_or(d.fact_extraction_model),
             query_expansion_model: text("QUERY_EXPANSION_MODEL").unwrap_or(d.query_expansion_model),
@@ -369,6 +413,11 @@ impl EngineConfig {
             deprioritised_weight: float("DEPRIORITISED_WEIGHT", d.deprioritised_weight, UNIT),
             trust_disputed_weight: float("TRUST_DISPUTED_WEIGHT", d.trust_disputed_weight, UNIT),
             trust_candidate_weight: float("TRUST_CANDIDATE_WEIGHT", d.trust_candidate_weight, UNIT),
+            validity_expired_weight: float(
+                "VALIDITY_EXPIRED_WEIGHT",
+                d.validity_expired_weight,
+                UNIT,
+            ),
             dedup_threshold: float("DEDUP_SIMILARITY_THRESHOLD", d.dedup_threshold, UNIT),
             contradiction_threshold: float(
                 "CONTRADICTION_SIMILARITY_THRESHOLD",
@@ -534,7 +583,7 @@ mod tests {
     fn audit_settings_parse_and_a_bad_level_keeps_the_lifecycle_log() {
         let d = EngineConfig::default();
         assert_eq!(d.audit_log, AuditLevel::Lifecycle);
-        assert_eq!(d.audit_retention_days, 90);
+        assert_eq!(d.audit_retention_days, 0);
 
         let level = |value: &str| {
             with_var("AUDIT_LOG", value, || {
@@ -561,8 +610,8 @@ mod tests {
         };
         assert_eq!(days("30"), 30);
         assert_eq!(days("0"), 0);
-        assert_eq!(days("-5"), 90, "not a count of days, so the default");
-        assert_eq!(days("soon"), 90);
+        assert_eq!(days("-5"), 0, "not a count of days, so the default");
+        assert_eq!(days("soon"), 0);
     }
 
     #[test]
@@ -599,5 +648,47 @@ mod tests {
         assert_eq!(read("agent"), HumanApproval::Agent);
         assert_eq!(read("Human"), HumanApproval::Human);
         assert_eq!(read("robot"), HumanApproval::Human);
+    }
+
+    /// #38: each gate follows HUMAN_APPROVAL unless set on its own, and a
+    /// bad value for one gate asks a person rather than opening it.
+    #[test]
+    fn each_gate_defaults_to_human_approval_and_can_be_set_apart() {
+        let d = EngineConfig::default();
+        assert_eq!(
+            (d.skill_approval(), d.contradiction_approval()),
+            (HumanApproval::Human, HumanApproval::Human)
+        );
+        let read = |vars: &[(&str, &str)]| {
+            fn nest(vars: &[(&str, &str)]) -> EngineConfig {
+                match vars.split_first() {
+                    None => EngineConfig::from_env(PathBuf::from("backups")),
+                    Some(((name, value), rest)) => with_var(name, value, || nest(rest)),
+                }
+            }
+            let c = nest(vars);
+            (c.skill_approval(), c.contradiction_approval())
+        };
+        use HumanApproval::{Agent, Human};
+        assert_eq!(read(&[("HUMAN_APPROVAL", "agent")]), (Agent, Agent));
+        assert_eq!(
+            read(&[
+                ("HUMAN_APPROVAL", "agent"),
+                ("HUMAN_APPROVAL_SKILLS", "human")
+            ]),
+            (Human, Agent)
+        );
+        assert_eq!(
+            read(&[("HUMAN_APPROVAL_CONTRADICTIONS", "agent")]),
+            (Human, Agent)
+        );
+        assert_eq!(read(&[("HUMAN_APPROVAL_SKILLS", "agent")]), (Agent, Human));
+        assert_eq!(
+            read(&[
+                ("HUMAN_APPROVAL", "agent"),
+                ("HUMAN_APPROVAL_CONTRADICTIONS", "maybe")
+            ]),
+            (Agent, Human)
+        );
     }
 }

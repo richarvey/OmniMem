@@ -224,6 +224,7 @@ impl Engine {
             data.get("state").map_or("active", String::as_str).into(),
         );
         m.insert("trust".into(), omnimem_store::trust_of(&data).into());
+        crate::validity::insert_times(&mut m, &data);
         if let Some(prior) = data.get("trust_prior").filter(|p| !p.is_empty()) {
             m.insert("trust_prior".into(), prior.as_str().into());
         }

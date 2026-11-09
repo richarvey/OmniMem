@@ -343,3 +343,99 @@ fn malformed_backups_are_reported() {
         Err(StoreError::Backup(_))
     ));
 }
+
+/// #39: a restore may lower a memory's trust but never raise it, and a new
+/// extracted fact that says it is accepted comes in as a candidate.
+#[test]
+fn a_restore_never_raises_trust() {
+    let store = Store::open_in_memory().unwrap();
+    store.set_audit_level(omnimem_store::AuditLevel::Lifecycle);
+    let seed = [
+        (
+            "mem:knowledge:cand",
+            vec![
+                ("content", "a fact"),
+                ("enriched_from", "mem:episodic:src"),
+                ("updated_at", "100.0"),
+            ],
+        ),
+        (
+            "mem:episodic:disp",
+            vec![
+                ("content", "disputed"),
+                ("trust", "disputed"),
+                ("trust_prior", ""),
+                ("updated_at", "100.0"),
+            ],
+        ),
+        (
+            "mem:episodic:rej",
+            vec![
+                ("content", "wrong"),
+                ("trust", "rejected"),
+                ("retired_at", "90.0"),
+                ("updated_at", "100.0"),
+            ],
+        ),
+        (
+            "mem:episodic:ok",
+            vec![("content", "believed"), ("updated_at", "100.0")],
+        ),
+    ];
+    for (key, f) in &seed {
+        store.set_fields(key, &fields(f)).unwrap();
+    }
+    let backup = BackupFile::from_value(json!({
+        "metadata": {"version": "7.0.11"},
+        "data": {
+            // Each newer than the store's, each offering a higher trust.
+            "mem:knowledge:cand": {"content": "a fact, edited", "enriched_from": "mem:episodic:src", "trust": "accepted", "updated_at": "200.0"},
+            "mem:episodic:disp": {"content": "disputed", "trust": "accepted", "updated_at": "200.0"},
+            "mem:episodic:rej": {"content": "wrong", "trust": "candidate", "retired_at": "", "updated_at": "200.0"},
+            // A lower trust is applied.
+            "mem:episodic:ok": {"content": "believed", "trust": "rejected", "updated_at": "200.0"},
+            // New to the store: an extracted fact is capped at candidate,
+            // anything else keeps what its row says.
+            "mem:knowledge:newfact": {"content": "new fact", "enriched_from": "mem:episodic:src", "trust": "accepted", "updated_at": "200.0"},
+            "mem:episodic:newnote": {"content": "new note", "trust": "accepted", "updated_at": "200.0"}
+        }
+    }))
+    .unwrap();
+    let report = store.restore_backup(&backup, None, &mut |_, _| {}).unwrap();
+    let trust = |key: &str| omnimem_store::trust_of(&store.get(key).unwrap().unwrap()).to_owned();
+    assert_eq!(trust("mem:knowledge:cand"), "candidate");
+    assert_eq!(trust("mem:episodic:disp"), "disputed");
+    assert_eq!(trust("mem:episodic:rej"), "rejected");
+    assert_eq!(
+        store.get("mem:episodic:rej").unwrap().unwrap()["retired_at"],
+        "90.0"
+    );
+    assert_eq!(
+        trust("mem:episodic:ok"),
+        "rejected",
+        "a lower trust is applied"
+    );
+    assert_eq!(trust("mem:knowledge:newfact"), "candidate");
+    assert_eq!(trust("mem:episodic:newnote"), "accepted");
+    assert_eq!((report.trust_kept, report.trust_capped), (3, 1));
+    // The rest of a refused row still lands.
+    assert_eq!(
+        store.get("mem:knowledge:cand").unwrap().unwrap()["content"],
+        "a fact, edited"
+    );
+
+    // Each refusal is in the audit log.
+    let rows = store
+        .audit_entries(&omnimem_store::AuditQuery {
+            action: Some("restore_trust_refused".to_owned()),
+            limit: 10,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(rows.len(), 3);
+    let disp = rows.iter().find(|r| r.key == "mem:episodic:disp").unwrap();
+    assert_eq!(
+        (disp.to["trust"].as_str(), disp.to["trust_offered"].as_str()),
+        (Some("disputed"), Some("accepted"))
+    );
+}

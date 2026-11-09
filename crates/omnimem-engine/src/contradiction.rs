@@ -82,6 +82,15 @@ pub(crate) struct ContradictionMatch {
     pub existing_key: String,
     pub existing_content: String,
     pub similarity: f64,
+    /// The new statement says it changes something ("moved to", "now",
+    /// "switched to") and the earlier one is still believed: the new one
+    /// may supersede it (#35). Only ever a hint; a person decides.
+    pub may_supersede: bool,
+}
+
+/// Whether `text` says it changes or replaces something.
+pub(crate) fn states_a_change(text: &str) -> bool {
+    STATE_CHANGE.is_match(&text.trim().to_lowercase())
 }
 
 // The store owns the text, so the v5 migration can recognise a heuristic link.
@@ -119,7 +128,14 @@ impl Engine {
             }
             let existing = hit.fields.get("content").map_or("", String::as_str);
             if signals_conflict(content, existing) {
+                let believed = matches!(
+                    omnimem_store::trust_of(&hit.fields),
+                    crate::trust::ACCEPTED | crate::trust::CANDIDATE | crate::trust::DISPUTED
+                );
                 return Ok(Some(ContradictionMatch {
+                    may_supersede: believed
+                        && states_a_change(content)
+                        && content.trim().to_lowercase() != existing.trim().to_lowercase(),
                     existing_key: hit.key,
                     existing_content: take_chars(existing, 200),
                     similarity,

@@ -396,3 +396,138 @@ async fn the_detail_page_shows_why_a_memory_was_archived() {
     assert!(page.contains("Why it was archived"), "{page}");
     assert!(page.contains("replaced by the 7.0 design"), "{page}");
 }
+
+/// #36: the memory page shows both intervals and a person can set and
+/// clear validity, audited as the panel.
+#[tokio::test]
+async fn a_person_edits_when_a_memory_was_true() {
+    let (panel, engine) = setup();
+    let key = remember(&engine, "Sam lives in Berlin", "episodic", None);
+    let page = text(&get(&panel, &format!("/memory/{key}")).await);
+    assert!(page.contains("When it was true"), "{page}");
+    assert!(page.contains("and still true"), "{page}");
+
+    let to = location(
+        &post(
+            &panel,
+            &format!("/memory/{key}/validity"),
+            "valid_from=2026-01-01&valid_to=2026-04-01&reason=moved",
+        )
+        .await,
+    );
+    assert_eq!(to, format!("/memory/{key}"));
+    assert!(field(&engine, &key, "valid_from").is_some());
+    let end = field(&engine, &key, "valid_to").expect("an end");
+    let page = text(&get(&panel, &format!("/memory/{key}")).await);
+    assert!(page.contains("so no longer true"), "{page}");
+    assert!(page.contains(r#"value="2026-04-01""#), "{page}");
+
+    // Saving the form unchanged keeps the stored time.
+    location(
+        &post(
+            &panel,
+            &format!("/memory/{key}/validity"),
+            "valid_from=2026-01-01&valid_to=2026-04-01",
+        )
+        .await,
+    );
+    assert_eq!(
+        field(&engine, &key, "valid_to").as_deref(),
+        Some(end.as_str())
+    );
+
+    // An end before the start is refused with the reason on the page.
+    let refused = location(
+        &post(
+            &panel,
+            &format!("/memory/{key}/validity"),
+            "valid_from=2026-05-01&valid_to=2026-04-01",
+        )
+        .await,
+    );
+    assert!(refused.contains("validity_error="), "{refused}");
+
+    // Clearing the end makes it true again; the change is the panel's.
+    location(
+        &post(
+            &panel,
+            &format!("/memory/{key}/validity"),
+            "valid_from=2026-01-01&valid_to=",
+        )
+        .await,
+    );
+    assert_eq!(field(&engine, &key, "valid_to").as_deref(), Some(""));
+    let rows = engine
+        .store()
+        .audit_entries(&omnimem_store::AuditQuery {
+            key: Some(key.clone()),
+            limit: 10,
+            ..Default::default()
+        })
+        .unwrap();
+    let edit = rows
+        .iter()
+        .find(|r| r.action == "set_validity")
+        .expect("audited");
+    assert_eq!(edit.actor, "panel");
+    assert!(rows.iter().any(|r| r.reason == "moved"));
+}
+
+/// #36: the search page's "true on" and "known on" fields.
+#[tokio::test]
+async fn search_takes_true_on_and_known_on() {
+    let (panel, engine) = setup();
+    let berlin = remember(&engine, "Sam is based in Berlin", "episodic", None);
+    let lisbon = remember(&engine, "Sam is based in Lisbon", "episodic", None);
+    let set = |key: &str, pairs: &[(&str, &str)]| {
+        engine
+            .store()
+            .set_fields(
+                key,
+                &pairs
+                    .iter()
+                    .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                    .collect(),
+            )
+            .unwrap();
+    };
+    // Berlin true until 1 April 2026; Lisbon recorded 10 May, true from 1 April.
+    set(
+        &berlin,
+        &[("created_at", "1768003200.0"), ("valid_to", "1775001600.0")],
+    );
+    set(
+        &lisbon,
+        &[
+            ("created_at", "1778371200.0"),
+            ("valid_from", "1775001600.0"),
+        ],
+    );
+    let found = |extra: &str| {
+        let uri = format!("/search/results?query=sam+is+based+in&top_k=5{extra}");
+        let panel = &panel;
+        async move { text_of(panel, &uri).await }
+    };
+    let both = found("").await;
+    assert!(both.contains("Berlin") && both.contains("Lisbon"), "{both}");
+    assert!(both.contains("no longer true since 2026-04-01"), "{both}");
+    let march = found("&valid_at=2026-03-01").await;
+    assert!(
+        march.contains("Berlin") && !march.contains("Lisbon"),
+        "{march}"
+    );
+    let april = found("&known_at=2026-04-15").await;
+    assert!(
+        april.contains("Berlin") && !april.contains("Lisbon"),
+        "{april}"
+    );
+    let page = text(&get(&panel, "/search").await);
+    assert!(
+        page.contains("True on") && page.contains("Known on"),
+        "{page}"
+    );
+}
+
+async fn text_of(panel: &Panel, uri: &str) -> String {
+    text(&get(panel, uri).await)
+}

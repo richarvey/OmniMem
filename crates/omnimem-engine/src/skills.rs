@@ -60,10 +60,11 @@ fn generated_banner(domain: &str) -> String {
     )
 }
 
-const POOL_FIELDS: [&str; 15] = [
+const POOL_FIELDS: [&str; 16] = [
     "content",
     "state",
     "trust",
+    "valid_to",
     "enriched_from",
     "project",
     "tags",
@@ -78,11 +79,12 @@ const POOL_FIELDS: [&str; 15] = [
     "updated_at",
 ];
 
-const KNOWLEDGE_POOL_FIELDS: [&str; 12] = [
+const KNOWLEDGE_POOL_FIELDS: [&str; 13] = [
     "content",
     "title",
     "state",
     "trust",
+    "valid_to",
     "enriched_from",
     "skill_domains",
     "skill_rules",
@@ -152,13 +154,15 @@ fn nonempty(fields: &Fields, name: &str) -> Option<String> {
     fields.get(name).filter(|v| !v.is_empty()).cloned()
 }
 
-/// A memory a skill may compile from: active (or with no state), and
-/// believed (#24). A candidate, disputed, superseded or rejected memory is
-/// left out, so a skill is never built on a conclusion no person confirmed
-/// or on one side of an open contradiction.
+/// A memory a skill may compile from: active (or with no state), believed
+/// (#24) and still true (#29). A candidate, disputed, superseded or
+/// rejected memory is left out, so a skill is never built on a conclusion
+/// no person confirmed or on one side of an open contradiction, and nor is
+/// one whose `valid_to` has passed.
 fn active_or_unset(row: &Fields) -> bool {
     matches!(row.get("state").map(String::as_str), None | Some("active"))
         && omnimem_store::trust_of(row) == crate::trust::ACCEPTED
+        && omnimem_store::valid_to_of(row).is_none_or(|to| to > crate::pyfmt::now_secs())
 }
 
 /// Tags stored as a JSON array (or, from old data, comma-separated text).
