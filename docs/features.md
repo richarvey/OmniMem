@@ -164,6 +164,10 @@ Every recall hit carries its `trust`, so an agent can see why something ranked l
 
 Provenance still says who stated a memory and is never scored on. Trust says whether it's believed.
 
+## When it was true
+
+Since 7.0.11 a memory also says when it was true (`valid_from` and `valid_to`) and when OmniMem believed it (`created_at` and `retired_at`), so "where did Sam live last March" and "what did we think last March" are different questions with different answers. Recall takes `valid_at` and `known_at` to ask them, and a memory that has stopped being true ranks lower and says so. See [bi-temporal memory](bitemporal.md).
+
 ## Session briefing
 
 Rather than three separate calls at the start of a session, one `briefing(project="myproject")` gives your agent everything it needs:
