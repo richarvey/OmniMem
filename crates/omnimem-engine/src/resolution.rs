@@ -491,6 +491,8 @@ impl Engine {
         if !skipped.is_empty() {
             result.insert("retire_skipped".into(), skipped.into());
         }
+        // Trust moved, so the graveyard's view of it is stale (#33).
+        self.invalidate_abandoned_cache();
         Ok(Value::Object(result))
     }
 

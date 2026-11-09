@@ -836,3 +836,69 @@ fn graveyard_warnings_skip_a_suppressed_topic() {
         "a suppressed topic still warned on the hook path: {warnings:?}"
     );
 }
+
+/// #33: a rejected memory's dead ends never warn, in recall or on the hook
+/// path, and come back when a person restores it. A memory that isn't
+/// accepted for another reason still warns and says why.
+#[test]
+fn a_rejected_memorys_dead_ends_never_warn() {
+    let g = graveyard(EngineConfig::default());
+    let warned = |g: &Graveyard| -> (bool, Vec<String>) {
+        let results = g
+            .engine
+            .recall(DEAD_END_QUERY, 10, None, Some("alpha"), None, None)
+            .unwrap();
+        let hook: Vec<String> = g
+            .engine
+            .abandoned_warnings(DEAD_END_QUERY, &["alpha".to_owned()])
+            .unwrap()
+            .into_iter()
+            .map(|w| w.text)
+            .collect();
+        (warning_keys(&results).contains(&g.own), hook)
+    };
+    let (in_recall, hook) = warned(&g);
+    assert!(in_recall, "control: the dead end warns before the rejection");
+    assert!(hook.iter().any(|t| t.contains("Celery")), "{hook:?}");
+    assert!(
+        hook.iter().all(|t| !t.contains("The memory it comes from")),
+        "an accepted memory's warning reads as before: {hook:?}"
+    );
+
+    g.engine
+        .set_trust(&g.own, TrustAction::Reject, Some("test"))
+        .unwrap();
+    let (in_recall, hook) = warned(&g);
+    assert!(!in_recall, "a rejected memory's dead end warned in recall");
+    assert!(
+        hook.iter().all(|t| !t.contains("Celery")),
+        "a rejected memory's dead end warned on the hook path: {hook:?}"
+    );
+    assert_eq!(
+        g.engine.warn_if_abandoned("celery").unwrap()["status"],
+        "clear"
+    );
+
+    g.engine
+        .set_trust(&g.own, TrustAction::Restore, Some("test"))
+        .unwrap();
+    let (in_recall, _) = warned(&g);
+    assert!(in_recall, "a restored memory's dead end warns again");
+
+    // A disputed memory still warns, and says so.
+    g.engine
+        .store()
+        .set_fields(
+            &g.own,
+            &Fields::from([("trust".to_owned(), "disputed".to_owned())]),
+        )
+        .unwrap();
+    g.engine.invalidate_abandoned_cache();
+    let (in_recall, hook) = warned(&g);
+    assert!(in_recall);
+    assert!(
+        hook.iter()
+            .any(|t| t.contains("Celery") && t.contains("The memory it comes from is disputed")),
+        "{hook:?}"
+    );
+}

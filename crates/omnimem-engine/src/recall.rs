@@ -149,6 +149,9 @@ pub(crate) struct AbandonedEntry {
     /// The memory's text, the approach's name and its reason, lowercased:
     /// what a suppressed topic is matched against (#32).
     pub haystack: String,
+    /// The memory's trust. A rejected memory never gets here (#33); any
+    /// other that isn't `accepted` is named in the warning.
+    pub trust: String,
 }
 
 /// The sentence a dead end gets when it surfaces, in recall or at a hook.
@@ -189,6 +192,12 @@ pub(crate) fn warning_text(
     };
     append("What worked instead", &warning.breakthrough);
     append("Lesson", &warning.lesson);
+    // A dead end from a memory OmniMem doesn't fully believe still warns,
+    // but says so, so the agent can weigh it (#33).
+    if warning.trust != trust::ACCEPTED && !warning.trust.is_empty() {
+        tidy(&mut text);
+        text.push_str(&format!(". The memory it comes from is {}", warning.trust));
+    }
     // How firmly to put it, scaled by what it actually cost to
     // learn. Claiming an approach is settled when it was barely
     // tried is how the whole graveyard gets discounted, so the
@@ -397,9 +406,19 @@ impl Engine {
         // episodic memories first, so past the cap new dead ends never warned.
         //
         // No state filter either, on purpose: archiving hides a memory from
-        // recall, but the lesson in its dead ends still holds.
+        // recall, but the lesson in its dead ends still holds. A rejected
+        // memory is one a person said was wrong, so its dead ends are
+        // suspect too and never warn (#33); every other trust still does.
         let filter = MemoryFilter {
             present_any: vec!["abandoned_approaches".to_owned()],
+            trusts: [
+                trust::ACCEPTED,
+                trust::CANDIDATE,
+                trust::DISPUTED,
+                trust::SUPERSEDED,
+            ]
+            .map(str::to_owned)
+            .to_vec(),
             ..MemoryFilter::default()
         };
         let rows = self.store.list_memories(
@@ -414,6 +433,8 @@ impl Engine {
                 "lesson",
                 "created_at",
                 "content",
+                "trust",
+                "enriched_from",
             ],
         )?;
         let mut entries = Vec::new();
@@ -425,6 +446,10 @@ impl Engine {
                 continue;
             };
             let effort = integer(row, "effort_score");
+            let memory_trust = omnimem_store::trust_of(row).to_owned();
+            if memory_trust == trust::REJECTED {
+                continue;
+            }
             let scope_project = text(row, "project")
                 .or_else(|| text(row, "project_name"))
                 .map(str::to_owned);
@@ -462,6 +487,7 @@ impl Engine {
                     lesson: row.get("lesson").cloned().filter(|v| !v.is_empty()),
                     created_at: row.get("created_at").and_then(|v| v.parse::<f64>().ok()),
                     haystack,
+                    trust: memory_trust.clone(),
                 });
             }
         }

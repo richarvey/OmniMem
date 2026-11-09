@@ -171,6 +171,9 @@ impl Engine {
                 .detail(json!({"trust_action": action.as_str()})));
             self.store.set_fields(key, &updates)?;
         }
+        // A rejected memory's dead ends stop warning, and a restored one's
+        // start again (#33).
+        self.invalidate_abandoned_cache();
         let now = self
             .store
             .get(key)?
