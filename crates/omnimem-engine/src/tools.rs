@@ -26,6 +26,7 @@ use crate::lifecycle::{
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
 use crate::tags::validate_tags;
+use crate::validity::Validity;
 use crate::{Engine, EngineError, Result};
 
 pub const MAX_CONTENT_LENGTH: usize = 50_000;
@@ -418,6 +419,39 @@ impl Engine {
         licence: Option<&str>,
         provenance: Option<&str>,
     ) -> Result<Value> {
+        self.remember_valid(
+            content,
+            project,
+            tags,
+            namespace,
+            force,
+            mode,
+            licence,
+            provenance,
+            &Validity::default(),
+        )
+    }
+
+    /// `remember` with a validity (#27): when the claim became true and
+    /// when it stopped, as dates, timestamps or prose. Both optional; with
+    /// neither it is `remember` exactly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn remember_valid(
+        &self,
+        content: &str,
+        project: Option<&str>,
+        tags: Option<&[String]>,
+        namespace: &str,
+        force: bool,
+        mode: Option<&str>,
+        licence: Option<&str>,
+        provenance: Option<&str>,
+        validity: &Validity,
+    ) -> Result<Value> {
+        let validity_fields = crate::validity::validity_fields(
+            crate::validity::instant_arg("valid_from", validity.valid_from.as_deref())?,
+            crate::validity::instant_arg("valid_to", validity.valid_to.as_deref())?,
+        )?;
         validate_namespace(namespace)?;
         validate_content(content)?;
         validate_project_name(project)?;
@@ -458,6 +492,7 @@ impl Engine {
             ("provenance".to_owned(), provenance_class.to_owned()),
         ]);
         fields.extend(licence_fields.clone());
+        fields.extend(validity_fields.clone());
         if let Some(p) = project.filter(|p| !p.is_empty()) {
             fields.insert("project".to_owned(), p.to_owned());
             if namespace == "project" {
@@ -487,6 +522,9 @@ impl Engine {
         result.insert("provenance".into(), provenance_class.into());
         if enrich_after {
             result.insert("enrichment".into(), "queued".into());
+        }
+        for (name, value) in &validity_fields {
+            result.insert(name.clone(), value.clone().into());
         }
         if let Some(c) = contradiction {
             result.insert(

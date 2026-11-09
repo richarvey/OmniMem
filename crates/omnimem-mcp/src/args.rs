@@ -68,6 +68,13 @@ pub struct Remember {
     pub licence: Option<String>,
     #[serde(default)]
     pub provenance: Option<String>,
+    /// When the claim became true, if not when it is recorded: an ISO date
+    /// (2026-04-01), a timestamp, or a phrase ("last March").
+    #[serde(default)]
+    pub valid_from: Option<String>,
+    /// When the claim stopped being true, if it already has.
+    #[serde(default)]
+    pub valid_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

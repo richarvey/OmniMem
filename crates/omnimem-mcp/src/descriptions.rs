@@ -8,7 +8,10 @@
 
 pub const VERSION: &str = "Return the current OmniMem version.";
 
-pub const REMEMBER: &str = r"Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.";
+pub const REMEMBER: &str = r"Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
+
+Pass valid_from when the claim became true at a time other than now ('moved
+to Lisbon on 1 April'), and valid_to when it has already stopped being true.";
 
 pub const REMEMBER_DOCUMENT: &str = r"Index a long-form document by splitting it into chunks and storing each chunk as a memory.
 

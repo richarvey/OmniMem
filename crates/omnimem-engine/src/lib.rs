@@ -43,6 +43,7 @@ mod temporal;
 mod tools;
 pub mod transfer;
 pub mod trust;
+pub mod validity;
 
 pub use llm::ExtractedFact;
 pub use projects::{Suggestion, migrate_project_domains};
@@ -67,6 +68,7 @@ pub use omnimem_store::AuditLevel;
 pub use recall::{RecallResult, compute_experience_weight};
 pub use resolution::{Outcome, PENDING_TTL, ResolutionReview, ResolveRequest, Retire};
 pub use tools::DomainFilter;
+pub use validity::Validity;
 
 pub type Result<T, E = EngineError> = std::result::Result<T, E>;
 

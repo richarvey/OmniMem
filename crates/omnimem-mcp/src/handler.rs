@@ -208,7 +208,7 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         "version" => e.version(),
         "remember" => {
             let a: Remember = parse(args)?;
-            e.remember(
+            e.remember_valid(
                 &a.content,
                 a.project.as_deref(),
                 a.tags.as_deref(),
@@ -217,6 +217,10 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
                 a.mode.as_deref(),
                 a.licence.as_deref(),
                 a.provenance.as_deref(),
+                &omnimem_engine::Validity {
+                    valid_from: a.valid_from,
+                    valid_to: a.valid_to,
+                },
             )?
         }
         "remember_document" => {
