@@ -1,0 +1,50 @@
+{
+  "counts": {
+    "PASS": 12
+  },
+  "extra": {
+    "baseline": {
+      "fixture_sha256": "e10c8f8408e64097824c1e26248410cea2c69e2e011bbbef7161f9e91ac99719",
+      "projects": [
+        "proukoul",
+        "drilsael",
+        "gethdom"
+      ],
+      "records": 887
+    }
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true
+  },
+  "gates": [
+    {
+      "detail": "no stale value",
+      "held": true,
+      "name": "zero STALE after resolution, maintenance and re-entry",
+      "suite": "s2"
+    }
+  ],
+  "latency_ms": {
+    "count": 12,
+    "max": 787.6169811934233,
+    "mean": 607.7058033552021,
+    "p50": 551.630886271596,
+    "p95": 787.6169811934233,
+    "p99": 787.6169811934233
+  },
+  "notes": [
+    "Partial supersession, bounded validity, equal weight and criterion E need OmniMem to decide, so they wait for the --enrichment configuration (phase 5)."
+  ],
+  "settle_ms": {
+    "count": 16,
+    "max": 48.44579426571727,
+    "mean": 44.62881953804754,
+    "p50": 44.23000616952777,
+    "p95": 48.44579426571727,
+    "p99": 48.44579426571727
+  },
+  "status": "PASSED",
+  "suite": "s2"
+}

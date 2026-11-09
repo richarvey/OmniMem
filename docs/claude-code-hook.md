@@ -196,20 +196,24 @@ worse than one that forgets.
 
 ## What it is worth
 
-On the dead-end benchmark, ten pairs of runs on the same task with the same
-tools, with `pre-tool-use` on and the earlier failure in the store:
+On the dead-end benchmark (the test harness's S9, against the 7.0.10 release on
+9 November 2026), ten pairs of runs on the same task with the same tools and
+`claude-haiku-4-5-20251001`, one without OmniMem and one with its server, the
+hook and the earlier failure in the store:
 
-* every attempt at the abandoned crate was stopped before it ran (7 of 7)
-* no treated run reached a failing test suite, against 8 of 10 for the control
-* cost fell 27% on the mean, and the treated arm was cheaper in all ten pairs
+* the control walked into the dead end in 8 of 10 runs, the OmniMem arm in none
+* 6 of the control's runs sat through a failing test suite, and none of OmniMem's
+* the OmniMem arm passed honestly in 10 of 10, the control in 8 of 10
+* median tokens per run fell 30.6% (fewer in 8 of 10 pairs, one-sided sign test
+  p = 0.055) and median cost 55.2%
 
-Within the control arm alone, runs that walked into the dead end cost 27% more
-than those that avoided it.
+The run, with every per-run figure, is in
+[`scripts/benchmarking/results/7.0.10-harness-2026-11-09`](../scripts/benchmarking/results/7.0.10-harness-2026-11-09/report.md).
 
-The sample is small, it is one scenario on one model, and the control recovered
-from its dead end in one or two failed test runs, so this is a modest saving on a
-shallow dead end. A dead end that takes longer to discover is worth more, and
-that is not measured here.
+The agent made no memory tool calls in the OmniMem arm: the hook did the work,
+so this measures the hook, not recall. The sample is small, it's one scenario on
+one model, and the dead end is a shallow one. A dead end that takes longer to
+discover is worth more, and that isn't measured here.
 
 `session-start` and `session-end` have **not** been through the benchmark. The
 figures above are for the PreToolUse guard only.

@@ -13,6 +13,12 @@
     {% if r.reinstate_candidate %}
     <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent)">reinstate candidate</span>
     {% endif %}
+    {% if r.expired %}
+    <span class="badge" title="Its valid-to date has passed">no longer true since {{ r.valid_to[:10] }}</span>
+    {% endif %}
+    {% if r.retired_at %}
+    <span class="badge" title="When OmniMem stopped believing it">retired {{ r.retired_at[:10] }}</span>
+    {% endif %}
     {% if r.weak_match %}
     <span class="badge badge-weak" title="Below the relevance floor recall() applies. Shown here because you can judge it yourself.">weak match</span>
     {% endif %}

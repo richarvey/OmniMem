@@ -2523,9 +2523,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -3217,7 +3217,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3242,7 +3242,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-app"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "anyhow",
  "directories",
@@ -3261,7 +3261,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-core"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "serde",
  "serde_json",
@@ -3273,7 +3273,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-desktop"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3298,7 +3298,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-embed"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "omnimem-core",
  "ort",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-engine"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "chrono",
  "omnimem-core",
@@ -3333,7 +3333,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-llm"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "omnimem-core",
  "reqwest",
@@ -3344,7 +3344,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-mcp"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-rss"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "chrono",
  "feed-rs",
@@ -3385,7 +3385,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-settings"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "axum",
  "chrono",
@@ -3405,7 +3405,7 @@ dependencies = [
 
 [[package]]
 name = "omnimem-store"
-version = "7.0.10"
+version = "7.0.12"
 dependencies = [
  "omnimem-core",
  "rusqlite",
@@ -4102,9 +4102,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "3.3.0"
+version = "3.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88db56b8ae316560e9e868b6b978ea940f27cb883323fc90e07435e44158f5c"
+checksum = "d24a7e92f4bcaa36b97fa93c4fa7ca8f3e669eced949345b3462dba333c7f909"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -4115,6 +4115,7 @@ dependencies = [
  "http-body",
  "http-body-util",
  "indexmap",
+ "libc",
  "pastey",
  "pin-project-lite",
  "rand 0.10.2",
@@ -4122,6 +4123,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sse-stream",
  "thiserror 2.0.20",
  "tokio",
@@ -4135,9 +4137,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp-macros"
-version = "3.3.0"
+version = "3.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "873b730df6f0a9b74b13eb514e0dca4c2db0d8b68b74af98a2e9bf3f9d436585"
+checksum = "b3140f24a766f80f9ec1607bde85680959a69b83d46fa9ce87dadab7e67ab029"
 dependencies = [
  "darling 0.24.1",
  "proc-macro2",
@@ -4158,9 +4160,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.40.2"
+version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+checksum = "da9bba6f3506135e120a6586df05be18b48d18896600646a4bec8f993d91a594"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",

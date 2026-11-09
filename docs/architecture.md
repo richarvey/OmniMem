@@ -52,7 +52,7 @@ The other commands are for moving data and poking at a store: `import` (a 6.x ba
 | `omnimem-store` | SQLite schema and migrations, the in-memory vector matrix, filtered exact k-NN, backup import and export, the OAuth tables |
 | `omnimem-engine` | The recall pipeline, dedup, contradictions, lifecycle, experience, projects and domains, lineage, chunking, dates, the skill compiler, scan and transfer, maintenance, enrichment |
 | `omnimem-llm` | The Anthropic Messages client, with retries |
-| `omnimem-mcp` | The 48 tools and their descriptions, the instructions, bearer and OAuth 2.1 auth, the Host and Origin guard |
+| `omnimem-mcp` | The 49 tools and their descriptions, the instructions, bearer and OAuth 2.1 auth, the Host and Origin guard |
 | `omnimem-rss` | Feed fetching and parsing, summary and digest modes, the licence gate, the scheduler |
 | `omnimem-settings` | The settings panel's pages, rendered in-process. No HTTP routes |
 | `omnimem-app` | What the server and the desktop app share: opening the engine, running the services, the data folder, the single-instance lock |
@@ -127,7 +127,7 @@ A deprioritised memory whose reinstate hints match the query comes back as a rei
 
 ## Compared with 6.x
 
-What stays the same: the 48 tool names, parameters and defaults, the JSON they return, the vectors, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones. Three things changed on purpose: the tool descriptions were trimmed (the `Args:` blocks duplicated the schema; the full guidance moved to `docs/agent-guide.md`), recall scoring differs in recency, the abandoned weight and auto-suppression, all covered above, and project-namespace results carry their `tags`, which 6.x's project index never returned.
+What stays the same: the 48 tool names 6.x had (7.0.12 adds a 49th, `end_validity`), parameters and defaults, the JSON they return, the vectors, skill bodies, the backup file format, skill bundles, `feeds.yml`, and every environment variable apart from the Valkey and web UI ones. Three things changed on purpose: the tool descriptions were trimmed (the `Args:` blocks duplicated the schema; the full guidance moved to `docs/agent-guide.md`), recall scoring differs in recency, the abandoned weight and auto-suppression, all covered above, and project-namespace results carry their `tags`, which 6.x's project index never returned.
 
 What's gone: Valkey, the Compose stack, the web UI and `/metrics` over HTTP, the SSE transport (streamable HTTP only) and the PyTorch backend.
 

@@ -28,7 +28,7 @@ use tracing::info;
 
 use crate::error::{EngineError, invalid};
 use crate::lifecycle::MemoryState;
-use crate::pyfmt::{now_str, py_json, take_chars};
+use crate::pyfmt::{now_str, py_float, py_json, take_chars};
 use crate::tools::{MAX_SHORT_TEXT, validate_text, validate_writable_key};
 use crate::trust;
 use crate::{Engine, Result};
@@ -407,6 +407,35 @@ impl Engine {
         if let Some(reason) = &request.reason {
             resolution["reason"] = json!(reason);
         }
+        // A supersession ends the loser's validity (#27): when the winner
+        // says it became true, or now. A loser that already stopped being
+        // true earlier keeps its own end. What was written is kept on the
+        // resolution, so reopening it takes back exactly that.
+        let closes = if request.outcome == Outcome::Supersedes {
+            let winner = request.winner.as_deref().unwrap_or_default();
+            let (win_row, lose_row) = if winner == request.key_a {
+                (&row_a, &row_b)
+            } else {
+                (&row_b, &row_a)
+            };
+            let bound = win_row
+                .as_ref()
+                .and_then(|w| omnimem_store::time_of(w, crate::validity::VALID_FROM))
+                .map_or_else(|| now.clone(), py_float);
+            let bound_at: f64 = bound.parse().unwrap_or(f64::INFINITY);
+            lose_row
+                .as_ref()
+                .filter(|l| {
+                    omnimem_store::time_of(l, crate::validity::VALID_TO)
+                        .is_none_or(|own| own > bound_at)
+                })
+                .map(|_| bound)
+        } else {
+            None
+        };
+        if let Some(bound) = &closes {
+            resolution["closed_valid_to"] = json!(bound);
+        }
 
         // The log names what was decided by whom, never what the memories
         // say, so it holds at every level.
@@ -438,6 +467,13 @@ impl Engine {
             // A side that no longer exists has nothing to write to.
             let Some(row) = row else { continue };
             let mut links = parse_links(row.get("contradictions"));
+            // What this link said before, for `reopened` to undo.
+            let before = links
+                .iter()
+                .find(|l| l.get("key").and_then(Value::as_str) == Some(other.as_str()))
+                .and_then(|l| l.get("resolution"))
+                .cloned()
+                .unwrap_or(Value::Null);
             put_resolution(&mut links, other, resolution.clone(), &now);
             let mut updates = Fields::new();
             let wins = supersedes && request.winner.as_deref() == Some(key.as_str());
@@ -453,8 +489,39 @@ impl Engine {
                 Outcome::BothValid | Outcome::FalsePositive => {
                     trust::undispute(row, &links, &mut updates);
                 }
-                Outcome::Reopened => trust::dispute(row, &mut updates),
+                Outcome::Reopened => {
+                    // Reopening the resolution that superseded or rejected
+                    // this memory puts it back in dispute, and undoes the
+                    // end of validity that resolution wrote.
+                    let undone = match before.get("outcome").and_then(Value::as_str) {
+                        Some("supersedes") => {
+                            row.get("superseded_by").map(String::as_str) == Some(other.as_str())
+                        }
+                        Some("both_wrong") => true,
+                        _ => false,
+                    };
+                    if undone {
+                        trust::reopen(row, &mut updates);
+                        if let Some(closed) = before.get("closed_valid_to").and_then(Value::as_str)
+                            && row.get(crate::validity::VALID_TO).map(String::as_str)
+                                == Some(closed)
+                        {
+                            updates.insert(crate::validity::VALID_TO.to_owned(), String::new());
+                            updates.insert(
+                                crate::validity::VALID_TO_RECORDED.to_owned(),
+                                String::new(),
+                            );
+                        }
+                    } else {
+                        trust::dispute(row, &mut updates);
+                    }
+                }
             }
+            if loses && let Some(bound) = &closes {
+                updates.insert(crate::validity::VALID_TO.to_owned(), bound.clone());
+                updates.insert(crate::validity::VALID_TO_RECORDED.to_owned(), now.clone());
+            }
+            crate::validity::follow_trust(row, &mut updates, &now);
             updates.insert("contradictions".to_owned(), py_json(&Value::Array(links)));
             // A newer row is what lets a restore bring this across.
             updates.insert("updated_at".to_owned(), now.clone());
@@ -464,6 +531,9 @@ impl Engine {
         self.store.set_fields_each(&writes)?;
         self.store
             .kv_delete(&pair_key(&request.key_a, &request.key_b))?;
+        for (key, _) in &writes {
+            self.cascade_interval(key)?;
+        }
 
         let (retired, skipped) = self.retire(request)?;
         info!(
@@ -491,6 +561,8 @@ impl Engine {
         if !skipped.is_empty() {
             result.insert("retire_skipped".into(), skipped.into());
         }
+        // Trust moved, so the graveyard's view of it is stale (#33).
+        self.invalidate_abandoned_cache();
         Ok(Value::Object(result))
     }
 
@@ -806,6 +878,7 @@ impl Engine {
             let mut current = row.clone();
             for other in &gone {
                 trust::unsupersede(&current, other, &mut updates);
+                crate::validity::follow_trust(&current, &mut updates, &now);
                 supersession_updates(&current, other, false, false, &mut updates);
                 current.extend(updates.clone());
             }
@@ -872,6 +945,7 @@ impl Engine {
                 );
             }
             trust::unsupersede(&row, key, &mut updates);
+            crate::validity::follow_trust(&row, &mut updates, &now);
             supersession_updates(&row, key, false, false, &mut updates);
             if !updates.is_empty() {
                 updates.insert("updated_at".to_owned(), now.clone());

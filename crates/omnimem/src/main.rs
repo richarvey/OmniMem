@@ -18,6 +18,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::TimeZone;
 use clap::{Parser, Subcommand};
 mod hook;
+mod in_person;
 mod install_hooks;
 mod trust_cli;
 
@@ -135,6 +136,13 @@ enum Command {
         /// Include archived memories.
         #[arg(long)]
         all_states: bool,
+        /// Only memories true at this time: an ISO date, a timestamp or a
+        /// phrase ("last March").
+        #[arg(long)]
+        valid_at: Option<String>,
+        /// Only memories OmniMem believed at this time.
+        #[arg(long)]
+        known_at: Option<String>,
         /// One JSON object per line.
         #[arg(long)]
         json: bool,
@@ -339,11 +347,15 @@ fn main() -> Result<()> {
             top_k,
             project,
             all_states,
+            valid_at,
+            known_at,
             json,
         } => {
             db.must_exist(None)?;
+            let as_of = omnimem_engine::AsOf::parse(valid_at.as_deref(), known_at.as_deref())
+                .map_err(|e| anyhow!("{e}"))?;
             search(
-                &db.path, &query, &namespace, top_k, project, all_states, json,
+                &db.path, &query, &namespace, top_k, project, all_states, as_of, json,
             )
         }
         Command::Embed { text } => embed(&text),
@@ -789,12 +801,14 @@ fn contradictions(db: &Path, action: Option<ContradictionAction>, json: bool) ->
                 retire,
             )
             .map_err(|e| anyhow!("{e}"))?;
+            in_person::confirm(&format!("resolve this pair as {outcome}"), &key_a)?;
             say(engine
                 .resolve_contradiction(&request, "cli")
                 .map_err(|e| anyhow!("{e}"))?);
             Ok(())
         }
         Some(ContradictionAction::Accept { key_a, key_b }) => {
+            in_person::confirm("accept this resolution", &key_a)?;
             match engine
                 .accept_pending_resolution(&key_a, &key_b, "cli")
                 .map_err(|e| anyhow!("{e}"))?
@@ -839,6 +853,7 @@ fn search(
     top_k: usize,
     projects: Vec<String>,
     all_states: bool,
+    as_of: omnimem_engine::AsOf,
     json: bool,
 ) -> Result<()> {
     let namespace: Namespace = namespace.parse().map_err(|e| anyhow!("{e}"))?;
@@ -855,8 +870,16 @@ fn search(
         // `omnimem search` is a raw look at the store, so it shows every
         // trust; each hit says which.
         trusts: Vec::new(),
+        valid_at: as_of.valid_at,
+        known_at: as_of.known_at,
     };
     for hit in store.search(namespace, &vector, top_k, &filter, None)? {
+        // The store's rows are a superset when both times are given.
+        if let Some(valid) = as_of.valid_at
+            && !omnimem_store::valid_at_as_known(&hit.fields, valid, as_of.known_at)
+        {
+            continue;
+        }
         let text = hit
             .fields
             .get("content")
@@ -870,7 +893,13 @@ fn search(
         if json {
             println!(
                 "{}",
-                serde_json::json!({"key": hit.key, "similarity": hit.similarity(), "snippet": snippet})
+                serde_json::json!({
+                    "key": hit.key,
+                    "similarity": hit.similarity(),
+                    "snippet": snippet,
+                    "valid_to": omnimem_store::valid_to_of(&hit.fields).and_then(omnimem_engine::validity::iso),
+                    "retired_at": omnimem_store::retired_at_of(&hit.fields).and_then(omnimem_engine::validity::iso),
+                })
             );
         } else {
             println!("{:.4}  {}  {}", hit.similarity(), hit.key, snippet);

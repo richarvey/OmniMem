@@ -17,7 +17,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "7.0.10"
+version = "7.0.12"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -37,7 +37,7 @@ omnimem-rss = { path = "crates/omnimem-rss" }
 omnimem-settings = { path = "crates/omnimem-settings" }
 
 # Storage: SQLite compiled in, so the binary needs no system library.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 
 # HTTP (model download now; Anthropic API and RSS later). rustls, not the
 # platform TLS stack, so every installer behaves the same.
@@ -48,7 +48,7 @@ clap = { version = "4.6", features = ["derive", "env"] }
 
 # MCP server
 omnimem-mcp = { path = "crates/omnimem-mcp" }
-rmcp = { version = "3.3", features = ["transport-streamable-http-server", "elicitation"] }
+rmcp = { version = "3.9", features = ["transport-streamable-http-server", "elicitation"] }
 axum = "0.8"
 tokio-util = "0.7"
 # OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.

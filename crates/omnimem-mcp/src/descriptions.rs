@@ -8,7 +8,10 @@
 
 pub const VERSION: &str = "Return the current OmniMem version.";
 
-pub const REMEMBER: &str = r"Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.";
+pub const REMEMBER: &str = r"Store a memory with automatic dedup. Returns duplicate info if near-match exists; use force=True to override.
+
+Pass valid_from when the claim became true at a time other than now ('moved
+to Lisbon on 1 April'), and valid_to when it has already stopped being true.";
 
 pub const REMEMBER_DOCUMENT: &str = r"Index a long-form document by splitting it into chunks and storing each chunk as a memory.
 
@@ -29,13 +32,19 @@ so fewer results than you asked for — including none — is a normal answer.
 A result flagged `weak_match` scored inside the band where relevant and
 irrelevant results genuinely overlap on this model. Read it, but do not
 build on it and do not go looking for a connection to the query: if it
-is not obviously about what you asked, it isn't.";
+is not obviously about what you asked, it isn't.
+
+valid_at asks what was true at a time ('where did Sam live last March');
+known_at asks what OmniMem believed at a time ('what did we think in
+March'). Both together ask what was believed then about then. Without
+them, a memory that has stopped being true still comes back, ranked
+lower and carrying its valid_to.";
 
 pub const RECALL_INDEX: &str = r"Lightweight recall: returns ranked summaries without full content. Use recall_detail() to fetch full content for selected keys.
 
 Shares recall()'s relevance floor (RECALL_MIN_SCORE, default 0.15) and
 its `weak_match` flag, so top_k is a ceiling and a short or empty result
-set is a real answer.";
+set is a real answer. Takes recall()'s valid_at and known_at.";
 
 pub const RECALL_DETAIL: &str = r"Fetch full content for specific memory keys. Use after recall_index() to expand only the entries you need.";
 
@@ -140,6 +149,8 @@ pub const MEMORY_AUDIT: &str = r"Summary of all memories grouped by state. Usefu
 
     The state counts always cover the whole store; the per-memory ``entries``
     list is paginated so a large store doesn't return thousands of rows at once.";
+
+pub const END_VALIDITY: &str = r"Record that a memory stopped being true, when nothing replaces it ('we stopped using Traefik'). valid_to defaults to now. The memory stays believed and recallable, ranked lower and carrying its valid_to; recall with valid_at still finds it for the time it held. When a newer memory replaces it, propose check_contradictions(mode='resolve', outcome='supersedes') instead.";
 
 pub const WHY_DID_YOU_MENTION: &str = r"Explain why a topic surfaced by searching recall logs.";
 

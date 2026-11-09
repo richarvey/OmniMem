@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use omnimem_engine::{
-    DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
+    AsOf, DomainFilter, Engine, EngineError, HumanApproval, ProposalCheck, ResolutionReview,
     ResolveRequest, Retire, SkillReview,
 };
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
     Implementation, JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
-    ServerCapabilities, ServerInfo, Tool,
+    ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::schemars::JsonSchema;
 use rmcp::service::{Peer, RequestContext};
@@ -22,11 +22,12 @@ use tracing::{error, info, warn};
 use crate::approval::{self, APPROVAL_TIMEOUT, Answer};
 use crate::args::{
     Archive, Bless, Briefing, BulkProject, CheckContradictions, CompileProject, CompileSkill,
-    Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, FindDuplicates, FindSkills, Forget,
-    GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs, OptionalProject,
-    ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex, RecentKnowledge,
-    RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag, RetireArg,
-    SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic, UpdateProjectState,
+    Deprioritise, DeprioritiseProject, DomainArg, DumpToFile, EndValidity, FindDuplicates,
+    FindSkills, Forget, GetSkill, Key, KeyOrQuery, ListProjects, LogAbandoned, MemoryAudit, NoArgs,
+    OptionalProject, ProjectName, PromoteKnowledge, Query, Recall, RecallDetail, RecallIndex,
+    RecentKnowledge, RecordExperience, Reindex, Remember, RememberDocument, RestoreFromFile, Retag,
+    RetireArg, SetLicence, SetProjectContext, SetProvenance, SuppressTopic, Topic,
+    UpdateProjectState,
 };
 use crate::descriptions as d;
 
@@ -147,6 +148,7 @@ pub(crate) fn tools() -> Vec<Tool> {
             schema::<Query>(),
         ),
         Tool::new("explain_memory", d::EXPLAIN_MEMORY, schema::<Key>()),
+        Tool::new("end_validity", d::END_VALIDITY, schema::<EndValidity>()),
         Tool::new("reindex", d::REINDEX, schema::<Reindex>()),
         Tool::new("set_licence", d::SET_LICENCE, schema::<SetLicence>()),
         Tool::new(
@@ -208,7 +210,7 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         "version" => e.version(),
         "remember" => {
             let a: Remember = parse(args)?;
-            e.remember(
+            e.remember_valid(
                 &a.content,
                 a.project.as_deref(),
                 a.tags.as_deref(),
@@ -217,6 +219,10 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
                 a.mode.as_deref(),
                 a.licence.as_deref(),
                 a.provenance.as_deref(),
+                &omnimem_engine::Validity {
+                    valid_from: a.valid_from,
+                    valid_to: a.valid_to,
+                },
             )?
         }
         "remember_document" => {
@@ -236,19 +242,22 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
         "recall" => {
             let a: Recall = parse(args)?;
             let domains = domain(a.domain_filter);
-            e.recall(
+            let as_of = AsOf::parse(a.valid_at.as_deref(), a.known_at.as_deref())?;
+            e.recall_at(
                 &a.query,
                 a.top_k,
                 a.namespaces.as_deref(),
                 a.project_filter.as_deref(),
                 a.expand_queries,
                 domains.as_ref(),
+                as_of,
             )?
         }
         "recall_index" => {
             let a: RecallIndex = parse(args)?;
             let domains = domain(a.domain_filter);
-            e.recall_index(
+            let as_of = AsOf::parse(a.valid_at.as_deref(), a.known_at.as_deref())?;
+            e.recall_index_at(
                 &a.query,
                 a.top_k,
                 a.namespaces.as_deref(),
@@ -256,6 +265,7 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
                 a.snippet_length,
                 a.expand_queries,
                 domains.as_ref(),
+                as_of,
             )?
         }
         "recall_detail" => e.recall_detail(&parse::<RecallDetail>(args)?.keys)?,
@@ -373,6 +383,10 @@ fn dispatch(engine: &Engine, name: &str, args: Value) -> Result<Value, CallError
             )?
         }
         "why_did_you_mention" => e.why_did_you_mention(&parse::<Query>(args)?.query)?,
+        "end_validity" => {
+            let a: EndValidity = parse(args)?;
+            e.end_validity(&a.key, a.valid_to.as_deref(), a.reason.as_deref())?
+        }
         "explain_memory" => e.explain_memory(&parse::<Key>(args)?.key)?,
         "reindex" => e.reindex(parse::<Reindex>(args)?.namespace.as_deref())?,
         "set_licence" => {
@@ -763,8 +777,8 @@ impl OmniMemServer {
 }
 
 impl ServerHandler for OmniMemServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("omnimem", env!("CARGO_PKG_VERSION")))
             .with_instructions(crate::INSTRUCTIONS)
     }
@@ -808,8 +822,10 @@ impl ServerHandler for OmniMemServer {
         let mode = args.get("mode").and_then(Value::as_str);
         let skill_write = name == "compile_skill" && mode == Some("write");
         let resolves = name == "check_contradictions" && mode.map(str::trim) == Some("resolve");
-        let needs_person =
-            (skill_write || resolves) && engine.config().human_approval == HumanApproval::Human;
+        // Each gate has its own setting (#38), defaulting to HUMAN_APPROVAL.
+        let needs_person = (skill_write
+            && engine.config().skill_approval() == HumanApproval::Human)
+            || (resolves && engine.config().contradiction_approval() == HumanApproval::Human);
         let outcome = if needs_person {
             let started = Instant::now();
             let result = if resolves {
@@ -862,7 +878,7 @@ mod tests {
     #[test]
     fn every_listed_tool_dispatches() {
         let names: Vec<String> = tools().iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(names.len(), 48);
+        assert_eq!(names.len(), 49);
         for name in names {
             let schema = tools()
                 .into_iter()

@@ -26,6 +26,7 @@ use crate::lifecycle::{
 use crate::pyfmt::{compact, now_str, py_json, round_to, take_chars};
 use crate::recall::{RecallResult, tags_truthy};
 use crate::tags::validate_tags;
+use crate::validity::{AsOf, Validity};
 use crate::{Engine, EngineError, Result};
 
 pub const MAX_CONTENT_LENGTH: usize = 50_000;
@@ -341,6 +342,7 @@ fn recall_entry(r: &RecallResult) -> Value {
     if let Some(date) = r.event_date {
         e.insert("event_date".into(), json!(date));
     }
+    insert_intervals(&mut e, r);
     for (name, value) in [
         ("enriched_from", &r.enriched_from),
         ("as_of", &r.as_of),
@@ -353,6 +355,20 @@ fn recall_entry(r: &RecallResult) -> Value {
         }
     }
     Value::Object(e)
+}
+
+/// A hit's validity and retirement (#28), as ISO 8601 UTC times, only where
+/// it has them, so a memory with neither reads as it did in 6.x.
+fn insert_intervals(e: &mut Map<String, Value>, r: &RecallResult) {
+    for (name, at) in [
+        ("valid_from", r.valid_from),
+        ("valid_to", r.valid_to),
+        ("retired_at", r.retired_at),
+    ] {
+        if let Some(iso) = at.and_then(crate::validity::iso) {
+            e.insert(name.into(), iso.into());
+        }
+    }
 }
 
 /// A trailing notice listing results whose licence is still unknown.
@@ -418,6 +434,39 @@ impl Engine {
         licence: Option<&str>,
         provenance: Option<&str>,
     ) -> Result<Value> {
+        self.remember_valid(
+            content,
+            project,
+            tags,
+            namespace,
+            force,
+            mode,
+            licence,
+            provenance,
+            &Validity::default(),
+        )
+    }
+
+    /// `remember` with a validity (#27): when the claim became true and
+    /// when it stopped, as dates, timestamps or prose. Both optional; with
+    /// neither it is `remember` exactly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn remember_valid(
+        &self,
+        content: &str,
+        project: Option<&str>,
+        tags: Option<&[String]>,
+        namespace: &str,
+        force: bool,
+        mode: Option<&str>,
+        licence: Option<&str>,
+        provenance: Option<&str>,
+        validity: &Validity,
+    ) -> Result<Value> {
+        let validity_fields = crate::validity::validity_fields(
+            crate::validity::instant_arg("valid_from", validity.valid_from.as_deref())?,
+            crate::validity::instant_arg("valid_to", validity.valid_to.as_deref())?,
+        )?;
         validate_namespace(namespace)?;
         validate_content(content)?;
         validate_project_name(project)?;
@@ -458,6 +507,7 @@ impl Engine {
             ("provenance".to_owned(), provenance_class.to_owned()),
         ]);
         fields.extend(licence_fields.clone());
+        fields.extend(validity_fields.clone());
         if let Some(p) = project.filter(|p| !p.is_empty()) {
             fields.insert("project".to_owned(), p.to_owned());
             if namespace == "project" {
@@ -488,7 +538,23 @@ impl Engine {
         if enrich_after {
             result.insert("enrichment".into(), "queued".into());
         }
+        for (name, value) in &validity_fields {
+            result.insert(name.clone(), value.clone().into());
+        }
         if let Some(c) = contradiction {
+            if c.may_supersede {
+                // #35: the agent proposes the resolution; nothing here
+                // changes either memory.
+                result.insert(
+                    "may_supersede".into(),
+                    json!({
+                        "key": c.existing_key,
+                        "content": c.existing_content,
+                        "similarity": round_to(c.similarity, 4),
+                        "suggestion": "If this replaces that memory, propose check_contradictions(mode=\"resolve\", outcome=\"supersedes\") with this one as the winner; a person confirms it.",
+                    }),
+                );
+            }
             result.insert(
                 "contradiction_warning".into(),
                 json!({
@@ -740,6 +806,29 @@ impl Engine {
         expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
+        self.recall_at(
+            query,
+            top_k,
+            namespaces,
+            project_filter,
+            expand_queries,
+            domain_filter,
+            AsOf::default(),
+        )
+    }
+
+    /// `recall` at a point in valid time, record time or both (#28).
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_at(
+        &self,
+        query: &str,
+        top_k: i64,
+        namespaces: Option<&[String]>,
+        project_filter: Option<&str>,
+        expand_queries: Option<bool>,
+        domain_filter: Option<&DomainFilter>,
+        as_of: AsOf,
+    ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
         Self::validate_recall_namespaces(namespaces)?;
         let (projects, notice, empty_scope) =
@@ -747,13 +836,14 @@ impl Engine {
         if empty_scope {
             return Ok(Value::Array(notice.into_iter().collect()));
         }
-        let results = self.recall_results(
+        let results = self.recall_results_at(
             query,
             namespaces,
             Some(top_k),
             &projects,
             None,
             expand_queries,
+            as_of,
         )?;
         let mut output: Vec<Value> = notice.into_iter().collect();
         output.extend(results.iter().map(recall_entry));
@@ -774,6 +864,31 @@ impl Engine {
         expand_queries: Option<bool>,
         domain_filter: Option<&DomainFilter>,
     ) -> Result<Value> {
+        self.recall_index_at(
+            query,
+            top_k,
+            namespaces,
+            project_filter,
+            snippet_length,
+            expand_queries,
+            domain_filter,
+            AsOf::default(),
+        )
+    }
+
+    /// `recall_index` at a point in valid time, record time or both (#28).
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_index_at(
+        &self,
+        query: &str,
+        top_k: i64,
+        namespaces: Option<&[String]>,
+        project_filter: Option<&str>,
+        snippet_length: i64,
+        expand_queries: Option<bool>,
+        domain_filter: Option<&DomainFilter>,
+        as_of: AsOf,
+    ) -> Result<Value> {
         let top_k = top_k.clamp(1, MAX_TOP_K);
         Self::validate_recall_namespaces(namespaces)?;
         let (projects, notice, empty_scope) =
@@ -786,13 +901,14 @@ impl Engine {
             }));
         }
         let snippet_length = snippet_length.clamp(50, 500) as usize;
-        let results = self.recall_results(
+        let results = self.recall_results_at(
             query,
             namespaces,
             Some(top_k),
             &projects,
             None,
             expand_queries,
+            as_of,
         )?;
 
         let mut output = Vec::new();
@@ -840,6 +956,7 @@ impl Engine {
                 let keys: Vec<Value> = r.replaces.iter().map(|x| x["key"].clone()).collect();
                 e.insert("replaces".into(), keys.into());
             }
+            insert_intervals(&mut e, r);
             index_tokens += snippet.chars().count() / 4 + 10;
             output.push(Value::Object(e));
         }
@@ -900,6 +1017,7 @@ impl Engine {
             if let Some(winner) = data.get("superseded_by").filter(|w| !w.is_empty()) {
                 e.insert("superseded_by".into(), winner.as_str().into());
             }
+            crate::validity::insert_times(&mut e, &data);
             if let Some(p) = data.get("project").filter(|p| !p.is_empty()) {
                 e.insert("project".into(), p.as_str().into());
             }
@@ -1471,6 +1589,14 @@ impl Engine {
             "re_embedded": report.embedded,
             "filename": filename,
         });
+        // #39: said only when it happened, so an ordinary restore's result
+        // is the 6.x one.
+        if report.trust_kept > 0 {
+            result["trust_kept"] = report.trust_kept.into();
+        }
+        if report.trust_capped > 0 {
+            result["trust_capped"] = report.trust_capped.into();
+        }
         // Only a backup that carries feeds adds anything here, so a 6.x
         // backup's result is exactly what 6.x returned.
         if let Some(feeds) = &backup.feeds {

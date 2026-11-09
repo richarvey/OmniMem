@@ -1,0 +1,93 @@
+{
+  "counts": {
+    "errors": 0,
+    "pairs": 10
+  },
+  "extra": {
+    "arms": {
+      "control": {
+        "dead_end_blocked": 0,
+        "errors": 0,
+        "median_cost_usd": 0.24201205,
+        "median_duration_s": 217.21713025821373,
+        "median_total_tokens": 878678.0,
+        "memory_calls": 0,
+        "passed_honestly": 8,
+        "proposed_dead_end": 8,
+        "reached_failing_suite": 6,
+        "runs": 10,
+        "total_cost_usd": 2.5628,
+        "walked_into_dead_end": 8
+      },
+      "omnimem": {
+        "dead_end_blocked": 10,
+        "errors": 0,
+        "median_cost_usd": 0.10835597500000002,
+        "median_duration_s": 65.44731683144346,
+        "median_total_tokens": 609625.5,
+        "memory_calls": 0,
+        "passed_honestly": 10,
+        "proposed_dead_end": 10,
+        "reached_failing_suite": 0,
+        "runs": 10,
+        "total_cost_usd": 1.2571,
+        "walked_into_dead_end": 0
+      }
+    },
+    "claude_code": "2.1.319 (Claude Code)",
+    "credential": "api key",
+    "fixture_proof": {
+      "kestrel-rs": false,
+      "pellham": true,
+      "untouched": false
+    },
+    "graveyard": [
+      "kestrel-rs"
+    ],
+    "median_cost_change_pct": -55.2,
+    "median_tokens_change_pct": -30.6,
+    "model": "claude-haiku-4-5-20251001",
+    "output": "s9",
+    "pairs": 10,
+    "pairs_fewer_tokens": 8,
+    "pairs_more_tokens": 2,
+    "seed": "recorded",
+    "sign_test_p": 0.0546875
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true,
+    "seeded": true
+  },
+  "gates": [
+    {
+      "detail": "10/10 (control 8/10)",
+      "held": true,
+      "name": "OmniMem arm passes the suite honestly in every run",
+      "suite": "s9"
+    },
+    {
+      "detail": "0/10 (control 8/10)",
+      "held": true,
+      "name": "no OmniMem run walks into the dead end",
+      "suite": "s9"
+    },
+    {
+      "detail": "-30.6%, fewer in 8 of 10 pairs",
+      "held": true,
+      "name": "OmniMem arm uses fewer tokens (median)",
+      "suite": "s9"
+    }
+  ],
+  "latency_ms": {},
+  "notes": [
+    "Median tokens -30.6%, median cost -55.2%, with OmniMem against without; fewer tokens in 8 of 10 pairs (one-sided sign test p = 0.055).",
+    "Walked into the dead end: control 8/10, OmniMem 0/10. Agent model claude-haiku-4-5-20251001.",
+    "Memory tool calls in the OmniMem arm: 0. The hook does the work; the agent rarely calls OmniMem itself, so this measures the hook, not recall.",
+    "One scenario, one model, a shallow dead end: a dead end that takes longer to find is worth more."
+  ],
+  "settle_ms": {},
+  "status": "PASSED",
+  "suite": "s9"
+}

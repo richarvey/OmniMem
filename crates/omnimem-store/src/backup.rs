@@ -37,6 +37,7 @@ use crate::store::{
     discovery_text, load_fields, memory_namespace, merge_audited_into, validate_key, write_vector,
 };
 use crate::time::{iso8601_utc, now};
+use crate::trust_of;
 use crate::{Fields, Result, Store, StoreError};
 
 /// The key families a backup carries, as `dump_all` exported them.
@@ -76,6 +77,12 @@ pub struct ImportReport {
     pub embedded: usize,
     /// Memories that needed a vector but had no text to embed.
     pub not_embedded: usize,
+    /// Memories whose backup row would have raised their trust, which a
+    /// restore never does (#39): the store's trust was kept.
+    pub trust_kept: usize,
+    /// New extracted facts and preferences whose row said `accepted`,
+    /// written as `candidate` instead.
+    pub trust_capped: usize,
     pub migrations: MigrationReport,
 }
 
@@ -184,6 +191,13 @@ impl BackupFile {
             audit,
         })
     }
+}
+
+/// Whether a restore moving a memory from `now` to `offered` would raise
+/// what OmniMem believes of it: to `accepted` from anything else, or out of
+/// `rejected` at all. Those are a person's calls, never a file's.
+fn raises_trust(now: &str, offered: &str) -> bool {
+    now != offered && (offered == "accepted" || now == "rejected")
 }
 
 /// A backup value as a stored string. 6.x only ever wrote strings; anything
@@ -308,6 +322,34 @@ impl Store {
                     if stored.is_some_and(|stored| stored >= incoming) {
                         report.skipped_older += 1;
                         continue;
+                    }
+                    // #39: a restore may lower trust but never raise it, so a
+                    // file in the backups folder can't confirm a fact.
+                    let mut fields = fields;
+                    match &existing {
+                        Some(current) => {
+                            let mut merged = current.clone();
+                            merged.extend(fields.clone());
+                            let (now, offered) = (trust_of(current), trust_of(&merged));
+                            if raises_trust(now, offered) {
+                                for name in ["trust", "trust_prior", "retired_at"] {
+                                    fields.insert(
+                                        name.to_owned(),
+                                        current.get(name).cloned().unwrap_or_default(),
+                                    );
+                                }
+                                audit.trust_refused(&tx, key, now, offered)?;
+                                report.trust_kept += 1;
+                            }
+                        }
+                        None => {
+                            if fields.get("enriched_from").is_some_and(|f| !f.is_empty())
+                                && trust_of(&fields) == "accepted"
+                            {
+                                fields.insert("trust".to_owned(), "candidate".to_owned());
+                                report.trust_capped += 1;
+                            }
+                        }
                     }
                     merge_audited_into(
                         &tx,

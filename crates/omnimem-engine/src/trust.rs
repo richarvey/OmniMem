@@ -91,6 +91,17 @@ pub(crate) fn settle(row: &Fields, trust: &str, updates: &mut Fields) {
     updates.insert("trust_prior".to_owned(), keep);
 }
 
+/// A person reopened the resolution that superseded or rejected `row`: it
+/// is in dispute again, and `trust_prior` still says what it goes back to.
+pub(crate) fn reopen(row: &Fields, updates: &mut Fields) {
+    let now = trust_of(row);
+    if now == SUPERSEDED || now == REJECTED {
+        updates.insert("trust".to_owned(), DISPUTED.to_owned());
+    } else {
+        dispute(row, updates);
+    }
+}
+
 /// The memory a winner was deleted out from under goes back to what it was.
 pub(crate) fn unsupersede(row: &Fields, winner: &str, updates: &mut Fields) {
     if trust_of(row) == SUPERSEDED && row.get("superseded_by").map(String::as_str) == Some(winner) {
@@ -164,6 +175,8 @@ impl Engine {
                 )));
             }
         }
+        // A reject retires the memory and a restore un-retires it (#27).
+        crate::validity::follow_trust(&row, &mut updates, &crate::pyfmt::now_str());
         {
             let _audit = op(Op::new("trust")
                 .at(AuditLevel::Lifecycle)
@@ -171,6 +184,10 @@ impl Engine {
                 .detail(json!({"trust_action": action.as_str()})));
             self.store.set_fields(key, &updates)?;
         }
+        // A rejected memory's dead ends stop warning, and a restored one's
+        // start again (#33).
+        self.invalidate_abandoned_cache();
+        self.cascade_interval(key)?;
         let now = self
             .store
             .get(key)?

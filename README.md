@@ -107,7 +107,7 @@ Similarity on its own isn't enough, so lifecycle state, age, how hard a lesson w
 
 ## Works with any MCP agent
 
-One memory for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md) and [Open Design](guides/open-design.md). 48 tools, served over streamable HTTP.
+One memory for all of them: [claude.ai](guides/claude-ai.md), [Claude Code](guides/claude-code.md), [Claude Desktop](guides/claude-desktop.md), [Cursor](guides/cursor.md), [GitHub Copilot](guides/github-copilot.md), [GitLab Duo](guides/gitlab-duo.md), [AWS Kiro](guides/kiro.md), [OpenCode](guides/opencode.md), [OpenAI Codex CLI](guides/codex.md) and [Open Design](guides/open-design.md). 49 tools, served over streamable HTTP.
 
 Run it on one machine and put it behind a reverse proxy, and every laptop and agent you use shares the same memory. A shared token covers your own clients; OAuth 2.1 with a login page covers claude.ai and anything else that signs in. See [multiple machines](docs/remote-access.md).
 
@@ -169,8 +169,10 @@ You can leave them as they are, confirm them on the settings window's **Unconfir
 
 ```bash
 omnimem trust list --limit 100000 --json | python3 -c 'import sys,json; print("\n".join(sorted({json.loads(l)["enriched_from"] for l in sys.stdin if json.loads(l).get("enriched_from")})))' > sources.txt
-while read -r s; do omnimem trust confirm-source "$s" --reason "confirmed in bulk"; done < sources.txt
+while read -r s <&3; do omnimem trust confirm-source "$s" --reason "confirmed in bulk"; done 3< sources.txt
 ```
+
+Since 7.0.12 each `confirm-source` asks you to type the last six characters of the source's key, so this is for a handful of sources; for hundreds, the Unconfirmed page's Confirm all is quicker.
 
 On a server install, run each `omnimem` as the service's user with its database: `sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db trust ...`. To have new extractions believed from the start instead, set `TRUST_ENRICHMENT=accepted` on the Configuration page or in `omnimem.env`. It only affects what's extracted from then on.
 
@@ -196,7 +198,7 @@ The tools, the vectors and your compiled skills behave as they did, so nothing n
 | [Configuration](docs/configuration.md) | Every setting, for the desktop app and headless installs |
 | [Features in depth](docs/features.md) | Lifecycle, graveyard, experience scoring, dedup, contradictions, briefing |
 | [The skill compiler](docs/skill-compiler.md) | Compiling experience into loadable skills |
-| [MCP tool reference](docs/mcp-tools.md) | All 48 tools |
+| [MCP tool reference](docs/mcp-tools.md) | All 49 tools |
 | [RSS and knowledge](docs/rss-knowledge.md) | Passive knowledge ingestion and promotion |
 | [Multiple machines](docs/remote-access.md) | Reverse proxies, OAuth 2.1 for claude.ai, troubleshooting |
 | [Settings panel](docs/settings-panel.md) | The desktop app's window, page by page |

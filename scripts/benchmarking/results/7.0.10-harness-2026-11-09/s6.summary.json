@@ -1,0 +1,53 @@
+{
+  "counts": {
+    "NO_TOMBSTONE": 8,
+    "PASS": 8
+  },
+  "extra": {
+    "baseline": {
+      "fixture_sha256": "e10c8f8408e64097824c1e26248410cea2c69e2e011bbbef7161f9e91ac99719",
+      "projects": [
+        "proukoul",
+        "drilsael",
+        "gethdom"
+      ],
+      "records": 875
+    }
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true
+  },
+  "gates": [
+    {
+      "detail": "16 cases",
+      "held": true,
+      "name": "every gated cell in the \u00a74.3 table holds",
+      "suite": "s6"
+    }
+  ],
+  "latency_ms": {
+    "count": 16,
+    "max": 9897.939910180867,
+    "mean": 9013.141886767698,
+    "p50": 8881.866679992527,
+    "p95": 9897.939910180867,
+    "p99": 9897.939910180867
+  },
+  "notes": [
+    "Arm F: 8 of 8 forgotten values came back after being fed in again (NO_TOMBSTONE: forget removes the row, and only suppress_topic stops a value).",
+    "Steps 11-13: a backup taken before the forget still held the value in 16 of 16 cases (restore_from_file restores what a backup holds).",
+    "The briefing never showed a suppressed value, so its EXPECTED_GAP may be closed."
+  ],
+  "settle_ms": {
+    "count": 33,
+    "max": 251.5534060075879,
+    "mean": 56.05158449686838,
+    "p50": 44.13215396925807,
+    "p95": 248.427655082196,
+    "p99": 251.5534060075879
+  },
+  "status": "PASSED",
+  "suite": "s6"
+}

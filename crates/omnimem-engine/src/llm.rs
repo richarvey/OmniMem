@@ -37,7 +37,11 @@ when it says 'needs' or 'should': 'the bearer token needs rotating' and \
 'the change is awaiting sign-off' are facts. When unsure, use 'fact'.\n\
 - event_date: if the fact references a specific date or relative time \
 ('last March', '2026-03-15', 'yesterday'), provide it as ISO 8601 \
-(YYYY-MM-DD). Omit this field if no date is mentioned.\n\n\
+(YYYY-MM-DD). Omit this field if no date is mentioned.\n\
+- valid_from, valid_to: if the text says when the fact became true or \
+stopped being true ('since April', 'moved here in March 2026', 'until we \
+left in 2025'), provide those dates as ISO 8601 (YYYY-MM-DD). Omit them \
+otherwise: most facts have neither.\n\n\
 Return ONLY a JSON array of objects. No markdown fences, no explanation. \
 If the text contains no extractable facts, return an empty array.\n\
 Skip pleasantries, hedging, and meta-commentary about the conversation.\n\n\
@@ -60,6 +64,49 @@ pub struct ExtractedFact {
     pub kind: &'static str,
     /// Unix seconds.
     pub event_date: Option<f64>,
+    /// When the fact became and stopped being true, if the text says (#27).
+    pub valid_from: Option<f64>,
+    pub valid_to: Option<f64>,
+}
+
+/// The validity fields a fact is written with (#27): its own `valid_from`
+/// and `valid_to` where the text gave them, else its source's `valid_from`;
+/// and its source's end of validity and retirement where it has no end of
+/// its own, marked as the source's so they clear when the source's do.
+fn fact_interval(fact: &ExtractedFact, source: Option<&Fields>, source_key: &str) -> Fields {
+    use crate::validity::{RETIRED_AT, VALID_FROM, VALID_TO};
+    let mut fields = Fields::new();
+    let from = fact
+        .valid_from
+        .or_else(|| source.and_then(|s| omnimem_store::time_of(s, VALID_FROM)));
+    if let Some(from) = from {
+        fields.insert(VALID_FROM.to_owned(), py_float(from));
+    }
+    if let Some(to) = fact.valid_to {
+        fields.insert(VALID_TO.to_owned(), py_float(to));
+    }
+    let Some(source) = source else {
+        return fields;
+    };
+    let mark = |fields: &mut Fields, name: &str| {
+        if !source_key.is_empty() {
+            fields.insert(
+                crate::validity::inherited_marker(name),
+                source_key.to_owned(),
+            );
+        }
+    };
+    if fact.valid_to.is_none()
+        && let Some(to) = omnimem_store::valid_to_of(source)
+    {
+        fields.insert(VALID_TO.to_owned(), py_float(to));
+        mark(&mut fields, VALID_TO);
+    }
+    if let Some(at) = omnimem_store::retired_at_of(source) {
+        fields.insert(RETIRED_AT.to_owned(), py_float(at));
+        mark(&mut fields, RETIRED_AT);
+    }
+    fields
 }
 
 /// Strip a markdown fence as 6.x did: drop the first line, then everything
@@ -74,7 +121,7 @@ fn strip_fences(reply: &str) -> Option<String> {
     Some(body.trim().to_owned())
 }
 
-fn local_timestamp(naive: NaiveDateTime) -> Option<f64> {
+pub(crate) fn local_timestamp(naive: NaiveDateTime) -> Option<f64> {
     Local
         .from_local_datetime(&naive)
         .earliest()
@@ -203,10 +250,21 @@ impl Engine {
                     "fact"
                 };
                 let event_date = item.get("event_date").and_then(parse_event_date);
+                let mut valid_from = item.get("valid_from").and_then(parse_event_date);
+                let mut valid_to = item.get("valid_to").and_then(parse_event_date);
+                // An interval that ends before it starts is a misreading;
+                // the fact is kept, its interval isn't.
+                if let (Some(from), Some(to)) = (valid_from, valid_to)
+                    && to <= from
+                {
+                    (valid_from, valid_to) = (None, None);
+                }
                 Some(ExtractedFact {
                     text,
                     kind,
                     event_date,
+                    valid_from,
+                    valid_to,
                 })
             })
             .collect()
@@ -403,6 +461,8 @@ impl Engine {
         let declared = payload.get("classification").filter(|c| !c.is_null());
         let mut source_event_date = truthy_text("event_date");
         let mut source_created_at = truthy_text("created_at");
+        // The source's validity and retirement, which its facts take (#27).
+        let mut source_interval: Option<Fields> = None;
 
         let batch_content = payload
             .get("batch_mode")
@@ -422,12 +482,18 @@ impl Engine {
                             "licence",
                             "licence_note",
                             "provenance",
+                            "valid_from",
+                            "valid_to",
+                            "retired_at",
+                            "trust",
+                            "updated_at",
                         ],
                     )?
                     .pop()
                     .flatten()
                     .unwrap_or_default();
                 classification = inherited_classification(declared, Some(&source));
+                source_interval = Some(source.clone());
                 if source_created_at.is_none() {
                     let own = |name: &str| source.get(name).filter(|v| !v.is_empty()).cloned();
                     source_event_date = source_event_date.or_else(|| own("event_date"));
@@ -447,6 +513,7 @@ impl Engine {
             source_event_date = own("event_date").or(source_event_date);
             source_created_at = own("created_at").or(source_created_at);
             let classification = inherited_classification(declared, Some(&data));
+            source_interval = Some(data.clone());
             (self.extract_facts(content), classification)
         };
         if facts.is_empty() {
@@ -506,6 +573,7 @@ impl Engine {
             if let Some(event_date) = event_date {
                 fields.insert("event_date".to_owned(), event_date);
             }
+            fields.extend(fact_interval(fact, source_interval.as_ref(), &key));
             if namespace == Namespace::Preference {
                 let scope = if project.is_some() {
                     "project"

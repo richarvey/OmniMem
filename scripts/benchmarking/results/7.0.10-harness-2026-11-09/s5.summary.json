@@ -1,0 +1,48 @@
+{
+  "counts": {
+    "PASS": 11
+  },
+  "extra": {
+    "baseline": {
+      "fixture_sha256": "e10c8f8408e64097824c1e26248410cea2c69e2e011bbbef7161f9e91ac99719",
+      "projects": [
+        "proukoul",
+        "drilsael",
+        "gethdom"
+      ],
+      "records": 887
+    }
+  },
+  "failing_ids": [],
+  "fixtures": {
+    "negative": true,
+    "positive": true
+  },
+  "gates": [
+    {
+      "detail": "all archived",
+      "held": true,
+      "name": "expired articles are archived by one maintenance pass",
+      "suite": "s5"
+    }
+  ],
+  "latency_ms": {
+    "count": 11,
+    "max": 304.32318011298776,
+    "mean": 96.79858056320386,
+    "p50": 47.605636063963175,
+    "p95": 304.32318011298776,
+    "p99": 304.32318011298776
+  },
+  "notes": [],
+  "settle_ms": {
+    "count": 2,
+    "max": 44.266508892178535,
+    "mean": 44.12247659638524,
+    "p50": 43.978444300591946,
+    "p95": 44.266508892178535,
+    "p99": 44.266508892178535
+  },
+  "status": "PASSED",
+  "suite": "s5"
+}

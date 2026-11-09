@@ -20,6 +20,7 @@ use crate::lifecycle::{MIN_TOPIC_CHARS, check_reinstate_eligibility};
 use crate::pyfmt::{now_secs, py_float, py_json, take_chars};
 use crate::temporal::{parse_query_date, temporal_boost};
 use crate::trust;
+use crate::validity::AsOf;
 use crate::{Engine, Result};
 
 pub const NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
@@ -146,6 +147,12 @@ pub(crate) struct AbandonedEntry {
     pub lesson: Option<String>,
     /// When it was abandoned, so age can be ranked on and stated.
     pub created_at: Option<f64>,
+    /// The memory's text, the approach's name and its reason, lowercased:
+    /// what a suppressed topic is matched against (#32).
+    pub haystack: String,
+    /// The memory's trust. A rejected memory never gets here (#33); any
+    /// other that isn't `accepted` is named in the warning.
+    pub trust: String,
 }
 
 /// The sentence a dead end gets when it surfaces, in recall or at a hook.
@@ -186,6 +193,12 @@ pub(crate) fn warning_text(
     };
     append("What worked instead", &warning.breakthrough);
     append("Lesson", &warning.lesson);
+    // A dead end from a memory OmniMem doesn't fully believe still warns,
+    // but says so, so the agent can weigh it (#33).
+    if warning.trust != trust::ACCEPTED && !warning.trust.is_empty() {
+        tidy(&mut text);
+        text.push_str(&format!(". The memory it comes from is {}", warning.trust));
+    }
     // How firmly to put it, scaled by what it actually cost to
     // learn. Claiming an approach is settled when it was barely
     // tried is how the whole graveyard gets discounted, so the
@@ -270,6 +283,13 @@ pub struct RecallResult {
     /// Memories this one superseded that the same query matched, folded in
     /// rather than listed as hits of their own (#24): key and content.
     pub replaces: Vec<Value>,
+    /// When it became true, where that isn't when it was recorded (#28).
+    pub valid_from: Option<f64>,
+    /// When it stopped being true, if it has.
+    pub valid_to: Option<f64>,
+    /// When OmniMem stopped believing it, if it has: under `known_at`, what
+    /// happened to it after the time asked about.
+    pub retired_at: Option<f64>,
 }
 
 /// Effort multiplies success; it never amplifies an abandoned outcome.
@@ -370,6 +390,7 @@ struct Scope<'a> {
     suppressed: &'a [String],
     query_date: Option<chrono::NaiveDateTime>,
     now: f64,
+    as_of: AsOf,
 }
 
 impl Engine {
@@ -394,9 +415,19 @@ impl Engine {
         // episodic memories first, so past the cap new dead ends never warned.
         //
         // No state filter either, on purpose: archiving hides a memory from
-        // recall, but the lesson in its dead ends still holds.
+        // recall, but the lesson in its dead ends still holds. A rejected
+        // memory is one a person said was wrong, so its dead ends are
+        // suspect too and never warn (#33); every other trust still does.
         let filter = MemoryFilter {
             present_any: vec!["abandoned_approaches".to_owned()],
+            trusts: [
+                trust::ACCEPTED,
+                trust::CANDIDATE,
+                trust::DISPUTED,
+                trust::SUPERSEDED,
+            ]
+            .map(str::to_owned)
+            .to_vec(),
             ..MemoryFilter::default()
         };
         let rows = self.store.list_memories(
@@ -410,6 +441,9 @@ impl Engine {
                 "breakthrough",
                 "lesson",
                 "created_at",
+                "content",
+                "trust",
+                "enriched_from",
             ],
         )?;
         let mut entries = Vec::new();
@@ -421,6 +455,10 @@ impl Engine {
                 continue;
             };
             let effort = integer(row, "effort_score");
+            let memory_trust = omnimem_store::trust_of(row).to_owned();
+            if memory_trust == trust::REJECTED {
+                continue;
+            }
             let scope_project = text(row, "project")
                 .or_else(|| text(row, "project_name"))
                 .map(str::to_owned);
@@ -436,21 +474,29 @@ impl Engine {
                 else {
                     continue;
                 };
+                let reason = approach
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let haystack = format!(
+                    "{}\n{name}\n{reason}",
+                    row.get("content").map_or("", String::as_str)
+                )
+                .to_lowercase();
                 entries.push(AbandonedEntry {
                     memory_key: key.clone(),
                     name_lower: normalise_name(name),
                     abandoned_name: name.to_owned(),
-                    reason: approach
-                        .get("reason")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned(),
+                    reason,
                     effort_score: effort,
                     project: row.get("project").cloned(),
                     scope_project: scope_project.clone(),
                     breakthrough: row.get("breakthrough").cloned().filter(|v| !v.is_empty()),
                     lesson: row.get("lesson").cloned().filter(|v| !v.is_empty()),
                     created_at: row.get("created_at").and_then(|v| v.parse::<f64>().ok()),
+                    haystack,
+                    trust: memory_trust.clone(),
                 });
             }
         }
@@ -463,8 +509,25 @@ impl Engine {
         Ok(entries)
     }
 
+    /// The suppressed topics, trimmed and lowercased. Topics stored before
+    /// suppression was validated may be too short to match anything but
+    /// noise; they are skipped rather than honoured.
+    pub(crate) fn suppressed_lower(&self) -> Result<Vec<String>> {
+        Ok(self
+            .suppressed_topics()?
+            .into_iter()
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| t.chars().count() >= MIN_TOPIC_CHARS)
+            .collect())
+    }
+
     /// Abandoned approaches whose name the query mentions, or which mention
     /// it, on word boundaries. A blank query matches nothing.
+    ///
+    /// A dead end on a suppressed topic (its memory, name or reason mentions
+    /// one) never matches (#32): suppression is the person saying "stop
+    /// bringing this up", and that covers recall's warnings, the hook's
+    /// refusals and `warn_if_abandoned` alike.
     ///
     /// `projects` is where the caller is working. Under `GRAVEYARD_SCOPE=project`
     /// (the default) only dead ends from those projects, or with no project,
@@ -479,11 +542,15 @@ impl Engine {
             return Ok(Vec::new());
         }
         let entries = self.abandoned_entries()?;
+        let suppressed = self.suppressed_lower()?;
         let scoped = self.config.graveyard_scope == GraveyardScope::Project;
         let mut seen: HashSet<(&str, &str)> = HashSet::new();
         let mut matches = Vec::new();
         for entry in entries.iter() {
             if scoped && entry.elsewhere(projects).is_some() {
+                continue;
+            }
+            if suppressed.iter().any(|t| mentions(&entry.haystack, t)) {
                 continue;
             }
             let name = &entry.name_lower;
@@ -506,6 +573,31 @@ impl Engine {
         projects: &[String],
         min_score: Option<f64>,
         expand_queries: Option<bool>,
+    ) -> Result<Vec<RecallResult>> {
+        self.recall_results_at(
+            query,
+            namespaces,
+            top_k,
+            projects,
+            min_score,
+            expand_queries,
+            AsOf::default(),
+        )
+    }
+
+    /// [`Engine::recall_results`] at a point in valid time, record time or
+    /// both (#28). The dead-end warnings ignore `as_of`: a dead end is
+    /// experience, not a claim about the world.
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_results_at(
+        &self,
+        query: &str,
+        namespaces: Option<&[String]>,
+        top_k: Option<i64>,
+        projects: &[String],
+        min_score: Option<f64>,
+        expand_queries: Option<bool>,
+        as_of: AsOf,
     ) -> Result<Vec<RecallResult>> {
         let top_k = top_k.unwrap_or(self.config.recall_top_k).clamp(1, 50);
         let namespaces: Vec<String> = match namespaces {
@@ -562,19 +654,15 @@ impl Engine {
                 trust: trust::ACCEPTED.to_owned(),
                 trust_weight: 1.0,
                 replaces: Vec::new(),
+                valid_from: None,
+                valid_to: None,
+                retired_at: None,
             });
         }
 
         let vector = self.embed_query(query)?;
         let now = now_secs();
-        // Topics stored before suppression was validated may be too short to
-        // match anything but noise; they are skipped rather than honoured.
-        let suppressed: Vec<String> = self
-            .suppressed_topics()?
-            .into_iter()
-            .map(|t| t.trim().to_lowercase())
-            .filter(|t| t.chars().count() >= MIN_TOPIC_CHARS)
-            .collect();
+        let suppressed = self.suppressed_lower()?;
         let scope = Scope {
             namespaces: &namespaces,
             projects,
@@ -582,6 +670,7 @@ impl Engine {
             suppressed: &suppressed,
             query_date: parse_query_date(query),
             now,
+            as_of,
         };
         results.extend(self.score_hits(&vector, Some(query), &scope)?);
 
@@ -662,7 +751,7 @@ impl Engine {
             .filter(|(_, d)| !d)
             .map(|(r, _)| r)
             .collect();
-        let mut results = self.fold_superseded(results)?;
+        let mut results = self.fold_superseded(results, as_of)?;
         results.sort_by(|a, b| {
             b.adjusted_score
                 .partial_cmp(&a.adjusted_score)
@@ -722,7 +811,15 @@ impl Engine {
     /// find it, it is dropped. When the winner is gone, archived or rejected,
     /// the superseded memory comes back, still saying what replaced it,
     /// rather than losing both.
-    fn fold_superseded(&self, results: Vec<RecallResult>) -> Result<Vec<RecallResult>> {
+    ///
+    /// Asked about a time (`valid_at`), a superseded memory that was true
+    /// then is a hit of its own unless its winner was true then as well:
+    /// what replaced it hadn't happened yet.
+    fn fold_superseded(
+        &self,
+        results: Vec<RecallResult>,
+        as_of: AsOf,
+    ) -> Result<Vec<RecallResult>> {
         let (superseded, mut kept): (Vec<RecallResult>, Vec<RecallResult>) = results
             .into_iter()
             .partition(|r| r.result_type != "abandoned_warning" && r.trust == trust::SUPERSEDED);
@@ -738,6 +835,10 @@ impl Engine {
                 }
                 hit.replaces
                     .push(json!({"key": old.key, "content": take_chars(&old.content, 200)}));
+                continue;
+            }
+            if as_of.valid_at.is_some() {
+                kept.push(old);
                 continue;
             }
             let winner_stands = !winner.is_empty()
@@ -768,17 +869,28 @@ impl Engine {
     ) -> Result<Vec<RecallResult>> {
         // A rejected memory is wrong, so it never comes back (#24); a
         // superseded one is fetched so it can be folded into its winner.
-        let filter = SearchFilter {
-            states: vec!["active".into(), "deprioritised".into()],
-            projects: scope.projects.to_vec(),
-            trusts: [
+        // Asked what was believed at a time, every trust is read, since a
+        // memory rejected later was believed then; `known_at` drops the
+        // ones already retired by that time.
+        let as_of = scope.as_of;
+        let trusts = if as_of.known_at.is_some() {
+            Vec::new()
+        } else {
+            [
                 trust::ACCEPTED,
                 trust::CANDIDATE,
                 trust::DISPUTED,
                 trust::SUPERSEDED,
             ]
             .map(str::to_owned)
-            .to_vec(),
+            .to_vec()
+        };
+        let filter = SearchFilter {
+            states: vec!["active".into(), "deprioritised".into()],
+            projects: scope.projects.to_vec(),
+            trusts,
+            valid_at: as_of.valid_at,
+            known_at: as_of.known_at,
         };
         let mut results = Vec::new();
         for ns in scope.namespaces {
@@ -797,6 +909,25 @@ impl Engine {
                 let doc = &fields;
                 let state = doc.get("state").map_or("active", String::as_str);
                 if matches!(state, "archived" | "deleted") {
+                    continue;
+                }
+                // The time conditions again, exactly: the store's are a
+                // superset when both times are given.
+                if let Some(known) = as_of.known_at
+                    && !omnimem_store::known_at(doc, known)
+                {
+                    continue;
+                }
+                if let Some(valid) = as_of.valid_at
+                    && !omnimem_store::valid_at_as_known(doc, valid, as_of.known_at)
+                {
+                    continue;
+                }
+                let trust = match as_of.known_at {
+                    Some(known) => omnimem_store::trust_at(doc, known),
+                    None => omnimem_store::trust_of(doc).to_owned(),
+                };
+                if trust == trust::REJECTED {
                     continue;
                 }
                 let content = doc.get("content").cloned().unwrap_or_default();
@@ -836,13 +967,22 @@ impl Engine {
                 // Belief ranks a memory down without hiding it (#24). An
                 // accepted memory is untouched, so a store with no candidates
                 // and no confirmed disputes scores exactly as before.
-                let trust = omnimem_store::trust_of(doc).to_owned();
                 let trust_weight = match trust.as_str() {
                     trust::DISPUTED => self.config.trust_disputed_weight,
                     trust::CANDIDATE => self.config.trust_candidate_weight,
                     _ => 1.0,
                 };
                 adjusted *= trust_weight;
+                // A memory that has stopped being true still comes back in
+                // an ordinary recall, ranked lower and carrying its
+                // `valid_to` (#29). A superseded one is left to the fold.
+                // A store where nothing has a `valid_to` scores as before.
+                if as_of.is_now()
+                    && trust != trust::SUPERSEDED
+                    && omnimem_store::valid_to_of(doc).is_some_and(|to| to <= scope.now)
+                {
+                    adjusted *= self.config.validity_expired_weight;
+                }
 
                 let mut reinstate = false;
                 if state == "deprioritised"
@@ -903,6 +1043,9 @@ impl Engine {
                     trust,
                     trust_weight,
                     replaces: Vec::new(),
+                    valid_from: omnimem_store::time_of(doc, crate::validity::VALID_FROM),
+                    valid_to: omnimem_store::valid_to_of(doc),
+                    retired_at: omnimem_store::retired_at_of(doc),
                 });
             }
         }
