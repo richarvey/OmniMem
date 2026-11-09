@@ -169,8 +169,10 @@ You can leave them as they are, confirm them on the settings window's **Unconfir
 
 ```bash
 omnimem trust list --limit 100000 --json | python3 -c 'import sys,json; print("\n".join(sorted({json.loads(l)["enriched_from"] for l in sys.stdin if json.loads(l).get("enriched_from")})))' > sources.txt
-while read -r s; do omnimem trust confirm-source "$s" --reason "confirmed in bulk"; done < sources.txt
+while read -r s <&3; do omnimem trust confirm-source "$s" --reason "confirmed in bulk"; done 3< sources.txt
 ```
+
+Since 7.0.12 each `confirm-source` asks you to type the last six characters of the source's key, so this is for a handful of sources; for hundreds, the Unconfirmed page's Confirm all is quicker.
 
 On a server install, run each `omnimem` as the service's user with its database: `sudo -u omnimem omnimem --db /var/lib/omnimem/omnimem.db trust ...`. To have new extractions believed from the start instead, set `TRUST_ENRICHMENT=accepted` on the Configuration page or in `omnimem.env`. It only affects what's extracted from then on.
 

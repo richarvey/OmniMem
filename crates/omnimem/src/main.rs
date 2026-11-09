@@ -18,6 +18,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::TimeZone;
 use clap::{Parser, Subcommand};
 mod hook;
+mod in_person;
 mod install_hooks;
 mod trust_cli;
 
@@ -800,12 +801,14 @@ fn contradictions(db: &Path, action: Option<ContradictionAction>, json: bool) ->
                 retire,
             )
             .map_err(|e| anyhow!("{e}"))?;
+            in_person::confirm(&format!("resolve this pair as {outcome}"), &key_a)?;
             say(engine
                 .resolve_contradiction(&request, "cli")
                 .map_err(|e| anyhow!("{e}"))?);
             Ok(())
         }
         Some(ContradictionAction::Accept { key_a, key_b }) => {
+            in_person::confirm("accept this resolution", &key_a)?;
             match engine
                 .accept_pending_resolution(&key_a, &key_b, "cli")
                 .map_err(|e| anyhow!("{e}"))?

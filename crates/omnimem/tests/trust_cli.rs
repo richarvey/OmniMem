@@ -5,6 +5,8 @@ use std::process::{Command, Output};
 
 use omnimem_store::{Actor, Fields, Store, enter};
 
+mod common;
+
 const SOURCE: &str = "mem:knowledge:01SRC";
 const FACT_A: &str = "mem:knowledge:01FA";
 const FACT_B: &str = "mem:knowledge:01FB";
@@ -21,6 +23,26 @@ impl Scratch {
     }
 
     fn run(&self, db: &Path, args: &[&str]) -> Output {
+        // A person-only command runs at a terminal, answered as a person.
+        if let Some(key) = common::person_only_key(args) {
+            let mut all: Vec<std::ffi::OsString> = vec!["--db".into(), db.into()];
+            all.extend(args.iter().map(Into::into));
+            return common::as_output(common::in_terminal(
+                Path::new(env!("CARGO_BIN_EXE_omnimem")),
+                &all,
+                &[
+                    ("AUDIT_LOG", "lifecycle".into()),
+                    ("OMNIMEM_ENV_FILE", self.0.join("empty.env").into()),
+                ],
+                &["OMNIMEM_DB"],
+                &common::tail(key),
+            ));
+        }
+        self.piped(db, args)
+    }
+
+    /// With stdin and stdout piped, as an agent's shell runs it.
+    fn piped(&self, db: &Path, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_omnimem"))
             .env("AUDIT_LOG", "lifecycle")
             .env("OMNIMEM_ENV_FILE", self.0.join("empty.env"))
@@ -165,4 +187,43 @@ fn confirm_source_moves_every_candidate_from_it() {
     );
     assert_eq!(trust(&db, FACT_A).as_deref(), Some("accepted"));
     assert_eq!(trust(&db, FACT_B).as_deref(), Some("accepted"));
+}
+
+/// #37: without a terminal, or with the wrong characters typed, a
+/// person-only command changes nothing.
+#[test]
+fn a_person_only_command_needs_a_terminal_and_the_key() {
+    let scratch = Scratch::new("tty");
+    let db = database(&scratch);
+    for args in [
+        vec!["trust", "confirm", FACT_A],
+        vec!["trust", "reject", FACT_A],
+        vec!["trust", "confirm-source", SOURCE],
+    ] {
+        let piped = scratch.piped(&db, &args);
+        assert!(!piped.status.success(), "{args:?} ran without a terminal");
+        assert!(
+            err(&piped).contains("only from a terminal"),
+            "{}",
+            err(&piped)
+        );
+    }
+    assert_ne!(trust(&db, FACT_A).as_deref(), Some("accepted"));
+    assert_ne!(trust(&db, FACT_A).as_deref(), Some("rejected"));
+
+    let mut all: Vec<std::ffi::OsString> = vec!["--db".into(), db.clone().into()];
+    all.extend(["trust", "confirm", FACT_A].iter().map(Into::into));
+    let wrong = common::in_terminal(
+        Path::new(env!("CARGO_BIN_EXE_omnimem")),
+        &all,
+        &[("OMNIMEM_ENV_FILE", scratch.0.join("empty.env").into())],
+        &["OMNIMEM_DB"],
+        "XXXXXX",
+    );
+    assert!(!wrong.success, "{}", wrong.output);
+    assert!(wrong.output.contains("didn't match"), "{}", wrong.output);
+    assert_ne!(trust(&db, FACT_A).as_deref(), Some("accepted"));
+
+    // Listing is anyone's: no terminal needed.
+    assert!(scratch.piped(&db, &["trust", "list"]).status.success());
 }
