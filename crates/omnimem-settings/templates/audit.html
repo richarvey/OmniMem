@@ -56,7 +56,7 @@
 </form>
 
 {% if entries %}
-<table class="data-table">
+<table class="data-table audit-table">
   <thead>
     <tr>
       <th scope="col">When</th>
@@ -70,12 +70,12 @@
   <tbody>
     {% for e in entries %}
     <tr>
-      <td class="mono" style="white-space:nowrap">{{ e.when }}</td>
-      <td>{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
-      <td>{{ e.action }}</td>
-      <td class="mono">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key|urlsegment }}?back={{ here|urlquote }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
-      <td>{{ e.summary }}</td>
-      <td style="color:var(--text-dim)">{{ e.reason }}</td>
+      <td class="mono" data-label="When">{{ e.when }}</td>
+      <td data-label="Who">{{ e.actor }}{% if e.client %} <span style="color:var(--text-dim)">({{ e.client }})</span>{% endif %}</td>
+      <td data-label="Action">{{ e.action }}</td>
+      <td class="mono" data-label="Key">{% if e.key.startswith('mem:') %}<a href="{{ admin }}/memory/{{ e.key|urlsegment }}?back={{ here|urlquote }}">{{ e.key }}</a>{% else %}{{ e.key }}{% endif %}</td>
+      <td data-label="Change">{{ e.summary }}</td>
+      <td style="color:var(--text-dim)" data-label="Reason">{{ e.reason }}</td>
     </tr>
     {% endfor %}
   </tbody>

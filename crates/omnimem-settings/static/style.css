@@ -1007,6 +1007,43 @@ span.project-name {
 .effortful-table th:nth-child(3),
 .effortful-table td:nth-child(3) { width: 72%; }
 
+/* Audit log table: six columns. Keys and change summaries are long
+   unbroken strings, so the layout is fixed and every cell may wrap
+   anywhere, or the table runs off the side of the page */
+.audit-table { table-layout: fixed; }
+.audit-table th, .audit-table td { padding-left: 0.5rem; padding-right: 0.5rem; }
+.audit-table td { overflow-wrap: anywhere; }
+.audit-table th:nth-child(1),
+.audit-table td:nth-child(1) { width: 15%; }
+.audit-table th:nth-child(2),
+.audit-table td:nth-child(2) { width: 11%; }
+.audit-table th:nth-child(3),
+.audit-table td:nth-child(3) { width: 13%; }
+.audit-table th:nth-child(4),
+.audit-table td:nth-child(4) { width: 20%; }
+.audit-table th:nth-child(5),
+.audit-table td:nth-child(5) { width: 25%; }
+.audit-table th:nth-child(6),
+.audit-table td:nth-child(6) { width: 16%; }
+
+/* On a phone six columns leave a few characters each, so every row
+   becomes a block of labelled lines */
+@media (max-width: 640px) {
+  .audit-table, .audit-table tbody, .audit-table tr, .audit-table td,
+  .audit-table td:nth-child(n) { display: block; width: auto; }
+  .audit-table thead { display: none; }
+  .audit-table tr { padding: 0.6rem 0; border-bottom: 1px solid var(--border-row); }
+  .audit-table td { padding: 0.15rem 0; border-bottom: 0; }
+  .audit-table td:empty { display: none; }
+  .audit-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+}
+
 /* Backups table — four columns */
 .backups-table { table-layout: fixed; }
 .backups-table th:nth-child(1),
