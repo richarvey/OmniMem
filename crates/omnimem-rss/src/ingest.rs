@@ -25,7 +25,8 @@ use crate::RssConfig;
 use crate::fetch::{FeedFetch, FeedValidators};
 
 /// Where a feed's `ETag` and `Last-Modified` are kept between cycles, by the
-/// hash of its URL.
+/// hash of its URL. A string, so a backup leaves it out: it describes what
+/// this store fetched, and a store restored elsewhere should fetch afresh.
 const VALIDATORS_PREFIX: &str = "meta:feed_validators:";
 /// How long they're trusted. After a day a feed is fetched in full again, so
 /// a raised article limit, or articles forgotten to be fetched afresh, catch
@@ -372,12 +373,21 @@ impl Ingester {
         let validators_key = format!("{VALIDATORS_PREFIX}{}", url_hash(&url));
         let store = self.engine.store();
         let prior = store
-            .hash_get_all(&validators_key)
+            .string_get(&validators_key)
             .ok()
             .flatten()
-            .map(|row| FeedValidators {
-                etag: row.get("etag").filter(|v| !v.is_empty()).cloned(),
-                last_modified: row.get("last_modified").filter(|v| !v.is_empty()).cloned(),
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .map(|row| {
+                let get = |name: &str| {
+                    row.get(name)
+                        .and_then(Value::as_str)
+                        .filter(|v| !v.is_empty())
+                        .map(str::to_owned)
+                };
+                FeedValidators {
+                    etag: get("etag"),
+                    last_modified: get("last_modified"),
+                }
             })
             .unwrap_or_default();
         let (parsed, validators) = match self.fetcher.fetch_feed_since(&url, &prior) {
@@ -521,14 +531,13 @@ impl Ingester {
             "feed ingested"
         );
         if complete && stats.errors == 0 && !validators.is_empty() {
-            let fields = Fields::from([
-                ("etag".to_owned(), validators.etag.unwrap_or_default()),
-                (
-                    "last_modified".to_owned(),
-                    validators.last_modified.unwrap_or_default(),
-                ),
-            ]);
-            if let Err(e) = store.hash_set_expiring(&validators_key, &fields, VALIDATORS_TTL) {
+            let value = json!({
+                "etag": validators.etag,
+                "last_modified": validators.last_modified,
+            });
+            if let Err(e) =
+                store.string_set(&validators_key, &value.to_string(), Some(VALIDATORS_TTL))
+            {
                 warn!(feed = name, error = %e, "could not keep the feed's validators");
             }
         } else if let Err(e) = store.kv_delete(&validators_key) {
