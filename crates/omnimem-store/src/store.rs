@@ -240,6 +240,10 @@ pub fn discovery_text(name: &str, description: &str, domain: &str) -> String {
     format!("{name}. {description} Domain: {domain}.")
 }
 
+/// `seen_version` before a lazy store has loaded its matrix. SQLite's
+/// `data_version` counts up from 1, so it never reports this.
+const NOT_LOADED: i64 = i64::MIN;
+
 pub struct Store {
     pub(crate) conn: Mutex<Connection>,
     pub(crate) vectors: RwLock<VectorIndex>,
@@ -256,35 +260,53 @@ pub struct Store {
 impl Store {
     /// Open (creating if needed) the database file.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
+        Self::init(Self::connect(path.as_ref())?, VECTOR_DIM, true)
+    }
+
+    /// Open the database file without loading the vector matrix, which is
+    /// read in on the first search instead. For short-lived processes that
+    /// mostly never search: a Claude Code hook runs once per tool call, and
+    /// loading every vector (about 75 MB at 50,000 memories) would be most of
+    /// its cost. Writes before that first search are safe: they go into the
+    /// empty matrix, which the load then replaces with what the table holds.
+    pub fn open_lazy(path: impl AsRef<Path>) -> Result<Self> {
+        Self::init(Self::connect(path.as_ref())?, VECTOR_DIM, false)
+    }
+
+    fn connect(path: &Path) -> Result<Connection> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|source| StoreError::Io {
                 path: parent.display().to_string(),
                 source,
             })?;
         }
-        Self::init(Connection::open(path)?, VECTOR_DIM)
+        Ok(Connection::open(path)?)
     }
 
     /// A private in-memory database, for tests.
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, VECTOR_DIM)
+        Self::init(Connection::open_in_memory()?, VECTOR_DIM, true)
     }
 
     /// In-memory with a different vector size, for small hand-written tests.
     pub fn open_in_memory_with_dim(dim: usize) -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, dim)
+        Self::init(Connection::open_in_memory()?, dim, true)
     }
 
-    fn init(conn: Connection, dim: usize) -> Result<Self> {
+    fn init(conn: Connection, dim: usize, preload: bool) -> Result<Self> {
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;",
         )?;
         schema::migrate(&conn)?;
         let origin_id = schema::origin_id(&conn)?;
-        let vectors = VectorIndex::load(&conn, dim)?;
-        let version = data_version(&conn)?;
+        // A lazy store starts with an empty matrix and a version no database
+        // reports, so the first `sync_external_writes` loads it.
+        let (vectors, version) = if preload {
+            (VectorIndex::load(&conn, dim)?, data_version(&conn)?)
+        } else {
+            (VectorIndex::new(dim), NOT_LOADED)
+        };
         Ok(Self {
             conn: Mutex::new(conn),
             vectors: RwLock::new(vectors),
@@ -320,6 +342,11 @@ impl Store {
         if let Err(e) = result {
             tracing::warn!(error = %e, "could not check the database for outside changes");
         }
+    }
+
+    /// Record that the matrix now matches the database at `version`.
+    pub(crate) fn mark_loaded(&self, version: i64) {
+        self.seen_version.store(version, Ordering::Release);
     }
 
     pub fn dimension(&self) -> usize {
@@ -579,18 +606,18 @@ impl Store {
             sql.push(')');
         }
         if !filter.present_any.is_empty() {
-            let Some(present) = json_paths_owned(&filter.present_any) else {
+            // Written into the SQL rather than bound: SQLite only uses a
+            // partial index (`memories_abandoned`) when the query spells its
+            // condition, and a bound path can't.
+            let conditions: Option<Vec<String>> = filter
+                .present_any
+                .iter()
+                .map(|f| schema::present_condition(f))
+                .collect();
+            let Some(conditions) = conditions else {
                 return Err(StoreError::InvalidField(filter.present_any.join(", ")));
             };
-            sql.push_str(" AND (");
-            for (i, path) in present.into_iter().enumerate() {
-                if i > 0 {
-                    sql.push_str(" OR ");
-                }
-                sql.push_str("json_extract(fields, ?) IS NOT NULL");
-                args.push(SqlValue::Text(path));
-            }
-            sql.push(')');
+            let _ = write!(sql, " AND ({})", conditions.join(" OR "));
         }
         if let Some(min) = filter.created_at_min {
             // `created_at` is `CAST(... AS REAL)`, which reads `inf`, `nan`
@@ -714,13 +741,13 @@ impl Store {
         let (memory_keys, other_keys) = split_keys(keys);
         let mut removed_memories: Vec<String> = Vec::new();
         let mut audit = self.recorder();
+        scrub_recall_log(&tx, &memory_keys)?;
         for chunk in memory_keys.chunks(IN_CHUNK) {
             // Before the delete's own row is written, so it can say how many
             // earlier rows lost their text.
             audit
                 .scrubbed
                 .extend(crate::audit::scrub_forgotten(&tx, chunk)?);
-            scrub_recall_log(&tx, chunk)?;
             // The fields come back with the key when the log is on, which is
             // all it needs to say what was deleted.
             let columns = if audit.enabled() {
@@ -848,8 +875,11 @@ impl Store {
     /// deprioritised, in any namespace but skills (the Unconfirmed page's set).
     pub fn count_unconfirmed(&self) -> Result<usize> {
         let n: i64 = self.conn().query_row(
+            // The namespaces are named rather than `!= 'skill'`, which no
+            // index can seek on: the count is then a walk of the candidates.
             "SELECT COUNT(*) FROM memories
-             WHERE namespace != 'skill' AND trust = 'candidate'
+             WHERE namespace IN ('episodic', 'project', 'knowledge', 'preference')
+               AND trust = 'candidate'
                AND COALESCE(NULLIF(state, ''), 'active') IN ('active', 'deprioritised')",
             [],
             |r| r.get(0),
@@ -1249,11 +1279,6 @@ fn json_paths(fields: &[&str]) -> Option<Vec<String>> {
         .collect()
 }
 
-fn json_paths_owned(fields: &[String]) -> Option<Vec<String>> {
-    let refs: Vec<&str> = fields.iter().map(String::as_str).collect();
-    json_paths(&refs)
-}
-
 /// The requested fields of a row whose columns after the key are their
 /// `json_extract` values, or `None` when it has none of them. Every stored
 /// value is a string; a number met in a hand-edited row is kept as its text
@@ -1450,7 +1475,7 @@ pub(crate) fn write_vector(conn: &Connection, key: &str, vector: &[f32]) -> Resu
     Ok(())
 }
 
-fn data_version(conn: &Connection) -> Result<i64> {
+pub(crate) fn data_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA data_version", [], |row| row.get(0))?)
 }
 
@@ -1459,18 +1484,54 @@ fn data_version(conn: &Connection) -> Result<i64> {
 /// text someone searched for that memory with and would otherwise survive
 /// in exports and backups for the log's 30 days. Runs inside the delete's
 /// transaction, so it rolls back with it.
+///
+/// The log is read once and matched in memory, not scanned once per key:
+/// deleting a project of 2,000 memories against 5,000 log entries was ten
+/// seconds of full scans with the connection held.
 fn scrub_recall_log(tx: &rusqlite::Transaction<'_>, keys: &[&str]) -> Result<usize> {
+    if keys.is_empty() {
+        return Ok(0);
+    }
+    let forgotten: HashSet<&str> = keys.iter().copied().collect();
+    let mut doomed: Vec<String> = Vec::new();
+    {
+        let mut stmt = tx.prepare_cached(
+            "SELECT key, json_extract(value, '$.result_keys') FROM kv
+              WHERE key >= 'log:recall:' AND key < 'log:recall;'",
+        )?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rusqlite::types::ValueRef::Text(text) = row.get_ref(1)? else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(text);
+            if names_a_forgotten_key(&text, &forgotten) {
+                doomed.push(row.get(0)?);
+            }
+        }
+    }
     let mut removed = 0;
-    let mut stmt = tx.prepare_cached(
-        "DELETE FROM kv WHERE key >= 'log:recall:' AND key < 'log:recall;'
-           AND instr(coalesce(json_extract(value, '$.result_keys'), ''), ?1) > 0",
-    )?;
-    for key in keys {
-        // result_keys is a JSON array held as a string; match the quoted key
-        // so one key can't match another it is a prefix of.
-        removed += stmt.execute(params![format!("\"{key}\"")])?;
+    for chunk in doomed.chunks(IN_CHUNK) {
+        let sql = format!(
+            "DELETE FROM kv WHERE key IN ({})",
+            placeholders(chunk.len())
+        );
+        removed += tx.execute(&sql, params_from_iter(chunk))?;
     }
     Ok(removed)
+}
+
+/// Whether a log entry's `result_keys` (a JSON array held as a string)
+/// names one of `forgotten`. A value that isn't such an array is searched
+/// for each key in quotes, so one key can't match another it is a prefix
+/// of, which is how the log was matched before it was parsed.
+fn names_a_forgotten_key(result_keys: &str, forgotten: &HashSet<&str>) -> bool {
+    match serde_json::from_str::<Vec<String>>(result_keys) {
+        Ok(list) => list.iter().any(|k| forgotten.contains(k.as_str())),
+        Err(_) => forgotten
+            .iter()
+            .any(|k| result_keys.contains(&format!("\"{k}\""))),
+    }
 }
 
 /// `(namespace, state, count)`.

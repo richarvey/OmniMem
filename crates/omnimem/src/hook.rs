@@ -517,40 +517,65 @@ fn split_warnings(warnings: &[AbandonedWarning]) -> (Vec<String>, Vec<String>) {
 /// The warnings for one hook payload, or none if the call should proceed.
 /// Dead ends are matched for the project the hook speaks for, resolved the
 /// way session start does it (see `GRAVEYARD_SCOPE`).
+///
+/// Whether the call needs checking at all is decided before the store is
+/// opened: most calls are a tool that isn't guarded, or nothing to match,
+/// and they shouldn't pay for opening the database on every keystroke.
 fn warnings_for(
     db: &Path,
     payload: &Value,
     project: Option<&str>,
 ) -> Result<Vec<AbandonedWarning>> {
-    guard(&open_engine(db)?, payload, project)
+    let Some(proposal) = proposal_for(payload) else {
+        return Ok(Vec::new());
+    };
+    match_dead_ends(&open_engine(db)?, &proposal, payload, project)
 }
 
-/// `warnings_for` once the store is open, so a test can hand it an engine.
-fn guard(engine: &Engine, payload: &Value, project: Option<&str>) -> Result<Vec<AbandonedWarning>> {
+/// What a guarded tool call proposes, or none if the call is one the hook
+/// doesn't check (another tool, or nothing to match against).
+fn proposal_for(payload: &Value) -> Option<String> {
     let tool = payload
         .get("tool_name")
         .and_then(Value::as_str)
         .unwrap_or_default();
     if !GUARDED.contains(&tool) {
-        return Ok(Vec::new());
+        return None;
     }
     let empty = json!({});
     let input = payload.get("tool_input").unwrap_or(&empty);
     let proposal = proposal_text(tool, input);
-    if proposal.trim().is_empty() {
-        return Ok(Vec::new());
-    }
+    (!proposal.trim().is_empty()).then_some(proposal)
+}
+
+fn match_dead_ends(
+    engine: &Engine,
+    proposal: &str,
+    payload: &Value,
+    project: Option<&str>,
+) -> Result<Vec<AbandonedWarning>> {
     let projects: Vec<String> = project_name(project, payload).into_iter().collect();
     engine
-        .abandoned_warnings(&proposal, &projects)
+        .abandoned_warnings(proposal, &projects)
         .map_err(|error| anyhow!("{error}"))
 }
 
-/// Opened read-only in spirit: no migrations are run, because the server owns
-/// the schema and a hook must not race it. SQLite is in WAL mode, so reading
-/// alongside a running server is safe.
+/// `warnings_for` once the store is open, so a test can hand it an engine.
+#[cfg(test)]
+fn guard(engine: &Engine, payload: &Value, project: Option<&str>) -> Result<Vec<AbandonedWarning>> {
+    match proposal_for(payload) {
+        Some(proposal) => match_dead_ends(engine, &proposal, payload, project),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// Opened lazily: the vector matrix is only read if something searches,
+/// which the hook's own events never do, so a hook call doesn't pay for
+/// loading every vector. SQLite is in WAL mode, so reading alongside a
+/// running server is safe. Opening runs any pending migration, as every
+/// open does; one already applied by the server is a version check.
 pub(crate) fn open_engine(db: &Path) -> Result<Engine> {
-    let store = std::sync::Arc::new(Store::open(db)?);
+    let store = std::sync::Arc::new(Store::open_lazy(db)?);
     let config = EngineConfig::from_env(db.parent().unwrap_or(Path::new(".")).join("backups"));
     Ok(Engine::new(store, std::sync::Arc::new(NoEmbedder), config))
 }
@@ -956,6 +981,33 @@ mod tests {
 
     fn bash(command: &str) -> Value {
         json!({"tool_name": "Bash", "tool_input": {"command": command}})
+    }
+
+    /// Most tool calls are ones the hook lets through without looking (a
+    /// Read, a `git status`); they must not pay for opening the store.
+    /// Opening it creates the file and its folder, so their absence after the
+    /// calls shows it was never opened.
+    #[test]
+    fn a_call_the_hook_doesnt_check_never_opens_the_store() {
+        let dir =
+            std::env::temp_dir().join(format!("omnimem-hook-unopened-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = dir.join("omnimem.db");
+        for payload in [
+            json!({"tool_name": "Read", "tool_input": {"file_path": "/etc/hosts"}}),
+            bash("git status"),
+            json!({"tool_name": "Edit", "tool_input": {"new_string": "  "}}),
+        ] {
+            assert!(
+                warnings_for(&db, &payload, Some("alpha"))
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert!(
+            !dir.exists(),
+            "the store was opened for a call the hook doesn't check"
+        );
     }
 
     #[test]

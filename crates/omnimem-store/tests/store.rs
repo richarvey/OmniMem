@@ -771,6 +771,57 @@ fn another_connections_writes_are_found_without_reopening() {
     }
 }
 
+/// A lazy open reads no vectors until something searches, and then sees
+/// everything: what was there before it opened, and its own writes made
+/// before that first search, which went into the still-empty matrix.
+#[test]
+fn a_lazy_store_loads_its_vectors_on_the_first_search() {
+    let path = std::env::temp_dir().join(format!("omnimem-store-lazy-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let v = vec![1.0 / (omnimem_core::VECTOR_DIM as f32).sqrt(); omnimem_core::VECTOR_DIM];
+    {
+        let s = Store::open(&path).unwrap();
+        s.upsert(
+            "mem:episodic:before",
+            &fields(&[("content", "before")]),
+            Some(&v),
+        )
+        .unwrap();
+    }
+    let lazy = Store::open_lazy(&path).unwrap();
+    lazy.upsert("mem:episodic:own", &fields(&[("content", "own")]), Some(&v))
+        .unwrap();
+    lazy.delete_many(&["mem:episodic:before".to_owned()])
+        .unwrap();
+    lazy.upsert(
+        "mem:episodic:again",
+        &fields(&[("content", "again")]),
+        Some(&v),
+    )
+    .unwrap();
+    let mut keys: Vec<String> = lazy
+        .search(Namespace::Episodic, &v, 10, &SearchFilter::default(), None)
+        .unwrap()
+        .into_iter()
+        .map(|h| h.key)
+        .collect();
+    keys.sort();
+    assert_eq!(keys, ["mem:episodic:again", "mem:episodic:own"]);
+    assert_eq!(lazy.vector_count(Namespace::Episodic), 2);
+    // A write after the load lands in the matrix as on an eager store.
+    lazy.upsert(
+        "mem:episodic:later",
+        &fields(&[("content", "later")]),
+        Some(&v),
+    )
+    .unwrap();
+    assert_eq!(lazy.vector_count(Namespace::Episodic), 3);
+    drop(lazy);
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
+
 /// #26: `valid_at` and `known_at` filter in SQL as the Rust readers do.
 #[test]
 fn search_filters_on_validity_and_belief() {
