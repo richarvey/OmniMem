@@ -11,6 +11,8 @@ use crate::pyfmt::take_chars;
 use crate::{Engine, Result};
 
 const MAX_DEDUP_KEYS: usize = 2000;
+/// The neighbours a duplicate check looks at, as in 6.x.
+pub(crate) const DUPLICATE_NEIGHBOURS: usize = 5;
 
 pub struct DuplicateMatch {
     pub key: String,
@@ -34,10 +36,27 @@ impl Engine {
         vector: &[f32],
         project_filter: Option<&str>,
     ) -> Result<Option<DuplicateMatch>> {
-        let hits = self
-            .store
-            .search(namespace, vector, 5, &SearchFilter::default(), None)?;
-        for hit in hits {
+        let hits = self.store.search(
+            namespace,
+            vector,
+            DUPLICATE_NEIGHBOURS,
+            &SearchFilter::default(),
+            None,
+        )?;
+        Ok(self.duplicate_among(&hits, project_filter))
+    }
+
+    /// [`Engine::check_duplicate`] over neighbours already found, nearest
+    /// first. Only the first [`DUPLICATE_NEIGHBOURS`] count, so a caller that
+    /// searched for more (`remember`, for the contradiction check too) gets
+    /// the answer a search of its own would have given: ties break by key, so
+    /// the nearest five of ten are the nearest five.
+    pub(crate) fn duplicate_among(
+        &self,
+        hits: &[omnimem_store::SearchHit],
+        project_filter: Option<&str>,
+    ) -> Option<DuplicateMatch> {
+        for hit in hits.iter().take(DUPLICATE_NEIGHBOURS) {
             let state = hit.fields.get("state").map_or("active", String::as_str);
             if matches!(state, "archived" | "deleted") {
                 continue;
@@ -49,14 +68,14 @@ impl Engine {
             }
             let similarity = 1.0 - f64::from(hit.distance);
             if similarity >= self.config.dedup_threshold {
-                return Ok(Some(DuplicateMatch {
-                    key: hit.key,
+                return Some(DuplicateMatch {
+                    key: hit.key.clone(),
                     content: hit.fields.get("content").cloned().unwrap_or_default(),
                     similarity,
-                }));
+                });
             }
         }
-        Ok(None)
+        None
     }
 
     /// Clusters of near-identical memories in a namespace, largest first.

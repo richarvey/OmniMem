@@ -830,7 +830,9 @@ impl Engine {
     /// its links, 6.x included, and nothing else would ever clear them.
     /// Returns how many links it settled.
     pub fn settle_dangling_links(&self) -> Result<usize> {
-        let keys = self.store.scan_prefix("mem:")?;
+        // Only memories carrying links can hold a dangling one: the linked
+        // index names them, rather than every memory being read.
+        let keys = self.store.keys_with_contradictions("mem:")?;
         let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;
         let linked: Vec<(&String, Vec<String>)> = keys
             .iter()

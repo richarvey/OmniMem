@@ -255,6 +255,13 @@ impl Store {
         hash_merge(&self.conn(), key, fields)
     }
 
+    /// HSET then EXPIRE, in one write: what a recall's log entry needs, and
+    /// one commit instead of two on every recall.
+    pub fn hash_set_expiring(&self, key: &str, fields: &Fields, ttl: Duration) -> Result<()> {
+        validate_key(key)?;
+        hash_merge_expiring(&self.conn(), key, fields, Some(now() + ttl.as_secs_f64()))
+    }
+
     /// HINCRBY: add `by` to an integer field, creating it at zero.
     pub fn hash_incr(&self, key: &str, field: &str, by: i64) -> Result<i64> {
         validate_key(key)?;

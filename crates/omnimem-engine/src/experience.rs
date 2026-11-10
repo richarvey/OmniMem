@@ -331,7 +331,8 @@ impl Engine {
         )?;
         let (mut total_effort, mut count) = (0i64, 0i64);
         let mut outcomes: Vec<(&str, i64)> = OUTCOMES.iter().map(|o| (*o, 0)).collect();
-        let mut effortful: Vec<(i64, Value)> = Vec::new();
+        // Ranked on the effort and built after, so only the five shown are.
+        let mut effortful: Vec<(i64, &String, &Fields, &str)> = Vec::new();
         let mut graveyard: Vec<Value> = Vec::new();
         let mut seen_names: HashSet<String> = HashSet::new();
         let mut breakthroughs: Vec<(i64, Value)> = Vec::new();
@@ -346,15 +347,7 @@ impl Engine {
             if let Some(slot) = outcomes.iter_mut().find(|(o, _)| *o == outcome) {
                 slot.1 += 1;
             }
-            effortful.push((
-                effort,
-                json!({
-                    "key": key,
-                    "content": take_chars(data.get("content").map_or("", String::as_str), 80),
-                    "effort_score": effort,
-                    "outcome": outcome,
-                }),
-            ));
+            effortful.push((effort, key, data, outcome));
             for approach in parse_list(data.get("abandoned_approaches")) {
                 if let Value::Object(a) = approach {
                     let name = a
@@ -406,7 +399,18 @@ impl Engine {
         );
         m.insert(
             "top_5_most_effortful".into(),
-            effortful.into_iter().take(5).map(|e| e.1).collect(),
+            effortful
+                .into_iter()
+                .take(5)
+                .map(|(effort, key, data, outcome)| {
+                    json!({
+                        "key": key,
+                        "content": take_chars(data.get("content").map_or("", String::as_str), 80),
+                        "effort_score": effort,
+                        "outcome": outcome,
+                    })
+                })
+                .collect(),
         );
         m.insert("graveyard".into(), Value::Array(graveyard));
         m.insert(

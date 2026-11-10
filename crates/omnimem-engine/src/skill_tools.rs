@@ -790,23 +790,31 @@ impl Engine {
         }
 
         let cutoff = now_secs() - watch_days as f64 * 86_400.0;
-        let knowledge_keys = self.store.scan_prefix("mem:knowledge:")?;
-        let knowledge_rows = self.store.get_fields_multi(
-            &knowledge_keys,
-            &[
-                "state",
-                "created_at",
-                "content",
-                "title",
-                "feed_name",
-                "source_url",
-                "skill_domains",
-            ],
-        )?;
-        let recent: Vec<(String, Fields)> = knowledge_keys
+        // State and age are cut in SQL, so the watch reads the window's
+        // articles rather than every one RSS ever stored. The store's cut is
+        // a superset (it lets a missing state through, and a date its parser
+        // can't read), so the test below still decides.
+        let filter = omnimem_store::MemoryFilter {
+            states: vec!["active".to_owned()],
+            created_at_min: Some(cutoff),
+            ..omnimem_store::MemoryFilter::default()
+        };
+        let recent: Vec<(String, Fields)> = self
+            .store
+            .list_memories(
+                Namespace::Knowledge,
+                &filter,
+                &[
+                    "state",
+                    "created_at",
+                    "content",
+                    "title",
+                    "feed_name",
+                    "source_url",
+                    "skill_domains",
+                ],
+            )?
             .into_iter()
-            .zip(knowledge_rows)
-            .filter_map(|(k, r)| r.map(|r| (k, r)))
             .filter(|(_, r)| {
                 r.get("state").map(String::as_str) == Some("active")
                     && r.get("created_at")
