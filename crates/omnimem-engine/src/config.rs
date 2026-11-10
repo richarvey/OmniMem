@@ -492,14 +492,33 @@ impl EngineConfig {
 mod tests {
     use super::*;
 
+    /// Held by whichever test is setting process variables, so tests that
+    /// share a name don't run over each other: two of them set and removed
+    /// `HUMAN_APPROVAL` in parallel, and one read the other's value.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    std::thread_local! {
+        /// How deep this thread's `with_var` calls are nested, so only the
+        /// outermost takes the lock.
+        static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
     /// The env reader goes through `omnimem_core::env`, so the tests set
-    /// real process variables; each uses its own name to stay independent.
+    /// real process variables, one test at a time.
     fn with_var<T>(name: &str, value: &str, body: impl FnOnce() -> T) -> T {
-        // SAFETY: tests in this module touch distinct variable names and the
-        // engine reads them only through `from_env`, called inside `body`.
+        let _guard = (DEPTH.get() == 0).then(|| {
+            ENV_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        });
+        DEPTH.set(DEPTH.get() + 1);
+        // SAFETY: every test here that sets a variable does so through this
+        // function under ENV_LOCK, and the engine reads them only through
+        // `from_env`, called inside `body`.
         unsafe { std::env::set_var(name, value) };
         let out = body();
         unsafe { std::env::remove_var(name) };
+        DEPTH.set(DEPTH.get() - 1);
         out
     }
 
