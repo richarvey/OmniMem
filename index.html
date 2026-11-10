@@ -450,6 +450,26 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
   @media (max-width:620px){.omm-dl-btn,.omm-dl-btn:hover{min-width:0;width:100%}}
   @media (prefers-reduced-motion:reduce){.omm-dl-btn,.omm-dl-btn:hover{transition:none;transform:none}}
 </style>
+<style>
+  /* Results: what the S9 run measured, Claude Code with and without OmniMem. */
+  .omm-res-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:38px 0 22px}
+  .omm-res-tile{display:flex;flex-direction:column;background:rgb(18,20,24);border:1px solid rgb(38,42,49);border-radius:11px;padding:22px 22px 20px;min-width:0}
+  .omm-res-what{font-family:Ubuntu,sans-serif;font-weight:600;font-size:15px;color:rgb(231,233,236);margin:0}
+  .omm-res-num{font-family:Ubuntu,sans-serif;font-weight:700;font-size:46px;line-height:1.05;letter-spacing:-0.02em;color:rgb(99,189,133);margin:14px 0 8px;font-variant-numeric:tabular-nums}
+  .omm-res-line{font-size:14.5px;line-height:1.55;color:rgb(150,156,165);margin:0 0 18px}
+  .omm-res-line strong{color:rgb(214,218,223);font-weight:600}
+  .omm-res-bars{margin-top:auto;display:flex;flex-direction:column;gap:7px}
+  .omm-res-bar{display:grid;grid-template-columns:86px minmax(0,1fr);align-items:center;gap:10px;font-family:"Ubuntu Mono",monospace;font-size:11.5px;color:rgb(134,140,150)}
+  .omm-res-track{height:8px;border-radius:4px;background:rgb(27,30,36);overflow:hidden}
+  .omm-res-fill{display:block;height:100%;border-radius:4px;background:rgb(88,94,104)}
+  .omm-res-bar.with .omm-res-fill{background:rgb(99,189,133)}
+  .omm-res-bar.with{color:rgb(99,189,133)}
+  .omm-res-note{font-size:14px;line-height:1.7;color:rgb(134,140,150);margin:0;max-width:820px}
+  .omm-res-note a{color:rgb(99,189,133);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+  .omm-res-note a:focus-visible{outline:2px solid #63bd85;outline-offset:2px;border-radius:2px}
+  @media (max-width:980px){.omm-res-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:540px){.omm-res-grid{grid-template-columns:minmax(0,1fr)}.omm-res-num{font-size:40px}}
+</style>
 </head>
 <body>
 
@@ -460,6 +480,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
     </a>
     <div class="omm-header-links">
       <a data-spy="problem" href="#problem" class="omm-nav-link">Why</a>
+      <a data-spy="results" href="#results" class="omm-nav-link">Results</a>
       <a data-spy="in-action" href="#in-action" class="omm-nav-link">In action</a>
       <a data-spy="features" href="#features" class="omm-nav-link">Features</a>
       <a data-spy="lifecycle" href="#lifecycle" class="omm-nav-link">Lifecycle</a>
@@ -481,6 +502,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
     <div class="omm-mobile-menu-inner">
       <div class="omm-mobile-links">
         <a data-spy="problem" href="#problem" class="omm-nav-link">Why</a>
+        <a data-spy="results" href="#results" class="omm-nav-link">Results</a>
         <a data-spy="in-action" href="#in-action" class="omm-nav-link">In action</a>
         <a data-spy="features" href="#features" class="omm-nav-link">Features</a>
         <a data-spy="lifecycle" href="#lifecycle" class="omm-nav-link">Lifecycle</a>
@@ -589,7 +611,55 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         </div>
       </div>
     </div>
-  </div></section><section id="in-action" data-screen-label="In action" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
+  </div></section><section id="results" data-screen-label="Results" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
+  <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
+      <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Measured</span>
+    </div>
+    <div>
+      <h2 style="font-family: Ubuntu, sans-serif; font-weight: 700; font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; margin: 0px 0px 16px; color: rgb(242, 244, 246);">Fewer tokens, smaller bills, less waiting</h2>
+      <p style="font-size: 16.5px; line-height: 1.7; color: rgb(150, 156, 165); margin: 0px; max-width: 820px;">We gave Claude Code the same task twenty times on a fresh copy of the code: ten runs without OmniMem, ten with it. The task's TODO recommends a crate that fails at runtime, and only running the tests shows it. With OmniMem the earlier failure is already in memory, so the agent skips the dead end and gets on with the job.</p>
+    </div>
+    <div class="omm-res-grid">
+      <div class="omm-res-tile">
+        <p class="omm-res-what">Tokens</p>
+        <p class="omm-res-num">&minus;26%</p>
+        <p class="omm-res-line"><strong>833k &rarr; 616k</strong> median tokens per run, fewer in 8 of 10 pairs.</p>
+        <div class="omm-res-bars" aria-hidden="true">
+          <div class="omm-res-bar"><span>without</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 100%;"></span></span></div>
+          <div class="omm-res-bar with"><span>OmniMem</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 74%;"></span></span></div>
+        </div>
+      </div>
+      <div class="omm-res-tile">
+        <p class="omm-res-what">Money</p>
+        <p class="omm-res-num">&minus;26%</p>
+        <p class="omm-res-line">Median cost per run down by a quarter: <strong>$2.16 &rarr; $1.51</strong> for all ten runs.</p>
+        <div class="omm-res-bars" aria-hidden="true">
+          <div class="omm-res-bar"><span>without</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 100%;"></span></span></div>
+          <div class="omm-res-bar with"><span>OmniMem</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 70%;"></span></span></div>
+        </div>
+      </div>
+      <div class="omm-res-tile">
+        <p class="omm-res-what">Time</p>
+        <p class="omm-res-num">&minus;35%</p>
+        <p class="omm-res-line">Median wall time per run, because nobody spends a test run finding out the crate is broken.</p>
+        <div class="omm-res-bars" aria-hidden="true">
+          <div class="omm-res-bar"><span>without</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 100%;"></span></span></div>
+          <div class="omm-res-bar with"><span>OmniMem</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 65%;"></span></span></div>
+        </div>
+      </div>
+      <div class="omm-res-tile">
+        <p class="omm-res-what">Dead ends</p>
+        <p class="omm-res-num">0 of 10</p>
+        <p class="omm-res-line">Runs that walked into the known dead end, against <strong>8 of 10</strong> without. Red test runs went from 7 to 0.</p>
+        <div class="omm-res-bars" aria-hidden="true">
+          <div class="omm-res-bar"><span>without</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 80%;"></span></span></div>
+          <div class="omm-res-bar with"><span>OmniMem</span><span class="omm-res-track"><span class="omm-res-fill" style="width: 1.5%;"></span></span></div>
+        </div>
+      </div>
+    </div>
+    <p class="omm-res-note">OmniMem 7.0.12, Claude Haiku 4.5, one scenario and ten pairs, so treat the token saving as promising rather than proven (a sign test gives p = 0.05); the dead-end result doesn't depend on it. A dead end that takes longer to find would be worth more. <a href="/benchmarks/omnimem-7.0.8-vs-7.0.12.pdf">Read the full report (PDF)</a>, which also covers contradictions, forgetting and project isolation.</p>
+  </div></section><section id="in-action" data-screen-label="In action" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">See it in action</span>
@@ -692,7 +762,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         </div>
       </div>
     </div>
-  </div></section><section id="features" data-screen-label="Features" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
+  </div></section><section id="features" data-screen-label="Features" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">What makes it different</span>
@@ -778,7 +848,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
       </article>
 
     </div>
-  </div></section><section id="lifecycle" data-screen-label="Lifecycle" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
+  </div></section><section id="lifecycle" data-screen-label="Lifecycle" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Lifecycle</span>
@@ -833,7 +903,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         <div style="display: grid; grid-template-columns: 56px 1fr 76px; padding: 13px 18px; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13.5px; align-items: center; background: rgba(99, 189, 133, 0.05);"><div style="color: rgb(99, 189, 133);">5</div><div style="color: rgb(242, 244, 246);">Battle-hardened</div><div style="text-align: right; color: rgb(99, 189, 133); font-weight: 500;">1.8×</div></div>
       </div>
     </div>
-  </div></section><section id="skills" data-screen-label="Skills" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
+  </div></section><section id="skills" data-screen-label="Skills" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Skills</span>
@@ -897,7 +967,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         </div>
       </div>
     </div>
-  </div></section><section id="comparison" data-screen-label="Comparison" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
+  </div></section><section id="comparison" data-screen-label="Comparison" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">How it compares</span>
@@ -934,7 +1004,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
       <span style="flex: 0 0 auto; font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; color: rgb(99, 189, 133); white-space: nowrap;">Read the comparison (PDF) <span aria-hidden="true">&rarr;</span></span>
     </a>
     <p style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 13px; line-height: 1.6; color: rgb(134, 140, 150); margin: 0px;">The test harness and every run's raw records: <a href="https://code.squarecows.com/ric/omnimem-test-harness" style="text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;">code.squarecows.com/ric/omnimem-test-harness</a></p>
-  </div></section><section id="architecture" data-screen-label="Architecture" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
+  </div></section><section id="architecture" data-screen-label="Architecture" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Architecture</span>
@@ -1004,7 +1074,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         </div>
       </div>
     </div>
-  </div></section><section id="quickstart" data-screen-label="Quickstart" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px; background: rgb(13, 14, 17);">
+  </div></section><section id="quickstart" data-screen-label="Quickstart" style="border-top: 1px solid rgb(27, 30, 36); padding: 72px 0px;">
   <div style="max-width: 1200px; margin: 0px auto; padding: 0px 28px;">
     <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px;">
       <span style="font-family: &quot;Ubuntu Mono&quot;, monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(99, 189, 133);">Get started</span>
