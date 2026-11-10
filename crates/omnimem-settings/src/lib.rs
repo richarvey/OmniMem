@@ -10,6 +10,31 @@
 //! The pages move across from `web_ui/` in slices; a route not ported yet
 //! renders a page saying so.
 
+/// `minijinja::context!` as minijinja 2 had it: every value goes through
+/// serde, so a `serde_json::Value` (most of what the pages hand a template)
+/// renders as it always did. minijinja 3's own macro takes only types that
+/// are `Into<Value>`; a value that already is one passes through serde
+/// unchanged, because minijinja serialises its own values by handle.
+macro_rules! context {
+    (@value $key:ident) => {
+        $key
+    };
+    (@value $key:ident => $value:expr) => {
+        $value
+    };
+    (
+        $($key:ident $(=> $value:expr)?),*
+        $(, .. $ctx:expr)* $(,)?
+    ) => {
+        ::minijinja::context! {
+            $($key => ::minijinja::Value::from(::minijinja::value::Serde(
+                &context!(@value $key $(=> $value)?)
+            ))),*
+            $(, .. $ctx)*
+        }
+    };
+}
+
 mod access;
 mod assets;
 mod audit_log;

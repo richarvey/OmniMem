@@ -176,7 +176,7 @@ fn with_page(mut data: Value, current_page: &str) -> Context {
     if let Some(map) = data.as_object_mut() {
         map.insert("current_page".into(), current_page.into());
     }
-    Context::from_serialize(&data)
+    Context::from(minijinja::value::Serde(&data))
 }
 
 fn project_param(query: &HashMap<String, String>) -> String {

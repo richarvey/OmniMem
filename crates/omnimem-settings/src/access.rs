@@ -34,7 +34,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use minijinja::context;
 use omnimem_store::Store;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;

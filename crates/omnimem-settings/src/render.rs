@@ -133,7 +133,7 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| AutoEscape::Html);
     env.set_formatter(|out, state, value| match value.as_str() {
-        Some(text) if state.auto_escape() == AutoEscape::Html && !value.is_safe() => {
+        Some(text) if *state.auto_escape() == AutoEscape::Html && !value.is_safe() => {
             let mut escaped = String::with_capacity(text.len());
             markupsafe_escape(text, &mut escaped);
             out.write_str(&escaped).map_err(minijinja::Error::from)
@@ -210,7 +210,7 @@ pub(crate) fn failure(message: &str) -> Response {
 /// Render a template, or the error page.
 pub(crate) fn page(env: &Environment<'static>, name: &str, context: Value) -> Response {
     // Every page knows where it is, so its links can carry a way back.
-    let context = minijinja::context! { here => crate::pages::here(), ..context };
+    let context = context! { here => crate::pages::here(), ..context };
     match env.get_template(name).and_then(|t| t.render(context)) {
         Ok(html) => Html(html).into_response(),
         Err(e) => failure(&format!("rendering {name}: {e:#}")),
@@ -267,7 +267,7 @@ mod tests {
         let render = |page: i64, total_pages: i64| {
             env.get_template("partials/pagination.html")
                 .unwrap()
-                .render(minijinja::context! {
+                .render(context! {
                     page, total_pages, base_url => "/memories", extra_params => "",
                 })
                 .unwrap()
@@ -291,7 +291,7 @@ mod tests {
         let rendered = env
             .get_template("t")
             .unwrap()
-            .render(minijinja::context! { v => "/a?b=1&c=<\"x\">'y'" })
+            .render(context! { v => "/a?b=1&c=<\"x\">'y'" })
             .unwrap();
         assert_eq!(rendered, "/a?b=1&amp;c=&lt;&#34;x&#34;&gt;&#39;y&#39;");
     }
@@ -315,7 +315,7 @@ mod tests {
         let rendered = env
             .get_template("t")
             .unwrap()
-            .render(minijinja::context! { v => "a b&c=<d>" })
+            .render(context! { v => "a b&c=<d>" })
             .unwrap();
         assert_eq!(rendered, "?project=a%20b%26c%3D%3Cd%3E");
     }
@@ -372,7 +372,7 @@ mod tests {
         let html = env
             .get_template("base.html")
             .unwrap()
-            .render(minijinja::context! { current_page => "" })
+            .render(context! { current_page => "" })
             .unwrap();
         assert!(
             html.contains(r#"http-equiv="Content-Security-Policy""#),

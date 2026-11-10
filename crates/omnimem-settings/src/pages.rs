@@ -5,7 +5,6 @@ use std::fmt::Write as _;
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
-use minijinja::context;
 
 use crate::PanelState;
 use crate::render::{failure, page};

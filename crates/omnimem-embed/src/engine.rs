@@ -2,6 +2,7 @@
 
 use std::sync::Mutex;
 
+use ort::environment::Environment;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::{Session, SessionInputValue};
 use ort::value::Tensor;
@@ -21,6 +22,24 @@ const BATCH_SIZE: usize = 32;
 const CHARS_PER_TOKEN: usize = 32;
 /// Output names that carry per-token embeddings, preferred over position.
 const TOKEN_OUTPUT_NAMES: [&str; 2] = ["last_hidden_state", "token_embeddings"];
+
+/// The process's ONNX Runtime environment, built on first use and kept.
+///
+/// ort allows one environment per process and refuses a second even after
+/// the first is dropped, so every model load (the server's, a test's, the
+/// hook's) shares this one rather than building its own.
+fn environment() -> Result<Environment, EmbedError> {
+    static ENVIRONMENT: Mutex<Option<Environment>> = Mutex::new(None);
+    let mut slot = ENVIRONMENT
+        .lock()
+        .map_err(|_| EmbedError::Runtime("environment lock poisoned".into()))?;
+    if let Some(environment) = slot.as_ref() {
+        return Ok(environment.clone());
+    }
+    let environment = ort::init().with_name("omnimem").build()?;
+    *slot = Some(environment.clone());
+    Ok(environment)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pooling {
@@ -59,7 +78,7 @@ impl Embedder {
         let runtime = |e: ort::Error<ort::session::builder::SessionBuilder>| {
             EmbedError::Runtime(e.to_string())
         };
-        let mut builder = Session::builder()?
+        let mut builder = Session::builder(&environment()?)?
             // Level2 is ONNX Runtime's "extended", the level the Python
             // engine uses.
             .with_optimization_level(GraphOptimizationLevel::Level2)

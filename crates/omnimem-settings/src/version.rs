@@ -7,7 +7,6 @@
 
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Response};
-use minijinja::context;
 use omnimem_engine::release::newer_release;
 
 use crate::PanelState;

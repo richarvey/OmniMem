@@ -8,7 +8,6 @@ use std::fmt::Write as _;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
-use minijinja::context;
 use omnimem_engine::Engine;
 use omnimem_engine::pyfmt::round_to;
 use omnimem_store::Fields;
