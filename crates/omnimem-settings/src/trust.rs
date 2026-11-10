@@ -56,9 +56,12 @@ pub(crate) async fn list(
     let requested = param("page").parse::<usize>().unwrap_or(1).max(1);
     let filter = source.clone();
     let found = blocking(move || {
-        let all = engine.unconfirmed_from(
+        // The whole queue without its text, to count and page it; content
+        // is read for the page's rows below.
+        let all = engine.unconfirmed_with(
             Some(&filter).filter(|s| !s.is_empty()).map(String::as_str),
             usize::MAX,
+            &["enriched_from", "state", "created_at"],
         )?;
         let total = all.len();
         // How many each source has in all, for "Confirm all (n)".
@@ -70,10 +73,21 @@ pub(crate) async fn list(
         }
         let pages = total.div_ceil(PAGE_SIZE).max(1);
         let current = requested.min(pages);
-        let shown: Vec<_> = all
+        let shown_keys: Vec<String> = all
             .into_iter()
             .skip((current - 1) * PAGE_SIZE)
             .take(PAGE_SIZE)
+            .map(|(key, _)| key)
+            .collect();
+        let shown: Vec<(String, omnimem_store::Fields)> = engine
+            .store()
+            .get_fields_multi(
+                &shown_keys,
+                &["content", "enriched_from", "project", "created_at", "state"],
+            )?
+            .into_iter()
+            .zip(shown_keys)
+            .map(|(row, key)| (key, row.unwrap_or_default()))
             .collect();
         // What each source on this page says, to name it.
         let mut sources: Vec<String> = Vec::new();

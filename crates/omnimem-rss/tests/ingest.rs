@@ -301,6 +301,86 @@ fn without_a_model_summaries_fall_back_and_refusals_are_skipped() {
     assert!(store.get(&key).unwrap().is_none());
 }
 
+/// Serves one feed with an `ETag`, answering a request that sends it back
+/// with a 304; records each request's `If-None-Match`.
+fn etag_server(body: String) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let seen_in = seen.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut if_none_match = None;
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) if line.trim().is_empty() => break,
+                    Ok(_) => {
+                        if let Some((name, value)) = line.split_once(':')
+                            && name.eq_ignore_ascii_case("if-none-match")
+                        {
+                            if_none_match = Some(value.trim().to_owned());
+                        }
+                    }
+                }
+            }
+            let unchanged = if_none_match.as_deref() == Some("\"v1\"");
+            seen_in.lock().unwrap().push(if_none_match);
+            let _ = if unchanged {
+                write!(
+                    stream,
+                    "HTTP/1.1 304 Not Modified\r\netag: \"v1\"\r\nconnection: close\r\n\r\n"
+                )
+            } else {
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\ncontent-type: text/xml\r\netag: \"v1\"\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+            };
+        }
+    });
+    (base, seen)
+}
+
+/// An unchanged feed is asked for with its ETag and answered with a 304,
+/// so nothing is downloaded or summarised again; but the ETag is only kept
+/// after a cycle in which every entry landed, so a skipped one is retried.
+#[test]
+fn an_unchanged_feed_is_a_304_once_a_cycle_has_stored_everything() {
+    // Summary mode never fetches an entry's link, so it needn't resolve.
+    let probe = "http://example.test".to_owned();
+    let body = rss(&probe, &[("/post", "A Post", "<p>Hello</p>")]);
+    let (base, seen) = etag_server(body);
+    let model = Scripted::with(&["I'm unable to access that URL.", "A summary."]);
+    let (ingester, store) = ingester(Some(model.clone()), config(no_feeds_file()));
+    let feed = feed(&json!({"url": format!("{base}/feed.xml"), "name": "Example"}));
+
+    // The model refuses: the entry is skipped, so no ETag is kept.
+    assert_eq!(ingester.ingest_feed(&feed).unwrap().skipped, 1);
+    // Fetched in full again, and stored this time.
+    assert_eq!(ingester.ingest_feed(&feed).unwrap().added, 1);
+    // Now the ETag goes with the request and the server says nothing changed.
+    assert_eq!(
+        stats(ingester.ingest_feed(&feed).unwrap()),
+        json!({"added": 0, "skipped": 0, "errors": 0, "refused": 0})
+    );
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [None, None, Some("\"v1\"".to_owned())]
+    );
+    assert_eq!(
+        model.prompts().len(),
+        2,
+        "an unchanged feed is not summarised again"
+    );
+    let key = format!("mem:knowledge:{}", url_hash(&format!("{probe}/post")));
+    assert!(store.get(&key).unwrap().is_some());
+}
+
 #[test]
 fn licences_and_project_labels_come_from_the_feed() {
     let (base, routes, _) = server();

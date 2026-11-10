@@ -199,7 +199,7 @@ impl Engine {
     /// window's "confirm all from this memory". Returns how many moved.
     pub fn confirm_from_source(&self, source: &str, reason: Option<&str>) -> Result<usize> {
         let mut confirmed = 0;
-        for (key, _) in self.unconfirmed_from(Some(source), usize::MAX)? {
+        for (key, _) in self.unconfirmed_with(Some(source), usize::MAX, &["state"])? {
             self.set_trust(&key, TrustAction::Confirm, reason)?;
             confirmed += 1;
         }
@@ -213,6 +213,26 @@ impl Engine {
         source: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, Fields)>> {
+        self.unconfirmed_with(
+            source,
+            limit,
+            &["content", "enriched_from", "project", "created_at", "state"],
+        )
+    }
+
+    /// [`Engine::unconfirmed_from`] reading only `fields` (plus
+    /// `enriched_from`, which the source filter needs), for a caller that
+    /// counts or pages the whole queue and reads content for one page.
+    pub fn unconfirmed_with(
+        &self,
+        source: Option<&str>,
+        limit: usize,
+        fields: &[&str],
+    ) -> Result<Vec<(String, Fields)>> {
+        let mut fields: Vec<&str> = fields.to_vec();
+        if !fields.contains(&"enriched_from") {
+            fields.push("enriched_from");
+        }
         let mut out = Vec::new();
         // Every namespace a fact can be filed in: project context gets
         // extracted facts too. Skills are compiled output and never are.
@@ -225,11 +245,7 @@ impl Engine {
                 states: vec!["active".to_owned(), "deprioritised".to_owned()],
                 ..MemoryFilter::default()
             };
-            for (key, row) in self.store.list_memories(
-                namespace,
-                &filter,
-                &["content", "enriched_from", "project", "created_at", "state"],
-            )? {
+            for (key, row) in self.store.list_memories(namespace, &filter, &fields)? {
                 if source.is_none_or(|s| row.get("enriched_from").map(String::as_str) == Some(s)) {
                     out.push((key, row));
                 }

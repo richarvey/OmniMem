@@ -291,6 +291,39 @@ impl Store {
         Ok(next)
     }
 
+    /// Several HINCRBYs and an HSET on one hash in one write, for a counter
+    /// bumped on every call. A field that holds something other than an
+    /// integer is left alone, as `hash_incr` refusing it would have left it,
+    /// and the rest still apply.
+    pub fn hash_incr_many(
+        &self,
+        key: &str,
+        increments: &[(&str, i64)],
+        set: &Fields,
+    ) -> Result<()> {
+        validate_key(key)?;
+        let conn = self.conn();
+        let mut fields = match load(&conn, key)? {
+            Some(entry) => {
+                expect(key, &entry, Kind::Hash)?;
+                hash_from(&entry.value)
+            }
+            None => Fields::new(),
+        };
+        for (field, by) in increments {
+            let current = match fields.get(*field) {
+                None => 0,
+                Some(raw) => match raw.trim().parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                },
+            };
+            fields.insert((*field).to_owned(), current.saturating_add(*by).to_string());
+        }
+        fields.extend(set.iter().map(|(k, v)| (k.clone(), v.clone())));
+        hash_merge(&conn, key, &fields)
+    }
+
     pub fn hash_delete_fields(&self, key: &str, fields: &[&str]) -> Result<usize> {
         let conn = self.conn();
         let Some(entry) = load(&conn, key)? else {

@@ -22,6 +22,15 @@ use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
 use crate::RssConfig;
+use crate::fetch::{FeedFetch, FeedValidators};
+
+/// Where a feed's `ETag` and `Last-Modified` are kept between cycles, by the
+/// hash of its URL.
+const VALIDATORS_PREFIX: &str = "meta:feed_validators:";
+/// How long they're trusted. After a day a feed is fetched in full again, so
+/// a raised article limit, or articles forgotten to be fetched afresh, catch
+/// up even from a feed that hasn't changed.
+const VALIDATORS_TTL: Duration = Duration::from_hours(24);
 use crate::fetch::{Fetcher, strip_markup};
 use crate::summariser::{DigestItem, extract_items, summarise};
 
@@ -357,8 +366,26 @@ impl Ingester {
             return Ok(stats);
         };
 
-        let parsed = match self.fetcher.fetch_feed(&url) {
-            Ok(parsed) => parsed,
+        // Ask the server whether the feed changed since the last complete
+        // cycle: an unchanged feed is a 304, with nothing to download, parse
+        // or look up.
+        let validators_key = format!("{VALIDATORS_PREFIX}{}", url_hash(&url));
+        let store = self.engine.store();
+        let prior = store
+            .hash_get_all(&validators_key)
+            .ok()
+            .flatten()
+            .map(|row| FeedValidators {
+                etag: row.get("etag").filter(|v| !v.is_empty()).cloned(),
+                last_modified: row.get("last_modified").filter(|v| !v.is_empty()).cloned(),
+            })
+            .unwrap_or_default();
+        let (parsed, validators) = match self.fetcher.fetch_feed_since(&url, &prior) {
+            Ok(FeedFetch::Changed(parsed, validators)) => (parsed, validators),
+            Ok(FeedFetch::Unchanged) => {
+                info!(feed = name, "feed unchanged since the last fetch");
+                return Ok(stats);
+            }
             Err(e) => {
                 warn!(feed = name, error = %e, "no entries in feed: fetch or parse failed");
                 return Ok(stats);
@@ -368,25 +395,41 @@ impl Ingester {
             warn!(feed = name, "no entries in feed");
             return Ok(stats);
         }
+        // Whether every entry was stored or was stored already. Only then are
+        // the validators kept: an entry skipped for a failed summary or digest
+        // must be tried again next cycle, which a 304 would prevent.
+        let mut complete = true;
 
         let limit = if digest {
             self.config.max_digest_entries
         } else {
             self.config.max_articles_per_feed
         };
-        let store = self.engine.store();
+        // Every entry's key first, then one lookup of which are stored
+        // already, rather than reading each stored article in full to find
+        // out it exists.
+        let candidates: Vec<(&Entry, String, String)> = parsed
+            .entries
+            .iter()
+            .take(limit)
+            .filter_map(|entry| {
+                let link = entry_link(entry);
+                if link.is_empty() {
+                    return None;
+                }
+                let dedup_key = if digest {
+                    format!("mem:knowledge:{}", url_hash(&format!("{link}:0")))
+                } else {
+                    format!("mem:knowledge:{}", url_hash(&link))
+                };
+                Some((entry, link, dedup_key))
+            })
+            .collect();
+        let keys: Vec<String> = candidates.iter().map(|(_, _, k)| k.clone()).collect();
+        let stored = store.existing_keys(&keys).map_err(|e| e.to_string())?;
         let mut articles: Vec<NewArticle> = Vec::new();
-        for entry in parsed.entries.iter().take(limit) {
-            let link = entry_link(entry);
-            if link.is_empty() {
-                continue;
-            }
-            let dedup_key = if digest {
-                format!("mem:knowledge:{}", url_hash(&format!("{link}:0")))
-            } else {
-                format!("mem:knowledge:{}", url_hash(&link))
-            };
-            if store.get(&dedup_key).map_err(|e| e.to_string())?.is_some() {
+        for (entry, link, dedup_key) in candidates {
+            if stored.contains(&dedup_key) {
                 stats.skipped += 1;
                 continue;
             }
@@ -399,6 +442,7 @@ impl Ingester {
                         "skipping: digest extraction failed"
                     );
                     stats.skipped += 1;
+                    complete = false;
                 }
                 continue;
             }
@@ -413,6 +457,7 @@ impl Ingester {
             ) else {
                 info!(title, "skipping: summarisation refused");
                 stats.skipped += 1;
+                complete = false;
                 continue;
             };
             articles.push(NewArticle::new(
@@ -475,6 +520,20 @@ impl Ingester {
             errors = stats.errors,
             "feed ingested"
         );
+        if complete && stats.errors == 0 && !validators.is_empty() {
+            let fields = Fields::from([
+                ("etag".to_owned(), validators.etag.unwrap_or_default()),
+                (
+                    "last_modified".to_owned(),
+                    validators.last_modified.unwrap_or_default(),
+                ),
+            ]);
+            if let Err(e) = store.hash_set_expiring(&validators_key, &fields, VALIDATORS_TTL) {
+                warn!(feed = name, error = %e, "could not keep the feed's validators");
+            }
+        } else if let Err(e) = store.kv_delete(&validators_key) {
+            warn!(feed = name, error = %e, "could not clear the feed's validators");
+        }
         Ok(stats)
     }
 

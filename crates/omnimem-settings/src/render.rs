@@ -165,6 +165,8 @@ pub(crate) fn environment(notice: Arc<RwLock<Option<String>>>) -> Environment<'s
             .unwrap_or_default()
     });
     env.add_global("version", env!("CARGO_PKG_VERSION"));
+    // Static files are linked under it, so they can be cached for a year.
+    env.add_global("asset_version", crate::assets::ASSET_VERSION.as_str());
     // Where the engine cut a preview, so a template can end it with an ellipsis.
     env.add_global("pair_preview_chars", omnimem_engine::PAIR_PREVIEW_CHARS);
     env.add_global(

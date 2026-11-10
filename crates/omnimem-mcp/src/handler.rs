@@ -737,25 +737,20 @@ fn observe(
 /// Call counts, duration and response size per tool, as the 6.x telemetry
 /// middleware kept them. Failures to record are ignored.
 fn record_metrics(engine: &Engine, tool: &str, started: Instant, response_chars: Option<usize>) {
-    let store = engine.store();
     let key = format!("{METRICS_PREFIX}{tool}");
-    let _ = store.hash_incr(&key, "call_count", 1);
-    match response_chars {
-        Some(chars) => {
-            let _ = store.hash_incr(
-                &key,
-                "total_duration_ms",
-                started.elapsed().as_millis() as i64,
-            );
-            let _ = store.hash_incr(&key, "total_response_chars", chars as i64);
-        }
-        None => {
-            let _ = store.hash_incr(&key, "error_count", 1);
-        }
-    }
+    // One write per call rather than one per counter.
+    let increments: Vec<(&str, i64)> = match response_chars {
+        Some(chars) => vec![
+            ("call_count", 1),
+            ("total_duration_ms", started.elapsed().as_millis() as i64),
+            ("total_response_chars", chars as i64),
+        ],
+        None => vec![("call_count", 1), ("error_count", 1)],
+    };
     let now = omnimem_engine::pyfmt::now_str();
-    let _ = store.hash_set(
+    let _ = engine.store().hash_incr_many(
         &key,
+        &increments,
         &omnimem_store::Fields::from([("last_called_at".to_owned(), now)]),
     );
 }

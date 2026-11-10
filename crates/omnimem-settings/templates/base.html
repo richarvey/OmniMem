@@ -6,12 +6,12 @@
   <title>{% block title %}OmniMem{% endblock %}</title>
   <link rel="preload" href="{{ admin }}/static/fonts/onest-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="{{ admin }}/static/fonts/geist-mono-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="icon" href="{{ admin }}/static/images/favicon.ico" sizes="any">
+  <link rel="icon" href="{{ admin }}/static/images/favicon.ico?v={{ asset_version }}" sizes="any">
   <meta name="theme-color" content="#0b0c0e">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'">
-  <link rel="stylesheet" href="{{ admin }}/static/style.css">
-  <script src="{{ admin }}/static/htmx.min.js"></script>
-  <script src="{{ admin }}/static/theme.js"></script>
+  <link rel="stylesheet" href="{{ admin }}/static/style.css?v={{ asset_version }}">
+  <script src="{{ admin }}/static/htmx.min.js?v={{ asset_version }}"></script>
+  <script src="{{ admin }}/static/theme.js?v={{ asset_version }}"></script>
   <link rel="me" href="https://mastodon.squarecows.com/@Ric">
 </head>
 <body>
@@ -20,7 +20,7 @@
   <div class="layout">
     <nav class="sidebar" aria-label="Main">
       <div class="sidebar-header">
-        <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img class="logo-for-dark" src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png" width="134" height="26" alt="&lt;omnimem&gt;"><img class="logo-for-light" src="{{ admin }}/static/images/omnimem-logo-horizontal-light.png" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
+        <p class="logo"><a href="{{ admin }}/" aria-label="OmniMem dashboard"><img class="logo-for-dark" src="{{ admin }}/static/images/omnimem-logo-horizontal-dark.png?v={{ asset_version }}" width="134" height="26" alt="&lt;omnimem&gt;"><img class="logo-for-light" src="{{ admin }}/static/images/omnimem-logo-horizontal-light.png?v={{ asset_version }}" width="134" height="26" alt="&lt;omnimem&gt;"></a></p>
         <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Hide sidebar" aria-expanded="true">&laquo;</button>
         <div class="sidebar-version">
           <span class="version-badge">v{{ version }}</span>
@@ -75,6 +75,6 @@
       {% block content %}{% endblock %}
     </main>
   </div>
-  <script src="{{ admin }}/static/panel.js"></script>
+  <script src="{{ admin }}/static/panel.js?v={{ asset_version }}"></script>
 </body>
 </html>

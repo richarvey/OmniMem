@@ -69,12 +69,26 @@ fn is_live(row: &omnimem_store::Fields) -> bool {
     )
 }
 
+/// One memory's counters, enough to rank it; its text is read only if it
+/// makes one of the short lists.
+struct Counted {
+    key: String,
+    namespace: &'static str,
+    project: String,
+    recall_count: i64,
+    last_raw: Option<String>,
+    last_recalled_at: f64,
+    created_at: f64,
+}
+
 fn telemetry_data(engine: &Engine, project: &str) -> omnimem_engine::Result<Value> {
     let cold_days = cold_days();
     let cold_threshold = now_seconds() - (cold_days * 86_400) as f64;
     let (mut total_memories, mut total_recalls, mut unique_recalled, mut never_recalled) =
         (0usize, 0i64, 0usize, 0usize);
-    let (mut most_recalled, mut gone_cold, mut never_list): (Vec<Value>, Vec<Value>, Vec<Value>) =
+    // Indexes into `counted`, so an entry in two lists is counted once.
+    let mut counted: Vec<Counted> = Vec::new();
+    let (mut most_recalled, mut gone_cold, mut never_list): (Vec<usize>, Vec<usize>, Vec<usize>) =
         (Vec::new(), Vec::new(), Vec::new());
 
     for prefix in TELEMETRY_PREFIXES {
@@ -88,13 +102,10 @@ fn telemetry_data(engine: &Engine, project: &str) -> omnimem_engine::Result<Valu
                 "project_name",
                 "recall_count",
                 "last_recalled",
-                "content",
                 "created_at",
-                "name",
-                "description",
             ],
         )?;
-        for (key, row) in keys.iter().zip(rows) {
+        for (key, row) in keys.into_iter().zip(rows) {
             let Some(row) = row else { continue };
             let mem_project = project_of(&row);
             if !is_live(&row) || (!project.is_empty() && mem_project != project) {
@@ -107,58 +118,101 @@ fn telemetry_data(engine: &Engine, project: &str) -> omnimem_engine::Result<Valu
                 total_memories += 1;
                 total_recalls += recall_count;
             }
-            let mut content = row.get("content").cloned().unwrap_or_default();
-            if content.is_empty() && namespace == "skill" {
-                // Skills carry no content: show their discovery metadata.
-                content = ["name", "description"]
-                    .iter()
-                    .filter_map(|f| row.get(*f).filter(|v| !v.is_empty()))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(" — ");
-            }
-            let mut snippet: String = content.chars().take(80).collect();
-            if content.chars().count() > 80 {
-                snippet.push_str("...");
-            }
-            let last_raw = row.get("last_recalled").filter(|l| !l.is_empty());
-            let last_recalled_at = number(last_raw);
-            let url = if namespace == "skill" {
-                format!("/skills/{key}")
-            } else {
-                format!("/memory/{key}")
-            };
-            let entry = json!({
-                "key": key,
-                "namespace": namespace,
-                "url": url,
-                "content": snippet,
-                "project": mem_project,
-                "recall_count": recall_count,
-                "last_recalled_raw": last_recalled_at,
-                "last_recalled": last_raw.map_or_else(|| "Never".to_owned(), |raw| minutes(Some(raw))),
-                "created_at_raw": number(row.get("created_at")),
-            });
+            let last_raw = row.get("last_recalled").filter(|l| !l.is_empty()).cloned();
+            let last_recalled_at = number(last_raw.as_ref());
+            let at = counted.len();
             if recall_count > 0 {
                 unique_recalled += 1;
                 if last_raw.is_some() && last_recalled_at < cold_threshold {
-                    gone_cold.push(entry.clone());
+                    gone_cold.push(at);
                 }
-                most_recalled.push(entry);
+                most_recalled.push(at);
             } else {
                 never_recalled += 1;
-                never_list.push(entry);
+                never_list.push(at);
             }
+            counted.push(Counted {
+                key,
+                namespace,
+                project: mem_project,
+                recall_count,
+                last_raw,
+                last_recalled_at,
+                created_at: number(row.get("created_at")),
+            });
         }
     }
-    let field = |v: &Value, name: &str| v[name].as_f64().unwrap_or(0.0);
-    most_recalled.sort_by(|a, b| field(b, "recall_count").total_cmp(&field(a, "recall_count")));
-    gone_cold
-        .sort_by(|a, b| field(a, "last_recalled_raw").total_cmp(&field(b, "last_recalled_raw")));
-    never_list.sort_by(|a, b| field(a, "created_at_raw").total_cmp(&field(b, "created_at_raw")));
+    most_recalled.sort_by(|a, b| {
+        (counted[*b].recall_count as f64).total_cmp(&(counted[*a].recall_count as f64))
+    });
+    gone_cold.sort_by(|a, b| {
+        counted[*a]
+            .last_recalled_at
+            .total_cmp(&counted[*b].last_recalled_at)
+    });
+    never_list.sort_by(|a, b| counted[*a].created_at.total_cmp(&counted[*b].created_at));
     most_recalled.truncate(15);
     gone_cold.truncate(15);
     never_list.truncate(20);
+
+    // The text of the fifty memories at most that are shown.
+    let mut shown: Vec<usize> = most_recalled
+        .iter()
+        .chain(&gone_cold)
+        .chain(&never_list)
+        .copied()
+        .collect();
+    shown.sort_unstable();
+    shown.dedup();
+    let shown_keys: Vec<String> = shown.iter().map(|i| counted[*i].key.clone()).collect();
+    let texts: HashMap<usize, omnimem_store::Fields> = shown
+        .iter()
+        .copied()
+        .zip(
+            engine
+                .store()
+                .get_fields_multi(&shown_keys, &["content", "name", "description"])?,
+        )
+        .filter_map(|(i, row)| row.map(|r| (i, r)))
+        .collect();
+    let entry = |i: &usize| {
+        let c = &counted[*i];
+        let row = texts.get(i);
+        let get = |f: &str| row.and_then(|r| r.get(f)).filter(|v| !v.is_empty());
+        let mut content = get("content").cloned().unwrap_or_default();
+        if content.is_empty() && c.namespace == "skill" {
+            // Skills carry no content: show their discovery metadata.
+            content = ["name", "description"]
+                .iter()
+                .filter_map(|f| get(f))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" — ");
+        }
+        let mut snippet: String = content.chars().take(80).collect();
+        if content.chars().count() > 80 {
+            snippet.push_str("...");
+        }
+        let url = if c.namespace == "skill" {
+            format!("/skills/{}", c.key)
+        } else {
+            format!("/memory/{}", c.key)
+        };
+        json!({
+            "key": c.key,
+            "namespace": c.namespace,
+            "url": url,
+            "content": snippet,
+            "project": c.project,
+            "recall_count": c.recall_count,
+            "last_recalled_raw": c.last_recalled_at,
+            "last_recalled": c.last_raw.as_ref().map_or_else(|| "Never".to_owned(), |raw| minutes(Some(raw))),
+            "created_at_raw": c.created_at,
+        })
+    };
+    let most_recalled: Vec<Value> = most_recalled.iter().map(entry).collect();
+    let gone_cold: Vec<Value> = gone_cold.iter().map(entry).collect();
+    let never_list: Vec<Value> = never_list.iter().map(entry).collect();
     Ok(json!({
         "total_memories": total_memories,
         "total_recalls": total_recalls,
@@ -262,6 +316,12 @@ fn token_data(
         .collect();
     for namespace in MEMORY_NAMESPACES {
         let keys = engine.store().scan_prefix(&format!("mem:{namespace}:"))?;
+        // Lengths are counted in SQL, so the page doesn't copy out every
+        // memory's text to measure it.
+        let lengths = match namespace.parse::<omnimem_core::Namespace>() {
+            Ok(ns) => engine.store().content_chars(ns)?,
+            Err(_) => HashMap::new(),
+        };
         let rows = engine.store().get_fields_multi(
             &keys,
             &[
@@ -269,10 +329,16 @@ fn token_data(
                 "project",
                 "project_name",
                 "recall_count",
-                "content",
+                "content_hash",
             ],
         )?;
-        for row in rows.into_iter().flatten() {
+        for (key, row) in keys.iter().zip(rows) {
+            let chars = lengths.get(key).copied();
+            // A row with none of the fields above is still a memory if it
+            // has content, as it was when content was among them.
+            let Some(row) = row.or_else(|| chars.map(|_| omnimem_store::Fields::new())) else {
+                continue;
+            };
             if !is_live(&row) || (!project.is_empty() && project_of(&row) != project) {
                 continue;
             }
@@ -281,7 +347,7 @@ fn token_data(
                 *n = json!(n.as_u64().unwrap_or(0) + 1);
             }
             total_recalls += count(row.get("recall_count"));
-            content_chars += row.get("content").map_or(0, |c| c.chars().count());
+            content_chars += chars.unwrap_or(0);
         }
     }
     let avg_content_chars = content_chars.checked_div(total_memories).unwrap_or(0);

@@ -157,6 +157,7 @@ async fn links_in_pages_point_under_the_admin_root() {
     panel.set_engine(engine());
     let html = text(&get(&panel, "/").await);
     assert!(html.contains(r#"href="/admin/memories""#), "{html}");
-    assert!(html.contains(r#"src="/admin/static/panel.js""#), "{html}");
+    // Static files carry the build's asset hash, so they can be cached.
+    assert!(html.contains(r#"src="/admin/static/panel.js?v="#), "{html}");
     assert!(!html.contains(concat!("href=\"", "/memories")), "{html}");
 }

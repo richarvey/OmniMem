@@ -82,6 +82,13 @@ impl Embedder {
             // Level2 is ONNX Runtime's "extended", the level the Python
             // engine uses.
             .with_optimization_level(GraphOptimizationLevel::Level2)
+            .map_err(runtime)?
+            // Worker threads sleep between runs rather than spinning on
+            // the CPU waiting for the next one: an embed is a burst between
+            // long idle stretches, and spinning after each burned a core
+            // for a while on a laptop running the desktop app. The vectors
+            // are the same either way.
+            .with_intra_op_spinning(false)
             .map_err(runtime)?;
         if let Some(threads) = config.threads.filter(|n| *n > 0) {
             builder = builder.with_intra_threads(threads).map_err(runtime)?;

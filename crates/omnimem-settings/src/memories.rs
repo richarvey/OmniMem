@@ -22,9 +22,10 @@ use crate::render::page;
 
 const PAGE_SIZE: usize = 25;
 const LISTABLE_NAMESPACES: [&str; 4] = ["episodic", "project", "knowledge", "preference"];
-/// Only what the list renders or filters on: no vectors, lessons or gotchas.
+/// Only what the list sorts or filters on: no vectors, lessons or gotchas,
+/// and no content, which is read for the page's rows alone (every memory's
+/// text, to show 25 of them, was most of the page's cost).
 const LIST_FIELDS: &[&str] = &[
-    "content",
     "state",
     "project",
     "project_name",
@@ -145,7 +146,7 @@ fn collect(engine: &Engine, filters: &Filters) -> omnimem_engine::Result<(Vec<Ro
             rows.push(Row {
                 key: key.clone(),
                 namespace: ns,
-                content: text("content").chars().take(120).collect(),
+                content: String::new(),
                 state,
                 project,
                 feed_name,
@@ -158,6 +159,17 @@ fn collect(engine: &Engine, filters: &Filters) -> omnimem_engine::Result<(Vec<Ro
         }
     }
     Ok((rows, projects.into_iter().collect()))
+}
+
+/// When a row happened, for sorting and its date. Articles don't change
+/// after ingestion, but migrations can touch `updated_at`, so they are
+/// ordered and dated by when they arrived.
+fn row_ts(row: &Row, articles: bool) -> f64 {
+    if articles && row.created_at != 0.0 {
+        row.created_at
+    } else {
+        row.updated_at
+    }
 }
 
 pub(crate) async fn handler(
@@ -196,8 +208,34 @@ pub(crate) async fn handler(
         .unwrap_or(1)
         .max(1) as usize;
 
-    let (rows, projects, filters) = match blocking(move || {
-        collect(&engine, &filters).map(|(rows, projects)| (rows, projects, filters))
+    let order = sort.clone();
+    let (shown, total, current, total_pages, projects, filters) = match blocking(move || {
+        let (mut rows, projects) = collect(&engine, &filters)?;
+        let articles = filters.source == "rss";
+        rows.sort_by(|a, b| {
+            let ordering = row_ts(a, articles).total_cmp(&row_ts(b, articles));
+            if order == "oldest" {
+                ordering
+            } else {
+                ordering.reverse()
+            }
+        });
+        let total = rows.len();
+        let total_pages = total.div_ceil(PAGE_SIZE).max(1);
+        let current = requested_page.min(total_pages);
+        let mut shown: Vec<Row> = rows
+            .into_iter()
+            .skip((current - 1) * PAGE_SIZE)
+            .take(PAGE_SIZE)
+            .collect();
+        let keys: Vec<String> = shown.iter().map(|r| r.key.clone()).collect();
+        let contents = engine.store().get_fields_multi(&keys, &["content"])?;
+        for (row, data) in shown.iter_mut().zip(contents) {
+            row.content = data
+                .and_then(|d| d.get("content").map(|c| c.chars().take(120).collect()))
+                .unwrap_or_default();
+        }
+        Ok((shown, total, current, total_pages, projects, filters))
     })
     .await
     {
@@ -205,35 +243,11 @@ pub(crate) async fn handler(
         Err(failure) => return failure,
     };
 
-    // Articles don't change after ingestion, but migrations can touch
-    // updated_at, so they are ordered and dated by when they arrived.
     let articles = filters.source == "rss";
-    let row_ts = |row: &Row| {
-        if articles && row.created_at != 0.0 {
-            row.created_at
-        } else {
-            row.updated_at
-        }
-    };
-    let mut rows = rows;
-    rows.sort_by(|a, b| {
-        let ordering = row_ts(a).total_cmp(&row_ts(b));
-        if sort == "oldest" {
-            ordering
-        } else {
-            ordering.reverse()
-        }
-    });
-
-    let total = rows.len();
-    let total_pages = total.div_ceil(PAGE_SIZE).max(1);
-    let current = requested_page.min(total_pages);
-    let memories: Vec<_> = rows
+    let memories: Vec<_> = shown
         .iter()
-        .skip((current - 1) * PAGE_SIZE)
-        .take(PAGE_SIZE)
         .map(|row| {
-            let ts = row_ts(row);
+            let ts = row_ts(row, articles);
             let (date, time) = match Local.timestamp_opt(ts as i64, 0).single() {
                 Some(t) if ts > 0.0 => (
                     t.format("%-d %b %Y").to_string(),

@@ -294,6 +294,10 @@ impl Store {
     }
 
     fn init(conn: Connection, dim: usize, preload: bool) -> Result<Self> {
+        // rusqlite keeps 16 prepared statements by default; the store
+        // prepares more than that on its hot paths, so some were being
+        // parsed again each time.
+        conn.set_prepared_statement_cache_capacity(64);
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;",
@@ -1080,6 +1084,46 @@ impl Store {
             project_contexts,
             recent,
         })
+    }
+
+    /// Which of `keys` are stored memories, in chunked `IN` queries: one
+    /// round of the connection for a whole feed's entries rather than a full
+    /// record read for each.
+    pub fn existing_keys(&self, keys: &[String]) -> Result<HashSet<String>> {
+        let conn = self.conn();
+        let mut found = HashSet::new();
+        for chunk in keys.chunks(IN_CHUNK) {
+            let sql = format!(
+                "SELECT key FROM memories WHERE key IN ({})",
+                placeholders(chunk.len())
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(chunk), |r| r.get::<_, String>(0))?;
+            for key in rows {
+                found.insert(key?);
+            }
+        }
+        Ok(found)
+    }
+
+    /// Each memory's content length in characters, by key, counted by
+    /// SQLite (`length` counts characters, as `chars().count()` does) so no
+    /// text is copied out. A memory with no content is absent.
+    pub fn content_chars(&self, namespace: Namespace) -> Result<HashMap<String, usize>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT key, length(json_extract(fields, '$.content')) FROM memories
+              WHERE namespace = ?1 AND json_extract(fields, '$.content') IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![namespace.as_str()], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        let mut lengths = HashMap::new();
+        for row in rows {
+            let (key, chars) = row?;
+            lengths.insert(key, usize::try_from(chars).unwrap_or(0));
+        }
+        Ok(lengths)
     }
 
     /// How many memories in a namespace have a vector.
