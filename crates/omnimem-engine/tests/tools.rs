@@ -717,6 +717,38 @@ fn duplicates_cluster() {
     assert!((clusters[0]["max_similarity"].as_f64().unwrap() - 1.0).abs() < 1e-6);
 }
 
+/// Past the scan cap, a project's own memories are the ones compared. The
+/// cap once took the namespace's 2,000 oldest keys before the project
+/// filter, so a later project's duplicates were never found.
+#[test]
+fn duplicates_past_the_cap_are_found_for_a_later_project() {
+    let e = engine();
+    for i in 0..2001 {
+        put(
+            &e,
+            &format!("mem:episodic:0{i:05}"),
+            &format!("alpha note number {i}"),
+            &[("project", "alpha")],
+        );
+    }
+    put(
+        &e,
+        "mem:episodic:1A",
+        "a beta sentence twice",
+        &[("project", "beta")],
+    );
+    put(
+        &e,
+        "mem:episodic:1B",
+        "a beta sentence twice",
+        &[("project", "beta")],
+    );
+    let out = e.find_duplicates("episodic", None, Some("beta")).unwrap();
+    let clusters = out["clusters"].as_array().unwrap();
+    assert_eq!(clusters.len(), 1, "{out}");
+    assert_eq!(clusters[0]["memories"].as_array().unwrap().len(), 2);
+}
+
 // -- documents and backups ---------------------------------------------------------
 
 #[test]

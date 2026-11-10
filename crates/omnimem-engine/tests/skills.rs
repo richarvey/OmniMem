@@ -131,6 +131,29 @@ fn write(e: &Engine, domain: &str) -> Value {
 
 const QUEUES: &str = "always use boring queues for python background work";
 
+/// A lesson recorded after the store's first 5,000 episodic memories still
+/// reaches the skill. The pools once read only the namespace's oldest 5,000
+/// keys, so a store past that never learnt from anything newer.
+#[test]
+fn a_lesson_past_the_first_five_thousand_memories_reaches_the_skill() {
+    let e = engine();
+    for i in 0..5000 {
+        put(
+            &e,
+            &format!("mem:episodic:0{i:05}"),
+            "untagged chatter",
+            &[],
+        );
+    }
+    lesson(&e, "mem:episodic:1A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:1B", "python", "beta", QUEUES);
+    let proposal = propose(&e, "python");
+    assert_eq!(proposal["status"], "proposal", "{proposal}");
+    assert_eq!(proposal["rules"], json!({"do": 1}));
+    let draft = proposal["draft"].as_str().unwrap();
+    assert!(draft.contains("[mem:episodic:1B]"), "{draft}");
+}
+
 #[test]
 fn propose_write_then_unchanged() {
     let dir = std::env::temp_dir().join(format!("omnimem-skill-export-{}", std::process::id()));

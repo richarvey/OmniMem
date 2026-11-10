@@ -86,37 +86,43 @@ impl Engine {
         project_filter: Option<&str>,
     ) -> Result<Vec<Value>> {
         let threshold = threshold.unwrap_or(self.config.dedup_threshold);
-        let mut keys = self.store.scan_prefix(&format!("mem:{namespace}:"))?;
-        if keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        if keys.len() > MAX_DEDUP_KEYS {
-            warn!(
-                cap = MAX_DEDUP_KEYS,
-                total = keys.len(),
-                "dedup scan capped"
-            );
-            keys.truncate(MAX_DEDUP_KEYS);
-        }
-        let rows = self.store.get_fields_multi(
-            &keys,
-            &["content", "state", "project", "project_name", "created_at"],
-        )?;
-        let entries: Vec<(String, omnimem_store::Fields)> = keys
+        let project_filter = project_filter.filter(|p| !p.is_empty());
+        // The project is cut in SQL on its indexes (read as `doc_project`
+        // reads it), and the cap applies to what is in scope, keeping the
+        // newest: capping the namespace's oldest keys first, as this did,
+        // meant a store past the cap never compared anything newer, and a
+        // project's memories could be capped away by other projects'.
+        let filter = omnimem_store::MemoryFilter {
+            project: project_filter.map(str::to_owned),
+            ..omnimem_store::MemoryFilter::default()
+        };
+        let mut entries: Vec<(String, omnimem_store::Fields)> = self
+            .store
+            .list_memories(
+                namespace,
+                &filter,
+                &["content", "state", "project", "project_name", "created_at"],
+            )?
             .into_iter()
-            .zip(rows)
-            .filter_map(|(key, row)| row.map(|r| (key, r)))
             .filter(|(_, r)| {
                 !matches!(
                     r.get("state").map(String::as_str),
                     Some("archived" | "deleted")
                 )
             })
-            .filter(|(_, r)| match project_filter.filter(|p| !p.is_empty()) {
+            .filter(|(_, r)| match project_filter {
                 Some(project) => doc_project(r) == Some(project),
                 None => true,
             })
             .collect();
+        if entries.len() > MAX_DEDUP_KEYS {
+            warn!(
+                cap = MAX_DEDUP_KEYS,
+                total = entries.len(),
+                "dedup scan capped to the newest memories"
+            );
+            entries.drain(..entries.len() - MAX_DEDUP_KEYS);
+        }
         if entries.len() < 2 {
             return Ok(Vec::new());
         }
