@@ -101,6 +101,14 @@ Everything it produces is a proposal, exactly what `compile_skill(mode="propose"
 
 Ignoring a draft declines it. The proposal expires after `SKILL_PROPOSAL_TTL_SECONDS` (a day), and OmniMem remembers what it proposed so the identical draft isn't raised again. Only when the underlying lessons change does that domain come back round.
 
+The Skills page's **Could become skills** section shows the scan's working. It lists the domains with no skill yet (up to ten, biggest first) that have at least one lesson, with how many of their memories carry one, how many rules clear the gate, and what each still needs before the scan would draft it. From there you can:
+
+- **Look for new skills**, which runs the scan now rather than waiting for an agent's next briefing. It restarts the 24-hour clock.
+- **Draft it anyway**, for a domain short of the scan's bar (fewer than three memories, say, or a rule from one project only). That's the same propose a New skill makes, so it still needs a rule that clears the gate.
+- **Bless** a memory whose lesson has only been seen once, which carries that lesson over the gate on its own, as `bless()` does over MCP.
+
+Whatever you draft waits in Pending proposals like any other.
+
 ## Tuning
 
 All of these are in the [configuration reference](configuration.md):

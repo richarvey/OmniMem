@@ -659,6 +659,95 @@ fn a_knowledge_watch_suggestion_goes_once_dismissed_or_promoted() {
 }
 
 #[test]
+fn skill_candidates_say_what_each_domain_still_needs() {
+    let e = engine();
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    lesson(
+        &e,
+        "mem:episodic:01G",
+        "golang",
+        "alpha",
+        "keep goroutines bounded",
+    );
+
+    let candidates = e.skill_candidates().unwrap();
+    let of = |domain: &str| {
+        candidates
+            .iter()
+            .find(|c| c["domain"] == domain)
+            .cloned()
+            .unwrap_or_else(|| panic!("{domain} in {candidates:?}"))
+    };
+    let python = of("python");
+    assert_eq!(python["lessons"], 2);
+    assert_eq!(python["rules"], 1);
+    assert_eq!(python["spans_projects"], true);
+    assert_eq!(python["can_draft"], true);
+    assert_eq!(python["ready"], false, "the scan wants three memories");
+    assert_eq!(python["needs"], json!(["1 more memory with a lesson"]));
+
+    let golang = of("golang");
+    assert_eq!(golang["can_draft"], false);
+    assert_eq!(
+        golang["held_back"][0]["sources"],
+        json!(["mem:episodic:01G"])
+    );
+    e.bless("mem:episodic:01G").unwrap();
+    let blessed = e.skill_candidates().unwrap();
+    let golang = blessed.iter().find(|c| c["domain"] == "golang").unwrap();
+    assert_eq!(
+        golang["can_draft"], true,
+        "a blessed lesson clears the gate"
+    );
+
+    // A domain with a draft waiting is no longer a candidate.
+    propose(&e, "python");
+    assert!(
+        e.skill_candidates()
+            .unwrap()
+            .iter()
+            .all(|c| c["domain"] != "python")
+    );
+}
+
+#[test]
+fn a_scan_asked_for_runs_whatever_the_time_gate_says() {
+    let e = engine_with(EngineConfig {
+        skill_scan_interval_hours: 24.0,
+        skill_scan_min_pool: 2,
+        ..config()
+    });
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    assert!(
+        e.briefing(Some("alpha"), false).unwrap()["auto_proposed_skills"].is_object(),
+        "the briefing's scan ran and drafted"
+    );
+    e.discard_skill_proposal("python").unwrap();
+    lesson(
+        &e,
+        "mem:episodic:01C",
+        "python",
+        "gamma",
+        "prefer small functions",
+    );
+    lesson(
+        &e,
+        "mem:episodic:01D",
+        "python",
+        "delta",
+        "prefer small functions",
+    );
+
+    // The briefing's gate is shut for a day; a person's scan isn't.
+    assert!(e.briefing(Some("alpha"), false).unwrap()["auto_proposed_skills"].is_null());
+    let scan = e.scan_for_skills().unwrap();
+    assert_eq!(scan["proposals"][0]["domain"], "python", "{scan}");
+    assert_eq!(scan["proposals"][0]["new_skill"], true);
+}
+
+#[test]
 fn the_auto_scan_proposes_once_and_respects_an_ignored_draft() {
     let e = engine_with(EngineConfig {
         skill_scan_interval_hours: 24.0,

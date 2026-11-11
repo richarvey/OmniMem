@@ -344,13 +344,13 @@ fn stash_proposal(engine: &Engine, based_on: &str) {
 async fn pending_proposals_list_with_their_draft_and_count() {
     let (panel, engine, dir) = setup();
     let none = text(&get(&panel, "/skills").await);
-    assert!(!none.contains("Pending proposals"), "{none}");
+    assert!(!none.contains(r#"id="pending-proposals""#), "{none}");
 
     // Stashed straight into the store, as an agent's proposal is: the menu's
     // count is cached for a short while, so it isn't read before this.
     stash_proposal(&engine, "");
     let list = text(&get(&panel, "/skills").await);
-    assert!(list.contains("Pending proposals"), "{list}");
+    assert!(list.contains(r#"id="pending-proposals""#), "{list}");
     assert!(list.contains("new skill"), "{list}");
     assert!(list.contains("# Rust"), "the draft is shown: {list}");
     assert!(list.contains("Accept &amp; write skill"));
@@ -532,7 +532,7 @@ async fn skill_suggestions_show_on_the_dashboard_and_skills_page_and_can_be_sett
 
     let list = text(&get(&panel, "/skills").await);
     assert!(!list.contains("Suggested for your skills"), "{list}");
-    assert!(list.contains("Pending proposals"));
+    assert!(list.contains(r#"id="pending-proposals""#));
     let dashboard = text(&get(&panel, "/").await);
     assert!(!dashboard.contains("skill suggestion"), "{dashboard}");
 
@@ -546,5 +546,103 @@ async fn skill_suggestions_show_on_the_dashboard_and_skills_page_and_can_be_sett
         .await,
     );
     assert!(refused.starts_with("/skills?error="), "{refused}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// An episodic memory carrying a lesson, tagged with a domain.
+fn lesson(engine: &Engine, key: &str, domain: &str, project: &str, text: &str) {
+    let now = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let fields = Fields::from([
+        ("content".to_owned(), format!("work on {project}")),
+        ("tags".to_owned(), format!(r#"["{domain}"]"#)),
+        ("project".to_owned(), project.to_owned()),
+        ("outcome".to_owned(), "succeeded".to_owned()),
+        ("effort_score".to_owned(), "3".to_owned()),
+        ("lesson".to_owned(), text.to_owned()),
+        ("state".to_owned(), "active".to_owned()),
+        ("created_at".to_owned(), now.clone()),
+        ("updated_at".to_owned(), now),
+    ]);
+    let vector = engine.embed_texts(&[text]).unwrap().remove(0);
+    engine.store().upsert(key, &fields, Some(&vector)).unwrap();
+}
+
+#[tokio::test]
+async fn domains_that_could_become_skills_list_and_draft() {
+    let (panel, engine, dir) = setup();
+    let lazy = text(&get(&panel, "/skills").await);
+    assert!(lazy.contains("Could become skills"), "{lazy}");
+    assert!(lazy.contains(r#"hx-get="/admin/skills/candidates""#));
+    assert!(lazy.contains(r#"action="/admin/skills/scan""#));
+    let none = text(&get(&panel, "/skills/candidates").await);
+    assert!(
+        none.contains("No domain without a skill has a lesson yet"),
+        "{none}"
+    );
+
+    let queues = "always use boring queues for background work";
+    lesson(&engine, "mem:episodic:01A", "python", "alpha", queues);
+    lesson(&engine, "mem:episodic:01B", "python", "beta", queues);
+    lesson(
+        &engine,
+        "mem:episodic:01G",
+        "golang",
+        "alpha",
+        "keep goroutines bounded",
+    );
+    let listed = text(&get(&panel, "/skills/candidates").await);
+    assert!(listed.contains("<strong>python</strong>"), "{listed}");
+    assert!(listed.contains("1 more memory with a lesson"), "{listed}");
+    assert!(listed.contains("Draft it anyway"));
+    assert!(
+        listed.contains("keep goroutines bounded"),
+        "golang's lesson is held back"
+    );
+    assert!(listed.contains(r#"value="mem:episodic:01G""#));
+
+    // Nothing clears the scan's bar of three memories, and it says so.
+    let scanned = landed(&post(&panel, "/skills/scan", "").await);
+    assert!(scanned.contains("Nothing%20new"), "{scanned}");
+
+    let blessed = landed(&post(&panel, "/skills/bless", "key=mem%3Aepisodic%3A01G").await);
+    assert!(blessed.starts_with("/skills?message="), "{blessed}");
+    assert_eq!(
+        engine.store().get("mem:episodic:01G").unwrap().unwrap()["blessed"],
+        "1"
+    );
+    let refused = landed(&post(&panel, "/skills/bless", "key=mem%3Aknowledge%3A01K").await);
+    assert!(refused.starts_with("/skills?error="), "{refused}");
+
+    let drafted = landed(&post(&panel, "/skills/candidates/draft", "domain=python").await);
+    assert!(drafted.starts_with("/skills?message=Drafted"), "{drafted}");
+    assert!(
+        engine
+            .store()
+            .hash_get_all("meta:skill:proposal:python-local")
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        engine
+            .store()
+            .get("mem:skill:gen:python-local")
+            .unwrap()
+            .is_none(),
+        "only a draft: the skill waits for an accept"
+    );
+    let after = text(&get(&panel, "/skills/candidates").await);
+    assert!(
+        !after.contains("<strong>python</strong>"),
+        "a drafted domain leaves the list"
+    );
+
+    let nothing = landed(&post(&panel, "/skills/candidates/draft", "domain=ruby").await);
+    assert!(nothing.starts_with("/skills?error="), "{nothing}");
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -258,6 +258,10 @@ impl Panel {
             .route("/skills/commit", post(skills::commit))
             .route("/skills/discard", post(skills::discard))
             .route("/skills/delete", post(skills::delete))
+            .route("/skills/candidates", get(skills::candidates))
+            .route("/skills/candidates/draft", post(skills::draft_candidate))
+            .route("/skills/scan", post(skills::scan))
+            .route("/skills/bless", post(skills::bless))
             .route(
                 "/skills/suggestions/accept",
                 post(skills::accept_suggestion),

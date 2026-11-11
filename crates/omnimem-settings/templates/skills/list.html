@@ -169,6 +169,25 @@
 </section>
 {% endif %}
 
+<section class="pending-proposals" id="skill-candidates" aria-labelledby="skill-candidates-h">
+  <div class="pending-head">
+    <h2 id="skill-candidates-h" class="section-heading">Could become skills</h2>
+    <form method="POST" action="{{ admin }}/skills/scan" style="margin-left:auto">
+      <button type="submit" class="btn btn-secondary btn-sm">Look for new skills</button>
+    </form>
+  </div>
+  <p class="section-note">
+    Domains your memories are tagged with that have no skill yet, and how close
+    each is. OmniMem drafts the ready ones itself about once a day, when an
+    agent opens a session; Look for new skills does it now. Draft one that
+    isn't ready if you're happy with what it has. Either way the draft waits in
+    Pending proposals for you to accept.
+  </p>
+  <div id="skill-candidates-body" hx-get="{{ admin }}/skills/candidates" hx-trigger="load" aria-live="polite">
+    <p class="section-note">Working out which domains are close…</p>
+  </div>
+</section>
+
 {% if skills %}
 <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table skills-table">

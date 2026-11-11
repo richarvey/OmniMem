@@ -464,6 +464,139 @@ pub(crate) async fn dismiss_suggestion(
     }
 }
 
+/// GET `/skills/candidates`: the domains that could become skills and what
+/// each still needs, as a partial the Skills page loads after itself, since
+/// working it out embeds every candidate's lessons.
+pub(crate) async fn candidates(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    match blocking(move || engine.skill_candidates()).await {
+        Ok(candidates) => page(
+            state.templates(),
+            "skills/_candidates.html",
+            context! { candidates },
+        ),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/scan`: run the automatic skill scan now. It only stashes
+/// proposals, which wait in Pending proposals for a person.
+pub(crate) async fn scan(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let scanned = blocking(move || engine.scan_for_skills()).await;
+    state.invalidate_counts();
+    match scanned {
+        Ok(scan) => {
+            let domains: Vec<&str> = scan["proposals"]
+                .as_array()
+                .map(|p| p.iter().filter_map(|p| p["domain"].as_str()).collect())
+                .unwrap_or_default();
+            let message = match domains.as_slice() {
+                [] => "Nothing new is ready to be a skill yet. Could become skills says what \
+                       each domain still needs."
+                    .to_owned(),
+                [one] => format!("Drafted {one}. It's waiting in Pending proposals."),
+                many => format!(
+                    "Drafted {}. They're waiting in Pending proposals.",
+                    many.join(", ")
+                ),
+            };
+            see_other(&format!(
+                "/skills?message={}#pending-proposals",
+                quote(&message)
+            ))
+        }
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/candidates/draft`: propose a new skill for a candidate
+/// domain, short of what the scan asks for. The draft waits in Pending
+/// proposals; an existing skill is refused, as the New skill modal does.
+pub(crate) async fn draft_candidate(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let domain = match domain_from(&form, "Missing domain.") {
+        Ok(domain) => domain,
+        Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+    };
+    let result = blocking(move || {
+        let skill_id = generated_skill_key(&domain, &engine.config().skill_user);
+        if engine.store().get(&skill_id)?.is_some() {
+            return Ok(Err(format!("There's already a skill for {domain}.")));
+        }
+        let proposed = refusal(engine.compile_skill(
+            &domain,
+            "propose",
+            MIN_REINFORCEMENT,
+            INCLUDE_GRAVEYARD,
+            None,
+            None,
+        ))?;
+        Ok(if proposed["status"] == "proposal" {
+            info!(
+                domain,
+                "drafted a skill for a candidate domain from the settings panel"
+            );
+            Ok(format!(
+                "Drafted {domain}. It's waiting in Pending proposals."
+            ))
+        } else {
+            Err(format!(
+                "{domain} couldn't be drafted: {}",
+                proposed["note"]
+                    .as_str()
+                    .or_else(|| proposed["reason"].as_str())
+                    .unwrap_or("the compiler gave no reason")
+            ))
+        })
+    })
+    .await;
+    state.invalidate_counts();
+    match result {
+        Ok(Ok(message)) => see_other(&format!(
+            "/skills?message={}#pending-proposals",
+            quote(&message)
+        )),
+        Ok(Err(reason)) => see_other(&format!("/skills?error={}", quote(&reason))),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/bless`: mark an episodic memory skill-eligible, so its
+/// lesson clears the reinforcement gate on the next compile of its domains.
+pub(crate) async fn bless(State(state): State<PanelState>, Form(form): Form<FormData>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let key = form.get("key").map_or("", |k| k.trim()).to_owned();
+    if !key.starts_with("mem:episodic:") {
+        return see_other(&format!(
+            "/skills?error={}",
+            quote("Only an episodic memory can be blessed.")
+        ));
+    }
+    let blessed = blocking(move || engine.bless(&key)).await;
+    match blessed {
+        Ok(result) if result["status"] == "not_found" => {
+            see_other(&format!("/skills?error={}", quote("That memory has gone.")))
+        }
+        Ok(_) => see_other(&format!(
+            "/skills?message={}#skill-candidates",
+            quote("Blessed. Its lesson now counts towards a skill without being seen twice.")
+        )),
+        Err(failure) => failure,
+    }
+}
+
 pub(crate) async fn delete(
     State(state): State<PanelState>,
     Form(form): Form<FormData>,

@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use serde_json::{Map, Value, json};
 use tracing::info;
 
-use crate::compiler::proposal_key;
+use crate::compiler::{held_back_preview, proposal_key};
 use crate::domains::is_valid_domain;
 use crate::pyfmt::{now_secs, py_float};
 use crate::skills::{
@@ -122,6 +122,97 @@ impl Engine {
         Ok(Some(Value::Object(entry)))
     }
 
+    /// Domains with no skill and no live proposal, largest pools first
+    /// (a project declaring a domain counts towards it), at most
+    /// `MAX_CANDIDATES`.
+    fn candidate_domains(
+        &self,
+        existing: &HashSet<String>,
+        pending: &HashSet<String>,
+    ) -> Result<Vec<String>> {
+        let mut counts = self.known_domains()?;
+        // Boost, never introduce: a domain nothing is tagged with would be
+        // dropped at the pool gate anyway.
+        let project_domains = self.domain_map()?;
+        for (domain, count) in &mut counts {
+            if let Some(projects) = project_domains.get(domain) {
+                *count += PROJECT_DOMAIN_WEIGHT * projects.len();
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(counts
+            .into_iter()
+            .map(|(d, _)| d)
+            .filter(|d| !existing.contains(d) && !pending.contains(d) && is_valid_domain(d))
+            .take(MAX_CANDIDATES)
+            .collect())
+    }
+
+    /// Run the scan now, whatever its time gate says, for a person who asked
+    /// (the settings panel's Look for new skills). Like the briefing's, it
+    /// only stashes proposals, and it restarts the interval.
+    pub fn scan_for_skills(&self) -> Result<Value> {
+        let domains: Vec<String> = self
+            .pending_skill_updates()?
+            .iter()
+            .filter_map(|u| u["domain"].as_str().map(str::to_owned))
+            .collect();
+        self.run_skill_scan(&domains)
+    }
+
+    /// The domains the scan looks at and how far each is from a skill:
+    /// memories tagged with it, how many carry a lesson, the rules that
+    /// already clear the reinforcement gate, and what is still missing.
+    /// `ready` is what the scan would draft; `can_draft` is whether a
+    /// person's own propose would produce a draft now (a rule clears the
+    /// gate). `held_back` are the lessons seen only once, which `bless()`
+    /// can carry over the gate. Domains without a single lesson are left
+    /// out. Reads only; it embeds each domain's lessons to cluster them, so
+    /// it is not cheap.
+    pub fn skill_candidates(&self) -> Result<Vec<Value>> {
+        let min_pool = self.config.skill_scan_min_pool.max(1) as usize;
+        let cross_project = self.config.skill_scan_cross_project;
+        let existing = self.existing_skill_domains()?;
+        let pending = self.pending_proposal_domains()?;
+        let candidates = self.candidate_domains(&existing, &pending)?;
+        let pools = self.gather_domain_pools(&candidates)?;
+        let mut out = Vec::new();
+        for domain in &candidates {
+            let pool = pools.get(domain).map(Vec::as_slice).unwrap_or_default();
+            let lessons = pool.iter().filter(|m| lesson_bearing(m)).count();
+            if lessons == 0 {
+                continue;
+            }
+            let (eligible, held_back) = self.build_rules(&extract_lessons(pool, true), 2)?;
+            let spans_projects = eligible.iter().any(|r| r.projects.len() >= 2);
+            let mut needs: Vec<String> = Vec::new();
+            if lessons < min_pool {
+                let short = min_pool - lessons;
+                needs.push(format!(
+                    "{short} more memor{} with a lesson",
+                    if short == 1 { "y" } else { "ies" }
+                ));
+            }
+            if eligible.is_empty() {
+                needs.push("a lesson that recurs in a second memory, or a blessed one".to_owned());
+            } else if cross_project && !spans_projects {
+                needs.push("a rule that holds in a second project".to_owned());
+            }
+            out.push(json!({
+                "domain": domain,
+                "memories": pool.len(),
+                "lessons": lessons,
+                "rules": eligible.len(),
+                "spans_projects": spans_projects,
+                "ready": needs.is_empty(),
+                "can_draft": !eligible.is_empty(),
+                "needs": needs,
+                "held_back": held_back_preview(&held_back, 5),
+            }));
+        }
+        Ok(out)
+    }
+
     /// One scan pass. `update_domains` are skills the briefing already knows
     /// have pending changes.
     pub(crate) fn run_skill_scan(&self, update_domains: &[String]) -> Result<Value> {
@@ -136,22 +227,7 @@ impl Engine {
         let mut proposals: Vec<Value> = Vec::new();
         let mut checked = 0;
 
-        let mut counts = self.known_domains()?;
-        // Boost, never introduce: a domain nothing is tagged with would be
-        // dropped at the pool gate anyway.
-        let project_domains = self.domain_map()?;
-        for (domain, count) in &mut counts {
-            if let Some(projects) = project_domains.get(domain) {
-                *count += PROJECT_DOMAIN_WEIGHT * projects.len();
-            }
-        }
-        counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let candidates: Vec<String> = counts
-            .into_iter()
-            .map(|(d, _)| d)
-            .filter(|d| !existing.contains(d) && !pending.contains(d) && is_valid_domain(d))
-            .take(MAX_CANDIDATES)
-            .collect();
+        let candidates = self.candidate_domains(&existing, &pending)?;
 
         let pools = self.gather_domain_pools(&candidates)?;
         for domain in &candidates {
