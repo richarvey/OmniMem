@@ -1,14 +1,17 @@
-//! OmniMem in Claude Desktop, Claude Code and OpenCode, from the tray menu:
+//! OmniMem in Claude Desktop, Claude Code, OpenCode and Mistral Vibe, from
+//! the tray menu:
 //! whether each already has it, adding it, and switching an `omnimem` entry
 //! that points at another server (a 6.x install, say) to this one. Nothing is
 //! ever added twice: an entry that reaches this server, under any name, counts.
-//! OpenCode also gets OmniMem's hooks, as a plugin (`omnimem_app::opencode`).
+//! OpenCode also gets OmniMem's hooks, as a plugin (`omnimem_app::opencode`),
+//! and Vibe gets them in its `hooks.toml` (`omnimem_app::vibe`).
 //!
 //! Claude Desktop's config file is small and only Claude Desktop writes it, at
 //! start, so it's edited here, after a backup. Claude Code's `~/.claude.json`
 //! is rewritten all the time by running sessions, so it's only ever read
 //! here; changes go through Claude Code's own `claude mcp` commands.
-//! OpenCode's `opencode.json` is edited like Claude Desktop's, after a backup.
+//! OpenCode's `opencode.json` is edited like Claude Desktop's, after a backup,
+//! and so is Vibe's `config.toml`, keeping its comments and layout.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,10 @@ pub enum Client {
     OpenCode,
     /// OmniMem's hooks in OpenCode, which is its plugin.
     OpenCodeHooks,
+    /// Mistral's Vibe CLI.
+    Vibe,
+    /// OmniMem's hooks in Vibe's `hooks.toml`.
+    VibeHooks,
 }
 
 impl Client {
@@ -34,6 +41,7 @@ impl Client {
             Client::Desktop => "Claude Desktop",
             Client::Code => "Claude Code",
             Client::OpenCode | Client::OpenCodeHooks => "OpenCode",
+            Client::Vibe | Client::VibeHooks => "Mistral Vibe",
         }
     }
 }
@@ -450,6 +458,58 @@ pub fn opencode_hooks_presence(installed: bool, path: Option<&Path>, source: &st
     }
 }
 
+/// Whether Vibe, with its settings at `path`, has OmniMem.
+pub fn vibe_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+    let Some(path) = path.filter(|_| installed) else {
+        return Presence::NotInstalled;
+    };
+    match omnimem_app::vibe::mcp_servers(path) {
+        Ok(servers) => {
+            // In the shape the JSON clients' entries have, so they're judged
+            // the same way: a URL, or a bridge command's URL argument.
+            let servers: serde_json::Map<String, Value> = servers
+                .into_iter()
+                .map(|server| {
+                    let mut entry = json!({ "args": server.args });
+                    if let Some(url) = server.url {
+                        entry["url"] = json!(url);
+                    }
+                    if let Some(command) = server.command {
+                        entry["command"] = json!(command);
+                    }
+                    (server.name, entry)
+                })
+                .collect();
+            presence_among(&servers, mcp_url)
+        }
+        Err(e) => Presence::Unreadable(format!("{e:#}")),
+    }
+}
+
+/// Add this server to Vibe's `config.toml` at `path`, or point its `omnimem`
+/// entry here.
+pub fn write_vibe(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    omnimem_app::vibe::write_mcp_server(path, mcp_url, token).map_err(|e| format!("{e:#}"))
+}
+
+/// Whether OmniMem's hooks are in Vibe's `hooks.toml` at `path`, against what
+/// would be written now for hooks starting with `base`.
+pub fn vibe_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
+    use omnimem_app::vibe::{HooksState, hooks_state};
+    let Some(path) = path.filter(|_| installed) else {
+        return Presence::NotInstalled;
+    };
+    match hooks_state(path, base) {
+        HooksState::Missing => Presence::Absent,
+        HooksState::Current => Presence::Here,
+        HooksState::Outdated => Presence::Elsewhere {
+            name: SERVER_NAME.to_owned(),
+            target: "older hooks".to_owned(),
+        },
+        HooksState::Unreadable(why) => Presence::Unreadable(why),
+    }
+}
+
 /// The file's JSON, `None` when it's missing or empty.
 fn read_json(path: &Path) -> Result<Option<Value>, String> {
     let file = path
@@ -827,5 +887,69 @@ mod tests {
             write_code(&cli, Some("Broken"), URL, None),
             Err("No MCP server named Broken".to_owned())
         );
+    }
+
+    #[test]
+    fn vibe_is_read_and_written_in_its_config_toml() {
+        let dir = scratch("vibe");
+        let config = dir.join("config.toml");
+        assert_eq!(
+            vibe_presence(false, Some(&config), URL),
+            Presence::NotInstalled
+        );
+        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Absent);
+
+        // A 6.x server through mcp-remote is somewhere else.
+        std::fs::write(
+            &config,
+            "[[mcp_servers]]\nname = \"omnimem\"\ntransport = \"stdio\"\ncommand = \"npx\"\nargs = [\"mcp-remote\", \"http://nas:8765/mcp\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            vibe_presence(true, Some(&config), URL),
+            Presence::Elsewhere {
+                name: "omnimem".into(),
+                target: "http://nas:8765/mcp".into()
+            }
+        );
+        write_vibe(&config, URL, None).unwrap();
+        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Here);
+
+        // Under another name and at localhost, it's still this server.
+        std::fs::write(
+            &config,
+            "[[mcp_servers]]\nname = \"memory\"\ntransport = \"http\"\nurl = \"http://localhost:8765/mcp/\"\n",
+        )
+        .unwrap();
+        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Here);
+
+        std::fs::write(&config, "mcp_servers = [\n").unwrap();
+        assert!(matches!(
+            vibe_presence(true, Some(&config), URL),
+            Presence::Unreadable(_)
+        ));
+    }
+
+    #[test]
+    fn vibes_hooks_are_reported_against_what_would_be_written() {
+        let dir = scratch("vibe-hooks");
+        let hooks = dir.join("hooks.toml");
+        assert_eq!(
+            vibe_hooks_presence(false, Some(&hooks), "/opt/omnimem"),
+            Presence::NotInstalled
+        );
+        assert_eq!(
+            vibe_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Absent
+        );
+        omnimem_app::vibe::write_hooks(&hooks, "/opt/omnimem").unwrap();
+        assert_eq!(
+            vibe_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Here
+        );
+        assert!(matches!(
+            vibe_hooks_presence(true, Some(&hooks), "/usr/bin/omnimem"),
+            Presence::Elsewhere { .. }
+        ));
     }
 }

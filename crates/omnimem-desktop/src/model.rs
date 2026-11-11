@@ -48,6 +48,10 @@ pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpa
 pub const OPENCODE_IN_FLATPAK: &str = "Add to OpenCode (unavailable in the Flatpak)";
 pub const OPENCODE_HOOKS_IN_FLATPAK: &str = "Add hooks to OpenCode (unavailable in the Flatpak)";
 
+/// The Vibe items inside a Flatpak, for the same reasons as OpenCode's.
+pub const VIBE_IN_FLATPAK: &str = "Add to Mistral Vibe (unavailable in the Flatpak)";
+pub const VIBE_HOOKS_IN_FLATPAK: &str = "Add hooks to Mistral Vibe (unavailable in the Flatpak)";
+
 /// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
@@ -67,7 +71,7 @@ pub fn client_item(
     error: Option<&str>,
 ) -> (String, bool) {
     let name = client.name();
-    if client == Client::OpenCodeHooks {
+    if matches!(client, Client::OpenCodeHooks | Client::VibeHooks) {
         return hooks_item(name, presence, busy, changed, error);
     }
     if busy {
@@ -91,7 +95,8 @@ pub fn client_item(
     }
 }
 
-/// The item for OmniMem's hooks in a client (OpenCode's plugin). It sits
+/// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
+/// hooks.toml). It sits
 /// under the client's own item, which already says when the client isn't
 /// here, so this one just stays greyed out then.
 fn hooks_item(
@@ -314,6 +319,44 @@ mod tests {
                 None
             ),
             ("Adding OmniMem's hooks to OpenCode…".into(), false)
+        );
+    }
+
+    #[test]
+    fn vibe_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        let item = |client, presence: Presence, changed| {
+            client_item(client, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            item(Client::Vibe, Presence::Absent, false),
+            ("Add to Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(Client::Vibe, Presence::NotInstalled, false),
+            ("Mistral Vibe not found".into(), false)
+        );
+        assert_eq!(
+            item(Client::Vibe, Presence::Here, true),
+            ("✓ In Mistral Vibe (restart it to connect)".into(), false)
+        );
+        assert_eq!(
+            item(Client::VibeHooks, Presence::Absent, false),
+            ("Add hooks to Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(
+                Client::VibeHooks,
+                Presence::Elsewhere {
+                    name: "omnimem".into(),
+                    target: "older hooks".into()
+                },
+                false
+            ),
+            ("Update hooks in Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(Client::VibeHooks, Presence::Here, false),
+            ("✓ Hooks in Mistral Vibe".into(), false)
         );
     }
 

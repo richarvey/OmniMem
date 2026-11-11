@@ -1,13 +1,15 @@
 //! `omnimem install-hooks`: put the three Claude Code hooks from
 //! docs/claude-code-hook.md into a settings file, leaving alone any event
 //! that already has one. With `--opencode`, write OmniMem's OpenCode plugin
-//! instead (guides/opencode.md), which runs the same hooks.
+//! instead (guides/opencode.md), which runs the same hooks, and with
+//! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use omnimem_app::opencode::{self, PluginState, without_verbatim};
+use omnimem_app::vibe::{self, HooksState};
 use serde_json::{Map, Value, json};
 
 /// The hooks, as the guide gives them: event, matcher, `hook` argument and
@@ -27,23 +29,33 @@ enum Outcome {
     Present(String),
 }
 
-pub(crate) fn run(
-    db: Option<&Path>,
-    project: bool,
-    dry_run: bool,
-    for_opencode: bool,
-) -> Result<()> {
+/// Which agent the hooks are for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Target {
+    ClaudeCode,
+    OpenCode,
+    Vibe,
+}
+
+pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Target) -> Result<()> {
     if std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()) {
-        bail!(if for_opencode {
-            "the Flatpak's sandbox can't reach OpenCode's config folder, and OpenCode outside it \
-             can't run the Flatpak's omnimem. Install OmniMem's package to use the OpenCode hooks"
-        } else {
-            "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
-             see docs/claude-code-hook.md"
+        bail!(match target {
+            Target::OpenCode =>
+                "the Flatpak's sandbox can't reach OpenCode's config folder, and OpenCode outside \
+                 it can't run the Flatpak's omnimem. Install OmniMem's package to use the \
+                 OpenCode hooks",
+            Target::Vibe =>
+                "the Flatpak's sandbox can't reach Vibe's folder, and Vibe outside it can't run \
+                 the Flatpak's omnimem. Install OmniMem's package to use the Vibe hooks",
+            Target::ClaudeCode =>
+                "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
+                 see docs/claude-code-hook.md",
         });
     }
-    if for_opencode {
-        return run_opencode(db, project, dry_run);
+    match target {
+        Target::OpenCode => return run_opencode(db, project, dry_run),
+        Target::Vibe => return run_vibe(db, project, dry_run),
+        Target::ClaudeCode => {}
     }
     let path = if project {
         std::env::current_dir()?
@@ -110,6 +122,57 @@ fn run_opencode(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
     opencode::write_plugin(&path, &source)?;
     println!(
         "  {done} the OmniMem plugin\nOpenCode loads it from its next start. See guides/opencode.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks in Vibe's hooks.toml, globally or for the project in
+/// this folder.
+fn run_vibe(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = vibe::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Vibe's in"))?;
+    let base = vibe::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let verb = match vibe::hooks_state(&path, &base) {
+        HooksState::Current => {
+            println!("OmniMem's hooks are already there; nothing changed.");
+            return Ok(());
+        }
+        HooksState::Unreadable(why) => bail!("couldn't use {}: {why}", path.display()),
+        HooksState::Missing => {
+            if dry_run {
+                "would add"
+            } else {
+                "added"
+            }
+        }
+        HooksState::Outdated => {
+            if dry_run {
+                "would update"
+            } else {
+                "updated"
+            }
+        }
+    };
+    for hook in &vibe::HOOKS {
+        println!(
+            "  {verb:<12} {:<14} {}",
+            hook.kind,
+            vibe::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    vibe::write_hooks(&path, &base)?;
+    if project {
+        println!("Vibe reads them once this folder is trusted.");
+    }
+    println!(
+        "Vibe uses them from its next session (the briefing needs Vibe 3.1.1 or later). \
+         See guides/vibe.md."
     );
     Ok(())
 }

@@ -11,6 +11,9 @@ choosing to use it. Three events:
 
 OpenCode gets the first two through a plugin that runs the same command; see
 [guides/opencode.md](../guides/opencode.md#hooks-stopping-known-dead-ends).
+Mistral Vibe runs the same command from its `hooks.toml`, with `--agent vibe`
+so the answer is in Vibe's form; see
+[guides/vibe.md](../guides/vibe.md#hooks-stopping-known-dead-ends).
 
 ## Why these exist
 

@@ -11,6 +11,7 @@ mod instance;
 pub mod opencode;
 mod services;
 mod update;
+pub mod vibe;
 
 pub use instance::{Instance, InstanceLock, acquire, request_show, take_show_request};
 pub use omnimem_mcp::{ContextOverhead, context_overhead};

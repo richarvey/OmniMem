@@ -79,6 +79,8 @@ struct TrayMenu {
     code: MenuItem,
     opencode: MenuItem,
     opencode_hooks: MenuItem,
+    vibe: MenuItem,
+    vibe_hooks: MenuItem,
     start_at_login: CheckMenuItem,
     quit: MenuItem,
 }
@@ -96,6 +98,8 @@ impl TrayMenu {
             code: client_menu_item(Client::Code),
             opencode: client_menu_item(Client::OpenCode),
             opencode_hooks: client_menu_item(Client::OpenCodeHooks),
+            vibe: client_menu_item(Client::Vibe),
+            vibe_hooks: client_menu_item(Client::VibeHooks),
             start_at_login: CheckMenuItem::new("Start at login", login.is_some(), enabled, None),
             quit: MenuItem::new("Quit OmniMem", true, None),
         };
@@ -109,6 +113,8 @@ impl TrayMenu {
                 &this.code,
                 &this.opencode,
                 &this.opencode_hooks,
+                &this.vibe,
+                &this.vibe_hooks,
                 &this.start_at_login,
                 &PredefinedMenuItem::separator(),
                 &this.quit,
@@ -157,6 +163,11 @@ struct App {
     /// OmniMem's OpenCode plugin as this app would write it: running this
     /// program on this database. `None` if this program can't be found.
     opencode_plugin: Option<String>,
+    vibe: ClientSlot,
+    vibe_hooks: ClientSlot,
+    /// How Vibe's hooks start this program on this database, as this app
+    /// would write them. `None` if this program can't be found.
+    vibe_hook_base: Option<String>,
     clients_checked: Option<Instant>,
     /// The newer release the tray is announcing.
     update: Option<String>,
@@ -404,7 +415,7 @@ impl App {
         }
     }
 
-    /// Read both clients' settings again, against the current MCP URL, and
+    /// Read every client's settings again, against the current MCP URL, and
     /// relabel their menu items. Without a URL there's nothing to add.
     fn check_clients(&mut self) {
         self.clients_checked = Some(Instant::now());
@@ -431,11 +442,25 @@ impl App {
             ),
             None => Presence::Unreadable("this program wasn't found".to_owned()),
         });
+        let vibe_here = url.is_some() && omnimem_app::vibe::installed();
+        self.vibe.presence = url.as_deref().map(|url| {
+            clients::vibe_presence(vibe_here, omnimem_app::vibe::config_path().as_deref(), url)
+        });
+        self.vibe_hooks.presence = url.as_ref().map(|_| match &self.vibe_hook_base {
+            Some(base) => clients::vibe_hooks_presence(
+                vibe_here,
+                omnimem_app::vibe::hooks_path(None).as_deref(),
+                base,
+            ),
+            None => Presence::Unreadable("this program wasn't found".to_owned()),
+        });
         for client in [
             Client::Desktop,
             Client::Code,
             Client::OpenCode,
             Client::OpenCodeHooks,
+            Client::Vibe,
+            Client::VibeHooks,
         ] {
             self.relabel(client);
         }
@@ -447,6 +472,8 @@ impl App {
             Client::Code => &mut self.code,
             Client::OpenCode => &mut self.opencode,
             Client::OpenCodeHooks => &mut self.opencode_hooks,
+            Client::Vibe => &mut self.vibe,
+            Client::VibeHooks => &mut self.vibe_hooks,
         }
     }
 
@@ -456,12 +483,16 @@ impl App {
             Client::Code => (&self.code, &self.menu.code),
             Client::OpenCode => (&self.opencode, &self.menu.opencode),
             Client::OpenCodeHooks => (&self.opencode_hooks, &self.menu.opencode_hooks),
+            Client::Vibe => (&self.vibe, &self.menu.vibe),
+            Client::VibeHooks => (&self.vibe_hooks, &self.menu.vibe_hooks),
         };
         let flatpak_text = match client {
             Client::Desktop => None,
             Client::Code => Some(model::CODE_IN_FLATPAK),
             Client::OpenCode => Some(model::OPENCODE_IN_FLATPAK),
             Client::OpenCodeHooks => Some(model::OPENCODE_HOOKS_IN_FLATPAK),
+            Client::Vibe => Some(model::VIBE_IN_FLATPAK),
+            Client::VibeHooks => Some(model::VIBE_HOOKS_IN_FLATPAK),
         };
         let (text, enabled) = if let Some(text) = flatpak_text.filter(|_| self.in_flatpak) {
             (text.to_owned(), false)
@@ -496,6 +527,7 @@ impl App {
         // The token the services check, if one is set, so the client can get in.
         let token = omnimem_core::env::var("MCP_AUTH_TOKEN").filter(|t| !t.is_empty());
         let plugin = self.opencode_plugin.clone();
+        let vibe_base = self.vibe_hook_base.clone();
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
             let result = match client {
@@ -518,6 +550,18 @@ impl App {
                         let path = omnimem_app::opencode::plugin_path(None)
                             .ok_or("no home folder to find OpenCode's config in")?;
                         omnimem_app::opencode::write_plugin(&path, &source)
+                            .map(|_| ())
+                            .map_err(|e| format!("{e:#}"))
+                    }),
+                Client::Vibe => omnimem_app::vibe::config_path()
+                    .ok_or_else(|| "no home folder to find Vibe's in".to_owned())
+                    .and_then(|path| clients::write_vibe(&path, &url, token.as_deref())),
+                Client::VibeHooks => vibe_base
+                    .ok_or_else(|| "this program wasn't found".to_owned())
+                    .and_then(|base| {
+                        let path = omnimem_app::vibe::hooks_path(None)
+                            .ok_or("no home folder to find Vibe's in")?;
+                        omnimem_app::vibe::write_hooks(&path, &base)
                             .map(|_| ())
                             .map_err(|e| format!("{e:#}"))
                     }),
@@ -684,6 +728,10 @@ impl App {
                     self.change_client(Client::OpenCode);
                 } else if id == self.menu.opencode_hooks.id() {
                     self.change_client(Client::OpenCodeHooks);
+                } else if id == self.menu.vibe.id() {
+                    self.change_client(Client::Vibe);
+                } else if id == self.menu.vibe_hooks.id() {
+                    self.change_client(Client::VibeHooks);
                 } else if id == self.menu.start_at_login.id() {
                     self.toggle_start_at_login();
                 } else if id == self.menu.quit.id() {
@@ -833,6 +881,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         })
         .map_err(|e| warn!(error = %format!("{e:#}"), "the OpenCode hooks are unavailable"))
         .ok();
+    let vibe_hook_base = omnimem_app::opencode::this_program()
+        .map(|program| omnimem_app::vibe::hook_base(&program, Some(&options.db)))
+        .ok();
     let mut app = App {
         menu: TrayMenu::new(login.as_ref())?,
         options,
@@ -852,6 +903,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         opencode: ClientSlot::default(),
         opencode_hooks: ClientSlot::default(),
         opencode_plugin,
+        vibe: ClientSlot::default(),
+        vibe_hooks: ClientSlot::default(),
+        vibe_hook_base,
         clients_checked: None,
         update: None,
         started: Instant::now(),

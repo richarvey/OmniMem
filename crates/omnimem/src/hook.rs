@@ -52,6 +52,19 @@ const OPENCODE_GUARDED: [&str; 7] = [
     "patch",
 ];
 
+/// The same tools as Mistral's Vibe names them in a hook's payload, always
+/// by their qualified names (`process.start` is how a background command
+/// starts, so it is a shell too). Vibe passes their arguments under the
+/// same names as Claude Code's (`new_string`, `content`, `command`). The
+/// `match` in the hooks Vibe is given (`omnimem_app::vibe::HOOKS`) names the
+/// same tools by their short names.
+const VIBE_GUARDED: [&str; 4] = [
+    "file_system.edit",
+    "file_system.write_file",
+    "file_system.bash",
+    "process.start",
+];
+
 /// Shell fragments that mean a command changes something rather than looks.
 const MUTATING: [&str; 11] = [
     "cargo add",
@@ -93,6 +106,18 @@ impl TextEmbedder for NoEmbedder {
     fn embed_texts(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         Err("the hook does not embed; it only scans the graveyard".into())
     }
+}
+
+/// Which agent is calling, which decides how the answer is written.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Agent {
+    /// Claude Code, and OmniMem's OpenCode plugin, which speaks for OpenCode
+    /// in Claude Code's terms.
+    #[default]
+    ClaudeCode,
+    /// Mistral's Vibe CLI, whose hooks.toml hooks read `decision` and
+    /// `hook_specific_output`.
+    Vibe,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -306,9 +331,9 @@ pub(crate) fn bash_mutates(command: &str) -> bool {
 pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
     let field = |key: &str| input.get(key).and_then(Value::as_str).unwrap_or_default();
     let text = match tool {
-        "Edit" => field("new_string").to_owned(),
+        "Edit" | "file_system.edit" => field("new_string").to_owned(),
         "edit" => field("newString").to_owned(),
-        "Write" | "write" => field("content").to_owned(),
+        "Write" | "write" | "file_system.write_file" => field("content").to_owned(),
         "NotebookEdit" => field("new_source").to_owned(),
         "apply_patch" | "patch" => added_lines(field("patchText")),
         "multiedit" => input
@@ -322,7 +347,7 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
                     .join("\n")
             })
             .unwrap_or_default(),
-        "Bash" | "bash" | "shell" => {
+        "Bash" | "bash" | "shell" | "file_system.bash" | "process.start" => {
             let command = field("command");
             if bash_mutates(command) {
                 command.to_owned()
@@ -531,8 +556,15 @@ pub(crate) fn deny_reason(warnings: &[String], elsewhere: &[String]) -> String {
     )
 }
 
-fn decision(warnings: &[AbandonedWarning]) -> Value {
+fn decision(agent: Agent, warnings: &[AbandonedWarning]) -> Value {
     let (texts, elsewhere) = split_warnings(warnings);
+    if agent == Agent::Vibe {
+        // Vibe hands `reason` to the model as the tool's error.
+        return json!({
+            "decision": "deny",
+            "reason": deny_reason(&texts, &elsewhere),
+        });
+    }
     json!({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -580,7 +612,10 @@ fn proposal_for(payload: &Value) -> Option<String> {
         .get("tool_name")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if !GUARDED.contains(&tool) && !OPENCODE_GUARDED.contains(&tool) {
+    if !GUARDED.contains(&tool)
+        && !OPENCODE_GUARDED.contains(&tool)
+        && !VIBE_GUARDED.contains(&tool)
+    {
         return None;
     }
     let empty = json!({});
@@ -690,9 +725,27 @@ fn session_start_context(db: &Path, project: &str) -> Result<Option<String>> {
     Ok(briefing_is_worth_showing(&briefing).then(|| render_briefing(project, &briefing)))
 }
 
+/// What a session-start hook prints to hand the session `context`.
+fn session_start_answer(agent: Agent, project: &str, context: &str) -> Value {
+    match agent {
+        Agent::ClaudeCode => json!({
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": context,
+            }
+        }),
+        // Vibe adds the context to the session's first message, out of the
+        // person's sight, and shows `system_message` as the hook's line.
+        Agent::Vibe => json!({
+            "system_message": format!("Briefed on {project}"),
+            "hook_specific_output": { "additional_context": context },
+        }),
+    }
+}
+
 /// Read one hook payload, decide, and print. Never fails the caller: on any
 /// error it stays silent, which Claude Code reads as "carry on".
-pub(crate) fn run(db: &Path, event: Event, project: Option<&str>) -> Result<()> {
+pub(crate) fn run(db: &Path, event: Event, project: Option<&str>, agent: Agent) -> Result<()> {
     let mut raw = String::new();
     if std::io::stdin().read_to_string(&mut raw).is_err() {
         return Ok(());
@@ -702,12 +755,15 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>) -> Result<()> 
     let payload = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({}));
     match event {
         Event::PreToolUse => match warnings_for(db, &payload, project) {
-            Ok(warnings) if !warnings.is_empty() => println!("{}", decision(&warnings)),
+            Ok(warnings) if !warnings.is_empty() => println!("{}", decision(agent, &warnings)),
             Ok(_) => {}
             // To stderr, where it reaches the hook log without being read as a
             // decision. The tool call proceeds.
             Err(error) => eprintln!("omnimem hook: {error}"),
         },
+        // Vibe's transcript isn't Claude Code's, and its hooks don't include
+        // this one, so a stray call records nothing rather than misreading it.
+        Event::SessionEnd if agent == Agent::Vibe => {}
         Event::SessionEnd => {
             let Some(name) = project_name(project, &payload) else {
                 return Ok(());
@@ -721,15 +777,7 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>) -> Result<()> 
                 return Ok(());
             };
             match session_start_context(db, &name) {
-                Ok(Some(context)) => println!(
-                    "{}",
-                    json!({
-                        "hookSpecificOutput": {
-                            "hookEventName": "SessionStart",
-                            "additionalContext": context,
-                        }
-                    })
-                ),
+                Ok(Some(context)) => println!("{}", session_start_answer(agent, &name, &context)),
                 Ok(None) => {}
                 Err(error) => eprintln!("omnimem hook: {error}"),
             }
@@ -1147,6 +1195,107 @@ mod tests {
         assert!(guard(&engine, &payload, Some("beta")).unwrap().is_empty());
     }
 
+    /// Vibe's payload names its tools in full and its arguments as Claude
+    /// Code does, and its answer is `decision` and `reason`.
+    #[test]
+    fn the_hook_denies_a_vibe_call_that_repeats_a_dead_end_in_vibes_terms() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let payload = json!({
+            "hook_event_name": "pre_tool",
+            "session_id": "s1",
+            "parent_session_id": null,
+            "transcript_path": "/tmp/t",
+            "cwd": "/home/me/alpha",
+            "tool_name": "file_system.bash",
+            "tool_call_id": "call_42",
+            "tool_input": {"command": "cargo add kestrel-rs"},
+        });
+        let found = guard(&engine, &payload, None).unwrap();
+        assert_eq!(found.len(), 1);
+        let answer = decision(Agent::Vibe, &found);
+        assert_eq!(answer["decision"], "deny");
+        assert!(
+            answer["reason"]
+                .as_str()
+                .unwrap()
+                .contains("already tried on this project")
+        );
+        assert_eq!(answer.get("hookSpecificOutput"), None);
+
+        let edit = json!({"file_path": "/a.rs", "old_string": "kestrel_rs", "new_string": "tower"});
+        assert_eq!(proposal_text("file_system.edit", &edit), "tower");
+        assert_eq!(
+            proposal_text(
+                "file_system.write_file",
+                &json!({"content": "use kestrel_rs;"})
+            ),
+            "use kestrel_rs;"
+        );
+        assert_eq!(
+            proposal_text("process.start", &json!({"command": "npm install left-pad"})),
+            "npm install left-pad"
+        );
+        assert_eq!(
+            proposal_text("file_system.bash", &json!({"command": "ls vendor"})),
+            ""
+        );
+        for tool in [
+            "file_system.read_file",
+            "file_system.grep",
+            "mcp_omnimem.recall",
+        ] {
+            let call = json!({"tool_name": tool, "tool_input": {"command": "cargo add x"}});
+            assert_eq!(proposal_for(&call), None, "{tool} should not be guarded");
+        }
+    }
+
+    /// Vibe only starts the hook for the tools its `match` names, by their
+    /// short names, so that list and this one must agree.
+    #[test]
+    fn vibes_hooks_match_the_tools_this_hook_guards() {
+        let guard = omnimem_app::vibe::HOOKS
+            .iter()
+            .find(|hook| hook.kind == "pre_tool")
+            .unwrap();
+        let mut matched: Vec<&str> = guard
+            .matcher
+            .strip_prefix("re:")
+            .unwrap()
+            .split('|')
+            .collect();
+        let mut ours: Vec<String> = VIBE_GUARDED
+            .iter()
+            .map(|tool| match tool.split_once('.') {
+                Some(("file_system", short)) => short.to_owned(),
+                _ => tool.replace('.', "_"),
+            })
+            .collect();
+        matched.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(matched, ours);
+        for hook in &omnimem_app::vibe::HOOKS {
+            assert!(
+                Event::from_str(hook.event, false).is_ok(),
+                "{} isn't an event the hook answers",
+                hook.event
+            );
+        }
+    }
+
+    #[test]
+    fn a_vibe_session_starts_with_the_briefing_as_hidden_context() {
+        let answer = session_start_answer(Agent::Vibe, "alpha", "Where alpha stands");
+        assert_eq!(
+            answer,
+            json!({
+                "system_message": "Briefed on alpha",
+                "hook_specific_output": {"additional_context": "Where alpha stands"},
+            })
+        );
+        let claude = session_start_answer(Agent::ClaudeCode, "alpha", "x");
+        assert_eq!(claude["hookSpecificOutput"]["additionalContext"], "x");
+    }
+
     #[test]
     fn under_all_the_refusal_names_the_project_it_came_from() {
         let engine = engine_with_dead_end(GraveyardScope::All);
@@ -1159,10 +1308,11 @@ mod tests {
             found[0].text
         );
 
-        let reason = decision(&found)["hookSpecificOutput"]["permissionDecisionReason"]
-            .as_str()
-            .unwrap()
-            .to_owned();
+        let reason =
+            decision(Agent::ClaudeCode, &found)["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .to_owned();
         assert!(reason.contains("recorded on project alpha"), "{reason}");
         assert!(!reason.contains("on this project"), "{reason}");
         assert!(!reason.contains("this codebase"), "{reason}");

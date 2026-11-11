@@ -169,7 +169,8 @@ enum Command {
         smoke_test: bool,
     },
     /// Answer a Claude Code PreToolUse hook (or OmniMem's OpenCode plugin,
-    /// which sends the same JSON): read the tool call on stdin and,
+    /// which sends the same JSON, or with --agent vibe, Mistral Vibe's
+    /// pre_tool hook): read the tool call on stdin and,
     /// if it proposes an approach this project already abandoned, deny it and
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
@@ -186,6 +187,9 @@ enum Command {
         /// directory name.
         #[arg(long)]
         project: Option<String>,
+        /// The agent calling, which decides how the answer is written.
+        #[arg(long, value_enum, default_value = "claude-code")]
+        agent: hook::Agent,
     },
     /// Add OmniMem's Claude Code hooks (session-start, the pre-tool-use guard
     /// and session-end) to ~/.claude/settings.json, leaving alone any event
@@ -203,8 +207,14 @@ enum Command {
         /// dead-end guard and session-start briefing from inside OpenCode:
         /// to ~/.config/opencode/plugins, or with --project to
         /// .opencode/plugins here. See guides/opencode.md.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "vibe")]
         opencode: bool,
+        /// Put OmniMem's hooks in Mistral Vibe's hooks.toml instead: the
+        /// dead-end guard and, from Vibe 3.1.1, the session-start briefing,
+        /// in ~/.vibe (or $VIBE_HOME), or with --project in .vibe here. See
+        /// guides/vibe.md.
+        #[arg(long)]
+        vibe: bool,
     },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
@@ -309,9 +319,17 @@ fn main() -> Result<()> {
         project,
         dry_run,
         opencode,
+        vibe,
     } = command
     {
-        return install_hooks::run(db.as_deref(), project, dry_run, opencode);
+        let agent = if opencode {
+            install_hooks::Target::OpenCode
+        } else if vibe {
+            install_hooks::Target::Vibe
+        } else {
+            install_hooks::Target::ClaudeCode
+        };
+        return install_hooks::run(db.as_deref(), project, dry_run, agent);
     }
     let db = resolve_db(db, &settings)?;
     // What a command writes is the command line's, unless it says otherwise.
@@ -355,14 +373,18 @@ fn main() -> Result<()> {
             db.must_exist(None)?;
             trust_cli::run(&db.path, action)
         }
-        Command::Hook { event, project } => {
+        Command::Hook {
+            event,
+            project,
+            agent,
+        } => {
             // A hook never fails the tool call or session it answers: say why
             // in the hook log and let the work carry on.
             if let Err(error) = db.must_exist(None) {
                 eprintln!("omnimem hook: {error:#}");
                 return Ok(());
             }
-            hook::run(&db.path, event, project.as_deref())
+            hook::run(&db.path, event, project.as_deref(), agent)
         }
         Command::Stats => {
             db.must_exist(None)?;

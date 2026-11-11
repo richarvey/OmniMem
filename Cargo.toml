@@ -17,7 +17,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "7.1.2-dev"
+version = "7.1.3-dev"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"
@@ -51,6 +51,7 @@ omnimem-mcp = { path = "crates/omnimem-mcp" }
 rmcp = { version = "3.9", features = ["transport-streamable-http-server", "elicitation"] }
 axum = "0.8"
 tokio-util = "0.7"
+toml_edit = "0.25"
 # OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.
 getrandom = "0.4"
 base64 = "0.23"

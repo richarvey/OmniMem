@@ -24,4 +24,5 @@ reqwest.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+toml_edit.workspace = true
 tracing.workspace = true

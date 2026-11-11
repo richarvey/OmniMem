@@ -17,6 +17,7 @@ OmniMem speaks MCP over Streamable HTTP at `/mcp`, so anything that can use a re
 | [OpenAI Codex CLI](codex.md) | Native HTTP, token from an environment variable |
 | [Open Design](open-design.md) | OAuth 2.1 as a public client |
 | [Mistral](mistral.md) | OAuth 2.1, needs a public HTTPS address that isn't Tailscale Funnel |
+| [Mistral Vibe](vibe.md) | Native HTTP, plus hooks for the dead-end guard and briefing |
 
 ## Running OmniMem somewhere
 

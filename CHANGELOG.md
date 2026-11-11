@@ -2,6 +2,15 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.3] - unreleased
+
+OmniMem comes to Mistral's Vibe CLI, hooks and all: the dead-end guard and the session briefing run from Vibe's `hooks.toml`, and the desktop app adds both OmniMem and its hooks to Vibe from its menu.
+
+### Added
+- **OmniMem's hooks for Mistral Vibe.** Vibe's hooks are shell commands like Claude Code's, so they run `omnimem hook` with the new `--agent vibe`, which reads Vibe's payload (its qualified tool names, `file_system.edit`, `file_system.write_file`, `file_system.bash` and `process.start`) and answers in Vibe's form. `omnimem-guard`, a `pre_tool` hook, denies a call that repeats an approach the project abandoned, with `decision: "deny"` and the same reason Claude Code gets. `omnimem-briefing`, a `session_start` hook (Vibe 3.1.1 and later), hands a new session or one after `/clear` the project's briefing as hidden context. Both fail open. Recording the session when it ends isn't there yet. See guides/vibe.md
+- **`omnimem install-hooks --vibe`** writes them into `~/.vibe/hooks.toml` (or `$VIBE_HOME`), or with `--project` into `.vibe/hooks.toml`, running this binary by its full path (and `--db`, when given). Only hooks named `omnimem-*` are touched; the file's other hooks and comments stay, and a copy of it is kept as `hooks.toml.omnimem-backup`
+- **Add to Mistral Vibe and Add hooks to Mistral Vibe in the tray and menu bar menu**, once Vibe is installed (its `vibe` command, or its `~/.vibe` folder). The first adds an `omnimem` `[[mcp_servers]]` entry over streamable HTTP to Vibe's `config.toml`, with the access token as a header if one is set, or switches an `omnimem` entry that points at another server; the second writes the hooks, and says Update when the hooks on disk are older ones. Both edit the TOML in place, keeping comments and layout, after a backup. Both are unavailable in the Flatpak
+
 ## [7.1.2] - unreleased
 
 The settings panel shows the skill suggestions the briefing makes, with a way to accept or dismiss each, and which domains could become skills next.
