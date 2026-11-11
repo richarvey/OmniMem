@@ -335,7 +335,11 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
         "edit" => field("newString").to_owned(),
         "Write" | "write" | "file_system.write_file" => field("content").to_owned(),
         "NotebookEdit" => field("new_source").to_owned(),
-        "apply_patch" | "patch" => added_lines(field("patchText")),
+        // OpenCode puts the patch in `patchText`, Codex in `command`.
+        "apply_patch" | "patch" => added_lines(match field("patchText") {
+            "" => field("command"),
+            patch => patch,
+        }),
         "multiedit" => input
             .get("edits")
             .and_then(Value::as_array)
@@ -373,7 +377,9 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
 
 /// The lines a patch adds, which are what it proposes. Like an Edit's
 /// `old_string`, the lines it takes out are left unread, so removing a dead
-/// end is never blocked. OpenCode's patches mark them with `+`, as a diff does.
+/// end is never blocked. OpenCode's and Codex's patches (the same `*** Begin
+/// Patch` format) mark them with `+`, as a diff does; a new file's lines are
+/// all added.
 fn added_lines(patch: &str) -> String {
     patch
         .lines()
@@ -1294,6 +1300,64 @@ mod tests {
         );
         let claude = session_start_answer(Agent::ClaudeCode, "alpha", "x");
         assert_eq!(claude["hookSpecificOutput"]["additionalContext"], "x");
+    }
+
+    /// Codex speaks Claude Code's protocol, with its shell as `Bash` and its
+    /// edits as `apply_patch`, the patch in `command`.
+    #[test]
+    fn the_hook_denies_a_codex_call_that_repeats_a_dead_end() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let patch = "*** Begin Patch\n*** Update File: Cargo.toml\n@@\n-tower = \"0.5\"\n+kestrel-rs = \"1\"\n*** End Patch\n";
+        for (tool, input) in [
+            ("Bash", json!({"command": "cargo add kestrel-rs"})),
+            ("apply_patch", json!({ "command": patch })),
+        ] {
+            let payload = json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "019a",
+                "turn_id": "t1",
+                "cwd": "/home/me/alpha",
+                "model": "gpt-5.5",
+                "permission_mode": "default",
+                "tool_name": tool,
+                "tool_use_id": "call_1",
+                "tool_input": input,
+            });
+            let found = guard(&engine, &payload, None).unwrap();
+            assert_eq!(found.len(), 1, "{tool}");
+            assert_eq!(
+                decision(Agent::ClaudeCode, &found)["hookSpecificOutput"]["permissionDecision"],
+                "deny"
+            );
+        }
+        let removing = "*** Begin Patch\n*** Update File: Cargo.toml\n@@\n-kestrel-rs = \"1\"\n+tower = \"0.5\"\n*** End Patch\n";
+        assert_eq!(
+            proposal_text("apply_patch", &json!({ "command": removing })),
+            "tower = \"0.5\""
+        );
+    }
+
+    /// Codex starts the hook only for the tools its matcher names, so it
+    /// must name only tools this hook reads.
+    #[test]
+    fn codexs_hooks_match_the_tools_this_hook_guards() {
+        let guard = omnimem_app::codex::HOOKS
+            .iter()
+            .find(|hook| hook.event == "PreToolUse")
+            .unwrap();
+        let tools: Vec<&str> = guard
+            .matcher
+            .trim_start_matches("^(")
+            .trim_end_matches(")$")
+            .split('|')
+            .collect();
+        assert_eq!(tools, ["Bash", "apply_patch"]);
+        for tool in tools {
+            assert!(
+                GUARDED.contains(&tool) || OPENCODE_GUARDED.contains(&tool),
+                "{tool}"
+            );
+        }
     }
 
     #[test]

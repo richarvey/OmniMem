@@ -2,6 +2,16 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.4] - unreleased
+
+OmniMem's dead-end guard and session briefing come to OpenAI's Codex CLI, and the desktop app adds both OmniMem and its hooks to Codex from its menu.
+
+### Added
+- **OmniMem's hooks for Codex.** Codex's hooks speak Claude Code's protocol, so they're the same `omnimem hook` commands in `hooks.json`: the `PreToolUse` guard, matched to Codex's shell (`Bash`) and file edits (`apply_patch`), denies a call that repeats an approach the project abandoned, and the `SessionStart` briefing hands a new session (or one after `/clear` or a compaction) the project's briefing. Codex runs them once you've reviewed and trusted them, which it asks about at start; OmniMem doesn't do that for you. Recording the session at its end isn't installed, since Codex gives `SessionEnd` at most three seconds. See guides/codex.md
+- **`omnimem install-hooks --codex`** writes them into `~/.codex/hooks.json` (or `$CODEX_HOME`), or with `--project` into `.codex/hooks.json`, running this binary by its full path (and `--db`, when given). Other hooks in the file are kept, an `omnimem hook` added by hand is replaced, and a copy of the file is kept as `hooks.json.omnimem-backup`
+- **`omnimem hook` reads Codex's patches**: `apply_patch` carries its patch in `tool_input.command` where OpenCode's is in `patchText`; as before, only the lines it adds are read
+- **Add to Codex and Add hooks to Codex in the tray and menu bar menu**, once Codex is installed (its `codex` command, its `~/.codex` folder, or on macOS its app). The first adds `[mcp_servers.omnimem]` to Codex's `config.toml`, with the access token in `http_headers` if one is set, or switches an `omnimem` entry pointing at another server (6.x's supergateway bridge, say), editing the TOML in place after a backup; the second writes the hooks, and says Update when the ones on disk are older. Both are unavailable in the Flatpak
+
 ## [7.1.3] - unreleased
 
 OmniMem comes to Mistral's Vibe CLI, hooks and all: the dead-end guard and the session briefing run from Vibe's `hooks.toml`, and the desktop app adds both OmniMem and its hooks to Vibe from its menu.

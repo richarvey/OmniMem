@@ -111,46 +111,11 @@ pub fn installed() -> bool {
     find_cli().is_some() || home().is_some_and(|dir| dir.is_dir())
 }
 
-/// The command line a hook starts with: this program by its full path (an
-/// app's own PATH can't be counted on) and `--db` when the hooks should use a
-/// database other than the default. Vibe runs a hook through `/bin/sh`, or on
-/// Windows through Git Bash or PowerShell, so a Windows path is written with
-/// forward slashes, which all three take.
-pub fn hook_base(program: &Path, db: Option<&Path>) -> String {
-    let mut line = shell_word(&program.to_string_lossy());
-    if let Some(db) = db {
-        let db = std::path::absolute(db).unwrap_or_else(|_| db.to_path_buf());
-        line.push_str(" --db ");
-        line.push_str(&shell_word(&db.to_string_lossy()));
-    }
-    line
-}
+pub use crate::shell::hook_base;
 
 /// One of OmniMem's hooks' command, after `base`.
 pub fn hook_command(base: &str, hook: &Hook) -> String {
     format!("{base} hook {} --agent vibe", hook.event)
-}
-
-/// A word the hook's shell reads back as `word`: bare when it can be, else
-/// in single quotes for `/bin/sh`, or double quotes on Windows, where
-/// PowerShell has no single-quote escape that Git Bash shares.
-fn shell_word(word: &str) -> String {
-    let word = if cfg!(windows) {
-        word.replace('\\', "/")
-    } else {
-        word.to_owned()
-    };
-    if !word.is_empty()
-        && word
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "/:._-+".contains(c))
-    {
-        word
-    } else if cfg!(windows) {
-        format!("\"{}\"", word.replace('"', "\\\""))
-    } else {
-        format!("'{}'", word.replace('\'', r"'\''"))
-    }
 }
 
 /// What `hooks.toml` holds of OmniMem's hooks, against what would be written.
@@ -433,7 +398,7 @@ mod tests {
                 hook_base(Path::new("/Users/a b/omnimem"), None),
                 "'/Users/a b/omnimem'"
             );
-            assert_eq!(shell_word("it's"), r"'it'\''s'");
+            assert_eq!(crate::shell::shell_word("it's"), r"'it'\''s'");
         }
     }
 

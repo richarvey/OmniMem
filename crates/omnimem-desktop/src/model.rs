@@ -52,6 +52,10 @@ pub const OPENCODE_HOOKS_IN_FLATPAK: &str = "Add hooks to OpenCode (unavailable 
 pub const VIBE_IN_FLATPAK: &str = "Add to Mistral Vibe (unavailable in the Flatpak)";
 pub const VIBE_HOOKS_IN_FLATPAK: &str = "Add hooks to Mistral Vibe (unavailable in the Flatpak)";
 
+/// The Codex items inside a Flatpak, for the same reasons again.
+pub const CODEX_IN_FLATPAK: &str = "Add to Codex (unavailable in the Flatpak)";
+pub const CODEX_HOOKS_IN_FLATPAK: &str = "Add hooks to Codex (unavailable in the Flatpak)";
+
 /// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
@@ -71,7 +75,10 @@ pub fn client_item(
     error: Option<&str>,
 ) -> (String, bool) {
     let name = client.name();
-    if matches!(client, Client::OpenCodeHooks | Client::VibeHooks) {
+    if matches!(
+        client,
+        Client::OpenCodeHooks | Client::VibeHooks | Client::CodexHooks
+    ) {
         return hooks_item(name, presence, busy, changed, error);
     }
     if busy {
@@ -96,7 +103,7 @@ pub fn client_item(
 }
 
 /// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
-/// hooks.toml). It sits
+/// hooks.toml, Codex's hooks.json). It sits
 /// under the client's own item, which already says when the client isn't
 /// here, so this one just stays greyed out then.
 fn hooks_item(
@@ -113,6 +120,12 @@ fn hooks_item(
         None | Some(Presence::NotInstalled) => (format!("Add hooks to {name}"), false),
         Some(Presence::Unreadable(why)) => (format!("{name} hooks: {}", clip(why, 50)), false),
         Some(Presence::Absent) => (format!("Add hooks to {name}"), true),
+        // Codex runs a new hook only once it's been trusted, which it asks
+        // about when it starts.
+        Some(Presence::Here) if changed && name == "Codex" => (
+            format!("✓ Hooks in {name} (restart it and trust them)"),
+            false,
+        ),
         Some(Presence::Here) if changed => (
             format!("✓ Hooks in {name} (restart it to load them)"),
             false,
@@ -319,6 +332,25 @@ mod tests {
                 None
             ),
             ("Adding OmniMem's hooks to OpenCode…".into(), false)
+        );
+    }
+
+    #[test]
+    fn codex_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        let item = |client, presence: Presence, changed| {
+            client_item(client, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            item(Client::Codex, Presence::Absent, false),
+            ("Add to Codex".into(), true)
+        );
+        assert_eq!(
+            item(Client::CodexHooks, Presence::Absent, false),
+            ("Add hooks to Codex".into(), true)
+        );
+        assert_eq!(
+            item(Client::CodexHooks, Presence::Here, true),
+            ("✓ Hooks in Codex (restart it and trust them)".into(), false)
         );
     }
 

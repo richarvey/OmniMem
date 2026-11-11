@@ -2,12 +2,14 @@
 //! docs/claude-code-hook.md into a settings file, leaving alone any event
 //! that already has one. With `--opencode`, write OmniMem's OpenCode plugin
 //! instead (guides/opencode.md), which runs the same hooks, and with
-//! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md).
+//! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md), and
+//! with `--codex`, in Codex's `hooks.json` (guides/codex.md).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use omnimem_app::codex;
 use omnimem_app::opencode::{self, PluginState, without_verbatim};
 use omnimem_app::vibe::{self, HooksState};
 use serde_json::{Map, Value, json};
@@ -35,6 +37,7 @@ pub(crate) enum Target {
     ClaudeCode,
     OpenCode,
     Vibe,
+    Codex,
 }
 
 pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Target) -> Result<()> {
@@ -47,6 +50,9 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Targe
             Target::Vibe =>
                 "the Flatpak's sandbox can't reach Vibe's folder, and Vibe outside it can't run \
                  the Flatpak's omnimem. Install OmniMem's package to use the Vibe hooks",
+            Target::Codex =>
+                "the Flatpak's sandbox can't reach Codex's folder, and Codex outside it can't \
+                 run the Flatpak's omnimem. Install OmniMem's package to use the Codex hooks",
             Target::ClaudeCode =>
                 "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
                  see docs/claude-code-hook.md",
@@ -55,6 +61,7 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Targe
     match target {
         Target::OpenCode => return run_opencode(db, project, dry_run),
         Target::Vibe => return run_vibe(db, project, dry_run),
+        Target::Codex => return run_codex(db, project, dry_run),
         Target::ClaudeCode => {}
     }
     let path = if project {
@@ -173,6 +180,58 @@ fn run_vibe(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
     println!(
         "Vibe uses them from its next session (the briefing needs Vibe 3.1.1 or later). \
          See guides/vibe.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks in Codex's hooks.json, globally or for the project in
+/// this folder.
+fn run_codex(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    use codex::HooksState;
+    let here = std::env::current_dir()?;
+    let path = codex::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Codex's in"))?;
+    let base = codex::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let verb = match codex::hooks_state(&path, &base) {
+        HooksState::Current => {
+            println!("OmniMem's hooks are already there; nothing changed.");
+            return Ok(());
+        }
+        HooksState::Unreadable(why) => bail!("couldn't use {}: {why}", path.display()),
+        HooksState::Missing => {
+            if dry_run {
+                "would add"
+            } else {
+                "added"
+            }
+        }
+        HooksState::Outdated => {
+            if dry_run {
+                "would update"
+            } else {
+                "updated"
+            }
+        }
+    };
+    for hook in &codex::HOOKS {
+        println!(
+            "  {verb:<12} {:<13} {}",
+            hook.event,
+            codex::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    codex::write_hooks(&path, &base)?;
+    if project {
+        println!("Codex reads them once this project is trusted.");
+    }
+    println!(
+        "Codex asks you to review and trust them when it next starts (or under /hooks); \
+         they run once you have. See guides/codex.md."
     );
     Ok(())
 }

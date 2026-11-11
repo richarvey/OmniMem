@@ -169,8 +169,8 @@ enum Command {
         smoke_test: bool,
     },
     /// Answer a Claude Code PreToolUse hook (or OmniMem's OpenCode plugin,
-    /// which sends the same JSON, or with --agent vibe, Mistral Vibe's
-    /// pre_tool hook): read the tool call on stdin and,
+    /// and Codex, which send the same JSON, or with --agent vibe, Mistral
+    /// Vibe's pre_tool hook): read the tool call on stdin and,
     /// if it proposes an approach this project already abandoned, deny it and
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
@@ -207,14 +207,20 @@ enum Command {
         /// dead-end guard and session-start briefing from inside OpenCode:
         /// to ~/.config/opencode/plugins, or with --project to
         /// .opencode/plugins here. See guides/opencode.md.
-        #[arg(long, conflicts_with = "vibe")]
+        #[arg(long, conflicts_with_all = ["vibe", "codex"])]
         opencode: bool,
         /// Put OmniMem's hooks in Mistral Vibe's hooks.toml instead: the
         /// dead-end guard and, from Vibe 3.1.1, the session-start briefing,
         /// in ~/.vibe (or $VIBE_HOME), or with --project in .vibe here. See
         /// guides/vibe.md.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "codex")]
         vibe: bool,
+        /// Put OmniMem's hooks in OpenAI Codex's hooks.json instead: the
+        /// dead-end guard and the session-start briefing, in ~/.codex (or
+        /// $CODEX_HOME), or with --project in .codex here. Codex runs them
+        /// once you've trusted them. See guides/codex.md.
+        #[arg(long)]
+        codex: bool,
     },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
@@ -320,12 +326,15 @@ fn main() -> Result<()> {
         dry_run,
         opencode,
         vibe,
+        codex,
     } = command
     {
         let agent = if opencode {
             install_hooks::Target::OpenCode
         } else if vibe {
             install_hooks::Target::Vibe
+        } else if codex {
+            install_hooks::Target::Codex
         } else {
             install_hooks::Target::ClaudeCode
         };

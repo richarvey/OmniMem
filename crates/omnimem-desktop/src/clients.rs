@@ -1,17 +1,18 @@
-//! OmniMem in Claude Desktop, Claude Code, OpenCode and Mistral Vibe, from
-//! the tray menu:
+//! OmniMem in Claude Desktop, Claude Code, OpenCode, Mistral Vibe and OpenAI
+//! Codex, from the tray menu:
 //! whether each already has it, adding it, and switching an `omnimem` entry
 //! that points at another server (a 6.x install, say) to this one. Nothing is
 //! ever added twice: an entry that reaches this server, under any name, counts.
 //! OpenCode also gets OmniMem's hooks, as a plugin (`omnimem_app::opencode`),
-//! and Vibe gets them in its `hooks.toml` (`omnimem_app::vibe`).
+//! Vibe gets them in its `hooks.toml` (`omnimem_app::vibe`) and Codex in its
+//! `hooks.json` (`omnimem_app::codex`).
 //!
 //! Claude Desktop's config file is small and only Claude Desktop writes it, at
 //! start, so it's edited here, after a backup. Claude Code's `~/.claude.json`
 //! is rewritten all the time by running sessions, so it's only ever read
 //! here; changes go through Claude Code's own `claude mcp` commands.
 //! OpenCode's `opencode.json` is edited like Claude Desktop's, after a backup,
-//! and so is Vibe's `config.toml`, keeping its comments and layout.
+//! and so are Vibe's and Codex's `config.toml`, keeping comments and layout.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,10 @@ pub enum Client {
     Vibe,
     /// OmniMem's hooks in Vibe's `hooks.toml`.
     VibeHooks,
+    /// OpenAI's Codex CLI.
+    Codex,
+    /// OmniMem's hooks in Codex's `hooks.json`.
+    CodexHooks,
 }
 
 impl Client {
@@ -42,6 +47,7 @@ impl Client {
             Client::Code => "Claude Code",
             Client::OpenCode | Client::OpenCodeHooks => "OpenCode",
             Client::Vibe | Client::VibeHooks => "Mistral Vibe",
+            Client::Codex | Client::CodexHooks => "Codex",
         }
     }
 }
@@ -464,25 +470,75 @@ pub fn vibe_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Pre
         return Presence::NotInstalled;
     };
     match omnimem_app::vibe::mcp_servers(path) {
-        Ok(servers) => {
-            // In the shape the JSON clients' entries have, so they're judged
-            // the same way: a URL, or a bridge command's URL argument.
-            let servers: serde_json::Map<String, Value> = servers
+        Ok(servers) => presence_of_toml(
+            servers
                 .into_iter()
-                .map(|server| {
-                    let mut entry = json!({ "args": server.args });
-                    if let Some(url) = server.url {
-                        entry["url"] = json!(url);
-                    }
-                    if let Some(command) = server.command {
-                        entry["command"] = json!(command);
-                    }
-                    (server.name, entry)
-                })
-                .collect();
-            presence_among(&servers, mcp_url)
-        }
+                .map(|s| (s.name, s.url, s.command, s.args)),
+            mcp_url,
+        ),
         Err(e) => Presence::Unreadable(format!("{e:#}")),
+    }
+}
+
+/// What a TOML client's servers (name, URL, command, arguments) say about
+/// the server at `mcp_url`, judged in the shape the JSON clients' entries
+/// have: a URL, or a bridge command's URL argument.
+fn presence_of_toml(
+    servers: impl Iterator<Item = (String, Option<String>, Option<String>, Vec<String>)>,
+    mcp_url: &str,
+) -> Presence {
+    let servers: serde_json::Map<String, Value> = servers
+        .map(|(name, url, command, args)| {
+            let mut entry = json!({ "args": args });
+            if let Some(url) = url {
+                entry["url"] = json!(url);
+            }
+            if let Some(command) = command {
+                entry["command"] = json!(command);
+            }
+            (name, entry)
+        })
+        .collect();
+    presence_among(&servers, mcp_url)
+}
+
+/// Whether Codex, with its settings at `path`, has OmniMem.
+pub fn codex_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+    let Some(path) = path.filter(|_| installed) else {
+        return Presence::NotInstalled;
+    };
+    match omnimem_app::codex::mcp_servers(path) {
+        Ok(servers) => presence_of_toml(
+            servers
+                .into_iter()
+                .map(|s| (s.name, s.url, s.command, s.args)),
+            mcp_url,
+        ),
+        Err(e) => Presence::Unreadable(format!("{e:#}")),
+    }
+}
+
+/// Add this server to Codex's `config.toml` at `path`, or point its
+/// `omnimem` entry here.
+pub fn write_codex(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    omnimem_app::codex::write_mcp_server(path, mcp_url, token).map_err(|e| format!("{e:#}"))
+}
+
+/// Whether OmniMem's hooks are in Codex's `hooks.json` at `path`, against
+/// what would be written now for hooks starting with `base`.
+pub fn codex_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
+    use omnimem_app::codex::{HooksState, hooks_state};
+    let Some(path) = path.filter(|_| installed) else {
+        return Presence::NotInstalled;
+    };
+    match hooks_state(path, base) {
+        HooksState::Missing => Presence::Absent,
+        HooksState::Current => Presence::Here,
+        HooksState::Outdated => Presence::Elsewhere {
+            name: SERVER_NAME.to_owned(),
+            target: "older hooks".to_owned(),
+        },
+        HooksState::Unreadable(why) => Presence::Unreadable(why),
     }
 }
 
@@ -949,6 +1005,47 @@ mod tests {
         );
         assert!(matches!(
             vibe_hooks_presence(true, Some(&hooks), "/usr/bin/omnimem"),
+            Presence::Elsewhere { .. }
+        ));
+    }
+
+    #[test]
+    fn codex_is_read_and_written_in_its_config_toml() {
+        let dir = scratch("codex");
+        let config = dir.join("config.toml");
+        assert_eq!(
+            codex_presence(false, Some(&config), URL),
+            Presence::NotInstalled
+        );
+        assert_eq!(codex_presence(true, Some(&config), URL), Presence::Absent);
+        // 6.x's guide had Codex reach /sse through supergateway.
+        std::fs::write(
+            &config,
+            "[mcp_servers.omnimem]\ncommand = \"npx\"\nargs = [\"-y\", \"supergateway\", \"--sse\", \"http://nas:8765/sse\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            codex_presence(true, Some(&config), URL),
+            Presence::Elsewhere {
+                name: "omnimem".into(),
+                target: "http://nas:8765/sse".into()
+            }
+        );
+        write_codex(&config, URL, None).unwrap();
+        assert_eq!(codex_presence(true, Some(&config), URL), Presence::Here);
+
+        let hooks = dir.join("hooks.json");
+        assert_eq!(
+            codex_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Absent
+        );
+        omnimem_app::codex::write_hooks(&hooks, "/opt/omnimem").unwrap();
+        assert_eq!(
+            codex_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Here
+        );
+        assert!(matches!(
+            codex_hooks_presence(true, Some(&hooks), "/usr/bin/omnimem"),
             Presence::Elsewhere { .. }
         ));
     }
