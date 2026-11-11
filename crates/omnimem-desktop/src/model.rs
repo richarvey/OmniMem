@@ -42,6 +42,12 @@ pub fn login_command(flatpak_id: Option<&str>, exe: &str) -> (String, Vec<String
 /// `claude` installed outside the sandbox.
 pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpak)";
 
+/// The OpenCode items inside a Flatpak: the sandbox can't reach OpenCode's
+/// config folder, and OpenCode outside it couldn't run the Flatpak's omnimem
+/// for the hooks.
+pub const OPENCODE_IN_FLATPAK: &str = "Add to OpenCode (unavailable in the Flatpak)";
+pub const OPENCODE_HOOKS_IN_FLATPAK: &str = "Add hooks to OpenCode (unavailable in the Flatpak)";
+
 /// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
@@ -61,6 +67,9 @@ pub fn client_item(
     error: Option<&str>,
 ) -> (String, bool) {
     let name = client.name();
+    if client == Client::OpenCodeHooks {
+        return hooks_item(name, presence, busy, changed, error);
+    }
     if busy {
         return (format!("Adding OmniMem to {name}…"), false);
     }
@@ -75,6 +84,36 @@ pub fn client_item(
             format!("Switch {name} here (now {})", host_of(target)),
             true,
         ),
+    };
+    match error {
+        Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
+        _ => (text, enabled),
+    }
+}
+
+/// The item for OmniMem's hooks in a client (OpenCode's plugin). It sits
+/// under the client's own item, which already says when the client isn't
+/// here, so this one just stays greyed out then.
+fn hooks_item(
+    name: &str,
+    presence: Option<&Presence>,
+    busy: bool,
+    changed: bool,
+    error: Option<&str>,
+) -> (String, bool) {
+    if busy {
+        return (format!("Adding OmniMem's hooks to {name}…"), false);
+    }
+    let (text, enabled) = match presence {
+        None | Some(Presence::NotInstalled) => (format!("Add hooks to {name}"), false),
+        Some(Presence::Unreadable(why)) => (format!("{name} hooks: {}", clip(why, 50)), false),
+        Some(Presence::Absent) => (format!("Add hooks to {name}"), true),
+        Some(Presence::Here) if changed => (
+            format!("✓ Hooks in {name} (restart it to load them)"),
+            false,
+        ),
+        Some(Presence::Here) => (format!("✓ Hooks in {name}"), false),
+        Some(Presence::Elsewhere { .. }) => (format!("Update hooks in {name}"), true),
     };
     match error {
         Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
@@ -203,6 +242,79 @@ mod tests {
         );
         assert!(enabled, "a failed add can be tried again");
         assert!(failed.starts_with("Add to Claude Code (failed: xxx") && failed.ends_with("…)"));
+    }
+
+    #[test]
+    fn opencode_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        assert_eq!(
+            client_item(
+                Client::OpenCode,
+                Some(&Presence::Absent),
+                false,
+                false,
+                None
+            ),
+            ("Add to OpenCode".into(), true)
+        );
+        assert_eq!(
+            client_item(
+                Client::OpenCode,
+                Some(&Presence::NotInstalled),
+                false,
+                false,
+                None
+            ),
+            ("OpenCode not found".into(), false)
+        );
+        let hooks = |presence: Presence, changed: bool| {
+            client_item(Client::OpenCodeHooks, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            hooks(Presence::NotInstalled, false),
+            ("Add hooks to OpenCode".into(), false)
+        );
+        assert_eq!(
+            hooks(Presence::Absent, false),
+            ("Add hooks to OpenCode".into(), true)
+        );
+        assert_eq!(
+            hooks(Presence::Here, true),
+            (
+                "✓ Hooks in OpenCode (restart it to load them)".into(),
+                false
+            )
+        );
+        assert_eq!(
+            hooks(Presence::Here, false),
+            ("✓ Hooks in OpenCode".into(), false)
+        );
+        assert_eq!(
+            hooks(
+                Presence::Elsewhere {
+                    name: "omnimem".into(),
+                    target: "an older plugin".into()
+                },
+                false
+            ),
+            ("Update hooks in OpenCode".into(), true)
+        );
+        assert_eq!(
+            hooks(
+                Presence::Unreadable("omnimem.js isn't OmniMem's".into()),
+                false
+            ),
+            ("OpenCode hooks: omnimem.js isn't OmniMem's".into(), false)
+        );
+        assert_eq!(
+            client_item(
+                Client::OpenCodeHooks,
+                Some(&Presence::Absent),
+                true,
+                false,
+                None
+            ),
+            ("Adding OmniMem's hooks to OpenCode…".into(), false)
+        );
     }
 
     #[test]

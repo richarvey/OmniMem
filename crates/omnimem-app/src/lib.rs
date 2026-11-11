@@ -8,6 +8,7 @@
 //! dependencies, so it builds and tests everywhere.
 
 mod instance;
+pub mod opencode;
 mod services;
 mod update;
 

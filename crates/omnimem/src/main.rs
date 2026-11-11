@@ -168,7 +168,8 @@ enum Command {
         #[arg(long)]
         smoke_test: bool,
     },
-    /// Answer a Claude Code PreToolUse hook: read the tool call on stdin and,
+    /// Answer a Claude Code PreToolUse hook (or OmniMem's OpenCode plugin,
+    /// which sends the same JSON): read the tool call on stdin and,
     /// if it proposes an approach this project already abandoned, deny it and
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
@@ -198,6 +199,12 @@ enum Command {
         /// Show what would be added without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Write OmniMem's OpenCode plugin instead, which runs the same
+        /// dead-end guard and session-start briefing from inside OpenCode:
+        /// to ~/.config/opencode/plugins, or with --project to
+        /// .opencode/plugins here. See guides/opencode.md.
+        #[arg(long)]
+        opencode: bool,
     },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
@@ -298,8 +305,13 @@ fn main() -> Result<()> {
     if let Command::Desktop { smoke_test } = command {
         return desktop(db, smoke_test);
     }
-    if let Command::InstallHooks { project, dry_run } = command {
-        return install_hooks::run(db.as_deref(), project, dry_run);
+    if let Command::InstallHooks {
+        project,
+        dry_run,
+        opencode,
+    } = command
+    {
+        return install_hooks::run(db.as_deref(), project, dry_run, opencode);
     }
     let db = resolve_db(db, &settings)?;
     // What a command writes is the command line's, unless it says otherwise.

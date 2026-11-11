@@ -1,11 +1,13 @@
 //! `omnimem install-hooks`: put the three Claude Code hooks from
 //! docs/claude-code-hook.md into a settings file, leaving alone any event
-//! that already has one.
+//! that already has one. With `--opencode`, write OmniMem's OpenCode plugin
+//! instead (guides/opencode.md), which runs the same hooks.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use omnimem_app::opencode::{self, PluginState, without_verbatim};
 use serde_json::{Map, Value, json};
 
 /// The hooks, as the guide gives them: event, matcher, `hook` argument and
@@ -25,12 +27,23 @@ enum Outcome {
     Present(String),
 }
 
-pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+pub(crate) fn run(
+    db: Option<&Path>,
+    project: bool,
+    dry_run: bool,
+    for_opencode: bool,
+) -> Result<()> {
     if std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()) {
-        bail!(
+        bail!(if for_opencode {
+            "the Flatpak's sandbox can't reach OpenCode's config folder, and OpenCode outside it \
+             can't run the Flatpak's omnimem. Install OmniMem's package to use the OpenCode hooks"
+        } else {
             "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
              see docs/claude-code-hook.md"
-        );
+        });
+    }
+    if for_opencode {
+        return run_opencode(db, project, dry_run);
     }
     let path = if project {
         std::env::current_dir()?
@@ -69,6 +82,38 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()>
     Ok(())
 }
 
+/// Write the OpenCode plugin, globally or for the project in this folder.
+fn run_opencode(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = opencode::plugin_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find OpenCode's config in"))?;
+    let source = opencode::plugin_source(&opencode::hook_command(&opencode::this_program()?, db));
+    let state = opencode::plugin_state(&path, &source);
+    println!("{}", path.display());
+    let (verb, done) = match &state {
+        PluginState::Current => {
+            println!("The OmniMem plugin is already there; nothing changed.");
+            return Ok(());
+        }
+        PluginState::Foreign => bail!(
+            "{} isn't OmniMem's plugin, so it was left alone",
+            path.display()
+        ),
+        PluginState::Unreadable(why) => bail!("couldn't read {}: {why}", path.display()),
+        PluginState::Missing => ("add", "added"),
+        PluginState::Outdated => ("update", "updated"),
+    };
+    if dry_run {
+        println!("  would {verb} the OmniMem plugin\nNothing written (--dry-run).");
+        return Ok(());
+    }
+    opencode::write_plugin(&path, &source)?;
+    println!(
+        "  {done} the OmniMem plugin\nOpenCode loads it from its next start. See guides/opencode.md."
+    );
+    Ok(())
+}
+
 /// How a hook runs this binary: `omnimem` when that's what the PATH finds,
 /// otherwise its full path (the macOS app's binary is inside its bundle,
 /// and a development build isn't on the PATH at all). With `--db`, the hooks
@@ -92,24 +137,6 @@ fn base_command(db: Option<&Path>) -> Result<String> {
         command.push_str(&quoted(&db.to_string_lossy()));
     }
     Ok(command)
-}
-
-/// A canonical path as a shell can run it. On Windows `canonicalize` returns
-/// the verbatim form, `\\?\C:\Users\...`, which no shell accepts as a command, so
-/// every hook `install-hooks` wrote there failed to start. The prefix comes
-/// off (`\\?\UNC\server\share` becomes `\\server\share`); a path without one is
-/// returned as it was, so this is a no-op elsewhere.
-fn without_verbatim(path: &Path) -> PathBuf {
-    let text = path.to_string_lossy();
-    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
-        return PathBuf::from(format!(r"\\{share}"));
-    }
-    match text.strip_prefix(r"\\?\") {
-        // Only a drive path: other verbatim forms (`\\?\Volume{...}`) have no
-        // plainer spelling, so they're left for the shell to refuse loudly.
-        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
-        _ => path.to_path_buf(),
-    }
 }
 
 /// Double-quoted for the shell Claude Code runs hooks in, when it needs to be.

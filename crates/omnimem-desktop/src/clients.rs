@@ -1,12 +1,14 @@
-//! OmniMem in Claude Desktop and Claude Code, from the tray menu: whether
-//! each already has it, adding it, and switching an `omnimem` entry that
-//! points at another server (a 6.x install, say) to this one. Nothing is ever
-//! added twice: an entry that reaches this server, under any name, counts.
+//! OmniMem in Claude Desktop, Claude Code and OpenCode, from the tray menu:
+//! whether each already has it, adding it, and switching an `omnimem` entry
+//! that points at another server (a 6.x install, say) to this one. Nothing is
+//! ever added twice: an entry that reaches this server, under any name, counts.
+//! OpenCode also gets OmniMem's hooks, as a plugin (`omnimem_app::opencode`).
 //!
 //! Claude Desktop's config file is small and only Claude Desktop writes it, at
 //! start, so it's edited here, after a backup. Claude Code's `~/.claude.json`
 //! is rewritten all the time by running sessions, so it's only ever read
 //! here; changes go through Claude Code's own `claude mcp` commands.
+//! OpenCode's `opencode.json` is edited like Claude Desktop's, after a backup.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -21,6 +23,9 @@ pub const SERVER_NAME: &str = "omnimem";
 pub enum Client {
     Desktop,
     Code,
+    OpenCode,
+    /// OmniMem's hooks in OpenCode, which is its plugin.
+    OpenCodeHooks,
 }
 
 impl Client {
@@ -28,6 +33,7 @@ impl Client {
         match self {
             Client::Desktop => "Claude Desktop",
             Client::Code => "Claude Code",
+            Client::OpenCode | Client::OpenCodeHooks => "OpenCode",
         }
     }
 }
@@ -50,9 +56,20 @@ pub enum Presence {
 /// What `mcpServers` in a client's configuration says about the server at
 /// `mcp_url`.
 pub fn presence_in(config: &Value, mcp_url: &str) -> Presence {
-    let Some(servers) = config.get("mcpServers").and_then(Value::as_object) else {
+    presence_under(config, "mcpServers", mcp_url)
+}
+
+/// What the `key` object of a client's configuration says about the server
+/// at `mcp_url`.
+fn presence_under(config: &Value, key: &str, mcp_url: &str) -> Presence {
+    let Some(servers) = config.get(key).and_then(Value::as_object) else {
         return Presence::Absent;
     };
+    presence_among(servers, mcp_url)
+}
+
+/// What a client's servers, by name, say about the server at `mcp_url`.
+fn presence_among(servers: &serde_json::Map<String, Value>, mcp_url: &str) -> Presence {
     let wanted = comparable(mcp_url);
     if servers
         .values()
@@ -77,12 +94,12 @@ pub fn presence_in(config: &Value, mcp_url: &str) -> Presence {
 }
 
 /// The URLs an entry reaches: its `url`, or the URL arguments of a bridge
-/// command such as `npx mcp-remote <url>`.
+/// command such as `npx mcp-remote <url>` (Claude Desktop's `args`, or
+/// OpenCode's `command`, which is a list with the program first).
 fn urls_of(entry: &Value) -> impl Iterator<Item = &str> {
-    let args = entry
-        .get("args")
-        .and_then(Value::as_array)
+    let args = ["args", "command"]
         .into_iter()
+        .filter_map(|key| entry.get(key).and_then(Value::as_array))
         .flatten()
         .filter_map(Value::as_str)
         .filter(|arg| arg.starts_with("http://") || arg.starts_with("https://"));
@@ -169,22 +186,35 @@ pub fn backup_path(path: &Path) -> PathBuf {
 /// Add this server to Claude Desktop, or point its `omnimem` entry here,
 /// keeping everything else in the file and a copy of the file as it was.
 pub fn write_desktop(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    write_entry(path, "mcpServers", desktop_entry(mcp_url, token))
+}
+
+/// Put `entry` under OmniMem's name in the `key` object of the JSON config at
+/// `path`, keeping everything else in the file and a copy of the file as it
+/// was. An existing `omnimem` entry keeps its name and its place in the file.
+fn write_entry(path: &Path, key: &str, entry: Value) -> Result<(), String> {
+    write_entry_at(path, &[key], entry)
+}
+
+/// `write_entry` for an object further down: `keys` is its path from the top.
+fn write_entry_at(path: &Path, keys: &[&str], entry: Value) -> Result<(), String> {
     let mut config = read_json(path)?.unwrap_or_else(|| json!({}));
-    let config_object = config
+    let mut servers = config
         .as_object_mut()
         .ok_or("the config file isn't a JSON object")?;
-    let servers = config_object
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .ok_or("mcpServers in the config file isn't a JSON object")?;
-    // An existing entry keeps its name and its place in the file.
+    for key in keys {
+        servers = servers
+            .entry(*key)
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .ok_or_else(|| format!("{} in the config file isn't a JSON object", keys.join(".")))?;
+    }
     let name = servers
         .keys()
         .find(|name| name.eq_ignore_ascii_case(SERVER_NAME))
         .cloned()
         .unwrap_or_else(|| SERVER_NAME.to_owned());
-    servers.insert(name, desktop_entry(mcp_url, token));
+    servers.insert(name, entry);
     let text = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("couldn't write the config: {e}"))?;
     if path.exists() {
@@ -300,6 +330,124 @@ fn run_claude(cli: &Path, args: &[&str]) -> Result<(), String> {
         .find(|line| !line.is_empty())
         .unwrap_or("claude mcp failed")
         .to_owned())
+}
+
+/// OpenCode's config files in its config folder, in the order it merges
+/// them (a later one wins), and only those that exist.
+pub fn opencode_config_paths() -> Vec<PathBuf> {
+    let Some(dir) = omnimem_app::opencode::config_dir() else {
+        return Vec::new();
+    };
+    ["config.json", "opencode.json", "opencode.jsonc"]
+        .into_iter()
+        .map(|file| dir.join(file))
+        .filter(|path| path.is_file())
+        .collect()
+}
+
+/// Which file OmniMem's entry goes in: `opencode.jsonc`, then
+/// `opencode.json`, as OpenCode itself writes, or a new `opencode.json`.
+/// Never `config.json`, which OpenCode 1.x reads but 2.x doesn't.
+pub fn opencode_config_target(existing: &[PathBuf]) -> Option<PathBuf> {
+    ["opencode.jsonc", "opencode.json"]
+        .into_iter()
+        .find_map(|file| {
+            existing
+                .iter()
+                .find(|path| path.file_name().is_some_and(|name| name == file))
+        })
+        .cloned()
+        .or_else(|| omnimem_app::opencode::config_dir().map(|dir| dir.join("opencode.json")))
+}
+
+/// Whether OpenCode, configured by the files at `paths` (in merge order),
+/// has OmniMem. A `.jsonc` file with comments can't be read here, so it's
+/// reported rather than guessed at.
+pub fn opencode_presence(installed: bool, paths: &[PathBuf], mcp_url: &str) -> Presence {
+    if !installed {
+        return Presence::NotInstalled;
+    }
+    let mut found = Presence::Absent;
+    for path in paths {
+        match read_json(path) {
+            Ok(Some(config)) => match opencode_presence_in(&config, mcp_url) {
+                Presence::Here => return Presence::Here,
+                Presence::Absent => {}
+                elsewhere => found = elsewhere,
+            },
+            Ok(None) => {}
+            Err(e) => return Presence::Unreadable(e),
+        }
+    }
+    found
+}
+
+/// OpenCode keeps its servers in `mcp` (1.x, which 2.x still reads) or
+/// `mcp.servers` (2.x's own form).
+fn opencode_presence_in(config: &Value, mcp_url: &str) -> Presence {
+    let Some(mcp) = config.get("mcp").and_then(Value::as_object) else {
+        return Presence::Absent;
+    };
+    let native = mcp.get("servers").and_then(Value::as_object);
+    let legacy: serde_json::Map<String, Value> = mcp
+        .iter()
+        .filter(|(name, entry)| *name != "servers" && *name != "timeout" && entry.is_object())
+        .map(|(name, entry)| (name.clone(), entry.clone()))
+        .collect();
+    let mut found = Presence::Absent;
+    for servers in native.into_iter().chain([&legacy]) {
+        match presence_among(servers, mcp_url) {
+            Presence::Here => return Presence::Here,
+            Presence::Absent => {}
+            elsewhere => found = elsewhere,
+        }
+    }
+    found
+}
+
+/// OpenCode's entry for this server, as guides/opencode.md gives it.
+/// `oauth: false` stops OpenCode trying OAuth when it meets a 401.
+pub fn opencode_entry(mcp_url: &str, token: Option<&str>) -> Value {
+    let mut entry = json!({"type": "remote", "url": mcp_url, "oauth": false});
+    if let Some(token) = token {
+        entry["headers"] = json!({"Authorization": format!("Bearer {token}")});
+    }
+    entry
+}
+
+/// Add this server to OpenCode's config file at `path`, or point its
+/// `omnimem` entry here. A file in 2.x's form, with `mcp.servers`, gets the
+/// entry there; any other gets it in `mcp`, which 1.x and 2.x both read.
+pub fn write_opencode(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    let native = read_json(path)?
+        .is_some_and(|config| config.pointer("/mcp/servers").is_some_and(Value::is_object));
+    if native {
+        write_entry_at(path, &["mcp", "servers"], opencode_entry(mcp_url, token))
+    } else {
+        write_entry(path, "mcp", opencode_entry(mcp_url, token))
+    }
+}
+
+/// Whether OmniMem's hooks are in OpenCode: the plugin at `path`, against
+/// what would be written now.
+pub fn opencode_hooks_presence(installed: bool, path: Option<&Path>, source: &str) -> Presence {
+    use omnimem_app::opencode::{PluginState, plugin_state};
+    let Some(path) = path.filter(|_| installed) else {
+        return Presence::NotInstalled;
+    };
+    match plugin_state(path, source) {
+        PluginState::Missing => Presence::Absent,
+        PluginState::Current => Presence::Here,
+        PluginState::Outdated => Presence::Elsewhere {
+            name: SERVER_NAME.to_owned(),
+            target: "an older plugin".to_owned(),
+        },
+        PluginState::Foreign => Presence::Unreadable(format!(
+            "{} isn't OmniMem's",
+            omnimem_app::opencode::PLUGIN_FILE
+        )),
+        PluginState::Unreadable(why) => Presence::Unreadable(why),
+    }
 }
 
 /// The file's JSON, `None` when it's missing or empty.
@@ -506,6 +654,149 @@ mod tests {
                 "Authorization: Bearer t"
             ]
         );
+    }
+
+    #[test]
+    fn opencode_is_read_from_every_config_file_and_written_to_one() {
+        let dir = scratch("opencode");
+        let json = dir.join("opencode.json");
+        assert_eq!(opencode_presence(false, &[], URL), Presence::NotInstalled);
+        assert_eq!(opencode_presence(true, &[], URL), Presence::Absent);
+
+        std::fs::write(
+            &json,
+            r#"{"$schema": "https://opencode.ai/config.json", "theme": "tokyonight",
+                "mcp": {"OmniMem": {"type": "remote", "url": "https://cloudai.example.net/mcp"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            opencode_presence(true, std::slice::from_ref(&json), URL),
+            Presence::Elsewhere {
+                name: "OmniMem".into(),
+                target: "https://cloudai.example.net/mcp".into()
+            }
+        );
+        write_opencode(&json, URL, Some("t0k")).unwrap();
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&json).unwrap()).unwrap();
+        assert_eq!(written["theme"], "tokyonight");
+        assert_eq!(written["mcp"]["OmniMem"], opencode_entry(URL, Some("t0k")));
+        assert_eq!(
+            written["mcp"]["OmniMem"]["headers"]["Authorization"],
+            "Bearer t0k"
+        );
+        assert_eq!(written["mcp"]["OmniMem"]["oauth"], false);
+        assert!(backup_path(&json).exists());
+        assert_eq!(
+            opencode_presence(true, std::slice::from_ref(&json), URL),
+            Presence::Here
+        );
+
+        // A local entry bridging to this server counts too.
+        let config = dir.join("config.json");
+        std::fs::write(
+            &config,
+            format!(r#"{{"mcp": {{"mem": {{"type": "local", "command": ["npx", "-y", "mcp-remote", "{URL}"]}}}}}}"#),
+        )
+        .unwrap();
+        assert_eq!(
+            opencode_presence(true, std::slice::from_ref(&config), URL),
+            Presence::Here
+        );
+
+        // A .jsonc with comments is reported, not rewritten.
+        let jsonc = dir.join("opencode.jsonc");
+        std::fs::write(&jsonc, "{\n  // mine\n  \"mcp\": {}\n}\n").unwrap();
+        assert!(
+            matches!(
+                opencode_presence(true, &[config.clone(), jsonc.clone()], URL),
+                Presence::Here
+            ),
+            "the entry in config.json is found before the jsonc is read"
+        );
+        assert!(matches!(
+            opencode_presence(true, std::slice::from_ref(&jsonc), URL),
+            Presence::Unreadable(_)
+        ));
+        assert!(write_opencode(&jsonc, URL, None).is_err());
+
+        // The entry goes where OpenCode writes its own settings, and never
+        // in config.json, which OpenCode 2 doesn't read.
+        assert_eq!(
+            opencode_config_target(&[config.clone(), json.clone()]),
+            Some(json.clone())
+        );
+        assert_ne!(
+            opencode_config_target(std::slice::from_ref(&config)),
+            Some(config.clone())
+        );
+        assert_eq!(
+            opencode_config_target(&[config.clone(), json, jsonc.clone()]),
+            Some(jsonc)
+        );
+    }
+
+    #[test]
+    fn opencode_2s_own_servers_form_is_read_and_kept() {
+        let dir = scratch("opencode-2");
+        let json = dir.join("opencode.json");
+        std::fs::write(
+            &json,
+            r#"{"mcp": {"timeout": {"startup": 5000}, "servers": {"forgejo": {"type": "local", "command": ["forgejo-mcp"]}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            opencode_presence(true, std::slice::from_ref(&json), URL),
+            Presence::Absent
+        );
+        write_opencode(&json, URL, None).unwrap();
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&json).unwrap()).unwrap();
+        assert_eq!(
+            written["mcp"]["servers"]["omnimem"],
+            opencode_entry(URL, None)
+        );
+        assert_eq!(
+            written["mcp"]["servers"]["forgejo"]["command"][0],
+            "forgejo-mcp"
+        );
+        assert_eq!(written["mcp"]["timeout"]["startup"], 5000);
+        assert!(written["mcp"].get("omnimem").is_none());
+        assert_eq!(
+            opencode_presence(true, std::slice::from_ref(&json), URL),
+            Presence::Here
+        );
+    }
+
+    #[test]
+    fn opencode_hooks_are_the_plugin() {
+        let dir = scratch("opencode-hooks");
+        let path = dir.join("plugins/omnimem.js");
+        let source = omnimem_app::opencode::plugin_source(&["/new/omnimem".to_owned()]);
+        assert_eq!(
+            opencode_hooks_presence(false, Some(&path), &source),
+            Presence::NotInstalled
+        );
+        assert_eq!(
+            opencode_hooks_presence(true, Some(&path), &source),
+            Presence::Absent
+        );
+        let old = omnimem_app::opencode::plugin_source(&["/old/omnimem".to_owned()]);
+        omnimem_app::opencode::write_plugin(&path, &old).unwrap();
+        assert!(matches!(
+            opencode_hooks_presence(true, Some(&path), &source),
+            Presence::Elsewhere { .. }
+        ));
+        omnimem_app::opencode::write_plugin(&path, &source).unwrap();
+        assert_eq!(
+            opencode_hooks_presence(true, Some(&path), &source),
+            Presence::Here
+        );
+        std::fs::write(&path, "export const Mine = async () => ({})").unwrap();
+        assert!(matches!(
+            opencode_hooks_presence(true, Some(&path), &source),
+            Presence::Unreadable(_)
+        ));
     }
 
     #[cfg(unix)]

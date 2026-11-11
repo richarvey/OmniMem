@@ -9,6 +9,9 @@ choosing to use it. Three events:
 | `session-start` | injects what the project already knows as opening context | no |
 | `session-end` | records what the session did, if it changed anything | yes |
 
+OpenCode gets the first two through a plugin that runs the same command; see
+[guides/opencode.md](../guides/opencode.md#hooks-stopping-known-dead-ends).
+
 ## Why these exist
 
 Recall only helps an agent that asks, and agents mostly do not. On the dead-end

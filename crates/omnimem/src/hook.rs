@@ -36,6 +36,22 @@ use serde_json::{Value, json};
 /// Tools that put something in place. Read/Glob/Grep are deliberately absent.
 const GUARDED: [&str; 5] = ["Edit", "MultiEdit", "Write", "NotebookEdit", "Bash"];
 
+/// The same tools as OpenCode names them, for its plugin (`opencode-plugin.js`
+/// in omnimem-app), which hands its tool calls to this hook as they are. The
+/// plugin keeps the same list as `GUARDED`, so it doesn't start omnimem for a
+/// read; change both together.
+/// 2.x calls them `shell`, `edit`, `write` and `patch`; 1.x has `bash`,
+/// `multiedit` and `apply_patch` (`edit` and `write` too).
+const OPENCODE_GUARDED: [&str; 7] = [
+    "edit",
+    "multiedit",
+    "write",
+    "bash",
+    "shell",
+    "apply_patch",
+    "patch",
+];
+
 /// Shell fragments that mean a command changes something rather than looks.
 const MUTATING: [&str; 11] = [
     "cargo add",
@@ -291,9 +307,22 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
     let field = |key: &str| input.get(key).and_then(Value::as_str).unwrap_or_default();
     let text = match tool {
         "Edit" => field("new_string").to_owned(),
-        "Write" => field("content").to_owned(),
+        "edit" => field("newString").to_owned(),
+        "Write" | "write" => field("content").to_owned(),
         "NotebookEdit" => field("new_source").to_owned(),
-        "Bash" => {
+        "apply_patch" | "patch" => added_lines(field("patchText")),
+        "multiedit" => input
+            .get("edits")
+            .and_then(Value::as_array)
+            .map(|edits| {
+                edits
+                    .iter()
+                    .filter_map(|e| e.get("newString").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default(),
+        "Bash" | "bash" | "shell" => {
             let command = field("command");
             if bash_mutates(command) {
                 command.to_owned()
@@ -315,6 +344,18 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
         _ => String::new(),
     };
     text.chars().take(MAX_QUERY_CHARS).collect()
+}
+
+/// The lines a patch adds, which are what it proposes. Like an Edit's
+/// `old_string`, the lines it takes out are left unread, so removing a dead
+/// end is never blocked. OpenCode's patches mark them with `+`, as a diff does.
+fn added_lines(patch: &str) -> String {
+    patch
+        .lines()
+        .filter(|line| !line.starts_with("+++"))
+        .filter_map(|line| line.strip_prefix('+'))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Things that must never reach the store.
@@ -539,7 +580,7 @@ fn proposal_for(payload: &Value) -> Option<String> {
         .get("tool_name")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if !GUARDED.contains(&tool) {
+    if !GUARDED.contains(&tool) && !OPENCODE_GUARDED.contains(&tool) {
         return None;
     }
     let empty = json!({});
@@ -1026,6 +1067,84 @@ mod tests {
             guard(&engine, &payload, Some("beta")).unwrap().is_empty(),
             "another project's dead end must not stop this one"
         );
+    }
+
+    /// OpenCode's plugin hands over its tool calls as they are: lower-case
+    /// tool names and camelCase arguments.
+    #[test]
+    fn opencode_tool_calls_are_read_like_claude_codes() {
+        assert_eq!(
+            proposal_text("bash", &json!({"command": "cargo add kestrel-rs"})),
+            "cargo add kestrel-rs"
+        );
+        assert_eq!(
+            proposal_text("shell", &json!({"command": "ls vendor/kestrel-rs"})),
+            "",
+            "looking is still not a proposal"
+        );
+        assert_eq!(
+            proposal_text(
+                "edit",
+                &json!({"filePath": "/a.rs", "oldString": "kestrel_rs", "newString": "tower"})
+            ),
+            "tower",
+            "taking a dead end out is not proposing it"
+        );
+        assert_eq!(
+            proposal_text(
+                "write",
+                &json!({"filePath": "/a.rs", "content": "use kestrel_rs;"})
+            ),
+            "use kestrel_rs;"
+        );
+        assert_eq!(
+            proposal_text(
+                "multiedit",
+                &json!({"edits": [{"newString": "a"}, {"oldString": "x", "newString": "b"}]})
+            ),
+            "a\nb"
+        );
+        let patch = "*** Begin Patch\n*** Update File: Cargo.toml\n@@ [dependencies]\n-tower = \"0.5\"\n+kestrel-rs = \"1\"\n*** End Patch";
+        assert_eq!(
+            proposal_text("apply_patch", &json!({ "patchText": patch })),
+            "kestrel-rs = \"1\""
+        );
+        for tool in ["read", "grep", "glob", "list", "webfetch", "task"] {
+            assert!(
+                !OPENCODE_GUARDED.contains(&tool),
+                "{tool} should not be guarded"
+            );
+        }
+    }
+
+    /// The plugin skips the tools this hook doesn't check, so the two lists
+    /// must say the same thing.
+    #[test]
+    fn the_opencode_plugin_guards_the_same_tools() {
+        let plugin = include_str!("../../omnimem-app/src/opencode-plugin.js");
+        let line = plugin
+            .lines()
+            .find(|line| line.starts_with("const GUARDED = new Set(["))
+            .expect("the plugin's GUARDED list");
+        let mut listed: Vec<&str> = line.split('"').skip(1).step_by(2).collect();
+        let mut ours = OPENCODE_GUARDED.to_vec();
+        listed.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(listed, ours);
+    }
+
+    #[test]
+    fn the_hook_denies_an_opencode_call_that_repeats_a_dead_end() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let payload = json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "bash",
+            "tool_input": {"command": "cargo add kestrel-rs", "description": "Add the crate"},
+            "cwd": "/home/me/alpha",
+            "session_id": "ses_1",
+        });
+        assert_eq!(guard(&engine, &payload, None).unwrap().len(), 1);
+        assert!(guard(&engine, &payload, Some("beta")).unwrap().is_empty());
     }
 
     #[test]

@@ -2,6 +2,16 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.1] - unreleased
+
+OmniMem's dead-end guard and session briefing come to OpenCode, and the desktop app adds OmniMem to OpenCode from its menu ([#42](https://github.com/richarvey/OmniMem/issues/42)).
+
+### Added
+- **OmniMem's hooks for OpenCode, as an OpenCode plugin.** OpenCode has no hooks like Claude Code's, but a plugin can stop a tool call and add to the system prompt, so `omnimem.js` does what the Claude Code hooks do by running the same `omnimem hook`: before a `shell`, `edit`, `write` or `patch` call (`bash` and `apply_patch` in OpenCode 1.x) it checks what the call would put in place against what the project abandoned, and stops it with what worked instead; at the start of each session it adds the project's briefing to the system prompt, once. It fails open, as the Claude Code hooks do. One file serves OpenCode 2.x (its `setup()` plugin API) and 1.x from 1.18.29 (`server()`). Recording the session when it ends isn't there yet, since OpenCode has no event for that. See guides/opencode.md
+- **`omnimem install-hooks --opencode`** writes the plugin to `~/.config/opencode/plugins`, or with `--project` to `.opencode/plugins`, running this binary by its full path (and `--db`, when given). It replaces an older plugin of OmniMem's and leaves alone any other file of the same name
+- **`omnimem hook` reads OpenCode's tool calls**: its tool names (`shell`, `edit`, `write` and `patch` in 2.x; `bash`, `multiedit` and `apply_patch` in 1.x) and camelCase arguments. Like an Edit's `old_string`, the lines a patch takes out aren't read, so removing a dead end is never blocked
+- **Add to OpenCode and Add hooks to OpenCode in the tray and menu bar menu**, once OpenCode is installed (its `opencode` command, its config folder, or on macOS its app). The first writes the `omnimem` remote entry, with the access token if one is set, into OpenCode's config file after a backup, or switches an `omnimem` entry that points at another server; the second writes the plugin, and says Update when the plugin on disk is an older one. A config file in OpenCode 2's own form gets the entry under `mcp.servers`, any other under `mcp`, which both versions read; `config.json` is never written, since 2.x doesn't read it. An `opencode.jsonc` with comments is reported rather than rewritten. Both are unavailable in the Flatpak
+
 ## [7.1.0] - unreleased
 
 The settings panel moves out of the desktop app's window and onto HTTP, at `/admin` on the MCP address, so a server and a Docker container get it too. The desktop app's **Settings…** now opens it in your browser, already signed in. The pages are redesigned in the OmniMem design system.

@@ -77,6 +77,8 @@ struct TrayMenu {
     copy_url: MenuItem,
     desktop: MenuItem,
     code: MenuItem,
+    opencode: MenuItem,
+    opencode_hooks: MenuItem,
     start_at_login: CheckMenuItem,
     quit: MenuItem,
 }
@@ -92,6 +94,8 @@ impl TrayMenu {
             copy_url: MenuItem::new("Copy MCP URL", false, None),
             desktop: client_menu_item(Client::Desktop),
             code: client_menu_item(Client::Code),
+            opencode: client_menu_item(Client::OpenCode),
+            opencode_hooks: client_menu_item(Client::OpenCodeHooks),
             start_at_login: CheckMenuItem::new("Start at login", login.is_some(), enabled, None),
             quit: MenuItem::new("Quit OmniMem", true, None),
         };
@@ -103,6 +107,8 @@ impl TrayMenu {
                 &this.copy_url,
                 &this.desktop,
                 &this.code,
+                &this.opencode,
+                &this.opencode_hooks,
                 &this.start_at_login,
                 &PredefinedMenuItem::separator(),
                 &this.quit,
@@ -146,6 +152,11 @@ struct App {
     login: Option<AutoLaunch>,
     desktop: ClientSlot,
     code: ClientSlot,
+    opencode: ClientSlot,
+    opencode_hooks: ClientSlot,
+    /// OmniMem's OpenCode plugin as this app would write it: running this
+    /// program on this database. `None` if this program can't be found.
+    opencode_plugin: Option<String>,
     clients_checked: Option<Instant>,
     /// The newer release the tray is announcing.
     update: Option<String>,
@@ -408,14 +419,34 @@ impl App {
                 url,
             )
         });
-        self.relabel(Client::Desktop);
-        self.relabel(Client::Code);
+        let opencode_here = url.is_some() && omnimem_app::opencode::installed();
+        self.opencode.presence = url.as_deref().map(|url| {
+            clients::opencode_presence(opencode_here, &clients::opencode_config_paths(), url)
+        });
+        self.opencode_hooks.presence = url.as_ref().map(|_| match &self.opencode_plugin {
+            Some(source) => clients::opencode_hooks_presence(
+                opencode_here,
+                omnimem_app::opencode::plugin_path(None).as_deref(),
+                source,
+            ),
+            None => Presence::Unreadable("this program wasn't found".to_owned()),
+        });
+        for client in [
+            Client::Desktop,
+            Client::Code,
+            Client::OpenCode,
+            Client::OpenCodeHooks,
+        ] {
+            self.relabel(client);
+        }
     }
 
     fn slot(&mut self, client: Client) -> &mut ClientSlot {
         match client {
             Client::Desktop => &mut self.desktop,
             Client::Code => &mut self.code,
+            Client::OpenCode => &mut self.opencode,
+            Client::OpenCodeHooks => &mut self.opencode_hooks,
         }
     }
 
@@ -423,9 +454,17 @@ impl App {
         let (slot, item) = match client {
             Client::Desktop => (&self.desktop, &self.menu.desktop),
             Client::Code => (&self.code, &self.menu.code),
+            Client::OpenCode => (&self.opencode, &self.menu.opencode),
+            Client::OpenCodeHooks => (&self.opencode_hooks, &self.menu.opencode_hooks),
         };
-        let (text, enabled) = if self.in_flatpak && client == Client::Code {
-            (model::CODE_IN_FLATPAK.to_owned(), false)
+        let flatpak_text = match client {
+            Client::Desktop => None,
+            Client::Code => Some(model::CODE_IN_FLATPAK),
+            Client::OpenCode => Some(model::OPENCODE_IN_FLATPAK),
+            Client::OpenCodeHooks => Some(model::OPENCODE_HOOKS_IN_FLATPAK),
+        };
+        let (text, enabled) = if let Some(text) = flatpak_text.filter(|_| self.in_flatpak) {
+            (text.to_owned(), false)
         } else {
             model::client_item(
                 client,
@@ -456,6 +495,7 @@ impl App {
         self.relabel(client);
         // The token the services check, if one is set, so the client can get in.
         let token = omnimem_core::env::var("MCP_AUTH_TOKEN").filter(|t| !t.is_empty());
+        let plugin = self.opencode_plugin.clone();
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
             let result = match client {
@@ -466,6 +506,20 @@ impl App {
                     .ok_or_else(|| "the claude command wasn't found".to_owned())
                     .and_then(|cli| {
                         clients::write_code(&cli, replacing.as_deref(), &url, token.as_deref())
+                    }),
+                Client::OpenCode => {
+                    clients::opencode_config_target(&clients::opencode_config_paths())
+                        .ok_or_else(|| "no home folder to find OpenCode's config in".to_owned())
+                        .and_then(|path| clients::write_opencode(&path, &url, token.as_deref()))
+                }
+                Client::OpenCodeHooks => plugin
+                    .ok_or_else(|| "this program wasn't found".to_owned())
+                    .and_then(|source| {
+                        let path = omnimem_app::opencode::plugin_path(None)
+                            .ok_or("no home folder to find OpenCode's config in")?;
+                        omnimem_app::opencode::write_plugin(&path, &source)
+                            .map(|_| ())
+                            .map_err(|e| format!("{e:#}"))
                     }),
             };
             let _ = proxy.send_event(AppEvent::ClientDone(client, result));
@@ -626,6 +680,10 @@ impl App {
                     self.change_client(Client::Desktop);
                 } else if id == self.menu.code.id() {
                     self.change_client(Client::Code);
+                } else if id == self.menu.opencode.id() {
+                    self.change_client(Client::OpenCode);
+                } else if id == self.menu.opencode_hooks.id() {
+                    self.change_client(Client::OpenCodeHooks);
                 } else if id == self.menu.start_at_login.id() {
                     self.toggle_start_at_login();
                 } else if id == self.menu.quit.id() {
@@ -765,6 +823,16 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         tool_schemas_chars: overhead.tool_schemas_chars,
         deferred_names_chars: overhead.deferred_names_chars,
     });
+    // The hooks run this program on this database, whatever the default is.
+    let opencode_plugin = omnimem_app::opencode::this_program()
+        .map(|program| {
+            omnimem_app::opencode::plugin_source(&omnimem_app::opencode::hook_command(
+                &program,
+                Some(&options.db),
+            ))
+        })
+        .map_err(|e| warn!(error = %format!("{e:#}"), "the OpenCode hooks are unavailable"))
+        .ok();
     let mut app = App {
         menu: TrayMenu::new(login.as_ref())?,
         options,
@@ -781,6 +849,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         login,
         desktop: ClientSlot::default(),
         code: ClientSlot::default(),
+        opencode: ClientSlot::default(),
+        opencode_hooks: ClientSlot::default(),
+        opencode_plugin,
         clients_checked: None,
         update: None,
         started: Instant::now(),
