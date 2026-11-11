@@ -259,6 +259,14 @@ impl Panel {
             .route("/skills/discard", post(skills::discard))
             .route("/skills/delete", post(skills::delete))
             .route(
+                "/skills/suggestions/accept",
+                post(skills::accept_suggestion),
+            )
+            .route(
+                "/skills/suggestions/dismiss",
+                post(skills::dismiss_suggestion),
+            )
+            .route(
                 "/skills/import",
                 // Bundles are capped at 20 MB; multipart framing adds a little.
                 post(skills::import).layer(DefaultBodyLimit::max(24 * 1024 * 1024)),

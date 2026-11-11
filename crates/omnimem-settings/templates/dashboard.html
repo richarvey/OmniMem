@@ -22,7 +22,7 @@
 </header>
 
 {# What waits on a person comes first: everything a review page would list, and nothing else. #}
-{% set waiting = attention.unconfirmed + attention.contradictions + attention.wording + attention.proposals + duplicates_found %}
+{% set waiting = attention.unconfirmed + attention.contradictions + attention.wording + attention.proposals + attention.suggestions + duplicates_found %}
 <section class="attention" aria-labelledby="attention-h">
   <h2 id="attention-h" class="section-heading">Requires your attention</h2>
   {% if waiting > 0 %}
@@ -62,9 +62,16 @@
       <span class="attention-hint">Drafted by an agent, waiting for your accept</span>
     </a></li>
     {% endif %}
+    {% if attention.suggestions > 0 %}
+    <li><a class="attention-tile" href="{{ admin }}/skills#skill-suggestions">
+      <span class="attention-num">{{ num(attention.suggestions) }}</span>
+      <span class="attention-label">skill suggestion{{ '' if attention.suggestions == 1 else 's' }}</span>
+      <span class="attention-hint">Recent articles that fit {{ attention.suggested_skills }} of your skills. Add them to a skill's references or dismiss them.</span>
+    </a></li>
+    {% endif %}
   </ul>
   {% else %}
-  <p class="attention-clear">Nothing needs your attention. Facts to confirm, contradictions, duplicates from a scan and skill proposals show here when they arrive.</p>
+  <p class="attention-clear">Nothing needs your attention. Facts to confirm, contradictions, duplicates from a scan, skill proposals and skill suggestions show here when they arrive.</p>
   {% endif %}
 </section>
 

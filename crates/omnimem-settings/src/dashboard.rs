@@ -349,11 +349,18 @@ fn attention(engine: &Engine) -> omnimem_engine::Result<Value> {
         .iter()
         .filter(|p| !p.stale)
         .count();
+    let watch = engine.knowledge_watch()?;
+    let suggestions: usize = watch
+        .iter()
+        .map(|w| w["articles"].as_array().map_or(0, Vec::len))
+        .sum();
     Ok(json!({
         "unconfirmed": engine.store().count_unconfirmed()?,
         "contradictions": contradictions,
         "wording": wording,
         "proposals": proposals,
+        "suggestions": suggestions,
+        "suggested_skills": watch.len(),
     }))
 }
 

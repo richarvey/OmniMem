@@ -27,7 +27,7 @@ use crate::PanelState;
 use crate::feeds_file;
 use crate::files::{attachment, read_upload};
 use crate::format::{minutes, timestamp};
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{blocking, is_web_url, quote, see_other, starting};
 use crate::render::page;
 
 const IMPORT_STASH_PREFIX: &str = "meta:skill:import:";
@@ -136,10 +136,21 @@ pub(crate) async fn list(
             .iter()
             .map(proposal_row)
             .collect();
-        Ok((skills, states, proposals))
+        // Recent articles close to a skill, as the briefing lists them.
+        let mut suggestions = engine.knowledge_watch()?;
+        // A feed's link is only a link when it's a web address.
+        for article in suggestions
+            .iter_mut()
+            .filter_map(|w| w["articles"].as_array_mut())
+            .flatten()
+        {
+            let web = article["source_url"].as_str().is_some_and(is_web_url);
+            article["source_is_web"] = web.into();
+        }
+        Ok((skills, states, proposals, suggestions))
     })
     .await;
-    let (skills, states, proposals) = match gathered {
+    let (skills, states, proposals, suggestions) = match gathered {
         Ok(found) => found,
         Err(failure) => return failure,
     };
@@ -154,6 +165,7 @@ pub(crate) async fn list(
             skills,
             states,
             proposals,
+            suggestions,
         },
     )
 }
@@ -343,6 +355,110 @@ pub(crate) async fn discard(
         Ok(false) => see_other(&format!(
             "/skills?error={}",
             quote("That proposal had already gone.")
+        )),
+        Err(failure) => failure,
+    }
+}
+
+/// The article a suggestion form names, if it is a knowledge memory.
+fn article_from(form: &FormData) -> Result<String, String> {
+    let key = form.get("key").map_or("", |k| k.trim());
+    if key.starts_with("mem:knowledge:") {
+        Ok(key.to_owned())
+    } else {
+        Err("That suggestion isn't a knowledge article.".to_owned())
+    }
+}
+
+/// What accepting a suggestion did, for the Skills page's message.
+fn accepted_message(domain: &str, proposed: &Value) -> Result<String, String> {
+    match proposed["status"].as_str() {
+        Some("proposal") => Ok(format!(
+            "Added to the {domain} skill's references. Its new draft is in Pending proposals: \
+             accept it to write the skill."
+        )),
+        Some("unchanged") => Ok(format!(
+            "Added to the {domain} skill's references. The skill already says the same, so \
+             there's nothing new to accept."
+        )),
+        _ => Err(format!(
+            "Added to the {domain} skill's references, but the skill couldn't be redrafted: {}",
+            proposed["note"]
+                .as_str()
+                .or_else(|| proposed["reason"].as_str())
+                .unwrap_or("the compiler gave no reason")
+        )),
+    }
+}
+
+/// POST `/skills/suggestions/accept`: promote a suggested article into a
+/// skill's domain and draft the skill with it. The draft waits in Pending
+/// proposals like any other, so the skill itself changes only when a person
+/// accepts that.
+pub(crate) async fn accept_suggestion(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (domain, key) =
+        match domain_from(&form, "Missing domain.").and_then(|d| Ok((d, article_from(&form)?))) {
+            Ok(found) => found,
+            Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+        };
+    let outcome = blocking(move || {
+        let promoted = engine.promote_knowledge(&key, Some(&domain), false, None)?;
+        if let Some(error) = promoted["error"].as_str() {
+            return Ok(Err(error.to_owned()));
+        }
+        info!(
+            domain,
+            article = key,
+            "promoted a suggested article from the settings panel"
+        );
+        let proposed = refusal(engine.compile_skill(
+            &domain,
+            "propose",
+            MIN_REINFORCEMENT,
+            INCLUDE_GRAVEYARD,
+            None,
+            None,
+        ))?;
+        Ok(accepted_message(&domain, &proposed))
+    })
+    .await;
+    state.invalidate_counts();
+    match outcome {
+        Ok(Ok(message)) => see_other(&format!(
+            "/skills?message={}#pending-proposals",
+            quote(&message)
+        )),
+        Ok(Err(reason)) => see_other(&format!("/skills?error={}", quote(&reason))),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/suggestions/dismiss`: stop suggesting an article for a
+/// skill, here and in the briefing. The article is untouched.
+pub(crate) async fn dismiss_suggestion(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (domain, key) =
+        match domain_from(&form, "Missing domain.").and_then(|d| Ok((d, article_from(&form)?))) {
+            Ok(found) => found,
+            Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+        };
+    let dismissed = blocking(move || engine.dismiss_knowledge_watch(&domain, &key)).await;
+    state.invalidate_counts();
+    match dismissed {
+        Ok(_) => see_other(&format!(
+            "/skills?message={}#skill-suggestions",
+            quote("Suggestion dismissed. It won't be suggested for that skill again.")
         )),
         Err(failure) => failure,
     }

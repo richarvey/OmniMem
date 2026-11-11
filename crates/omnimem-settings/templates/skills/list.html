@@ -122,6 +122,53 @@
 </section>
 {% endif %}
 
+{% if suggestions %}
+<section class="pending-proposals" id="skill-suggestions" aria-labelledby="skill-suggestions-h">
+  <h2 id="skill-suggestions-h" class="section-heading">Suggested for your skills <span class="count-chip">{% set ns = namespace(n=0) %}{% for w in suggestions %}{% set ns.n = ns.n + w.articles|length %}{% endfor %}{{ ns.n }}</span></h2>
+  <p class="section-note">
+    Recent articles close to one of your skills. Add one and it becomes
+    reference material for that skill, and a new draft of the skill waits in
+    Pending proposals for you to accept. Dismiss one and it isn't suggested
+    for that skill again.
+  </p>
+  {% for w in suggestions %}
+  <div class="pending-proposal">
+    <div class="pending-head">
+      <strong><a href="{{ admin }}/skills/{{ w.skill_id }}">{{ w.name or w.domain }}</a></strong>
+      <span class="badge ns-skill">{{ w.domain }}</span>
+    </div>
+    <ul class="suggestion-list">
+      {% for a in w.articles %}
+      <li class="suggestion">
+        <div class="suggestion-text">
+          <a href="{{ admin }}/memory/{{ a.key }}">{{ a.gist }}</a>
+          <span class="mono">{% if a.feed_name %}{{ a.feed_name }}, {% endif %}similarity {{ a.similarity }}</span>
+          {% if a.source_is_web %}<a class="mono" href="{{ a.source_url }}" rel="noopener noreferrer" target="_blank">source<span class="visually-hidden"> (opens in a new tab)</span></a>{% endif %}
+          {% if a.possible_contradiction %}
+          <span class="badge rule-watch">may contradict a rule</span>
+          {% if a.conflicts_with_rules %}<span class="section-note">Rule: {{ a.conflicts_with_rules|join('; ') }}</span>{% endif %}
+          {% endif %}
+        </div>
+        <div class="pending-actions suggestion-actions">
+          <form method="POST" action="{{ admin }}/skills/suggestions/dismiss" style="display:inline">
+            <input type="hidden" name="domain" value="{{ w.domain }}">
+            <input type="hidden" name="key" value="{{ a.key }}">
+            <button type="submit" class="btn btn-secondary btn-sm">Dismiss</button>
+          </form>
+          <form method="POST" action="{{ admin }}/skills/suggestions/accept" style="display:inline">
+            <input type="hidden" name="domain" value="{{ w.domain }}">
+            <input type="hidden" name="key" value="{{ a.key }}">
+            <button type="submit" class="btn btn-primary btn-sm">Add to skill</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 {% if skills %}
 <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table skills-table">

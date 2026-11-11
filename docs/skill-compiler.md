@@ -58,6 +58,8 @@ Every skill carries a fixed operating contract telling the agent to keep recordi
 
 Your RSS feeds double as an early warning system. The briefing's knowledge watch compares recent articles (the last `SKILL_KNOWLEDGE_WATCH_DAYS`, 14) against each skill and surfaces the relevant ones, flagging a possible contradiction when an article's language opposes one of the skill's rules. Nothing changes by itself. You review it, promote the article if it belongs, or ignore it and let it age out.
 
+The settings panel shows the same suggestions, on the dashboard under Requires your attention and on the Skills page under Suggested for your skills. **Add to skill** promotes the article to that skill's domain and drafts the skill with it, and the draft waits in Pending proposals until you accept it, so the skill only changes when you say so. **Dismiss** stops that article being suggested for that skill, in the panel and in the briefing alike.
+
 ## Feed influence
 
 Promotion is vetting one article at a time. Feed influence is the standing version of the same decision. In `feeds.yml` (or the settings panel's feed editor) you can tie a feed to one or more skill domains with a score from 1 to 10. When that skill is recompiled, the latest articles from its influencing feeds are pulled into a **Feed watch** section automatically, and the score is literally how many of the feed's most recent articles appear. A 10 dominates the section, a 1 adds a single headline, and the whole section is capped at `SKILL_FEED_MAX_ARTICLES` (25, and 0 leaves it out).

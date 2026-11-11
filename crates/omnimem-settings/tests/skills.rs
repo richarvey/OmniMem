@@ -441,3 +441,110 @@ async fn a_stale_pending_proposal_cannot_be_accepted() {
     assert_ne!(stored["body"], DRAFT);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// A recent feed article stored with the skill's own vector, so the
+/// knowledge watch suggests it for that skill.
+fn suggested_article(engine: &Engine, key: &str, title: &str) {
+    let now = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let fields = Fields::from([
+        ("content".to_owned(), format!("{title}: what changed")),
+        ("title".to_owned(), title.to_owned()),
+        ("feed_name".to_owned(), "Rust Blog".to_owned()),
+        ("source_url".to_owned(), "javascript:alert(1)".to_owned()),
+        ("state".to_owned(), "active".to_owned()),
+        ("licence".to_owned(), "open".to_owned()),
+        ("provenance".to_owned(), "retrieved".to_owned()),
+        ("created_at".to_owned(), now.clone()),
+        ("updated_at".to_owned(), now),
+    ]);
+    let vector = engine.embed_texts(&["rust-local"]).unwrap().remove(0);
+    engine.store().upsert(key, &fields, Some(&vector)).unwrap();
+}
+
+#[tokio::test]
+async fn skill_suggestions_show_on_the_dashboard_and_skills_page_and_can_be_settled() {
+    let (panel, engine, dir) = setup();
+    compiled_skill(&engine);
+    suggested_article(&engine, "mem:knowledge:01DISMISS", "Clippy lints for async");
+    suggested_article(&engine, "mem:knowledge:01ACCEPT", "Faster cargo test runs");
+
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(dashboard.contains("skill suggestions"), "{dashboard}");
+    assert!(dashboard.contains(r#"href="/admin/skills#skill-suggestions""#));
+
+    let list = text(&get(&panel, "/skills").await);
+    assert!(list.contains("Suggested for your skills"), "{list}");
+    assert!(list.contains("Clippy lints for async"));
+    assert!(list.contains(r#"action="/admin/skills/suggestions/accept""#));
+    assert!(
+        !list.contains("javascript:"),
+        "a feed's link must be a web address"
+    );
+
+    let dismissed = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/dismiss",
+            "domain=rust&key=mem%3Aknowledge%3A01DISMISS",
+        )
+        .await,
+    );
+    assert!(dismissed.starts_with("/skills?message="), "{dismissed}");
+    let list = text(&get(&panel, "/skills").await);
+    assert!(!list.contains("Clippy lints for async"), "{list}");
+    assert!(list.contains("Faster cargo test runs"));
+
+    let accepted = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/accept",
+            "domain=rust&key=mem%3Aknowledge%3A01ACCEPT",
+        )
+        .await,
+    );
+    assert!(accepted.starts_with("/skills?message="), "{accepted}");
+    assert!(accepted.ends_with("#pending-proposals"), "{accepted}");
+    let article = engine
+        .store()
+        .get("mem:knowledge:01ACCEPT")
+        .unwrap()
+        .unwrap();
+    assert_eq!(article["skill_domains"], r#"["rust"]"#);
+    assert!(
+        engine.store().hash_get_all(PROPOSAL).unwrap().is_some(),
+        "the skill's new draft waits for a person"
+    );
+    let stored = engine
+        .store()
+        .get("mem:skill:gen:rust-local")
+        .unwrap()
+        .unwrap();
+    assert!(
+        !stored["body"].contains("Faster cargo"),
+        "the skill itself is unchanged until the draft is accepted"
+    );
+
+    let list = text(&get(&panel, "/skills").await);
+    assert!(!list.contains("Suggested for your skills"), "{list}");
+    assert!(list.contains("Pending proposals"));
+    let dashboard = text(&get(&panel, "/").await);
+    assert!(!dashboard.contains("skill suggestion"), "{dashboard}");
+
+    // Anything but a knowledge article is refused, and said.
+    let refused = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/accept",
+            "domain=rust&key=mem%3Aepisodic%3A01X",
+        )
+        .await,
+    );
+    assert!(refused.starts_with("/skills?error="), "{refused}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

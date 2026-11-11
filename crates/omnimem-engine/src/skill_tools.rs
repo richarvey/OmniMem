@@ -23,6 +23,14 @@ use crate::{Engine, Result};
 /// Above this a semantic match is as trustworthy as an exact domain hit.
 const SKILL_HIGH_CONFIDENCE: f64 = 0.45;
 
+/// The knowledge watch's suggestions a person turned down, as
+/// `<domain> <article key>` members, so each stays turned down.
+const WATCH_DISMISSED_KEY: &str = "meta:skill:watch_dismissed";
+
+fn watch_member(domain: &str, article_key: &str) -> String {
+    format!("{domain} {article_key}")
+}
+
 fn state_active(row: &Fields) -> bool {
     row.get("state").is_none_or(|s| s == "active")
 }
@@ -758,7 +766,11 @@ impl Engine {
     /// Recent knowledge close to a compiled skill, flagged as a possible
     /// contradiction when the negation heuristic fires against one of its
     /// rules. Awareness only; nothing here changes a skill.
-    pub(crate) fn knowledge_watch(&self) -> Result<Vec<Value>> {
+    ///
+    /// A suggestion a person dismissed (`dismiss_knowledge_watch`) is left
+    /// out, and one they accepted drops out because the article is then
+    /// promoted to the skill's domain. At most three articles per skill.
+    pub fn knowledge_watch(&self) -> Result<Vec<Value>> {
         let watch_days = self.config.skill_knowledge_watch_days;
         if watch_days <= 0 {
             return Ok(Vec::new());
@@ -825,6 +837,11 @@ impl Engine {
         if recent.is_empty() {
             return Ok(Vec::new());
         }
+        let dismissed: HashSet<String> = self
+            .store
+            .set_members(WATCH_DISMISSED_KEY)?
+            .into_iter()
+            .collect();
         let article_keys: Vec<String> = recent.iter().map(|(k, _)| k.clone()).collect();
         let article_vectors = self.store.get_vectors_multi(&article_keys);
         let skill_vector_keys: Vec<String> = skills.iter().map(|(k, _)| k.clone()).collect();
@@ -850,6 +867,7 @@ impl Engine {
                 };
                 if manifest.contains(article_key)
                     || parse_skill_domains(article.get("skill_domains")).contains(&domain)
+                    || dismissed.contains(&watch_member(&domain, article_key))
                 {
                     continue;
                 }
@@ -926,5 +944,26 @@ impl Engine {
             }));
         }
         Ok(watch)
+    }
+
+    /// Turn down one of the knowledge watch's suggestions: `article_key`
+    /// stops being suggested for `domain`'s skill, in the briefing and the
+    /// settings panel. The article itself is untouched. False when it had
+    /// already been turned down.
+    pub fn dismiss_knowledge_watch(&self, domain: &str, article_key: &str) -> Result<bool> {
+        if !article_key.starts_with("mem:knowledge:") {
+            return Err(invalid(format!(
+                "Key must be in the knowledge namespace: {article_key}"
+            )));
+        }
+        let (canonical, _) = resolve_domain(domain);
+        if !is_valid_domain(&canonical) {
+            return Err(invalid(INVALID_DOMAIN));
+        }
+        let added = self.store.set_add(
+            WATCH_DISMISSED_KEY,
+            &[watch_member(&canonical, article_key)],
+        )?;
+        Ok(added > 0)
     }
 }

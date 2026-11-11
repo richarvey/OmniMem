@@ -593,6 +593,72 @@ fn briefing_surfaces_suggestions_updates_and_the_knowledge_watch() {
 }
 
 #[test]
+fn a_knowledge_watch_suggestion_goes_once_dismissed_or_promoted() {
+    let e = engine();
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    e.compile_skill(
+        "python",
+        "propose",
+        2,
+        true,
+        None,
+        Some("python background work queues"),
+    )
+    .unwrap();
+    write(&e, "python");
+    for key in ["mem:knowledge:01K", "mem:knowledge:01L"] {
+        put(
+            &e,
+            key,
+            "python background work queues for long jobs",
+            &[("feed_name", "news")],
+        );
+    }
+    let suggested = |e: &Engine| -> Vec<String> {
+        e.knowledge_watch()
+            .unwrap()
+            .iter()
+            .flat_map(|w| w["articles"].as_array().cloned().unwrap_or_default())
+            .map(|a| a["key"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(suggested(&e), ["mem:knowledge:01K", "mem:knowledge:01L"]);
+
+    assert!(
+        e.dismiss_knowledge_watch("python", "mem:knowledge:01K")
+            .unwrap()
+    );
+    assert!(
+        !e.dismiss_knowledge_watch("python", "mem:knowledge:01K")
+            .unwrap(),
+        "already dismissed"
+    );
+    assert_eq!(suggested(&e), ["mem:knowledge:01L"]);
+    assert!(
+        e.briefing(Some("alpha"), true).unwrap()["skill_knowledge_watch"][0]["articles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|a| a["key"] != "mem:knowledge:01K"),
+        "the briefing skips it too"
+    );
+
+    e.promote_knowledge("mem:knowledge:01L", Some("python"), false, None)
+        .unwrap();
+    assert!(suggested(&e).is_empty());
+
+    assert!(
+        e.dismiss_knowledge_watch("python", "mem:episodic:01A")
+            .is_err()
+    );
+    assert!(
+        e.dismiss_knowledge_watch("Not Valid!", "mem:knowledge:01K")
+            .is_err()
+    );
+}
+
+#[test]
 fn the_auto_scan_proposes_once_and_respects_an_ignored_draft() {
     let e = engine_with(EngineConfig {
         skill_scan_interval_hours: 24.0,

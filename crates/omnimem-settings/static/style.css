@@ -558,6 +558,34 @@ a.stat-card:hover .stat-ns {
   margin-top: 0.75rem;
 }
 
+.suggestion-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.suggestion-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1 1 20rem;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-actions { margin-top: 0; }
+
 /* Badges */
 .badge {
   display: inline-block;
