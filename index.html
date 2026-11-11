@@ -194,6 +194,13 @@ a.omm-int-tile:hover::after,a.omm-int-tile:focus-visible::after{opacity:1}
   .omm-nav-cta,.omm-nav-cta:hover{font-family:"Ubuntu Mono",monospace;font-size:12.5px;font-weight:500;color:#0b0c0e;background:#63bd85;padding:8px 15px;border-radius:7px;white-space:nowrap;text-align:center;transition:background-color .15s}
   .omm-nav-cta:hover{background:#7fcb9b}
   .omm-header-cta{flex:0 0 auto}
+  .omm-cta-group{display:flex;gap:8px;align-items:center}
+  .omm-nav-cta-ghost,.omm-nav-cta-ghost:hover{display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#e7e9ec;background:transparent;box-shadow:inset 0 0 0 1px rgb(38,42,49)}
+  .omm-nav-cta-ghost:hover{background:#16191e}
+  .omm-nav-cta-ghost svg{color:#e5c07b;flex:0 0 auto}
+  .omm-mobile-ctas{display:grid;gap:8px}
+  .omm-mobile-ctas .omm-nav-cta-ghost{display:flex}
+  @media (min-width:961px) and (max-width:1100px){.omm-cta-group .omm-nav-cta-ghost{display:none}}
   .omm-nav-link:focus-visible,.omm-nav-cta:focus-visible,.omm-wordmark:focus-visible,.omm-menu-toggle:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
   .omm-menu-toggle{display:none;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:1px solid rgb(38,42,49);border-radius:8px;background:transparent;color:#e7e9ec;cursor:pointer;flex:0 0 auto;transition:background-color .15s}
   .omm-menu-toggle:hover{background:#16191e}
@@ -490,7 +497,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
       <a data-spy="quickstart" href="#quickstart" class="omm-nav-link">Get started</a>
       <a href="/guides/" class="omm-nav-link">Guides</a>
     </div>
-    <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-header-cta">Source</a>
+    <div class="omm-header-cta omm-cta-group"><a href="https://github.com/richarvey/OmniMem" class="omm-nav-cta omm-nav-cta-ghost" aria-label="Star us on GitHub" title="Star us on GitHub"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.53L12 17.49l-5.87 3.08 1.12-6.53L2.5 9.41l6.56-.95z"/></svg>Star</a><a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta">Source</a></div>
     <button type="button" class="omm-menu-toggle" aria-controls="omm-mobile-menu" aria-expanded="false" aria-label="Open menu">
       <svg class="omm-menu-icon" viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path class="omm-menu-line omm-menu-line-outer" d="M27 10 13 10C10.8 10 9 8.2 9 6 9 3.5 10.8 2 13 2 15.2 2 17 3.8 17 6L17 26C17 28.2 18.8 30 21 30 23.2 30 25 28.2 25 26 25 23.8 23.2 22 21 22L7 22"></path>
@@ -512,7 +519,7 @@ section[data-screen-label]{padding-top:52px!important;padding-bottom:52px!import
         <a data-spy="quickstart" href="#quickstart" class="omm-nav-link">Get started</a>
         <a href="/guides/" class="omm-nav-link">Guides</a>
       </div>
-      <a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-mobile-cta">Source</a>
+      <div class="omm-mobile-ctas"><a href="https://github.com/richarvey/OmniMem" class="omm-nav-cta omm-nav-cta-ghost omm-mobile-cta"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.53L12 17.49l-5.87 3.08 1.12-6.53L2.5 9.41l6.56-.95z"/></svg>Star us on GitHub</a><a href="https://code.squarecows.com/ric/omnimem" class="omm-nav-cta omm-mobile-cta">Source</a></div>
     </div>
   </div>
 </header><main><div class="omm-flow"><canvas class="omm-flow-canvas" aria-hidden="true"></canvas><header id="top" data-screen-label="Hero" style="max-width: 1200px; margin: 0px auto; padding: 74px 28px 60px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;">
