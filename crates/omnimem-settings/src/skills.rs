@@ -88,9 +88,11 @@ fn skill_not_found() -> Response {
         .into_response()
 }
 
-/// An htmx answer that sends the window to another page.
+/// An htmx answer that sends the window to another page: `location` is a
+/// panel path, which the browser reaches under `/admin`, as `see_other`'s.
 fn hx_redirect(location: &str) -> Response {
-    ([("HX-Redirect", location)], Html("")).into_response()
+    let target = format!("{}{location}", crate::ADMIN_ROOT);
+    ([("HX-Redirect", target)], Html("")).into_response()
 }
 
 pub(crate) async fn list(

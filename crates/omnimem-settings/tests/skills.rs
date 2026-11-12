@@ -296,7 +296,7 @@ async fn a_bundle_downloads_and_imports_after_confirming() {
         .await;
     assert_eq!(
         confirmed.headers()["HX-Redirect"],
-        "/skills?message=Skill%20imported%3B%201%20memory%20added."
+        "/admin/skills?message=Skill%20imported%3B%201%20memory%20added."
     );
     assert!(engine.store().get(&key).unwrap().is_some());
     assert!(engine.store().get(&source).unwrap().is_some());
@@ -374,7 +374,7 @@ async fn accepting_a_pending_proposal_commits_the_stash() {
     let accepted = post(&panel, "/skills/commit", "domain=rust").await;
     assert_eq!(
         accepted.headers()["HX-Redirect"],
-        "/skills/mem:skill:gen:rust-local"
+        "/admin/skills/mem:skill:gen:rust-local"
     );
     let stored = engine
         .store()

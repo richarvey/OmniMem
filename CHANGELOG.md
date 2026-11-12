@@ -16,6 +16,7 @@ OmniMem's dead-end guard and session briefing come to Kiro, the desktop app adds
 ### Fixed
 - Add to Mistral Vibe failed on a fresh Vibe with "config.toml's mcp_servers isn't written as [[mcp_servers]] tables": Vibe writes `mcp_servers = []` until a server is added. An inline list, empty or not, is now rewritten as `[[mcp_servers]]` tables holding the same servers, with OmniMem added
 - A client set up before `MCP_AUTH_TOKEN` was set, or before it changed, counted as already having OmniMem because it reached the right address, so with the shorter menu it vanished from it while every call it made was refused with a 401. The tray now checks the token as well: an entry that doesn't send the current one (Claude Desktop's `mcp-remote` header, Claude Code's, OpenCode's and Kiro's `headers`, Vibe's `auth` and Codex's `http_headers`) is listed as **Update the token in …**, which rewrites it. An entry with no token still counts when OAuth is on, since it can sign in instead, and one whose token comes from an environment variable or a helper is taken on trust
+- Accepting a skill proposal on the Skills page, or confirming a skill bundle import, sent the browser to `/skills/...` rather than `/admin/skills/...`, outside the settings panel. The htmx redirect behind both now carries the `/admin` prefix, as every other redirect in the panel does
 
 ## [7.1.4] - unreleased
 
