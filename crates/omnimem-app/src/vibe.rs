@@ -16,10 +16,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
-use toml_edit::{ArrayOfTables, InlineTable, Item, Table, value};
+use toml_edit::{ArrayOfTables, InlineTable, Item, Table, TableLike, value};
 
 pub use crate::client_files::{HooksState, McpServer};
-use crate::client_files::{read_toml, replace};
+use crate::client_files::{authorization_in, read_toml, replace};
 pub use crate::shell::hook_base;
 
 /// The name OmniMem's MCP entry goes under.
@@ -216,44 +216,43 @@ pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
     let Some(item) = doc.get("mcp_servers") else {
         return Ok(Vec::new());
     };
-    let text = |get: Option<&toml_edit::Value>| get.and_then(|v| v.as_str()).map(str::to_owned);
-    let mut servers = Vec::new();
-    let mut add = |name: Option<String>, url, command, args: Option<&toml_edit::Array>| {
-        servers.push(McpServer {
-            name: name.unwrap_or_default(),
-            url,
-            command,
-            args: args
+    let server = |table: &dyn TableLike| {
+        let text = |key: &str| table.get(key).and_then(Item::as_str).map(str::to_owned);
+        let auth = table.get("auth").and_then(Item::as_table_like);
+        // A static header, at the top or in `auth`, is what OmniMem writes;
+        // a key from the environment or a sign-in is something else.
+        let authorization = authorization_in(table.get("headers"))
+            .or_else(|| authorization_in(auth.and_then(|auth| auth.get("headers"))));
+        let other_auth = table.contains_key("api_key_env")
+            || auth.is_some_and(|auth| auth.get("type").and_then(Item::as_str) != Some("static"));
+        McpServer {
+            name: text("name").unwrap_or_default(),
+            url: text("url"),
+            command: text("command"),
+            args: table
+                .get("args")
+                .and_then(Item::as_array)
                 .map(|args| {
                     args.iter()
                         .filter_map(|a| a.as_str().map(str::to_owned))
                         .collect()
                 })
                 .unwrap_or_default(),
-        });
+            authorization,
+            other_auth,
+        }
     };
-    if let Some(tables) = item.as_array_of_tables() {
-        for table in tables {
-            let get = |key: &str| table.get(key).and_then(Item::as_value);
-            add(
-                text(get("name")),
-                text(get("url")),
-                text(get("command")),
-                get("args").and_then(|v| v.as_array()),
-            );
-        }
+    let servers = if let Some(tables) = item.as_array_of_tables() {
+        tables.iter().map(|table| server(table)).collect()
     } else if let Some(array) = item.as_array() {
-        for table in array.iter().filter_map(|v| v.as_inline_table()) {
-            add(
-                text(table.get("name")),
-                text(table.get("url")),
-                text(table.get("command")),
-                table.get("args").and_then(|v| v.as_array()),
-            );
-        }
+        array
+            .iter()
+            .filter_map(|v| v.as_inline_table())
+            .map(|table| server(table))
+            .collect()
     } else {
         bail!("config.toml's mcp_servers isn't a list of servers");
-    }
+    };
     Ok(servers)
 }
 

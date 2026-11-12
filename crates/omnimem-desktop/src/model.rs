@@ -105,6 +105,7 @@ pub fn client_item(
             format!("Switch {name} here (now {})", host_of(target)),
             true,
         ),
+        Some(Presence::OldToken { .. }) => (format!("Update the token in {name}"), true),
     };
     match error {
         Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
@@ -141,7 +142,9 @@ fn hooks_item(
         Some(Presence::Absent) => (format!("Add hooks to {name}"), true),
         Some(Presence::Here) if changed => (format!("✓ Hooks in {name} ({then})"), false),
         Some(Presence::Here) => (format!("✓ Hooks in {name}"), false),
-        Some(Presence::Elsewhere { .. }) => (format!("Update hooks in {name}"), true),
+        Some(Presence::Elsewhere { .. } | Presence::OldToken { .. }) => {
+            (format!("Update hooks in {name}"), true)
+        }
     };
     match error {
         Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
@@ -239,6 +242,9 @@ mod tests {
                 name: "omnimem".into(),
                 target: "https://cloudai.example.net/mcp".into(),
             }),
+            Some(Presence::OldToken {
+                name: "omnimem".into(),
+            }),
         ] {
             assert!(
                 client_item_shown(presence.as_ref(), false, false),
@@ -274,6 +280,12 @@ mod tests {
                 "Switch Claude Desktop here (now cloudai.example.net)".into(),
                 true
             )
+        );
+        assert_eq!(
+            item(Some(Presence::OldToken {
+                name: "omnimem".into()
+            })),
+            ("Update the token in Claude Desktop".into(), true)
         );
         assert_eq!(
             client_item(Client::Code, Some(&Presence::Here), false, true, None),

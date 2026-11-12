@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use toml_edit::DocumentMut;
+use toml_edit::{DocumentMut, Item};
 
 /// What a hooks file holds of OmniMem's hooks, against what would be written.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +31,21 @@ pub struct McpServer {
     /// A stdio server's program and its arguments.
     pub command: Option<String>,
     pub args: Vec<String>,
+    /// The `Authorization` header it sends, as written.
+    pub authorization: Option<String>,
+    /// Whether it gets its credentials some way that can't be read here, such
+    /// as from an environment variable or a helper program.
+    pub other_auth: bool,
+}
+
+/// The `Authorization` header in a TOML table of headers, as written.
+pub fn authorization_in(headers: Option<&Item>) -> Option<String> {
+    headers?
+        .as_table_like()?
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+        .and_then(|(_, value)| value.as_str())
+        .map(str::to_owned)
 }
 
 /// Where a file is copied before it's changed.

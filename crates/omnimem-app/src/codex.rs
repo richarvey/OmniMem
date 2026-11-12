@@ -24,7 +24,7 @@ use serde_json::{Map, Value, json};
 use toml_edit::{InlineTable, Item, Table, value};
 
 pub use crate::client_files::{HooksState, McpServer};
-use crate::client_files::{read_toml, replace};
+use crate::client_files::{authorization_in, read_toml, replace};
 pub use crate::shell::hook_base;
 
 /// The name OmniMem's MCP entry goes under.
@@ -321,6 +321,14 @@ pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
                             .collect()
                     })
                     .unwrap_or_default(),
+                authorization: authorization_in(entry.get("http_headers")),
+                other_auth: [
+                    "bearer_token_env_var",
+                    "env_http_headers",
+                    "http_headers_helper",
+                ]
+                .iter()
+                .any(|key| entry.contains_key(key)),
             })
         })
         .collect())

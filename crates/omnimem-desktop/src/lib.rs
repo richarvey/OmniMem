@@ -453,10 +453,19 @@ impl App {
     fn check_clients(&mut self) {
         self.clients_checked = Some(Instant::now());
         let url = model::mcp_url(&self.state).map(str::to_owned);
+        // What an entry has to send to get in, as the services check it.
+        let token = omnimem_core::env::var("MCP_AUTH_TOKEN").filter(|t| !t.is_empty());
+        let oauth = omnimem_core::env::var("OAUTH_ENABLED")
+            .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes"));
+        let server = url.as_deref().map(|url| clients::Server {
+            url,
+            token: token.as_deref(),
+            oauth,
+        });
+        let url = server.as_ref();
         self.desktop.presence = url
-            .as_deref()
             .map(|url| clients::desktop_presence(clients::desktop_config_path().as_deref(), url));
-        self.code.presence = url.as_deref().map(|url| {
+        self.code.presence = url.map(|url| {
             clients::code_presence(
                 clients::find_claude().as_deref(),
                 clients::code_config_path().as_deref(),
@@ -464,7 +473,7 @@ impl App {
             )
         });
         let opencode_here = url.is_some() && omnimem_app::opencode::installed();
-        self.opencode.presence = url.as_deref().map(|url| {
+        self.opencode.presence = url.map(|url| {
             clients::opencode_presence(opencode_here, &clients::opencode_config_paths(), url)
         });
         self.opencode_hooks.presence = url.as_ref().map(|_| match &self.opencode_plugin {
@@ -476,7 +485,7 @@ impl App {
             None => Presence::Unreadable("this program wasn't found".to_owned()),
         });
         let vibe_here = url.is_some() && omnimem_app::vibe::installed();
-        self.vibe.presence = url.as_deref().map(|url| {
+        self.vibe.presence = url.map(|url| {
             clients::vibe_presence(vibe_here, omnimem_app::vibe::config_path().as_deref(), url)
         });
         self.vibe_hooks.presence = url.as_ref().map(|_| match &self.hook_base {
@@ -488,7 +497,7 @@ impl App {
             None => Presence::Unreadable("this program wasn't found".to_owned()),
         });
         let codex_here = url.is_some() && omnimem_app::codex::installed();
-        self.codex.presence = url.as_deref().map(|url| {
+        self.codex.presence = url.map(|url| {
             clients::codex_presence(
                 codex_here,
                 omnimem_app::codex::config_path().as_deref(),
@@ -504,7 +513,7 @@ impl App {
             None => Presence::Unreadable("this program wasn't found".to_owned()),
         });
         let kiro_here = url.is_some() && omnimem_app::kiro::installed();
-        self.kiro.presence = url.as_deref().map(|url| {
+        self.kiro.presence = url.map(|url| {
             clients::kiro_presence(kiro_here, omnimem_app::kiro::config_path().as_deref(), url)
         });
         self.kiro_hooks.presence = url.as_ref().map(|_| match &self.hook_base {
@@ -633,7 +642,9 @@ impl App {
         let slot = self.slot(client);
         let replacing = match (&slot.presence, slot.busy) {
             (Some(Presence::Absent), false) => None,
-            (Some(Presence::Elsewhere { name, .. }), false) => Some(name.clone()),
+            (Some(Presence::Elsewhere { name, .. } | Presence::OldToken { name }), false) => {
+                Some(name.clone())
+            }
             _ => return,
         };
         slot.busy = true;

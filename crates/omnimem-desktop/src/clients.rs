@@ -64,37 +64,60 @@ pub enum Presence {
     NotInstalled,
     /// It has no OmniMem.
     Absent,
-    /// An entry already reaches this server.
+    /// An entry already reaches this server, and can get in.
     Here,
+    /// Its entry called `name` reaches this server without the token it now
+    /// checks: from before MCP_AUTH_TOKEN was set or changed.
+    OldToken { name: String },
     /// Its entry called `name` (`omnimem`, in any case) reaches `target`.
     Elsewhere { name: String, target: String },
     /// Its configuration couldn't be read, for this reason.
     Unreadable(String),
 }
 
-/// What `mcpServers` in a client's configuration says about the server at
-/// `mcp_url`.
-pub fn presence_in(config: &Value, mcp_url: &str) -> Presence {
-    presence_under(config, "mcpServers", mcp_url)
+/// The server a client's entry should reach, and what gets it in.
+#[derive(Debug, Clone, Copy)]
+pub struct Server<'a> {
+    pub url: &'a str,
+    /// MCP_AUTH_TOKEN, when one is set: an entry has to send it.
+    pub token: Option<&'a str>,
+    /// Whether OAuth is on, so an entry with no token can sign in instead.
+    pub oauth: bool,
 }
 
-/// What the `key` object of a client's configuration says about the server
-/// at `mcp_url`.
-fn presence_under(config: &Value, key: &str, mcp_url: &str) -> Presence {
+/// What `mcpServers` in a client's configuration says about `server`.
+pub fn presence_in(config: &Value, server: &Server) -> Presence {
+    presence_under(config, "mcpServers", server)
+}
+
+/// What the `key` object of a client's configuration says about `server`.
+fn presence_under(config: &Value, key: &str, server: &Server) -> Presence {
     let Some(servers) = config.get(key).and_then(Value::as_object) else {
         return Presence::Absent;
     };
-    presence_among(servers, mcp_url)
+    presence_among(servers, server)
 }
 
-/// What a client's servers, by name, say about the server at `mcp_url`.
-fn presence_among(servers: &serde_json::Map<String, Value>, mcp_url: &str) -> Presence {
-    let wanted = comparable(mcp_url);
-    if servers
-        .values()
-        .any(|entry| urls_of(entry).any(|url| comparable(url) == wanted))
-    {
+/// What a client's servers, by name, say about `server`.
+fn presence_among(servers: &serde_json::Map<String, Value>, server: &Server) -> Presence {
+    let wanted = comparable(server.url);
+    let reaching: Vec<(&String, &Value)> = servers
+        .iter()
+        .filter(|(_, entry)| urls_of(entry).any(|url| comparable(url) == wanted))
+        .collect();
+    if reaching.iter().any(|(_, entry)| gets_in(entry, server)) {
         return Presence::Here;
+    }
+    // It reaches here but would be turned away: OmniMem's own entry is the
+    // one to put right, if it's among them.
+    if let Some((name, _)) = reaching
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(SERVER_NAME))
+        .or(reaching.first())
+    {
+        return Presence::OldToken {
+            name: (*name).clone(),
+        };
     }
     match servers
         .iter()
@@ -127,6 +150,72 @@ fn urls_of(entry: &Value) -> impl Iterator<Item = &str> {
         .and_then(Value::as_str)
         .into_iter()
         .chain(args)
+}
+
+/// What an entry sends to get in.
+enum Credential<'a> {
+    /// Nothing.
+    Missing,
+    /// A bearer token, written out.
+    Bearer(&'a str),
+    /// Something that can't be read from here: a variable filled in when the
+    /// client starts, a helper program, or another scheme.
+    Unknown,
+}
+
+/// The credential in an entry: an `Authorization` header (Claude Code's,
+/// OpenCode's and Kiro's `headers`) or a `--header` argument to a bridge
+/// command such as Claude Desktop's `mcp-remote`.
+fn credential_of(entry: &Value) -> Credential<'_> {
+    if entry.get("headersHelper").is_some() {
+        return Credential::Unknown;
+    }
+    let header = entry
+        .get("headers")
+        .and_then(Value::as_object)
+        .and_then(|headers| {
+            headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+        })
+        .map(|(_, value)| value.as_str().unwrap_or("$"));
+    let argument = ["args", "command"]
+        .into_iter()
+        .filter_map(|key| entry.get(key).and_then(Value::as_array))
+        .flatten()
+        .filter_map(Value::as_str)
+        .find_map(|arg| {
+            let (name, value) = arg.split_once(':')?;
+            name.trim()
+                .eq_ignore_ascii_case("authorization")
+                .then_some(value)
+        });
+    let Some(value) = header.or(argument).map(str::trim) else {
+        return Credential::Missing;
+    };
+    // `${VAR}` (Claude Code, mcp-remote) or `{env:VAR}` (OpenCode).
+    if value.contains('$') || value.contains("{env:") {
+        return Credential::Unknown;
+    }
+    match value.split_once(' ') {
+        Some((scheme, token)) if scheme.eq_ignore_ascii_case("bearer") => {
+            Credential::Bearer(token.trim())
+        }
+        _ => Credential::Unknown,
+    }
+}
+
+/// Whether an entry would get into `server`. One whose credentials can't be
+/// read is given the benefit of the doubt.
+fn gets_in(entry: &Value, server: &Server) -> bool {
+    let Some(token) = server.token else {
+        return true;
+    };
+    match credential_of(entry) {
+        Credential::Bearer(sent) => sent == token,
+        Credential::Missing => server.oauth,
+        Credential::Unknown => true,
+    }
 }
 
 /// A URL in a form that compares: lower case, no trailing slash, and
@@ -169,7 +258,7 @@ pub fn desktop_config_path() -> Option<PathBuf> {
 }
 
 /// Whether Claude Desktop, configured at `path`, has OmniMem.
-pub fn desktop_presence(path: Option<&Path>, mcp_url: &str) -> Presence {
+pub fn desktop_presence(path: Option<&Path>, server: &Server) -> Presence {
     let Some(path) = path else {
         return Presence::NotInstalled;
     };
@@ -178,7 +267,7 @@ pub fn desktop_presence(path: Option<&Path>, mcp_url: &str) -> Presence {
         return Presence::NotInstalled;
     }
     match read_json(path) {
-        Ok(Some(config)) => presence_in(&config, mcp_url),
+        Ok(Some(config)) => presence_in(&config, server),
         Ok(None) => Presence::Absent,
         Err(e) => Presence::Unreadable(e),
     }
@@ -268,12 +357,12 @@ pub fn find_claude() -> Option<PathBuf> {
 
 /// Whether Claude Code, with its `claude` command at `cli` and its settings
 /// at `config`, has OmniMem in its user scope.
-pub fn code_presence(cli: Option<&Path>, config: Option<&Path>, mcp_url: &str) -> Presence {
+pub fn code_presence(cli: Option<&Path>, config: Option<&Path>, server: &Server) -> Presence {
     if cli.is_none() {
         return Presence::NotInstalled;
     }
     match config.map(read_json) {
-        Some(Ok(Some(settings))) => presence_in(&settings, mcp_url),
+        Some(Ok(Some(settings))) => presence_in(&settings, server),
         Some(Ok(None)) | None => Presence::Absent,
         Some(Err(e)) => Presence::Unreadable(e),
     }
@@ -371,14 +460,14 @@ pub fn opencode_config_target(existing: &[PathBuf]) -> Option<PathBuf> {
 /// Whether OpenCode, configured by the files at `paths` (in merge order),
 /// has OmniMem. A `.jsonc` file with comments can't be read here, so it's
 /// reported rather than guessed at.
-pub fn opencode_presence(installed: bool, paths: &[PathBuf], mcp_url: &str) -> Presence {
+pub fn opencode_presence(installed: bool, paths: &[PathBuf], server: &Server) -> Presence {
     if !installed {
         return Presence::NotInstalled;
     }
     let mut found = Presence::Absent;
     for path in paths {
         match read_json(path) {
-            Ok(Some(config)) => match opencode_presence_in(&config, mcp_url) {
+            Ok(Some(config)) => match opencode_presence_in(&config, server) {
                 Presence::Here => return Presence::Here,
                 Presence::Absent => {}
                 elsewhere => found = elsewhere,
@@ -392,7 +481,7 @@ pub fn opencode_presence(installed: bool, paths: &[PathBuf], mcp_url: &str) -> P
 
 /// OpenCode keeps its servers in `mcp` (1.x, which 2.x still reads) or
 /// `mcp.servers` (2.x's own form).
-fn opencode_presence_in(config: &Value, mcp_url: &str) -> Presence {
+fn opencode_presence_in(config: &Value, server: &Server) -> Presence {
     let Some(mcp) = config.get("mcp").and_then(Value::as_object) else {
         return Presence::Absent;
     };
@@ -404,7 +493,7 @@ fn opencode_presence_in(config: &Value, mcp_url: &str) -> Presence {
         .collect();
     let mut found = Presence::Absent;
     for servers in native.into_iter().chain([&legacy]) {
-        match presence_among(servers, mcp_url) {
+        match presence_among(servers, server) {
             Presence::Here => return Presence::Here,
             Presence::Absent => {}
             elsewhere => found = elsewhere,
@@ -469,26 +558,26 @@ pub fn opencode_hooks_presence(installed: bool, path: Option<&Path>, source: &st
 }
 
 /// Whether Vibe, with its settings at `path`, has OmniMem.
-pub fn vibe_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+pub fn vibe_presence(installed: bool, path: Option<&Path>, server: &Server) -> Presence {
     match path.filter(|_| installed) {
-        Some(path) => presence_of_toml(omnimem_app::vibe::mcp_servers(path), mcp_url),
+        Some(path) => presence_of_toml(omnimem_app::vibe::mcp_servers(path), server),
         None => Presence::NotInstalled,
     }
 }
 
 /// Whether Codex, with its settings at `path`, has OmniMem.
-pub fn codex_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+pub fn codex_presence(installed: bool, path: Option<&Path>, server: &Server) -> Presence {
     match path.filter(|_| installed) {
-        Some(path) => presence_of_toml(omnimem_app::codex::mcp_servers(path), mcp_url),
+        Some(path) => presence_of_toml(omnimem_app::codex::mcp_servers(path), server),
         None => Presence::NotInstalled,
     }
 }
 
 /// Whether Kiro, with its MCP settings at `path`, has OmniMem.
-pub fn kiro_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+pub fn kiro_presence(installed: bool, path: Option<&Path>, server: &Server) -> Presence {
     match path.filter(|_| installed) {
         Some(path) => match read_json(path) {
-            Ok(Some(config)) => presence_in(&config, mcp_url),
+            Ok(Some(config)) => presence_in(&config, server),
             Ok(None) => Presence::Absent,
             Err(e) => Presence::Unreadable(e),
         },
@@ -516,27 +605,32 @@ pub fn kiro_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> 
     }
 }
 
-/// What a TOML client's servers say about the server at `mcp_url`, judged in
-/// the shape the JSON clients' entries have: a URL, or a bridge command's
-/// URL argument.
-fn presence_of_toml(servers: anyhow::Result<Vec<McpServer>>, mcp_url: &str) -> Presence {
+/// What a TOML client's servers say about `server`, judged in the shape the
+/// JSON clients' entries have: a URL, or a bridge command's URL argument, and
+/// an `Authorization` header.
+fn presence_of_toml(servers: anyhow::Result<Vec<McpServer>>, server: &Server) -> Presence {
     let servers: serde_json::Map<String, Value> = match servers {
         Ok(servers) => servers
             .into_iter()
-            .map(|server| {
-                let mut entry = json!({ "args": server.args });
-                if let Some(url) = server.url {
+            .map(|found| {
+                let mut entry = json!({ "args": found.args });
+                if let Some(url) = found.url {
                     entry["url"] = json!(url);
                 }
-                if let Some(command) = server.command {
+                if let Some(command) = found.command {
                     entry["command"] = json!(command);
                 }
-                (server.name, entry)
+                if let Some(authorization) = found.authorization {
+                    entry["headers"] = json!({ "Authorization": authorization });
+                } else if found.other_auth {
+                    entry["headersHelper"] = json!(true);
+                }
+                (found.name, entry)
             })
             .collect(),
         Err(e) => return Presence::Unreadable(format!("{e:#}")),
     };
-    presence_among(&servers, mcp_url)
+    presence_among(&servers, server)
 }
 
 /// Add this server to Vibe's `config.toml` at `path`, or point its `omnimem`
@@ -602,6 +696,11 @@ mod tests {
     use omnimem_app::client_files::backup_path;
 
     const URL: &str = "http://127.0.0.1:8765/mcp";
+    const SERVER: Server = Server {
+        url: URL,
+        token: None,
+        oauth: false,
+    };
 
     /// A fresh folder for one test's files.
     fn scratch(test: &str) -> PathBuf {
@@ -615,22 +714,22 @@ mod tests {
     #[test]
     fn an_entry_reaching_this_server_counts_whatever_its_name_or_form() {
         let config = |servers: Value| json!({ "mcpServers": servers });
-        assert_eq!(presence_in(&json!({}), URL), Presence::Absent);
+        assert_eq!(presence_in(&json!({}), &SERVER), Presence::Absent);
         assert_eq!(
-            presence_in(&config(json!({"forgejo": {"command": "npx"}})), URL),
+            presence_in(&config(json!({"forgejo": {"command": "npx"}})), &SERVER),
             Presence::Absent
         );
         assert_eq!(
             presence_in(
                 &config(json!({"memory": {"type": "http", "url": "http://localhost:8765/mcp/"}})),
-                URL
+                &SERVER
             ),
             Presence::Here
         );
         assert_eq!(
             presence_in(
                 &config(json!({"omnimem": {"command": "npx", "args": ["-y", "mcp-remote", URL]}})),
-                URL
+                &SERVER
             ),
             Presence::Here
         );
@@ -641,10 +740,97 @@ mod tests {
                     "OmniMem": {"type": "http", "url": "https://cloudai.example.net/mcp"},
                     "omnimem-local": {"type": "http", "url": URL},
                 })),
-                URL
+                &SERVER
             ),
             Presence::Here
         );
+    }
+
+    #[test]
+    fn an_entry_without_the_token_is_offered_for_updating() {
+        let token = Server {
+            token: Some("s3cret"),
+            ..SERVER
+        };
+        let http = |headers: Value| json!({"mcpServers": {"omnimem": {"type": "http", "url": URL, "headers": headers}}});
+        let old = Presence::OldToken {
+            name: "omnimem".to_owned(),
+        };
+        assert_eq!(
+            presence_in(&http(json!({"Authorization": "Bearer s3cret"})), &token),
+            Presence::Here
+        );
+        assert_eq!(
+            presence_in(&http(json!({"authorization": "bearer s3cret "})), &token),
+            Presence::Here
+        );
+        assert_eq!(
+            presence_in(&http(json!({"Authorization": "Bearer older"})), &token),
+            old
+        );
+        assert_eq!(presence_in(&http(json!({})), &token), old);
+        // Without a token to check, any entry gets in.
+        assert_eq!(
+            presence_in(&http(json!({"Authorization": "Bearer older"})), &SERVER),
+            Presence::Here
+        );
+        // With OAuth on, an entry with no token can sign in instead.
+        assert_eq!(
+            presence_in(
+                &http(json!({})),
+                &Server {
+                    oauth: true,
+                    ..token
+                }
+            ),
+            Presence::Here
+        );
+        // A token filled in when the client starts can't be judged from here.
+        assert_eq!(
+            presence_in(
+                &http(json!({"Authorization": "Bearer ${OMNIMEM_TOKEN}"})),
+                &token
+            ),
+            Presence::Here
+        );
+        assert_eq!(
+            presence_in(
+                &http(json!({"Authorization": "Bearer {env:OMNIMEM}"})),
+                &token
+            ),
+            Presence::Here
+        );
+
+        // Claude Desktop's bridge carries it as an argument.
+        let desktop =
+            |token: Option<&str>| json!({"mcpServers": {"OmniMem": desktop_entry(URL, token)}});
+        assert_eq!(
+            presence_in(&desktop(Some("s3cret")), &token),
+            Presence::Here
+        );
+        assert_eq!(
+            presence_in(&desktop(Some("older")), &token),
+            Presence::OldToken {
+                name: "OmniMem".to_owned()
+            }
+        );
+        assert_eq!(
+            presence_in(&desktop(None), &token),
+            Presence::OldToken {
+                name: "OmniMem".to_owned()
+            }
+        );
+
+        // One entry that gets in is enough; otherwise OmniMem's own is the
+        // one to put right.
+        let both = |first: &str| {
+            json!({"mcpServers": {
+                "memory": {"type": "http", "url": URL, "headers": {"Authorization": first}},
+                "omnimem": {"type": "http", "url": URL},
+            }})
+        };
+        assert_eq!(presence_in(&both("Bearer s3cret"), &token), Presence::Here);
+        assert_eq!(presence_in(&both("Bearer older"), &token), old);
     }
 
     #[test]
@@ -653,7 +839,7 @@ mod tests {
             "command": "npx", "args": ["-y", "mcp-remote", "https://cloudai.example.net/mcp"]
         }}});
         assert_eq!(
-            presence_in(&config, URL),
+            presence_in(&config, &SERVER),
             Presence::Elsewhere {
                 name: "OmniMem".to_owned(),
                 target: "https://cloudai.example.net/mcp".to_owned()
@@ -669,16 +855,19 @@ mod tests {
     #[test]
     fn desktop_presence_needs_the_app_and_a_readable_file() {
         let dir = scratch("desktop-presence");
-        assert_eq!(desktop_presence(None, URL), Presence::NotInstalled);
+        assert_eq!(desktop_presence(None, &SERVER), Presence::NotInstalled);
         assert_eq!(
-            desktop_presence(Some(&dir.join("missing/claude_desktop_config.json")), URL),
+            desktop_presence(
+                Some(&dir.join("missing/claude_desktop_config.json")),
+                &SERVER
+            ),
             Presence::NotInstalled
         );
         let path = dir.join("claude_desktop_config.json");
-        assert_eq!(desktop_presence(Some(&path), URL), Presence::Absent);
+        assert_eq!(desktop_presence(Some(&path), &SERVER), Presence::Absent);
         std::fs::write(&path, "{ not json").unwrap();
         assert!(matches!(
-            desktop_presence(Some(&path), URL),
+            desktop_presence(Some(&path), &SERVER),
             Presence::Unreadable(_)
         ));
     }
@@ -704,7 +893,7 @@ mod tests {
         );
         assert_eq!(written["mcpServers"]["omnimem"], desktop_entry(URL, None));
         assert_eq!(std::fs::read_to_string(backup_path(&path)).unwrap(), before);
-        assert_eq!(desktop_presence(Some(&path), URL), Presence::Here);
+        assert_eq!(desktop_presence(Some(&path), &SERVER), Presence::Here);
 
         // Writing again leaves one entry, not two.
         write_desktop(&path, URL, None).unwrap();
@@ -741,7 +930,7 @@ mod tests {
         let dir = scratch("desktop-new");
         let path = dir.join("claude_desktop_config.json");
         write_desktop(&path, URL, None).unwrap();
-        assert_eq!(desktop_presence(Some(&path), URL), Presence::Here);
+        assert_eq!(desktop_presence(Some(&path), &SERVER), Presence::Here);
         assert!(!backup_path(&path).exists(), "nothing to back up");
 
         std::fs::write(&path, "{ broken").unwrap();
@@ -755,11 +944,11 @@ mod tests {
         let settings = dir.join(".claude.json");
         let cli = dir.join("claude");
         assert_eq!(
-            code_presence(None, Some(&settings), URL),
+            code_presence(None, Some(&settings), &SERVER),
             Presence::NotInstalled
         );
         assert_eq!(
-            code_presence(Some(&cli), Some(&settings), URL),
+            code_presence(Some(&cli), Some(&settings), &SERVER),
             Presence::Absent
         );
         std::fs::write(
@@ -768,7 +957,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            code_presence(Some(&cli), Some(&settings), URL),
+            code_presence(Some(&cli), Some(&settings), &SERVER),
             Presence::Here
         );
         assert_eq!(
@@ -792,8 +981,11 @@ mod tests {
     fn opencode_is_read_from_every_config_file_and_written_to_one() {
         let dir = scratch("opencode");
         let json = dir.join("opencode.json");
-        assert_eq!(opencode_presence(false, &[], URL), Presence::NotInstalled);
-        assert_eq!(opencode_presence(true, &[], URL), Presence::Absent);
+        assert_eq!(
+            opencode_presence(false, &[], &SERVER),
+            Presence::NotInstalled
+        );
+        assert_eq!(opencode_presence(true, &[], &SERVER), Presence::Absent);
 
         std::fs::write(
             &json,
@@ -802,7 +994,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            opencode_presence(true, std::slice::from_ref(&json), URL),
+            opencode_presence(true, std::slice::from_ref(&json), &SERVER),
             Presence::Elsewhere {
                 name: "OmniMem".into(),
                 target: "https://cloudai.example.net/mcp".into()
@@ -820,7 +1012,7 @@ mod tests {
         assert_eq!(written["mcp"]["OmniMem"]["oauth"], false);
         assert!(backup_path(&json).exists());
         assert_eq!(
-            opencode_presence(true, std::slice::from_ref(&json), URL),
+            opencode_presence(true, std::slice::from_ref(&json), &SERVER),
             Presence::Here
         );
 
@@ -832,7 +1024,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            opencode_presence(true, std::slice::from_ref(&config), URL),
+            opencode_presence(true, std::slice::from_ref(&config), &SERVER),
             Presence::Here
         );
 
@@ -841,13 +1033,13 @@ mod tests {
         std::fs::write(&jsonc, "{\n  // mine\n  \"mcp\": {}\n}\n").unwrap();
         assert!(
             matches!(
-                opencode_presence(true, &[config.clone(), jsonc.clone()], URL),
+                opencode_presence(true, &[config.clone(), jsonc.clone()], &SERVER),
                 Presence::Here
             ),
             "the entry in config.json is found before the jsonc is read"
         );
         assert!(matches!(
-            opencode_presence(true, std::slice::from_ref(&jsonc), URL),
+            opencode_presence(true, std::slice::from_ref(&jsonc), &SERVER),
             Presence::Unreadable(_)
         ));
         assert!(write_opencode(&jsonc, URL, None).is_err());
@@ -878,7 +1070,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            opencode_presence(true, std::slice::from_ref(&json), URL),
+            opencode_presence(true, std::slice::from_ref(&json), &SERVER),
             Presence::Absent
         );
         write_opencode(&json, URL, None).unwrap();
@@ -895,7 +1087,7 @@ mod tests {
         assert_eq!(written["mcp"]["timeout"]["startup"], 5000);
         assert!(written["mcp"].get("omnimem").is_none());
         assert_eq!(
-            opencode_presence(true, std::slice::from_ref(&json), URL),
+            opencode_presence(true, std::slice::from_ref(&json), &SERVER),
             Presence::Here
         );
     }
@@ -966,10 +1158,13 @@ mod tests {
         let dir = scratch("vibe");
         let config = dir.join("config.toml");
         assert_eq!(
-            vibe_presence(false, Some(&config), URL),
+            vibe_presence(false, Some(&config), &SERVER),
             Presence::NotInstalled
         );
-        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Absent);
+        assert_eq!(
+            vibe_presence(true, Some(&config), &SERVER),
+            Presence::Absent
+        );
 
         // A 6.x server through mcp-remote is somewhere else.
         std::fs::write(
@@ -978,14 +1173,46 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            vibe_presence(true, Some(&config), URL),
+            vibe_presence(true, Some(&config), &SERVER),
             Presence::Elsewhere {
                 name: "omnimem".into(),
                 target: "http://nas:8765/mcp".into()
             }
         );
         write_vibe(&config, URL, None).unwrap();
-        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Here);
+        assert_eq!(vibe_presence(true, Some(&config), &SERVER), Presence::Here);
+
+        // Once a token is set, the entry written without it is out of date,
+        // and the one written with it isn't.
+        let token = |token| Server {
+            token: Some(token),
+            ..SERVER
+        };
+        assert_eq!(
+            vibe_presence(true, Some(&config), &token("t0k")),
+            Presence::OldToken {
+                name: "omnimem".into()
+            }
+        );
+        write_vibe(&config, URL, Some("t0k")).unwrap();
+        assert_eq!(
+            vibe_presence(true, Some(&config), &token("t0k")),
+            Presence::Here
+        );
+        assert!(matches!(
+            vibe_presence(true, Some(&config), &token("newer")),
+            Presence::OldToken { .. }
+        ));
+        // A key Vibe reads from the environment can't be judged from here.
+        std::fs::write(
+            &config,
+            format!("[[mcp_servers]]\nname = \"omnimem\"\ntransport = \"http\"\nurl = \"{URL}\"\napi_key_env = \"OMNIMEM_KEY\"\n"),
+        )
+        .unwrap();
+        assert_eq!(
+            vibe_presence(true, Some(&config), &token("t0k")),
+            Presence::Here
+        );
 
         // Under another name and at localhost, it's still this server.
         std::fs::write(
@@ -993,11 +1220,11 @@ mod tests {
             "[[mcp_servers]]\nname = \"memory\"\ntransport = \"http\"\nurl = \"http://localhost:8765/mcp/\"\n",
         )
         .unwrap();
-        assert_eq!(vibe_presence(true, Some(&config), URL), Presence::Here);
+        assert_eq!(vibe_presence(true, Some(&config), &SERVER), Presence::Here);
 
         std::fs::write(&config, "mcp_servers = [\n").unwrap();
         assert!(matches!(
-            vibe_presence(true, Some(&config), URL),
+            vibe_presence(true, Some(&config), &SERVER),
             Presence::Unreadable(_)
         ));
     }
@@ -1030,10 +1257,13 @@ mod tests {
         let dir = scratch("codex");
         let config = dir.join("config.toml");
         assert_eq!(
-            codex_presence(false, Some(&config), URL),
+            codex_presence(false, Some(&config), &SERVER),
             Presence::NotInstalled
         );
-        assert_eq!(codex_presence(true, Some(&config), URL), Presence::Absent);
+        assert_eq!(
+            codex_presence(true, Some(&config), &SERVER),
+            Presence::Absent
+        );
         // 6.x's guide had Codex reach /sse through supergateway.
         std::fs::write(
             &config,
@@ -1041,14 +1271,32 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            codex_presence(true, Some(&config), URL),
+            codex_presence(true, Some(&config), &SERVER),
             Presence::Elsewhere {
                 name: "omnimem".into(),
                 target: "http://nas:8765/sse".into()
             }
         );
         write_codex(&config, URL, None).unwrap();
-        assert_eq!(codex_presence(true, Some(&config), URL), Presence::Here);
+        assert_eq!(codex_presence(true, Some(&config), &SERVER), Presence::Here);
+
+        let token = |token| Server {
+            token: Some(token),
+            ..SERVER
+        };
+        assert!(matches!(
+            codex_presence(true, Some(&config), &token("t0k")),
+            Presence::OldToken { .. }
+        ));
+        write_codex(&config, URL, Some("t0k")).unwrap();
+        assert_eq!(
+            codex_presence(true, Some(&config), &token("t0k")),
+            Presence::Here
+        );
+        assert!(matches!(
+            codex_presence(true, Some(&config), &token("newer")),
+            Presence::OldToken { .. }
+        ));
 
         let hooks = dir.join("hooks.json");
         assert_eq!(
@@ -1071,10 +1319,13 @@ mod tests {
         let dir = scratch("kiro");
         let config = dir.join("settings/mcp.json");
         assert_eq!(
-            kiro_presence(false, Some(&config), URL),
+            kiro_presence(false, Some(&config), &SERVER),
             Presence::NotInstalled
         );
-        assert_eq!(kiro_presence(true, Some(&config), URL), Presence::Absent);
+        assert_eq!(
+            kiro_presence(true, Some(&config), &SERVER),
+            Presence::Absent
+        );
         std::fs::create_dir_all(dir.join("settings")).unwrap();
         std::fs::write(
             &config,
@@ -1083,14 +1334,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            kiro_presence(true, Some(&config), URL),
+            kiro_presence(true, Some(&config), &SERVER),
             Presence::Elsewhere {
                 name: "OmniMem".into(),
                 target: "http://nas:8765/sse".into()
             }
         );
         write_kiro(&config, URL, Some("t0k")).unwrap();
-        assert_eq!(kiro_presence(true, Some(&config), URL), Presence::Here);
+        assert_eq!(kiro_presence(true, Some(&config), &SERVER), Presence::Here);
+        let token = |token| Server {
+            token: Some(token),
+            ..SERVER
+        };
+        assert_eq!(
+            kiro_presence(true, Some(&config), &token("t0k")),
+            Presence::Here
+        );
+        assert_eq!(
+            kiro_presence(true, Some(&config), &token("newer")),
+            Presence::OldToken {
+                name: "OmniMem".into()
+            }
+        );
         let written: Value =
             serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
         assert_eq!(
