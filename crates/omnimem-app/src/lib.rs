@@ -10,6 +10,7 @@
 pub mod client_files;
 pub mod codex;
 mod instance;
+pub mod kiro;
 pub mod opencode;
 mod services;
 pub mod shell;

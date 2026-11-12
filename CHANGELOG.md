@@ -2,6 +2,20 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.5] - unreleased
+
+OmniMem's dead-end guard and session briefing come to Kiro, the desktop app adds both OmniMem and its hooks to Kiro from its menu, and that menu now lists only the clients that still need something doing.
+
+### Added
+- **OmniMem's hooks for Kiro.** `omnimem install-hooks --kiro` writes `~/.kiro/hooks/omnimem.json`, which Kiro's CLI reads, or with `--project` the workspace's `.kiro/hooks/omnimem.json`, which its IDE reads too. The `PreToolUse` guard runs `omnimem hook --agent kiro`, which refuses a shell command or file write that repeats an approach the project abandoned by exiting 2, Kiro's way of blocking a call, with the reason on stderr for the model; the `SessionStart` briefing prints the project's briefing, which Kiro adds to the session's context. The file is OmniMem's own, so other hooks are never touched. See guides/kiro.md
+- **Add to Kiro and Add hooks to Kiro** in the tray or menu bar menu, once Kiro is installed. Add to Kiro writes an `omnimem` entry (`url`, and the access token as an `Authorization` header) into `~/.kiro/settings/mcp.json`, or points an existing `omnimem` entry here, keeping everything else and a copy of the file as it was. Not in the Flatpak, whose sandbox can't reach `~/.kiro`
+
+### Changed
+- The tray or menu bar menu only lists the clients that still need something doing. One already pointing at this OmniMem (and hooks already in place) drops out of the menu, rather than sitting there as a greyed-out **✓ In …** item; one added from the menu stays, saying to restart it, until OmniMem next starts. Clients that aren't installed, point elsewhere or can't be read are listed as before
+
+### Fixed
+- Add to Mistral Vibe failed on a fresh Vibe with "config.toml's mcp_servers isn't written as [[mcp_servers]] tables": Vibe writes `mcp_servers = []` until a server is added. An inline list, empty or not, is now rewritten as `[[mcp_servers]]` tables holding the same servers, with OmniMem added
+
 ## [7.1.4] - unreleased
 
 OmniMem's dead-end guard and session briefing come to OpenAI's Codex CLI, and the desktop app adds both OmniMem and its hooks to Codex from its menu.

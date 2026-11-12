@@ -169,8 +169,9 @@ enum Command {
         smoke_test: bool,
     },
     /// Answer a Claude Code PreToolUse hook (or OmniMem's OpenCode plugin,
-    /// and Codex, which send the same JSON, or with --agent vibe, Mistral
-    /// Vibe's pre_tool hook): read the tool call on stdin and,
+    /// and Codex, which send the same JSON, with --agent vibe, Mistral
+    /// Vibe's pre_tool hook, or with --agent kiro, Kiro's PreToolUse hook,
+    /// refused by exiting 2): read the tool call on stdin and,
     /// if it proposes an approach this project already abandoned, deny it and
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
@@ -207,20 +208,26 @@ enum Command {
         /// dead-end guard and session-start briefing from inside OpenCode:
         /// to ~/.config/opencode/plugins, or with --project to
         /// .opencode/plugins here. See guides/opencode.md.
-        #[arg(long, conflicts_with_all = ["vibe", "codex"])]
+        #[arg(long, conflicts_with_all = ["vibe", "codex", "kiro"])]
         opencode: bool,
         /// Put OmniMem's hooks in Mistral Vibe's hooks.toml instead: the
         /// dead-end guard and, from Vibe 3.1.1, the session-start briefing,
         /// in ~/.vibe (or $VIBE_HOME), or with --project in .vibe here. See
         /// guides/vibe.md.
-        #[arg(long, conflicts_with = "codex")]
+        #[arg(long, conflicts_with_all = ["codex", "kiro"])]
         vibe: bool,
         /// Put OmniMem's hooks in OpenAI Codex's hooks.json instead: the
         /// dead-end guard and the session-start briefing, in ~/.codex (or
         /// $CODEX_HOME), or with --project in .codex here. Codex runs them
         /// once you've trusted them. See guides/codex.md.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "kiro")]
         codex: bool,
+        /// Put OmniMem's hooks in Kiro instead: the dead-end guard and the
+        /// session-start briefing, as ~/.kiro/hooks/omnimem.json, which
+        /// Kiro's CLI reads, or with --project as .kiro/hooks/omnimem.json
+        /// here, which its IDE reads too. See guides/kiro.md.
+        #[arg(long)]
+        kiro: bool,
     },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
@@ -327,6 +334,7 @@ fn main() -> Result<()> {
         opencode,
         vibe,
         codex,
+        kiro,
     } = command
     {
         let target = if opencode {
@@ -335,6 +343,8 @@ fn main() -> Result<()> {
             install_hooks::Target::Vibe
         } else if codex {
             install_hooks::Target::Codex
+        } else if kiro {
+            install_hooks::Target::Kiro
         } else {
             install_hooks::Target::ClaudeCode
         };

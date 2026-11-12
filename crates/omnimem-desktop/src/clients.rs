@@ -38,6 +38,10 @@ pub enum Client {
     Codex,
     /// OmniMem's hooks in Codex's `hooks.json`.
     CodexHooks,
+    /// AWS's Kiro, IDE and CLI.
+    Kiro,
+    /// OmniMem's hooks file in Kiro's hooks folder.
+    KiroHooks,
 }
 
 impl Client {
@@ -48,6 +52,7 @@ impl Client {
             Client::OpenCode | Client::OpenCodeHooks => "OpenCode",
             Client::Vibe | Client::VibeHooks => "Mistral Vibe",
             Client::Codex | Client::CodexHooks => "Codex",
+            Client::Kiro | Client::KiroHooks => "Kiro",
         }
     }
 }
@@ -475,6 +480,38 @@ pub fn vibe_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Pre
 pub fn codex_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
     match path.filter(|_| installed) {
         Some(path) => presence_of_toml(omnimem_app::codex::mcp_servers(path), mcp_url),
+        None => Presence::NotInstalled,
+    }
+}
+
+/// Whether Kiro, with its MCP settings at `path`, has OmniMem.
+pub fn kiro_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
+    match path.filter(|_| installed) {
+        Some(path) => match read_json(path) {
+            Ok(Some(config)) => presence_in(&config, mcp_url),
+            Ok(None) => Presence::Absent,
+            Err(e) => Presence::Unreadable(e),
+        },
+        None => Presence::NotInstalled,
+    }
+}
+
+/// Add this server to Kiro's `mcp.json` at `path`, or point its `omnimem`
+/// entry here, keeping everything else and a copy of the file as it was.
+pub fn write_kiro(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    write_entry_at(
+        path,
+        &["mcpServers"],
+        omnimem_app::kiro::mcp_entry(mcp_url, token),
+        token.is_some(),
+    )
+}
+
+/// Whether OmniMem's hooks file is in Kiro's hooks folder at `path`, against
+/// what would be written now for hooks starting with `base`.
+pub fn kiro_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
+    match path.filter(|_| installed) {
+        Some(path) => presence_of_hooks(omnimem_app::kiro::hooks_state(path, base)),
         None => Presence::NotInstalled,
     }
 }
@@ -1025,6 +1062,56 @@ mod tests {
         );
         assert!(matches!(
             codex_hooks_presence(true, Some(&hooks), "/usr/bin/omnimem"),
+            Presence::Elsewhere { .. }
+        ));
+    }
+
+    #[test]
+    fn kiro_is_read_and_written_in_its_mcp_json() {
+        let dir = scratch("kiro");
+        let config = dir.join("settings/mcp.json");
+        assert_eq!(
+            kiro_presence(false, Some(&config), URL),
+            Presence::NotInstalled
+        );
+        assert_eq!(kiro_presence(true, Some(&config), URL), Presence::Absent);
+        std::fs::create_dir_all(dir.join("settings")).unwrap();
+        std::fs::write(
+            &config,
+            r#"{"mcpServers": {"aws-docs": {"command": "uvx", "args": ["awslabs.aws-documentation-mcp-server"]},
+                "OmniMem": {"type": "sse", "url": "http://nas:8765/sse"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            kiro_presence(true, Some(&config), URL),
+            Presence::Elsewhere {
+                name: "OmniMem".into(),
+                target: "http://nas:8765/sse".into()
+            }
+        );
+        write_kiro(&config, URL, Some("t0k")).unwrap();
+        assert_eq!(kiro_presence(true, Some(&config), URL), Presence::Here);
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
+        assert_eq!(
+            written["mcpServers"]["OmniMem"],
+            json!({"type": "http", "url": URL, "headers": {"Authorization": "Bearer t0k"}})
+        );
+        assert_eq!(written["mcpServers"]["aws-docs"]["command"], "uvx");
+        assert!(backup_path(&config).exists());
+
+        let hooks = dir.join("hooks/omnimem.json");
+        assert_eq!(
+            kiro_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Absent
+        );
+        omnimem_app::kiro::write_hooks(&hooks, "/opt/omnimem").unwrap();
+        assert_eq!(
+            kiro_hooks_presence(true, Some(&hooks), "/opt/omnimem"),
+            Presence::Here
+        );
+        assert!(matches!(
+            kiro_hooks_presence(true, Some(&hooks), "/usr/bin/omnimem"),
             Presence::Elsewhere { .. }
         ));
     }

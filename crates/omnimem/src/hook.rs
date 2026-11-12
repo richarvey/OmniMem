@@ -65,6 +65,25 @@ const VIBE_GUARDED: [&str; 4] = [
     "process.start",
 ];
 
+/// The same tools as Kiro names them. Its CLI calls its shell
+/// `execute_bash` (`execute_cmd` on Windows) and its file writes `fs_write`,
+/// whose `command` is the kind of write (`create`, `str_replace`, `append`,
+/// `insert`) rather than a shell command; later versions group them as
+/// `shell` and `write`, which OpenCode's names already cover. The IDE's are
+/// `executeBash`/`executePwsh`, `fsWrite`, `fsAppend` and `strReplace`. Kiro's
+/// hook has no matcher (`omnimem_app::kiro::HOOKS`), so this list is what
+/// decides which calls are checked.
+const KIRO_GUARDED: [&str; 8] = [
+    "execute_bash",
+    "execute_cmd",
+    "fs_write",
+    "executeBash",
+    "executePwsh",
+    "fsWrite",
+    "fsAppend",
+    "strReplace",
+];
+
 /// Shell fragments that mean a command changes something rather than looks.
 const MUTATING: [&str; 11] = [
     "cargo add",
@@ -118,6 +137,9 @@ pub(crate) enum Agent {
     /// Mistral's Vibe CLI, whose hooks.toml hooks read `decision` and
     /// `hook_specific_output`.
     Vibe,
+    /// Kiro, whose hooks read exit codes: 2 blocks a tool call with stderr
+    /// as the reason, and what a hook prints otherwise joins the context.
+    Kiro,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -333,7 +355,16 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
     let text = match tool {
         "Edit" | "file_system.edit" => field("new_string").to_owned(),
         "edit" => field("newString").to_owned(),
-        "Write" | "write" | "file_system.write_file" => field("content").to_owned(),
+        "Write" | "file_system.write_file" => field("content").to_owned(),
+        // OpenCode's `write` has `content`; Kiro's, like `fs_write`, has
+        // `file_text` for a whole file and `new_str` for a replacement.
+        "write" | "fs_write" => [field("content"), field("file_text"), field("new_str")]
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "fsWrite" | "fsAppend" => field("text").to_owned(),
+        "strReplace" => field("newStr").to_owned(),
         "NotebookEdit" => field("new_source").to_owned(),
         // OpenCode puts the patch in `patchText`, Codex in `command`.
         "apply_patch" | "patch" => added_lines(match field("patchText") {
@@ -351,7 +382,8 @@ pub(crate) fn proposal_text(tool: &str, input: &Value) -> String {
                     .join("\n")
             })
             .unwrap_or_default(),
-        "Bash" | "bash" | "shell" | "file_system.bash" | "process.start" => {
+        "Bash" | "bash" | "shell" | "file_system.bash" | "process.start" | "execute_bash"
+        | "execute_cmd" | "executeBash" | "executePwsh" => {
             let command = field("command");
             if bash_mutates(command) {
                 command.to_owned()
@@ -621,6 +653,7 @@ fn proposal_for(payload: &Value) -> Option<String> {
     if !GUARDED.contains(&tool)
         && !OPENCODE_GUARDED.contains(&tool)
         && !VIBE_GUARDED.contains(&tool)
+        && !KIRO_GUARDED.contains(&tool)
     {
         return None;
     }
@@ -731,9 +764,11 @@ fn session_start_context(db: &Path, project: &str) -> Result<Option<String>> {
     Ok(briefing_is_worth_showing(&briefing).then(|| render_briefing(project, &briefing)))
 }
 
-/// What a session-start hook prints to hand the session `context`.
+/// What a session-start hook prints to hand the session `context`. Kiro
+/// takes the text itself, so it has no JSON form.
 fn session_start_answer(agent: Agent, project: &str, context: &str) -> Value {
     match agent {
+        Agent::Kiro => Value::String(context.to_owned()),
         Agent::ClaudeCode => json!({
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
@@ -761,6 +796,12 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>, agent: Agent) 
     let payload = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({}));
     match event {
         Event::PreToolUse => match warnings_for(db, &payload, project) {
+            // Kiro blocks on exit code 2 and hands stderr to the model.
+            Ok(warnings) if !warnings.is_empty() && agent == Agent::Kiro => {
+                let (texts, elsewhere) = split_warnings(&warnings);
+                eprintln!("{}", deny_reason(&texts, &elsewhere));
+                std::process::exit(2);
+            }
             Ok(warnings) if !warnings.is_empty() => println!("{}", decision(agent, &warnings)),
             Ok(_) => {}
             // To stderr, where it reaches the hook log without being read as a
@@ -769,7 +810,7 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>, agent: Agent) 
         },
         // Vibe's transcript isn't Claude Code's, and its hooks don't include
         // this one, so a stray call records nothing rather than misreading it.
-        Event::SessionEnd if agent == Agent::Vibe => {}
+        Event::SessionEnd if matches!(agent, Agent::Vibe | Agent::Kiro) => {}
         Event::SessionEnd => {
             let Some(name) = project_name(project, &payload) else {
                 return Ok(());
@@ -783,7 +824,10 @@ pub(crate) fn run(db: &Path, event: Event, project: Option<&str>, agent: Agent) 
                 return Ok(());
             };
             match session_start_context(db, &name) {
-                Ok(Some(context)) => println!("{}", session_start_answer(agent, &name, &context)),
+                Ok(Some(context)) => match session_start_answer(agent, &name, &context) {
+                    Value::String(text) => println!("{text}"),
+                    answer => println!("{answer}"),
+                },
                 Ok(None) => {}
                 Err(error) => eprintln!("omnimem hook: {error}"),
             }
@@ -1253,6 +1297,87 @@ mod tests {
             let call = json!({"tool_name": tool, "tool_input": {"command": "cargo add x"}});
             assert_eq!(proposal_for(&call), None, "{tool} should not be guarded");
         }
+    }
+
+    /// Kiro's CLI names its shell `execute_bash` and its writes `fs_write`,
+    /// whose `command` is the kind of write, never something to run.
+    #[test]
+    fn the_hook_denies_a_kiro_call_that_repeats_a_dead_end_in_kiros_terms() {
+        let engine = engine_with_dead_end(GraveyardScope::Project);
+        let payload = json!({
+            "hook_event_name": "preToolUse",
+            "cwd": "/home/me/alpha",
+            "session_id": "s1",
+            "tool_name": "execute_bash",
+            "tool_input": {"command": "cargo add kestrel-rs"},
+        });
+        assert_eq!(guard(&engine, &payload, None).unwrap().len(), 1);
+        let write = json!({
+            "hook_event_name": "preToolUse",
+            "cwd": "/home/me/alpha",
+            "tool_name": "fs_write",
+            "tool_input": {"command": "str_replace", "path": "/a.rs",
+                           "old_str": "tower", "new_str": "use kestrel_rs;"},
+        });
+        assert_eq!(guard(&engine, &write, None).unwrap().len(), 1);
+
+        // Taking the dead end out isn't proposing it, and a create's
+        // `command` isn't a shell command.
+        assert_eq!(
+            proposal_text(
+                "fs_write",
+                &json!({"command": "str_replace", "old_str": "kestrel_rs", "new_str": "tower"})
+            ),
+            "tower"
+        );
+        assert_eq!(
+            proposal_text(
+                "fs_write",
+                &json!({"command": "create", "path": "/a.rs", "file_text": "fn main() {}"})
+            ),
+            "fn main() {}"
+        );
+        assert_eq!(
+            proposal_text("write", &json!({"command": "append", "new_str": "x"})),
+            "x"
+        );
+        assert_eq!(
+            proposal_text(
+                "fsWrite",
+                &json!({"path": "/a.rs", "text": "use kestrel_rs;"})
+            ),
+            "use kestrel_rs;"
+        );
+        assert_eq!(
+            proposal_text(
+                "strReplace",
+                &json!({"oldStr": "kestrel_rs", "newStr": "tower"})
+            ),
+            "tower"
+        );
+        assert_eq!(
+            proposal_text("execute_bash", &json!({"command": "ls vendor"})),
+            ""
+        );
+        for tool in [
+            "fs_read",
+            "read",
+            "grep",
+            "glob",
+            "mcp_omnimem_recall",
+            "readFile",
+        ] {
+            let call = json!({"tool_name": tool, "tool_input": {"command": "cargo add x"}});
+            assert_eq!(proposal_for(&call), None, "{tool} should not be guarded");
+        }
+    }
+
+    #[test]
+    fn a_kiro_session_starts_with_the_briefing_as_plain_text() {
+        assert_eq!(
+            session_start_answer(Agent::Kiro, "alpha", "Where alpha stands"),
+            Value::String("Where alpha stands".into())
+        );
     }
 
     /// Vibe only starts the hook for the tools its `match` names, by their

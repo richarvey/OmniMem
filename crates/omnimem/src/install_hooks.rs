@@ -3,13 +3,15 @@
 //! that already has one. With `--opencode`, write OmniMem's OpenCode plugin
 //! instead (guides/opencode.md), which runs the same hooks, and with
 //! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md), and
-//! with `--codex`, in Codex's `hooks.json` (guides/codex.md).
+//! with `--codex`, in Codex's `hooks.json` (guides/codex.md), and with
+//! `--kiro`, as Kiro's `hooks/omnimem.json` (guides/kiro.md).
 
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
 use omnimem_app::client_files::HooksState;
 use omnimem_app::codex;
+use omnimem_app::kiro;
 use omnimem_app::opencode::{self, PluginState, without_verbatim};
 use omnimem_app::vibe;
 use serde_json::{Map, Value, json};
@@ -38,6 +40,7 @@ pub(crate) enum Target {
     OpenCode,
     Vibe,
     Codex,
+    Kiro,
 }
 
 pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Target) -> Result<()> {
@@ -53,6 +56,9 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Targe
             Target::Codex =>
                 "the Flatpak's sandbox can't reach Codex's folder, and Codex outside it can't \
                  run the Flatpak's omnimem. Install OmniMem's package to use the Codex hooks",
+            Target::Kiro =>
+                "the Flatpak's sandbox can't reach Kiro's folder, and Kiro outside it can't run \
+                 the Flatpak's omnimem. Install OmniMem's package to use the Kiro hooks",
             Target::ClaudeCode =>
                 "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
                  see docs/claude-code-hook.md",
@@ -62,6 +68,7 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Targe
         Target::OpenCode => return run_opencode(db, project, dry_run),
         Target::Vibe => return run_vibe(db, project, dry_run),
         Target::Codex => return run_codex(db, project, dry_run),
+        Target::Kiro => return run_kiro(db, project, dry_run),
         Target::ClaudeCode => {}
     }
     let path = if project {
@@ -195,6 +202,36 @@ fn run_codex(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
     println!(
         "Codex asks you to review and trust them when it next starts (or under /hooks); \
          they run once you have. See guides/codex.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks file in Kiro's hooks folder, globally or for the
+/// project in this folder.
+fn run_kiro(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = kiro::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Kiro's in"))?;
+    let base = kiro::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let Some(verb) = verb_for(kiro::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
+    };
+    for hook in &kiro::HOOKS {
+        println!(
+            "  {verb:<12} {:<13} {}",
+            hook.trigger,
+            kiro::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    kiro::write_hooks(&path, &base)?;
+    println!(
+        "Kiro uses them from its next session. Kiro's CLI reads ~/.kiro/hooks; its IDE reads a \
+         project's .kiro/hooks, which --project writes. See guides/kiro.md."
     );
     Ok(())
 }

@@ -11,6 +11,7 @@ pub mod icon;
 mod model;
 mod smoke;
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -83,6 +84,8 @@ struct TrayMenu {
     vibe_hooks: MenuItem,
     codex: MenuItem,
     codex_hooks: MenuItem,
+    kiro: MenuItem,
+    kiro_hooks: MenuItem,
     start_at_login: CheckMenuItem,
     quit: MenuItem,
 }
@@ -104,6 +107,8 @@ impl TrayMenu {
             vibe_hooks: client_menu_item(Client::VibeHooks),
             codex: client_menu_item(Client::Codex),
             codex_hooks: client_menu_item(Client::CodexHooks),
+            kiro: client_menu_item(Client::Kiro),
+            kiro_hooks: client_menu_item(Client::KiroHooks),
             start_at_login: CheckMenuItem::new("Start at login", login.is_some(), enabled, None),
             quit: MenuItem::new("Quit OmniMem", true, None),
         };
@@ -121,6 +126,8 @@ impl TrayMenu {
                 &this.vibe_hooks,
                 &this.codex,
                 &this.codex_hooks,
+                &this.kiro,
+                &this.kiro_hooks,
                 &this.start_at_login,
                 &PredefinedMenuItem::separator(),
                 &this.quit,
@@ -135,6 +142,20 @@ fn client_menu_item(client: Client) -> MenuItem {
     let (text, enabled) = model::client_item(client, None, false, false, None);
     MenuItem::new(text, enabled, None)
 }
+
+/// Every client with an item in the menu, in the menu's order.
+const CLIENTS: [Client; 10] = [
+    Client::Desktop,
+    Client::Code,
+    Client::OpenCode,
+    Client::OpenCodeHooks,
+    Client::Vibe,
+    Client::VibeHooks,
+    Client::Codex,
+    Client::CodexHooks,
+    Client::Kiro,
+    Client::KiroHooks,
+];
 
 /// Where OmniMem stands in one client, for its menu item.
 #[derive(Default)]
@@ -176,6 +197,10 @@ struct App {
     hook_base: Option<String>,
     codex: ClientSlot,
     codex_hooks: ClientSlot,
+    kiro: ClientSlot,
+    kiro_hooks: ClientSlot,
+    /// The client items in the menu now, in order.
+    clients_shown: RefCell<Vec<Client>>,
     clients_checked: Option<Instant>,
     /// The newer release the tray is announcing.
     update: Option<String>,
@@ -478,16 +503,19 @@ impl App {
             ),
             None => Presence::Unreadable("this program wasn't found".to_owned()),
         });
-        for client in [
-            Client::Desktop,
-            Client::Code,
-            Client::OpenCode,
-            Client::OpenCodeHooks,
-            Client::Vibe,
-            Client::VibeHooks,
-            Client::Codex,
-            Client::CodexHooks,
-        ] {
+        let kiro_here = url.is_some() && omnimem_app::kiro::installed();
+        self.kiro.presence = url.as_deref().map(|url| {
+            clients::kiro_presence(kiro_here, omnimem_app::kiro::config_path().as_deref(), url)
+        });
+        self.kiro_hooks.presence = url.as_ref().map(|_| match &self.hook_base {
+            Some(base) => clients::kiro_hooks_presence(
+                kiro_here,
+                omnimem_app::kiro::hooks_path(None).as_deref(),
+                base,
+            ),
+            None => Presence::Unreadable("this program wasn't found".to_owned()),
+        });
+        for client in CLIENTS {
             self.relabel(client);
         }
     }
@@ -502,11 +530,13 @@ impl App {
             Client::VibeHooks => &mut self.vibe_hooks,
             Client::Codex => &mut self.codex,
             Client::CodexHooks => &mut self.codex_hooks,
+            Client::Kiro => &mut self.kiro,
+            Client::KiroHooks => &mut self.kiro_hooks,
         }
     }
 
-    fn relabel(&self, client: Client) {
-        let (slot, item) = match client {
+    fn slot_and_item(&self, client: Client) -> (&ClientSlot, &MenuItem) {
+        match client {
             Client::Desktop => (&self.desktop, &self.menu.desktop),
             Client::Code => (&self.code, &self.menu.code),
             Client::OpenCode => (&self.opencode, &self.menu.opencode),
@@ -515,7 +545,57 @@ impl App {
             Client::VibeHooks => (&self.vibe_hooks, &self.menu.vibe_hooks),
             Client::Codex => (&self.codex, &self.menu.codex),
             Client::CodexHooks => (&self.codex_hooks, &self.menu.codex_hooks),
+            Client::Kiro => (&self.kiro, &self.menu.kiro),
+            Client::KiroHooks => (&self.kiro_hooks, &self.menu.kiro_hooks),
+        }
+    }
+
+    /// Whether a client's item belongs in the menu: not once the client
+    /// already points here. In the Flatpak every item stays, to say why it
+    /// can't be used.
+    fn client_shown(&self, client: Client) -> bool {
+        let (slot, _) = self.slot_and_item(client);
+        (self.in_flatpak && client != Client::Desktop)
+            || model::client_item_shown(slot.presence.as_ref(), slot.busy, slot.changed)
+    }
+
+    /// Put the client items the menu should have under Copy MCP URL, in
+    /// their usual order, and take out the rest. Menus have no hidden items,
+    /// so they're removed and inserted, and only when the set changes.
+    fn place_client_items(&self) {
+        let want: Vec<Client> = CLIENTS
+            .into_iter()
+            .filter(|&client| self.client_shown(client))
+            .collect();
+        if *self.clients_shown.borrow() == want {
+            return;
+        }
+        for client in CLIENTS {
+            // An item that isn't there is an error, and nothing to undo.
+            let _ = self.menu.menu.remove(self.slot_and_item(client).1);
+        }
+        let copy_url = self.menu.copy_url.id();
+        let Some(mut at) = self
+            .menu
+            .menu
+            .items()
+            .iter()
+            .position(|item| item.id() == copy_url)
+        else {
+            warn!("Copy MCP URL is missing from the tray menu");
+            return;
         };
+        for &client in &want {
+            at += 1;
+            if let Err(e) = self.menu.menu.insert(self.slot_and_item(client).1, at) {
+                warn!(client = client.name(), error = %e, "could not put a client back in the menu");
+            }
+        }
+        *self.clients_shown.borrow_mut() = want;
+    }
+
+    fn relabel(&self, client: Client) {
+        let (slot, item) = self.slot_and_item(client);
         let flatpak_text = match client {
             Client::Desktop => None,
             Client::Code => Some(model::CODE_IN_FLATPAK),
@@ -525,6 +605,8 @@ impl App {
             Client::VibeHooks => Some(model::VIBE_HOOKS_IN_FLATPAK),
             Client::Codex => Some(model::CODEX_IN_FLATPAK),
             Client::CodexHooks => Some(model::CODEX_HOOKS_IN_FLATPAK),
+            Client::Kiro => Some(model::KIRO_IN_FLATPAK),
+            Client::KiroHooks => Some(model::KIRO_HOOKS_IN_FLATPAK),
         };
         let (text, enabled) = if let Some(text) = flatpak_text.filter(|_| self.in_flatpak) {
             (text.to_owned(), false)
@@ -539,6 +621,7 @@ impl App {
         };
         item.set_text(text);
         item.set_enabled(enabled);
+        self.place_client_items();
     }
 
     /// Add OmniMem to a client, or switch its `omnimem` entry here, on a
@@ -606,6 +689,18 @@ impl App {
                         let path = omnimem_app::codex::hooks_path(None)
                             .ok_or("no home folder to find Codex's in")?;
                         omnimem_app::codex::write_hooks(&path, &base)
+                            .map(|_| ())
+                            .map_err(|e| format!("{e:#}"))
+                    }),
+                Client::Kiro => omnimem_app::kiro::config_path()
+                    .ok_or_else(|| "no home folder to find Kiro's in".to_owned())
+                    .and_then(|path| clients::write_kiro(&path, &url, token.as_deref())),
+                Client::KiroHooks => hook_base
+                    .ok_or_else(|| "this program wasn't found".to_owned())
+                    .and_then(|base| {
+                        let path = omnimem_app::kiro::hooks_path(None)
+                            .ok_or("no home folder to find Kiro's in")?;
+                        omnimem_app::kiro::write_hooks(&path, &base)
                             .map(|_| ())
                             .map_err(|e| format!("{e:#}"))
                     }),
@@ -780,6 +875,10 @@ impl App {
                     self.change_client(Client::Codex);
                 } else if id == self.menu.codex_hooks.id() {
                     self.change_client(Client::CodexHooks);
+                } else if id == self.menu.kiro.id() {
+                    self.change_client(Client::Kiro);
+                } else if id == self.menu.kiro_hooks.id() {
+                    self.change_client(Client::KiroHooks);
                 } else if id == self.menu.start_at_login.id() {
                     self.toggle_start_at_login();
                 } else if id == self.menu.quit.id() {
@@ -956,6 +1055,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         hook_base,
         codex: ClientSlot::default(),
         codex_hooks: ClientSlot::default(),
+        kiro: ClientSlot::default(),
+        kiro_hooks: ClientSlot::default(),
+        clients_shown: RefCell::new(CLIENTS.to_vec()),
         clients_checked: None,
         update: None,
         started: Instant::now(),

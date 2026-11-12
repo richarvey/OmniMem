@@ -55,6 +55,9 @@ pub const VIBE_HOOKS_IN_FLATPAK: &str = "Add hooks to Mistral Vibe (unavailable 
 /// The Codex items inside a Flatpak, for the same reasons again.
 pub const CODEX_IN_FLATPAK: &str = "Add to Codex (unavailable in the Flatpak)";
 pub const CODEX_HOOKS_IN_FLATPAK: &str = "Add hooks to Codex (unavailable in the Flatpak)";
+/// The Kiro items inside a Flatpak, for the same reasons again.
+pub const KIRO_IN_FLATPAK: &str = "Add to Kiro (unavailable in the Flatpak)";
+pub const KIRO_HOOKS_IN_FLATPAK: &str = "Add hooks to Kiro (unavailable in the Flatpak)";
 
 /// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
@@ -77,7 +80,7 @@ pub fn client_item(
     let name = client.name();
     if matches!(
         client,
-        Client::OpenCodeHooks | Client::VibeHooks | Client::CodexHooks
+        Client::OpenCodeHooks | Client::VibeHooks | Client::CodexHooks | Client::KiroHooks
     ) {
         // Codex runs a new hook only once it's been trusted, which it asks
         // about when it starts.
@@ -107,6 +110,14 @@ pub fn client_item(
         Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
         _ => (text, enabled),
     }
+}
+
+/// Whether a client's item belongs in the menu. One whose settings already
+/// point here has nothing to do, so it's left out, unless this run just made
+/// the change: then it stays to say the client needs a restart (and, for
+/// Codex's hooks, trusting them).
+pub fn client_item_shown(presence: Option<&Presence>, busy: bool, changed: bool) -> bool {
+    busy || changed || !matches!(presence, Some(Presence::Here))
 }
 
 /// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
@@ -211,6 +222,29 @@ mod tests {
             "http://127.0.0.1:8765"
         );
         assert_eq!(server_base("http://[::1]:9000/mcp"), "http://[::1]:9000");
+    }
+
+    #[test]
+    fn a_client_already_pointing_here_drops_out_of_the_menu() {
+        let here = Some(&Presence::Here);
+        assert!(!client_item_shown(here, false, false));
+        assert!(client_item_shown(here, false, true), "until it's restarted");
+        assert!(client_item_shown(here, true, false));
+        for presence in [
+            None,
+            Some(Presence::NotInstalled),
+            Some(Presence::Absent),
+            Some(Presence::Unreadable("bad".into())),
+            Some(Presence::Elsewhere {
+                name: "omnimem".into(),
+                target: "https://cloudai.example.net/mcp".into(),
+            }),
+        ] {
+            assert!(
+                client_item_shown(presence.as_ref(), false, false),
+                "{presence:?}"
+            );
+        }
     }
 
     #[test]

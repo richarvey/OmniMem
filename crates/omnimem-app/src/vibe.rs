@@ -262,6 +262,20 @@ pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
 /// one is set. Everything else stays as it was, with a copy beside it.
 pub fn write_mcp_server(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<()> {
     let mut doc = read_toml(path)?;
+    // Vibe writes `mcp_servers = []` until a server is added, and a person
+    // may write the list inline: either becomes [[mcp_servers]] tables,
+    // holding the same servers, so there's a table to add this one as.
+    if let Some(array) = doc.get("mcp_servers").and_then(Item::as_array) {
+        let mut tables = ArrayOfTables::new();
+        for server in array.iter() {
+            let server = server.as_inline_table().ok_or_else(|| {
+                anyhow!("config.toml's mcp_servers holds something that isn't a server")
+            })?;
+            tables.push(server.clone().into_table());
+        }
+        doc.remove("mcp_servers");
+        doc.insert("mcp_servers", Item::ArrayOfTables(tables));
+    }
     let tables = doc
         .entry("mcp_servers")
         .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()))
@@ -458,16 +472,40 @@ mod tests {
             "[[mcp_servers]]\nname = \"omnimem\"\ntransport = \"streamable-http\"\nurl = \"http://127.0.0.1:8765/mcp\"\n"
         );
 
-        // An inline list is read, but not rewritten.
+        // An inline list is read, and written back as tables with this
+        // server added and the others kept.
         std::fs::write(
             &path,
-            "mcp_servers = [{ name = \"x\", transport = \"http\", url = \"http://x/mcp\" }]\n",
+            "active_model = \"devstral\"\nmcp_servers = [{ name = \"x\", transport = \"http\", url = \"http://x/mcp\", headers = { A = \"b\" } }]\ntheme = \"dark\"\n",
         )
         .unwrap();
         assert_eq!(
             mcp_servers(&path).unwrap()[0].url.as_deref(),
             Some("http://x/mcp")
         );
+        write_mcp_server(&path, "http://127.0.0.1:8765/mcp", None).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let servers = mcp_servers(&path).unwrap();
+        assert_eq!(servers.len(), 2, "{text}");
+        assert_eq!(servers[0].url.as_deref(), Some("http://x/mcp"));
+        assert_eq!(servers[1].url.as_deref(), Some("http://127.0.0.1:8765/mcp"));
+        assert!(text.contains("[[mcp_servers]]"), "{text}");
+        assert!(text.contains("theme = \"dark\""), "{text}");
+        let doc: toml_edit::DocumentMut = text.parse().unwrap();
+        assert_eq!(doc["mcp_servers"][0]["headers"]["A"].as_str(), Some("b"));
+        assert_eq!(doc["theme"].as_str(), Some("dark"));
+
+        // Vibe's own empty list, as it writes a fresh config.toml.
+        std::fs::write(&path, "active_model = \"devstral\"\nmcp_servers = []\n").unwrap();
+        write_mcp_server(&path, "http://127.0.0.1:8765/mcp", None).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            "active_model = \"devstral\"\n\n[[mcp_servers]]\nname = \"omnimem\"\ntransport = \"streamable-http\"\nurl = \"http://127.0.0.1:8765/mcp\"\n"
+        );
+
+        // Anything else in the list is left alone.
+        std::fs::write(&path, "mcp_servers = [\"x\"]\n").unwrap();
         assert!(write_mcp_server(&path, "http://127.0.0.1:8765/mcp", None).is_err());
     }
 }

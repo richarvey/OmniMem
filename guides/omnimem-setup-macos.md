@@ -35,7 +35,7 @@ Click the menu bar icon and you'll see:
 - **A status line**: whether it's running and how many memories it holds. **Copy MCP URL** puts the address on the clipboard
 - **Settings…**: opens the settings panel
 - **Copy MCP URL**: puts `http://127.0.0.1:8765/mcp` on your clipboard for your client config
-- **Add to Claude Desktop** and **Add to Claude Code**: does the setup for you. Each one checks the client's settings first, so OmniMem is never added twice: once it's there the item reads **✓ In Claude Desktop**, and if the client already has an `omnimem` server pointing somewhere else (your old 6.x server, say) it offers **Switch Claude Desktop here** instead, naming where it points now. Restart the client afterwards so it connects
+- **Add to Claude Desktop** and **Add to Claude Code**: does the setup for you. Each one checks the client's settings first, so OmniMem is never added twice: once it's there the item reads **✓ In Claude Desktop** until you restart the client, and after that it drops out of the menu, since there's nothing left to do. If the client already has an `omnimem` server pointing somewhere else (your old 6.x server, say) it offers **Switch Claude Desktop here** instead, naming where it points now. Restart the client afterwards so it connects
 - **Start at login**: tick it and OmniMem comes up whenever you log in
 - **Quit OmniMem**
 

@@ -17,6 +17,9 @@ first two into its `hooks.json` unchanged; see
 Mistral Vibe runs the same command from its `hooks.toml`, with `--agent vibe`
 so the answer is in Vibe's form; see
 [guides/vibe.md](../guides/vibe.md#hooks-stopping-known-dead-ends).
+Kiro runs it with `--agent kiro`, which refuses a call by exiting 2 and
+briefs with plain text; see
+[guides/kiro.md](../guides/kiro.md#hooks-stopping-known-dead-ends).
 
 ## Why these exist
 
