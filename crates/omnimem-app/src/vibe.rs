@@ -13,11 +13,14 @@
 //! after a copy of the file as it was is kept beside it. OmniMem's hooks are
 //! the ones named `omnimem-*`; nothing else in the file is touched.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow, bail};
-use toml_edit::{ArrayOfTables, DocumentMut, InlineTable, Item, Table, value};
+use anyhow::{Result, anyhow, bail};
+use toml_edit::{ArrayOfTables, InlineTable, Item, Table, value};
+
+pub use crate::client_files::{HooksState, McpServer};
+use crate::client_files::{read_toml, replace};
+pub use crate::shell::hook_base;
 
 /// The name OmniMem's MCP entry goes under.
 pub const SERVER_NAME: &str = "omnimem";
@@ -111,28 +114,14 @@ pub fn installed() -> bool {
     find_cli().is_some() || home().is_some_and(|dir| dir.is_dir())
 }
 
-pub use crate::shell::hook_base;
-
 /// One of OmniMem's hooks' command, after `base`.
 pub fn hook_command(base: &str, hook: &Hook) -> String {
     format!("{base} hook {} --agent vibe", hook.event)
 }
 
 /// What `hooks.toml` holds of OmniMem's hooks, against what would be written.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HooksState {
-    /// None of them.
-    Missing,
-    /// All of them, exactly as they'd be written.
-    Current,
-    /// Some, or from another version, or running another program.
-    Outdated,
-    /// The file couldn't be read, for this reason.
-    Unreadable(String),
-}
-
 pub fn hooks_state(path: &Path, base: &str) -> HooksState {
-    let doc = match read_doc(path) {
+    let doc = match read_toml(path) {
         Ok(doc) => doc,
         Err(e) => return HooksState::Unreadable(format!("{e:#}")),
     };
@@ -177,7 +166,7 @@ pub fn write_hooks(path: &Path, base: &str) -> Result<HooksState> {
         HooksState::Unreadable(why) => bail!("couldn't use {}: {why}", path.display()),
         HooksState::Missing | HooksState::Outdated => {}
     }
-    let mut doc = read_doc(path)?;
+    let mut doc = read_toml(path)?;
     let tables = doc
         .entry("hooks")
         .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()))
@@ -187,7 +176,7 @@ pub fn write_hooks(path: &Path, base: &str) -> Result<HooksState> {
     for hook in &HOOKS {
         tables.push(hook_table(base, hook));
     }
-    replace_file(path, &doc.to_string())?;
+    replace(path, &doc.to_string(), false)?;
     Ok(before)
 }
 
@@ -221,19 +210,9 @@ fn same_hook(have: &Table, want: &Table) -> bool {
         && !have.get("strict").and_then(Item::as_bool).unwrap_or(false)
 }
 
-/// One of Vibe's MCP servers, as much of it as says where it goes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpServer {
-    pub name: String,
-    pub url: Option<String>,
-    /// A stdio server's program and its arguments.
-    pub command: Option<String>,
-    pub args: Vec<String>,
-}
-
 /// The MCP servers in Vibe's `config.toml`: none when the file is missing.
 pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
-    let doc = read_doc(path)?;
+    let doc = read_toml(path)?;
     let Some(item) = doc.get("mcp_servers") else {
         return Ok(Vec::new());
     };
@@ -282,7 +261,7 @@ pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
 /// here (keeping its name and its place), with the token as a header when
 /// one is set. Everything else stays as it was, with a copy beside it.
 pub fn write_mcp_server(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<()> {
-    let mut doc = read_doc(path)?;
+    let mut doc = read_toml(path)?;
     let tables = doc
         .entry("mcp_servers")
         .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()))
@@ -332,43 +311,8 @@ pub fn write_mcp_server(path: &Path, mcp_url: &str, token: Option<&str>) -> Resu
         auth["headers"] = value(headers);
         table.insert("auth", Item::Table(auth));
     }
-    replace_file(path, &doc.to_string())
-}
-
-/// The file as TOML: empty when it's missing. A file that isn't TOML is an
-/// error, so it's left alone rather than replaced.
-fn read_doc(path: &Path) -> Result<DocumentMut> {
-    let file = path
-        .file_name()
-        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-    match std::fs::read_to_string(path) {
-        Ok(text) => text
-            .parse::<DocumentMut>()
-            .map_err(|e| anyhow!("{file} isn't valid TOML ({})", e.message())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DocumentMut::new()),
-        Err(e) => Err(e).with_context(|| format!("couldn't read {file}")),
-    }
-}
-
-/// Keep a copy of the file as it was, then write beside it and rename into
-/// place, so Vibe never reads half a file.
-fn replace_file(path: &Path, text: &str) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    if path.exists() {
-        std::fs::copy(path, with_suffix(path, ".omnimem-backup"))
-            .with_context(|| format!("backing up {}", path.display()))?;
-    }
-    let partial = with_suffix(path, ".omnimem-partial");
-    std::fs::write(&partial, text).with_context(|| format!("writing {}", path.display()))?;
-    std::fs::rename(&partial, path).with_context(|| format!("replacing {}", path.display()))
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
+    // With a token in it, the file is its owner's alone.
+    replace(path, &doc.to_string(), token.is_some()).map(|_| ())
 }
 
 #[cfg(test)]

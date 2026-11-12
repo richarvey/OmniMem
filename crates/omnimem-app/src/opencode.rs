@@ -170,15 +170,9 @@ pub fn write_plugin(path: &Path, source: &str) -> Result<PluginState> {
         PluginState::Unreadable(why) => anyhow::bail!("couldn't read {}: {why}", path.display()),
         PluginState::Missing | PluginState::Outdated => {}
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
     // Written beside it and renamed into place, so OpenCode, which reloads
     // its config folder when a file changes, never loads half a plugin.
-    let mut partial = path.as_os_str().to_owned();
-    partial.push(".omnimem-partial");
-    std::fs::write(&partial, source).with_context(|| format!("writing {}", path.display()))?;
-    std::fs::rename(&partial, path).with_context(|| format!("replacing {}", path.display()))?;
+    crate::client_files::replace(path, source, false)?;
     Ok(before)
 }
 

@@ -5,13 +5,13 @@
 //! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md), and
 //! with `--codex`, in Codex's `hooks.json` (guides/codex.md).
 
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
+use omnimem_app::client_files::HooksState;
 use omnimem_app::codex;
 use omnimem_app::opencode::{self, PluginState, without_verbatim};
-use omnimem_app::vibe::{self, HooksState};
+use omnimem_app::vibe;
 use serde_json::{Map, Value, json};
 
 /// The hooks, as the guide gives them: event, matcher, `hook` argument and
@@ -141,26 +141,8 @@ fn run_vibe(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
         .ok_or_else(|| anyhow!("no home folder to find Vibe's in"))?;
     let base = vibe::hook_base(&opencode::this_program()?, db);
     println!("{}", path.display());
-    let verb = match vibe::hooks_state(&path, &base) {
-        HooksState::Current => {
-            println!("OmniMem's hooks are already there; nothing changed.");
-            return Ok(());
-        }
-        HooksState::Unreadable(why) => bail!("couldn't use {}: {why}", path.display()),
-        HooksState::Missing => {
-            if dry_run {
-                "would add"
-            } else {
-                "added"
-            }
-        }
-        HooksState::Outdated => {
-            if dry_run {
-                "would update"
-            } else {
-                "updated"
-            }
-        }
+    let Some(verb) = verb_for(vibe::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
     };
     for hook in &vibe::HOOKS {
         println!(
@@ -187,32 +169,13 @@ fn run_vibe(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
 /// Put OmniMem's hooks in Codex's hooks.json, globally or for the project in
 /// this folder.
 fn run_codex(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
-    use codex::HooksState;
     let here = std::env::current_dir()?;
     let path = codex::hooks_path(project.then_some(here.as_path()))
         .ok_or_else(|| anyhow!("no home folder to find Codex's in"))?;
     let base = codex::hook_base(&opencode::this_program()?, db);
     println!("{}", path.display());
-    let verb = match codex::hooks_state(&path, &base) {
-        HooksState::Current => {
-            println!("OmniMem's hooks are already there; nothing changed.");
-            return Ok(());
-        }
-        HooksState::Unreadable(why) => bail!("couldn't use {}: {why}", path.display()),
-        HooksState::Missing => {
-            if dry_run {
-                "would add"
-            } else {
-                "added"
-            }
-        }
-        HooksState::Outdated => {
-            if dry_run {
-                "would update"
-            } else {
-                "updated"
-            }
-        }
+    let Some(verb) = verb_for(codex::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
     };
     for hook in &codex::HOOKS {
         println!(
@@ -234,6 +197,22 @@ fn run_codex(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
          they run once you have. See guides/codex.md."
     );
     Ok(())
+}
+
+/// What installing does to hooks in this state, as the word each line starts
+/// with: `None`, having said so, when they're already as they'd be written.
+fn verb_for(state: HooksState, path: &Path, dry_run: bool) -> Result<Option<&'static str>> {
+    Ok(Some(match (state, dry_run) {
+        (HooksState::Current, _) => {
+            println!("OmniMem's hooks are already there; nothing changed.");
+            return Ok(None);
+        }
+        (HooksState::Unreadable(why), _) => bail!("couldn't use {}: {why}", path.display()),
+        (HooksState::Missing, true) => "would add",
+        (HooksState::Missing, false) => "added",
+        (HooksState::Outdated, true) => "would update",
+        (HooksState::Outdated, false) => "updated",
+    }))
 }
 
 /// How a hook runs this binary: `omnimem` when that's what the PATH finds,
@@ -340,24 +319,11 @@ fn read_settings(path: &Path) -> Result<Value> {
 /// Keep a copy of the file as it was, then write beside it and rename into
 /// place, so Claude Code never reads half a file.
 fn write_settings(path: &Path, settings: &Value) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    if path.exists() {
-        let backup = with_suffix(path, ".omnimem-backup");
-        std::fs::copy(path, &backup).with_context(|| format!("backing up {}", path.display()))?;
+    let text = serde_json::to_string_pretty(settings)? + "\n";
+    if let Some(backup) = omnimem_app::client_files::replace(path, &text, false)? {
         println!("The file as it was is in {}", backup.display());
     }
-    let partial = with_suffix(path, ".omnimem-partial");
-    std::fs::write(&partial, serde_json::to_string_pretty(settings)? + "\n")
-        .with_context(|| format!("writing {}", partial.display()))?;
-    std::fs::rename(&partial, path).with_context(|| format!("replacing {}", path.display()))
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
+    Ok(())
 }
 
 #[cfg(test)]

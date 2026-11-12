@@ -7,6 +7,7 @@
 //! thread, and stops it from the tray's Quit. This crate has no GUI
 //! dependencies, so it builds and tests everywhere.
 
+pub mod client_files;
 pub mod codex;
 mod instance;
 pub mod opencode;

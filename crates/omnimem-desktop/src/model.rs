@@ -79,7 +79,14 @@ pub fn client_item(
         client,
         Client::OpenCodeHooks | Client::VibeHooks | Client::CodexHooks
     ) {
-        return hooks_item(name, presence, busy, changed, error);
+        // Codex runs a new hook only once it's been trusted, which it asks
+        // about when it starts.
+        let then = if client == Client::CodexHooks {
+            "restart it and trust them"
+        } else {
+            "restart it to load them"
+        };
+        return hooks_item(name, then, presence, busy, changed, error);
     }
     if busy {
         return (format!("Adding OmniMem to {name}…"), false);
@@ -103,11 +110,12 @@ pub fn client_item(
 }
 
 /// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
-/// hooks.toml, Codex's hooks.json). It sits
-/// under the client's own item, which already says when the client isn't
-/// here, so this one just stays greyed out then.
+/// hooks.toml, Codex's hooks.json). It sits under the client's own item,
+/// which already says when the client isn't here, so this one just stays
+/// greyed out then. `then` is what's left to do once they've been written.
 fn hooks_item(
     name: &str,
+    then: &str,
     presence: Option<&Presence>,
     busy: bool,
     changed: bool,
@@ -120,16 +128,7 @@ fn hooks_item(
         None | Some(Presence::NotInstalled) => (format!("Add hooks to {name}"), false),
         Some(Presence::Unreadable(why)) => (format!("{name} hooks: {}", clip(why, 50)), false),
         Some(Presence::Absent) => (format!("Add hooks to {name}"), true),
-        // Codex runs a new hook only once it's been trusted, which it asks
-        // about when it starts.
-        Some(Presence::Here) if changed && name == "Codex" => (
-            format!("✓ Hooks in {name} (restart it and trust them)"),
-            false,
-        ),
-        Some(Presence::Here) if changed => (
-            format!("✓ Hooks in {name} (restart it to load them)"),
-            false,
-        ),
+        Some(Presence::Here) if changed => (format!("✓ Hooks in {name} ({then})"), false),
         Some(Presence::Here) => (format!("✓ Hooks in {name}"), false),
         Some(Presence::Elsewhere { .. }) => (format!("Update hooks in {name}"), true),
     };

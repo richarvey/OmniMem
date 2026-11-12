@@ -329,7 +329,7 @@ fn main() -> Result<()> {
         codex,
     } = command
     {
-        let agent = if opencode {
+        let target = if opencode {
             install_hooks::Target::OpenCode
         } else if vibe {
             install_hooks::Target::Vibe
@@ -338,7 +338,7 @@ fn main() -> Result<()> {
         } else {
             install_hooks::Target::ClaudeCode
         };
-        return install_hooks::run(db.as_deref(), project, dry_run, agent);
+        return install_hooks::run(db.as_deref(), project, dry_run, target);
     }
     let db = resolve_db(db, &settings)?;
     // What a command writes is the command line's, unless it says otherwise.

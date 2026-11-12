@@ -14,10 +14,10 @@
 //! OpenCode's `opencode.json` is edited like Claude Desktop's, after a backup,
 //! and so are Vibe's and Codex's `config.toml`, keeping comments and layout.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use omnimem_app::client_files::{HooksState, McpServer};
 use serde_json::{Value, json};
 
 /// The name OmniMem's entry goes under, as the guides use.
@@ -190,28 +190,22 @@ pub fn desktop_entry(mcp_url: &str, token: Option<&str>) -> Value {
     json!({"command": "npx", "args": args})
 }
 
-/// Where the config is copied before it's changed.
-pub fn backup_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().map(OsString::from).unwrap_or_default();
-    name.push(".omnimem-backup");
-    path.with_file_name(name)
-}
-
 /// Add this server to Claude Desktop, or point its `omnimem` entry here,
 /// keeping everything else in the file and a copy of the file as it was.
 pub fn write_desktop(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
-    write_entry(path, "mcpServers", desktop_entry(mcp_url, token))
+    write_entry_at(
+        path,
+        &["mcpServers"],
+        desktop_entry(mcp_url, token),
+        token.is_some(),
+    )
 }
 
-/// Put `entry` under OmniMem's name in the `key` object of the JSON config at
-/// `path`, keeping everything else in the file and a copy of the file as it
-/// was. An existing `omnimem` entry keeps its name and its place in the file.
-fn write_entry(path: &Path, key: &str, entry: Value) -> Result<(), String> {
-    write_entry_at(path, &[key], entry)
-}
-
-/// `write_entry` for an object further down: `keys` is its path from the top.
-fn write_entry_at(path: &Path, keys: &[&str], entry: Value) -> Result<(), String> {
+/// Put `entry` under OmniMem's name in the object at `keys` (its path from
+/// the top) of the JSON config at `path`, keeping everything else in the file
+/// and a copy of the file as it was. An existing `omnimem` entry keeps its
+/// name and its place in the file. `private` says the entry holds the token.
+fn write_entry_at(path: &Path, keys: &[&str], entry: Value, private: bool) -> Result<(), String> {
     let mut config = read_json(path)?.unwrap_or_else(|| json!({}));
     let mut servers = config
         .as_object_mut()
@@ -231,16 +225,11 @@ fn write_entry_at(path: &Path, keys: &[&str], entry: Value) -> Result<(), String
     servers.insert(name, entry);
     let text = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("couldn't write the config: {e}"))?;
-    if path.exists() {
-        std::fs::copy(path, backup_path(path))
-            .map_err(|e| format!("couldn't back up the config: {e}"))?;
-    }
-    // Written beside it and renamed into place, so Claude Desktop can never
-    // read half a file.
-    let mut partial = path.as_os_str().to_owned();
-    partial.push(".omnimem-partial");
-    std::fs::write(&partial, text + "\n").map_err(|e| format!("couldn't write the config: {e}"))?;
-    std::fs::rename(&partial, path).map_err(|e| format!("couldn't replace the config: {e}"))
+    // Written beside it and renamed into place, so the client can never read
+    // half a file, and its owner's alone when the entry carries the token.
+    omnimem_app::client_files::replace(path, &(text + "\n"), private)
+        .map(|_| ())
+        .map_err(|e| format!("{e:#}"))
 }
 
 /// Claude Code's user settings, which hold its user-scope MCP servers.
@@ -436,9 +425,19 @@ pub fn write_opencode(path: &Path, mcp_url: &str, token: Option<&str>) -> Result
     let native = read_json(path)?
         .is_some_and(|config| config.pointer("/mcp/servers").is_some_and(Value::is_object));
     if native {
-        write_entry_at(path, &["mcp", "servers"], opencode_entry(mcp_url, token))
+        write_entry_at(
+            path,
+            &["mcp", "servers"],
+            opencode_entry(mcp_url, token),
+            token.is_some(),
+        )
     } else {
-        write_entry(path, "mcp", opencode_entry(mcp_url, token))
+        write_entry_at(
+            path,
+            &["mcp"],
+            opencode_entry(mcp_url, token),
+            token.is_some(),
+        )
     }
 }
 
@@ -466,80 +465,41 @@ pub fn opencode_hooks_presence(installed: bool, path: Option<&Path>, source: &st
 
 /// Whether Vibe, with its settings at `path`, has OmniMem.
 pub fn vibe_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
-    let Some(path) = path.filter(|_| installed) else {
-        return Presence::NotInstalled;
-    };
-    match omnimem_app::vibe::mcp_servers(path) {
-        Ok(servers) => presence_of_toml(
-            servers
-                .into_iter()
-                .map(|s| (s.name, s.url, s.command, s.args)),
-            mcp_url,
-        ),
-        Err(e) => Presence::Unreadable(format!("{e:#}")),
+    match path.filter(|_| installed) {
+        Some(path) => presence_of_toml(omnimem_app::vibe::mcp_servers(path), mcp_url),
+        None => Presence::NotInstalled,
     }
-}
-
-/// What a TOML client's servers (name, URL, command, arguments) say about
-/// the server at `mcp_url`, judged in the shape the JSON clients' entries
-/// have: a URL, or a bridge command's URL argument.
-fn presence_of_toml(
-    servers: impl Iterator<Item = (String, Option<String>, Option<String>, Vec<String>)>,
-    mcp_url: &str,
-) -> Presence {
-    let servers: serde_json::Map<String, Value> = servers
-        .map(|(name, url, command, args)| {
-            let mut entry = json!({ "args": args });
-            if let Some(url) = url {
-                entry["url"] = json!(url);
-            }
-            if let Some(command) = command {
-                entry["command"] = json!(command);
-            }
-            (name, entry)
-        })
-        .collect();
-    presence_among(&servers, mcp_url)
 }
 
 /// Whether Codex, with its settings at `path`, has OmniMem.
 pub fn codex_presence(installed: bool, path: Option<&Path>, mcp_url: &str) -> Presence {
-    let Some(path) = path.filter(|_| installed) else {
-        return Presence::NotInstalled;
-    };
-    match omnimem_app::codex::mcp_servers(path) {
-        Ok(servers) => presence_of_toml(
-            servers
-                .into_iter()
-                .map(|s| (s.name, s.url, s.command, s.args)),
-            mcp_url,
-        ),
-        Err(e) => Presence::Unreadable(format!("{e:#}")),
+    match path.filter(|_| installed) {
+        Some(path) => presence_of_toml(omnimem_app::codex::mcp_servers(path), mcp_url),
+        None => Presence::NotInstalled,
     }
 }
 
-/// Add this server to Codex's `config.toml` at `path`, or point its
-/// `omnimem` entry here.
-pub fn write_codex(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
-    omnimem_app::codex::write_mcp_server(path, mcp_url, token).map_err(|e| format!("{e:#}"))
-}
-
-/// Whether OmniMem's hooks are in Codex's `hooks.json` at `path`, against
-/// what would be written now for hooks starting with `base`.
-pub fn codex_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
-    use omnimem_app::codex::{HooksState, hooks_state};
-    let Some(path) = path.filter(|_| installed) else {
-        return Presence::NotInstalled;
+/// What a TOML client's servers say about the server at `mcp_url`, judged in
+/// the shape the JSON clients' entries have: a URL, or a bridge command's
+/// URL argument.
+fn presence_of_toml(servers: anyhow::Result<Vec<McpServer>>, mcp_url: &str) -> Presence {
+    let servers: serde_json::Map<String, Value> = match servers {
+        Ok(servers) => servers
+            .into_iter()
+            .map(|server| {
+                let mut entry = json!({ "args": server.args });
+                if let Some(url) = server.url {
+                    entry["url"] = json!(url);
+                }
+                if let Some(command) = server.command {
+                    entry["command"] = json!(command);
+                }
+                (server.name, entry)
+            })
+            .collect(),
+        Err(e) => return Presence::Unreadable(format!("{e:#}")),
     };
-    match hooks_state(path, base) {
-        HooksState::Missing => Presence::Absent,
-        HooksState::Current => Presence::Here,
-        HooksState::Outdated => Presence::Elsewhere {
-            name: SERVER_NAME.to_owned(),
-            target: "older hooks".to_owned(),
-        },
-        HooksState::Unreadable(why) => Presence::Unreadable(why),
-    }
+    presence_among(&servers, mcp_url)
 }
 
 /// Add this server to Vibe's `config.toml` at `path`, or point its `omnimem`
@@ -548,14 +508,32 @@ pub fn write_vibe(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(),
     omnimem_app::vibe::write_mcp_server(path, mcp_url, token).map_err(|e| format!("{e:#}"))
 }
 
+/// Add this server to Codex's `config.toml` at `path`, or point its
+/// `omnimem` entry here.
+pub fn write_codex(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<(), String> {
+    omnimem_app::codex::write_mcp_server(path, mcp_url, token).map_err(|e| format!("{e:#}"))
+}
+
 /// Whether OmniMem's hooks are in Vibe's `hooks.toml` at `path`, against what
 /// would be written now for hooks starting with `base`.
 pub fn vibe_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
-    use omnimem_app::vibe::{HooksState, hooks_state};
-    let Some(path) = path.filter(|_| installed) else {
-        return Presence::NotInstalled;
-    };
-    match hooks_state(path, base) {
+    match path.filter(|_| installed) {
+        Some(path) => presence_of_hooks(omnimem_app::vibe::hooks_state(path, base)),
+        None => Presence::NotInstalled,
+    }
+}
+
+/// Whether OmniMem's hooks are in Codex's `hooks.json` at `path`, against
+/// what would be written now for hooks starting with `base`.
+pub fn codex_hooks_presence(installed: bool, path: Option<&Path>, base: &str) -> Presence {
+    match path.filter(|_| installed) {
+        Some(path) => presence_of_hooks(omnimem_app::codex::hooks_state(path, base)),
+        None => Presence::NotInstalled,
+    }
+}
+
+fn presence_of_hooks(state: HooksState) -> Presence {
+    match state {
         HooksState::Missing => Presence::Absent,
         HooksState::Current => Presence::Here,
         HooksState::Outdated => Presence::Elsewhere {
@@ -584,6 +562,7 @@ fn read_json(path: &Path) -> Result<Option<Value>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use omnimem_app::client_files::backup_path;
 
     const URL: &str = "http://127.0.0.1:8765/mcp";
 

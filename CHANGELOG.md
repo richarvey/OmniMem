@@ -12,6 +12,13 @@ OmniMem's dead-end guard and session briefing come to OpenAI's Codex CLI, and th
 - **`omnimem hook` reads Codex's patches**: `apply_patch` carries its patch in `tool_input.command` where OpenCode's is in `patchText`; as before, only the lines it adds are read
 - **Add to Codex and Add hooks to Codex in the tray and menu bar menu**, once Codex is installed (its `codex` command, its `~/.codex` folder, or on macOS its app). The first adds `[mcp_servers.omnimem]` to Codex's `config.toml`, with the access token in `http_headers` if one is set, or switches an `omnimem` entry pointing at another server (6.x's supergateway bridge, say), editing the TOML in place after a backup; the second writes the hooks, and says Update when the ones on disk are older. Both are unavailable in the Flatpak
 
+### Security
+- **`install-hooks --project` no longer writes through a symlink left in the project.** Before changing a settings file OmniMem copies it to `<file>.omnimem-backup` and writes the new one as `<file>.omnimem-partial`. A cloned project could carry symlinks at those names, so running `install-hooks --project` there (for Claude Code, OpenCode, Vibe or Codex) copied the project's own hooks file over whatever the symlink pointed at. Whatever is at either path is now removed, not written to
+- **A settings file that gains your access token is readable by you alone.** Add to Claude Desktop, OpenCode, Mistral Vibe and Codex write `MCP_AUTH_TOKEN` into the client's config; the rewritten file was created with default permissions (usually readable by everyone on the machine), whatever the original had. It's now `0600` when it holds the token, and otherwise keeps the permissions it had
+
+### Fixed
+- `install-hooks --codex` no longer drops an event from `hooks.json` that was an empty list before it ran
+
 ## [7.1.3] - unreleased
 
 OmniMem comes to Mistral's Vibe CLI, hooks and all: the dead-end guard and the session briefing run from Vibe's `hooks.toml`, and the desktop app adds both OmniMem and its hooks to Vibe from its menu.

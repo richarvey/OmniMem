@@ -21,7 +21,11 @@ pub fn hook_base(program: &Path, db: Option<&Path>) -> String {
 /// A word the hook's shell reads back as `word`: bare when it can be, else
 /// in single quotes for `sh`, or double quotes on Windows, where cmd and
 /// PowerShell have no single-quote escape that Git Bash shares. A Windows
-/// path can't hold a `"`, so nothing inside needs escaping there.
+/// path can't hold a `"`, so the quotes always close; it can hold a `%` (cmd)
+/// or a `$` or a backtick (PowerShell), which those shells still expand
+/// inside them, and no one spelling escapes all three. These are the
+/// person's own paths, so at worst such a hook names a program that isn't
+/// there, and a hook that doesn't start lets the call go ahead.
 pub(crate) fn shell_word(word: &str) -> String {
     let word = if cfg!(windows) {
         word.replace('\\', "/")

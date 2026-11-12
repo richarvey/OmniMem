@@ -17,13 +17,14 @@
 //! `config.toml` is edited with `toml_edit`, so its comments survive, and
 //! both files are copied beside themselves before they change.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Map, Value, json};
-use toml_edit::{DocumentMut, InlineTable, Item, Table, value};
+use toml_edit::{InlineTable, Item, Table, value};
 
+pub use crate::client_files::{HooksState, McpServer};
+use crate::client_files::{read_toml, replace};
 pub use crate::shell::hook_base;
 
 /// The name OmniMem's MCP entry goes under.
@@ -158,18 +159,6 @@ fn group(base: &str, hook: &Hook) -> Value {
 }
 
 /// What `hooks.json` holds of OmniMem's hooks, against what would be written.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HooksState {
-    /// None of them.
-    Missing,
-    /// All of them, exactly as they'd be written.
-    Current,
-    /// Some, or from another version, or running another program.
-    Outdated,
-    /// The file couldn't be read, for this reason.
-    Unreadable(String),
-}
-
 pub fn hooks_state(path: &Path, base: &str) -> HooksState {
     let config = match read_json(path) {
         Ok(config) => config,
@@ -253,10 +242,13 @@ pub fn write_hooks(path: &Path, base: &str) -> Result<HooksState> {
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or_else(|| anyhow!("\"hooks\" in hooks.json isn't a JSON object"))?;
-    for groups in events.values_mut() {
+    // An event goes only if taking ours out is what emptied it.
+    let mut emptied = Vec::new();
+    for (event, groups) in events.iter_mut() {
         let Some(groups) = groups.as_array_mut() else {
             continue;
         };
+        let had_groups = !groups.is_empty();
         groups.retain_mut(|group| {
             let Some(handlers) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
                 return true;
@@ -266,8 +258,11 @@ pub fn write_hooks(path: &Path, base: &str) -> Result<HooksState> {
             // A group that only held ours goes with them.
             !(handlers.is_empty() && had > 0)
         });
+        if had_groups && groups.is_empty() {
+            emptied.push(event.clone());
+        }
     }
-    events.retain(|_, groups| groups.as_array().is_none_or(|groups| !groups.is_empty()));
+    events.retain(|event, _| !emptied.contains(event));
     for hook in &HOOKS {
         events
             .entry(hook.event)
@@ -276,7 +271,8 @@ pub fn write_hooks(path: &Path, base: &str) -> Result<HooksState> {
             .ok_or_else(|| anyhow!("hooks.{} in hooks.json isn't a list", hook.event))?
             .push(group(base, hook));
     }
-    replace_file(path, &(serde_json::to_string_pretty(&config)? + "\n"))?;
+    let text = serde_json::to_string_pretty(&config)? + "\n";
+    replace(path, &text, false)?;
     Ok(before)
 }
 
@@ -298,19 +294,9 @@ fn events_of(config: &Value) -> Result<Option<&Map<String, Value>>> {
     }
 }
 
-/// One of Codex's MCP servers, as much of it as says where it goes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpServer {
-    pub name: String,
-    pub url: Option<String>,
-    /// A stdio server's program and its arguments.
-    pub command: Option<String>,
-    pub args: Vec<String>,
-}
-
 /// The MCP servers in Codex's `config.toml`: none when the file is missing.
 pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
-    let doc = read_doc(path)?;
+    let doc = read_toml(path)?;
     let Some(item) = doc.get("mcp_servers") else {
         return Ok(Vec::new());
     };
@@ -344,7 +330,7 @@ pub fn mcp_servers(path: &Path) -> Result<Vec<McpServer>> {
 /// here (keeping its name and its place), with the token as a header when
 /// one is set. Everything else stays as it was, with a copy beside it.
 pub fn write_mcp_server(path: &Path, mcp_url: &str, token: Option<&str>) -> Result<()> {
-    let mut doc = read_doc(path)?;
+    let mut doc = read_toml(path)?;
     let servers = doc
         .entry("mcp_servers")
         .or_insert_with(|| {
@@ -390,19 +376,8 @@ pub fn write_mcp_server(path: &Path, mcp_url: &str, token: Option<&str>) -> Resu
         headers.insert("Authorization", format!("Bearer {token}").into());
         entry["http_headers"] = value(headers);
     }
-    replace_file(path, &doc.to_string())
-}
-
-/// The file as TOML: empty when it's missing. A file that isn't TOML is an
-/// error, so it's left alone rather than replaced.
-fn read_doc(path: &Path) -> Result<DocumentMut> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => text
-            .parse::<DocumentMut>()
-            .map_err(|e| anyhow!("config.toml isn't valid TOML ({})", e.message())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DocumentMut::new()),
-        Err(e) => Err(e).with_context(|| format!("couldn't read {}", path.display())),
-    }
+    // With a token in it, the file is its owner's alone.
+    replace(path, &doc.to_string(), token.is_some()).map(|_| ())
 }
 
 /// The file as JSON: an empty object when it's missing or empty.
@@ -415,27 +390,6 @@ fn read_json(path: &Path) -> Result<Value> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
         Err(e) => Err(e).with_context(|| format!("couldn't read {}", path.display())),
     }
-}
-
-/// Keep a copy of the file as it was, then write beside it and rename into
-/// place, so Codex never reads half a file.
-fn replace_file(path: &Path, text: &str) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    if path.exists() {
-        std::fs::copy(path, with_suffix(path, ".omnimem-backup"))
-            .with_context(|| format!("backing up {}", path.display()))?;
-    }
-    let partial = with_suffix(path, ".omnimem-partial");
-    std::fs::write(&partial, text).with_context(|| format!("writing {}", path.display()))?;
-    std::fs::rename(&partial, path).with_context(|| format!("replacing {}", path.display()))
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
 }
 
 #[cfg(test)]
@@ -462,7 +416,9 @@ mod tests {
                     {"type": "command", "command": "lint.sh"},
                     {"type": "command", "command": "/old/omnimem hook"}
                 ]}
-            ], "Stop": [{"hooks": [{"type": "command", "command": "notify.sh"}]}]}}"#,
+            ], "Stop": [{"hooks": [{"type": "command", "command": "notify.sh"}]}],
+            "Notification": [],
+            "PostToolUse": [{"hooks": [{"type": "command", "command": "omnimem hook x"}]}]}}"#,
         )
         .unwrap();
 
@@ -496,6 +452,9 @@ mod tests {
             written["hooks"]["Stop"][0]["hooks"][0]["command"],
             "notify.sh"
         );
+        // An event that only held ours goes; one that was empty already stays.
+        assert_eq!(written["hooks"].get("PostToolUse"), None);
+        assert_eq!(written["hooks"]["Notification"], json!([]));
         assert!(dir.join(".codex/hooks.json.omnimem-backup").is_file());
 
         // Another program, or one gone, is no longer current.
