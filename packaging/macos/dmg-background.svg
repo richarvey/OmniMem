@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What the DMG's window shows behind OmniMem.app and the Applications link.
+  660 by 400 points, the window's size in dmg-settings.py; the icons sit
+  centred on (180, 185) and (480, 185), with Finder's labels under them.
+
+  The green is a mid tone on purpose: Finder writes those labels in black
+  in light mode and white in dark mode, whatever is behind them, and both
+  have to read.
+
+  dmg-background.png and dmg-background@2x.png are this file rendered at 1x
+  and 2x with Onest, the settings panel's typeface
+  (crates/omnimem-settings/static/fonts). Render them again after a change.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <defs>
+    <linearGradient id="wash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f9159"/>
+      <stop offset="1" stop-color="#1f7a46"/>
+    </linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#wash)"/>
+  <text x="330" y="72" text-anchor="middle" font-family="Onest, sans-serif" font-size="26" font-weight="600" fill="#ffffff" letter-spacing="-0.3">Drag OmniMem to Applications</text>
+  <!-- The arrow, with the logo's chevron as its head. -->
+  <g fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+    <path d="M278 185 H366"/>
+    <path d="M352 161 L380 185 L352 209"/>
+  </g>
+  <text x="330" y="348" text-anchor="middle" font-family="Onest, sans-serif" font-size="14" font-weight="400" fill="#ffffff" opacity="0.9">Then open it from Applications. It lives in the menu bar, with no Dock icon.</text>
+</svg>

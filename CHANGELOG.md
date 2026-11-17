@@ -2,6 +2,15 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.6] - unreleased
+
+Two packaging changes: the Flatpak tells a software centre what it is, and the macOS disk image shows where to drag the app.
+
+### Changed
+- **The Flatpak's page in a software centre has something on it.** GNOME Software, KDE Discover and the rest showed the name, a two-paragraph description and nothing else: no screenshots, no version history, and 7.0.10 as the version whatever was installed. The metainfo now carries five screenshots of the settings panel (over a made-up store), a fuller description that says what OmniMem does and that the tray needs the AppIndicator extension on GNOME, a link for reporting bugs, brand colours for the page's banner, and a line on what each recent release changed. A build between releases adds itself as a development release, so the page shows the version that's installed. The description also said the settings were a window, which they stopped being in 7.1.0
+- **The macOS disk image shows what to do with it.** Opening the DMG gave a plain Finder window with the app and an Applications link wherever Finder put them. It now opens at a fixed size with no toolbar or sidebar, the app on the left, Applications on the right and an arrow between them under "Drag OmniMem to Applications", with a line saying it lives in the menu bar, since there's no Dock icon to look for after. The mounted volume has OmniMem's icon too. The background is a mid green so Finder's labels read in both light and dark mode
+- The Flatpak build checks its metainfo and desktop file (`appstreamcli validate`, `desktop-file-validate`) before building, since a mistake in either doesn't fail anything: the page just shows less. The desktop file lists one main category, Development, where two could put it in the menu twice
+
 ## [7.1.5] - unreleased
 
 OmniMem's dead-end guard and session briefing come to Kiro, the desktop app adds both OmniMem and its hooks to Kiro from its menu, and that menu now lists only the clients that still need something doing.

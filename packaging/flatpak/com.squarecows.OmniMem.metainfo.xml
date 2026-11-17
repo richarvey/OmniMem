@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What a software centre shows for the Flatpak. A build of a version with no
+  <release> here gets one added as a development release (see the manifest),
+  so the version shown is the one installed.
+
+  The screenshots are of the settings panel over a made-up store, 2560x1440,
+  with the version badge hidden. Software centres fetch them from these URLs,
+  so the files have to stay on this branch.
+-->
 <component type="desktop-application">
   <id>com.squarecows.OmniMem</id>
   <metadata_license>CC0-1.0</metadata_license>
@@ -15,18 +24,84 @@
       the feeds you read, searched by meaning and kept on your own machine.
     </p>
     <p>
-      It runs in the tray, serving MCP at http://127.0.0.1:8765/mcp, with a
-      settings window for memories, projects, skills, feeds and backups.
+      It sits in the tray and serves MCP on this computer, so Claude Code,
+      Claude Desktop, Codex, OpenCode, Mistral Vibe, Kiro and anything else
+      that speaks MCP can share one memory. Its Settings item opens the
+      settings panel in your browser, already signed in.
+    </p>
+    <p>What it does:</p>
+    <ul>
+      <li>Remembers decisions, bug fixes, gotchas and preferences, and recalls them by meaning rather than by keyword</li>
+      <li>Keeps a graveyard of approaches that were tried and abandoned, and warns an agent before it suggests one again</li>
+      <li>Briefs an agent at the start of a session with what the project already knows</li>
+      <li>Reads your RSS feeds and keeps what it learns, with each article's licence</li>
+      <li>Compiles what a project has learnt into skills, which you accept before they are written</li>
+      <li>Runs the embedding model on your own machine, with no account and nothing sent anywhere unless you add a Claude API key</li>
+    </ul>
+    <p>
+      The tray icon needs a desktop that shows them. On GNOME that means the
+      AppIndicator extension; without it OmniMem opens the settings panel
+      instead and says so.
     </p>
   </description>
   <launchable type="desktop-id">com.squarecows.OmniMem.desktop</launchable>
   <url type="homepage">https://omnimem.org</url>
+  <url type="bugtracker">https://github.com/richarvey/OmniMem/issues</url>
   <url type="vcs-browser">https://code.squarecows.com/ric/omnimem</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#bfe5cd</color>
+    <color type="primary" scheme_preference="dark">#17512f</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Every memory, by namespace, state and project</caption>
+      <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/memories.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Search by meaning, as an agent's recall does</caption>
+      <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/search.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A memory with its lesson, its breakthrough and what was abandoned on the way</caption>
+      <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/detail.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The graveyard of approaches that didn't work</caption>
+      <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/graveyard.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The dashboard</caption>
+      <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/dashboard.png</image>
+    </screenshot>
+  </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="7.0.10" date="2026-11-08" />
-    <release version="7.0.9" date="2026-11-05" />
-    <release version="7.0.8" date="2026-11-04" />
+    <release version="7.0.10" date="2026-11-08">
+      <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.10</url>
+      <description>
+        <p>A contradiction whose other memory no longer exists can be cleared.</p>
+      </description>
+    </release>
+    <release version="7.0.9" date="2026-11-05">
+      <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.9</url>
+      <description>
+        <p>
+          The contradiction scan sees new memories on a full store, a forget
+          takes the recall log entries that found the memory, and a person can
+          settle a contradiction no scan linked.
+        </p>
+      </description>
+    </release>
+    <release version="7.0.8" date="2026-11-04">
+      <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.8</url>
+      <description>
+        <p>
+          OmniMem records whether it believes a memory, not only whether it
+          shows it: each memory has a trust, and recall, the briefing and
+          skill compiles act on it.
+        </p>
+      </description>
+    </release>
     <release version="7.0.7" date="2026-11-04" />
     <release version="7.0.6" date="2026-11-03" />
     <release version="7.0.5" date="2026-10-29" />

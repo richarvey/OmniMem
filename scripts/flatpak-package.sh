@@ -67,6 +67,12 @@ docker run --rm --privileged \
             git -C "$modules" checkout -q FETCH_HEAD
         fi
 
+        # A mistake in the metainfo doesn't fail the build: the software
+        # centre just shows less, or nothing. --no-net leaves the screenshot
+        # URLs unfetched, since they point at this branch once it's pushed.
+        appstreamcli validate --no-net "packaging/flatpak/$app.metainfo.xml"
+        desktop-file-validate "packaging/flatpak/$app.desktop"
+
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         # The export repo is only where the bundle is made from: what makes a
         # rebuild quick is the state dir. Kept between runs, it gained a commit

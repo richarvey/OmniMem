@@ -3,6 +3,8 @@
 #
 #   OmniMem-<version>-arm64.dmg           OmniMem.app, a menu bar app with no
 #                                         Dock icon, beside an Applications link
+#                                         in a window that says to drag one to
+#                                         the other (packaging/macos)
 #   omnimem-<version>-macos-arm64.tar.gz  the same binary on its own, for
 #                                         `omnimem serve` and `omnimem hook`
 #
@@ -23,7 +25,8 @@
 # runs, but Gatekeeper stops the first open of a downloaded copy until it's
 # allowed under System Settings > Privacy & Security.
 #
-# Needs the Xcode command line tools and a Rust toolchain with the
+# Needs the Xcode command line tools (Python 3.9 or newer among them, for
+# dmgbuild, which is fetched from PyPI), and a Rust toolchain with the
 # aarch64-apple-darwin target.
 set -euo pipefail
 
@@ -117,20 +120,43 @@ mkdir -p "$dist"
 dmg="$dist/OmniMem-$version-arm64.dmg"
 tarball="$dist/omnimem-$version-macos-arm64.tar.gz"
 
-stage="$work/dmg"
-mkdir "$stage"
-ditto "$app" "$stage/OmniMem.app"
-ln -s /Applications "$stage/Applications"
+# dmgbuild lays the window out: the background that says to drag OmniMem to
+# Applications, the two icons where its arrow points, no toolbar or sidebar.
+# It's pinned, in its own environment, and 1.6.5 is the last to run on the
+# Python 3.9 that Xcode's command line tools bring.
+python3 -m venv "$work/venv"
+"$work/venv/bin/pip" install --quiet --disable-pip-version-check dmgbuild==1.6.5
+settings="$repo/packaging/macos/dmg-settings.py"
 # hdiutil now and then fails with "Resource busy" while something indexes the
 # new volume; a second go normally works.
 for attempt in 1 2 3; do
-    if hdiutil create -volname "OmniMem" -srcfolder "$stage" -fs HFS+ \
-        -format UDZO -ov "$dmg" >/dev/null; then
+    if "$work/venv/bin/dmgbuild" --settings "$settings" \
+        -D settings="$settings" -D app="$app" \
+        -D icon="$app/Contents/Resources/OmniMem.icns" \
+        "OmniMem" "$dmg"; then
         break
     fi
     [ "$attempt" = 3 ] && exit 1
     sleep 5
 done
+# What's in it, read back: the app still signed, the link, and the layout
+# and background Finder reads, which nothing else would miss if they went.
+volume="$work/volume"
+hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$volume" >/dev/null
+if codesign --verify --strict "$volume/OmniMem.app" \
+    && [ "$(readlink "$volume/Applications")" = /Applications ] \
+    && [ -s "$volume/.DS_Store" ] \
+    && [ -s "$volume/.background.tiff" ]; then
+    laid_out=yes
+else
+    laid_out=no
+    ls -la "$volume" >&2
+fi
+hdiutil detach "$volume" >/dev/null
+if [ "$laid_out" = no ]; then
+    echo "$dmg is missing part of its layout" >&2
+    exit 1
+fi
 
 # Sends a file to Apple's notary service and fails, with Apple's log, unless
 # it's accepted: notarytool's own exit status doesn't say.

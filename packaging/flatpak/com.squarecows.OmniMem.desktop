@@ -6,6 +6,6 @@ Comment=Self-hosted semantic memory for AI agents, served over MCP
 Exec=omnimem
 Icon=com.squarecows.OmniMem
 Terminal=false
-Categories=Development;Utility;
+Categories=Development;
 Keywords=memory;MCP;Claude;AI;agent;
 StartupNotify=false
