@@ -67,9 +67,10 @@ docker run --rm --privileged \
             git -C "$modules" checkout -q FETCH_HEAD
         fi
 
-        # A mistake in the metainfo doesn't fail the build: the software
+        # A mistake in the metainfo would not fail the build: the software
         # centre just shows less, or nothing. --no-net leaves the screenshot
-        # URLs unfetched, since they point at this branch once it's pushed.
+        # URLs unfetched, since they point at this branch once it is pushed.
+        # (No apostrophes in here: this whole block is one quoted string.)
         appstreamcli validate --no-net "packaging/flatpak/$app.metainfo.xml"
         desktop-file-validate "packaging/flatpak/$app.desktop"
 
