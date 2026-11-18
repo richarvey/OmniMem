@@ -284,6 +284,7 @@ a:hover{color:#8fd6ab}
 .omm-sp-tier li::before{content:"";position:absolute;left:1px;top:.55em;width:11px;height:6px;border:solid #63bd85;border-width:0 0 2px 2px;transform:rotate(-45deg)}
 .omm-sp-tier-main{border-color:rgba(99,189,133,.55);background:#0f1612;box-shadow:0 0 0 1px rgba(99,189,133,.1),0 0 40px rgba(99,189,133,.1)}
 .omm-sp-badge{position:absolute;top:-11px;left:24px;font-family:"Ubuntu Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#0b0c0e;background:#63bd85;border-radius:5px;padding:3px 8px}
+.omm-sp-vote{margin-top:22px}
 .omm-sp-promise{margin-top:24px;padding:22px 24px;border:1px dashed #3a3f48;border-radius:11px}
 .omm-sp-promise p{color:#969ca5;font-size:15.5px}
 
