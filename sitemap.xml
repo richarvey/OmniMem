@@ -2,11 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://omnimem.org/</loc>
-    <lastmod>2026-11-06</lastmod>
+    <lastmod>2026-11-18</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/</loc>
-    <lastmod>2026-11-06</lastmod>
+    <lastmod>2026-11-18</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/claude-ai/</loc>
@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://omnimem.org/guides/claude-code/</loc>
-    <lastmod>2026-11-03</lastmod>
+    <lastmod>2026-11-09</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/claude-desktop/</loc>
@@ -30,7 +30,7 @@
   </url>
   <url>
     <loc>https://omnimem.org/guides/docker/</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-09</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/github-copilot/</loc>
@@ -43,6 +43,10 @@
   <url>
     <loc>https://omnimem.org/guides/kiro/</loc>
     <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://omnimem.org/guides/lumo/</loc>
+    <lastmod>2026-11-18</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/guides/mistral/</loc>
@@ -82,7 +86,7 @@
   </url>
   <url>
     <loc>https://omnimem.org/guides/opencode/</loc>
-    <lastmod>2026-09-15</lastmod>
+    <lastmod>2026-11-09</lastmod>
   </url>
   <url>
     <loc>https://omnimem.org/claude-code-memory/</loc>

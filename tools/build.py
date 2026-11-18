@@ -41,6 +41,7 @@ DESCRIPTIONS = {
     "github-copilot": "Connect GitHub Copilot in VS Code to OmniMem: the MCP config, user or workspace settings, why Agent mode is needed, and known quirks.",
     "gitlab-duo": "Connect GitLab Duo in VS Code or JetBrains to OmniMem: the MCP config, its authentication catch with custom headers, and known quirks.",
     "kiro": "Connect Kiro, AWS's AI IDE, to OmniMem over Streamable HTTP: the MCP config, user or project scope, Kiro's MCP panel and known quirks.",
+    "lumo": "Connect Lumo, Proton's private AI assistant, to OmniMem: OAuth 2.1 over HTTPS, the trailing slash its server URL needs, and troubleshooting.",
     "opencode": "Connect OpenCode to OmniMem as a remote MCP server, with an access token or OAuth: the config file, where it lives, and known quirks.",
     "open-design": "Connect Open Design to OmniMem over OAuth 2.1 as a public client: switch on OAuth, add HTTPS, add the server in Open Design and sign in.",
     "docker": "Run OmniMem in Docker: one container, one volume, one port. Quick start, Compose, RSS feeds, reverse proxy or OAuth, pinning, updates and backups.",
@@ -57,7 +58,7 @@ DESCRIPTIONS = {
 # Which guides point at which: a client guide needs OmniMem running somewhere,
 # a host guide ends with connecting an agent.
 HOSTS = ["macos", "windows", "docker", "raspberry-pi", "aws-linux", "gcp-linux", "linux-tailscale", "linux-cloudflare"]
-CLIENTS = ["claude-code", "claude-desktop", "claude-ai", "cursor", "codex", "github-copilot", "gitlab-duo", "kiro", "opencode", "open-design", "mistral"]
+CLIENTS = ["claude-code", "claude-desktop", "claude-ai", "cursor", "codex", "github-copilot", "gitlab-duo", "kiro", "lumo", "opencode", "open-design", "mistral"]
 NEEDS_PUBLIC_HTTPS = {"claude-ai", "open-design", "mistral"}
 
 # The homepage's JSON-LD defines these; other pages point at them by @id.
