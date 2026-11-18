@@ -280,7 +280,7 @@ a:hover{color:#8fd6ab}
 .omm-sp-item p{color:#969ca5;font-size:15px;line-height:1.65}
 
 .omm-sp-tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:32px;align-items:stretch}
-.omm-sp-tier{position:relative;padding:28px 24px;border:1px solid #262a31;border-radius:14px;background:#121418}
+.omm-sp-tier{position:relative;display:flex;flex-direction:column;padding:28px 24px;border:1px solid #262a31;border-radius:14px;background:#121418}
 .omm-sp-tier h3{font-size:22px}
 .omm-sp-tier-for{color:#969ca5;font-size:15px;margin:0 0 18px!important;min-height:3.3em}
 .omm-sp-tier ul{list-style:none;margin:0;padding:18px 0 0;border-top:1px solid #1b1e24;display:grid;gap:10px}
@@ -288,7 +288,11 @@ a:hover{color:#8fd6ab}
 .omm-sp-tier li::before{content:"";position:absolute;left:1px;top:.55em;width:11px;height:6px;border:solid #63bd85;border-width:0 0 2px 2px;transform:rotate(-45deg)}
 .omm-sp-tier-main{border-color:rgba(99,189,133,.55);background:#0f1612;box-shadow:0 0 0 1px rgba(99,189,133,.1),0 0 40px rgba(99,189,133,.1)}
 .omm-sp-badge{position:absolute;top:-11px;left:24px;font-family:"Ubuntu Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#0b0c0e;background:#63bd85;border-radius:5px;padding:3px 8px}
-.omm-sp-vote{margin-top:22px}
+.omm-sp .omm-sp-vote{margin-top:22px}
+.omm-sp-price{font-family:"Ubuntu Mono",monospace;font-size:13px;color:#868c96;margin:2px 0 12px!important}
+.omm-sp-price strong{font-family:Ubuntu,sans-serif;font-size:26px;color:#f2f4f6;letter-spacing:-.02em;margin-right:4px}
+.omm-sp-tier ul{flex:1 1 auto;align-content:start}
+.omm-sp-select{margin-top:24px;text-align:center}
 .omm-sp-promise{margin-top:24px;padding:22px 24px;border:1px dashed #3a3f48;border-radius:11px}
 .omm-sp-promise p{color:#969ca5;font-size:15.5px}
 
