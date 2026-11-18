@@ -4,14 +4,15 @@ page and the 404 page.
 
 The guides come from guides/*.md on a git ref of the main project (origin/main
 by default, which is what's released), so the site never carries its own copy
-to drift. The other pages come from tools/content/*.md. Each page gets the
+to drift. The other pages come from tools/content: a .md through pandoc into the
+prose layout, a .html (the sponsors page) as it is. Each page gets the
 homepage's own header and footer, lifted out of index.html at build time, so
 there is one place to change them.
 
     python3 tools/build.py              # guides from origin/main
     python3 tools/build.py v7.0.x       # or any other ref
 
-Needs pandoc. Writes guides/, claude-code-memory/, 404.html, assets/site.js
+Needs pandoc. Writes guides/, claude-code-memory/, sponsors/, 404.html, assets/site.js
 and the sitemap. Run `git fetch` first so the ref is current.
 """
 
@@ -437,12 +438,28 @@ def front_matter(text):
 
 def build_content():
     pages = []
-    for src in sorted((ROOT / "tools" / "content").glob("*.md")):
+    for src in sorted((ROOT / "tools" / "content").glob("*.*")):
+        if src.suffix not in (".md", ".html"):
+            continue
         meta, md = front_matter(src.read_text())
+        path = meta["path"]
+        if src.suffix == ".html":
+            # A designed page: its own markup, with no prose wrapper or byline.
+            robots = meta.get("robots", "index, follow, max-image-preview:large")
+            ld = None
+            if robots.startswith("index"):
+                ld = article_ld(path, meta["headline"], meta["description"], meta["published"], meta["updated"])
+            out = page(path=path, title=meta["title"], description=meta["description"], body=md.strip(),
+                       crumbs=[("Home", "/"), (meta["crumb"], path)], ld=ld, robots=robots)
+            target = ROOT / path.strip("/") / "index.html"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(out)
+            if robots.startswith("index"):
+                pages.append((path, meta["updated"]))
+            continue
         body = tidy(pandoc(md))
         if meta.get("eyebrow"):
             body = body.replace("<h1", f'<span class="omm-eyebrow">{html.escape(meta["eyebrow"])}</span>\n<h1', 1)
-        path = meta["path"]
         crumbs = None
         ld = None
         robots = "index, follow, max-image-preview:large"
