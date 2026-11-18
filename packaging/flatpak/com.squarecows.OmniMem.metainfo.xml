@@ -76,6 +76,12 @@
   </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="7.0.12" date="2026-11-09">
+      <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.12</url>
+      <description>
+        <p>Every memory now says when it was true and when OmniMem believed it, and suppressed topics stay out of the briefing and the dead-end warnings. The store moves to a new schema on first start, so make a backup first.</p>
+      </description>
+    </release>
     <release version="7.0.10" date="2026-11-08">
       <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.10</url>
       <description>
