@@ -92,6 +92,10 @@ a:hover{color:#8fd6ab}
   @media (min-width:961px){
     .omm-header[data-scrolled="true"][data-open="false"]{top:16px;max-width:1000px;border-width:1px;border-radius:12px;box-shadow:0 12px 32px -14px rgba(0,0,0,.75)}
     .omm-header[data-scrolled="true"][data-open="false"] .omm-header-bar{height:52px;padding:0 12px}
+    /* The floating bar is narrower, so the Star button keeps only its icon and the links close up */
+    .omm-header[data-scrolled="true"][data-open="false"] .omm-star-label{display:none}
+    .omm-header[data-scrolled="true"][data-open="false"] .omm-cta-group .omm-nav-cta-ghost{padding:8px 10px}
+    .omm-header[data-scrolled="true"][data-open="false"] .omm-header-links .omm-nav-link{padding:7px 7px}
     .omm-mobile-menu{display:none!important}
   }
   @media (max-width:960px){
