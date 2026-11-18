@@ -1778,8 +1778,15 @@ mod tests {
     const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     const CALLBACK: &str = "https://claude.ai/api/mcp/auth_callback";
 
+    /// The test admin's password, made fresh for each test run rather than
+    /// written into the source, so nothing here looks like a real credential.
+    fn password() -> &'static str {
+        static PASSWORD: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        PASSWORD.get_or_init(token_urlsafe)
+    }
+
     fn provider(store: Arc<Store>, grace: u64) -> OAuth {
-        let mut config = OAuthConfig::new("https://mcp.example.com", "admin", "secret123");
+        let mut config = OAuthConfig::new("https://mcp.example.com", "admin", password());
         config.refresh_grace_seconds = grace;
         OAuth::new(config, store).unwrap()
     }
@@ -1892,7 +1899,9 @@ mod tests {
                 error,
                 description,
             }) => (status, error, description),
-            other => panic!("expected an OAuth error, got {other:?}"),
+            // Neither arm prints what came back: a success carries tokens.
+            Ok(_) => panic!("expected an OAuth error, got a success"),
+            Err(Failure::Store(_)) => panic!("expected an OAuth error, got a store error"),
         }
     }
 
@@ -2346,9 +2355,10 @@ mod tests {
     #[test]
     fn credentials_need_both_parts() {
         let oauth = provider(Arc::new(Store::open_in_memory().unwrap()), 120);
-        assert!(oauth.verify_credentials("admin", "secret123"));
-        assert!(!oauth.verify_credentials("admin", "wrong"));
-        assert!(!oauth.verify_credentials("notadmin", "secret123"));
+        let wrong = format!("{}x", password());
+        assert!(oauth.verify_credentials("admin", password()));
+        assert!(!oauth.verify_credentials("admin", &wrong));
+        assert!(!oauth.verify_credentials("notadmin", password()));
     }
 
     #[test]

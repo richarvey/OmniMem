@@ -906,18 +906,22 @@ mod tests {
         // A transcript is where secrets surface. Recall would put anything
         // stored here back into a later session's context, so these must not
         // survive the trip.
-        for secret in [
+        for (case, secret) in [
             "export ANTHROPIC_API_KEY=sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAA",
             "token: ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "Authorization: Bearer abcdef0123456789abcdef",
             "aws_access_key_id = AKIAIOSFODNN7EXAMPLE",
             "password: hunter2correcthorse",
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVP",
-        ] {
-            let cleaned = redact(secret);
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            // The message names the case, never the text: a failure here means
+            // the secret came through, so printing it would log it.
             assert!(
-                cleaned.contains("[redacted]"),
-                "not redacted: {secret} -> {cleaned}"
+                redact(secret).contains("[redacted]"),
+                "case {case} not redacted"
             );
         }
         let ordinary = "Implemented make_limiter with pellham and the suite passed.";
