@@ -6,13 +6,12 @@ OmniMem holds what your agents have learnt, and it often runs next to code, cred
 
 **Please don't open a public issue, discussion or pull request for a vulnerability.**
 
-Report it privately through GitHub instead:
+Report it privately, in whichever of these two ways suits you:
 
-1. Go to the [Security tab](https://github.com/richarvey/OmniMem/security) of the repository.
-2. Click **Report a vulnerability**.
-3. Fill in the form. Only the maintainers can see it.
+- **Email [security@omnimem.org](mailto:security@omnimem.org).**
+- **Use GitHub's private reporting.** Go to the [Security tab](https://github.com/richarvey/OmniMem/security) of the repository, click **Report a vulnerability** and fill in the form. Only the maintainers can see it.
 
-The project's home is on Forgejo, but Forgejo has no private reporting, so GitHub is the place for this.
+The project's home is on Forgejo, which has no private reporting, so please use one of these rather than a Forgejo issue.
 
 It helps if you can include:
 
@@ -31,7 +30,7 @@ OmniMem is maintained by a small team, so these are what to expect rather than g
 - **Fixing it:** a fix goes into a new release, with a GitHub security advisory and a line in the [CHANGELOG](CHANGELOG.md). I'll keep you updated along the way, and agree a disclosure date with you. 90 days from your report is the default, sooner once a fix is out.
 - **Credit:** you'll be credited in the advisory and the CHANGELOG unless you'd rather not be.
 
-If you don't hear back within 5 working days, please send a reminder through the same report.
+If you don't hear back within 5 working days, please send a reminder the same way you reported it.
 
 ## Supported versions
 
