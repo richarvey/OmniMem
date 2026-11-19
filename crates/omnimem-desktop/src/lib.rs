@@ -559,13 +559,14 @@ impl App {
         }
     }
 
-    /// Whether a client's item belongs in the menu: not once the client
-    /// already points here. In the Flatpak every item stays, to say why it
-    /// can't be used.
+    /// Whether a client's item belongs in the menu: only once the client is
+    /// installed and still needs something doing. In the Flatpak none but
+    /// Claude Desktop's ever is, since the sandbox can't reach the others'
+    /// settings or run their commands.
     fn client_shown(&self, client: Client) -> bool {
         let (slot, _) = self.slot_and_item(client);
-        (self.in_flatpak && client != Client::Desktop)
-            || model::client_item_shown(slot.presence.as_ref(), slot.busy, slot.changed)
+        (!self.in_flatpak || client == Client::Desktop)
+            && model::client_item_shown(slot.presence.as_ref(), slot.busy, slot.changed)
     }
 
     /// Put the client items the menu should have under Copy MCP URL, in
@@ -605,29 +606,13 @@ impl App {
 
     fn relabel(&self, client: Client) {
         let (slot, item) = self.slot_and_item(client);
-        let flatpak_text = match client {
-            Client::Desktop => None,
-            Client::Code => Some(model::CODE_IN_FLATPAK),
-            Client::OpenCode => Some(model::OPENCODE_IN_FLATPAK),
-            Client::OpenCodeHooks => Some(model::OPENCODE_HOOKS_IN_FLATPAK),
-            Client::Vibe => Some(model::VIBE_IN_FLATPAK),
-            Client::VibeHooks => Some(model::VIBE_HOOKS_IN_FLATPAK),
-            Client::Codex => Some(model::CODEX_IN_FLATPAK),
-            Client::CodexHooks => Some(model::CODEX_HOOKS_IN_FLATPAK),
-            Client::Kiro => Some(model::KIRO_IN_FLATPAK),
-            Client::KiroHooks => Some(model::KIRO_HOOKS_IN_FLATPAK),
-        };
-        let (text, enabled) = if let Some(text) = flatpak_text.filter(|_| self.in_flatpak) {
-            (text.to_owned(), false)
-        } else {
-            model::client_item(
-                client,
-                slot.presence.as_ref(),
-                slot.busy,
-                slot.changed,
-                slot.error.as_deref(),
-            )
-        };
+        let (text, enabled) = model::client_item(
+            client,
+            slot.presence.as_ref(),
+            slot.busy,
+            slot.changed,
+            slot.error.as_deref(),
+        );
         item.set_text(text);
         item.set_enabled(enabled);
         self.place_client_items();
@@ -1074,6 +1059,9 @@ pub fn run(options: DesktopOptions) -> Result<()> {
         started: Instant::now(),
         in_flatpak: std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()),
     };
+    // Every client item starts in the menu; none belongs there until its
+    // settings have been read against the running services.
+    app.place_client_items();
     event_loop.run(move |event, target, control_flow| {
         // Held until the process exits.
         let _lock = &lock;

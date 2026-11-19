@@ -38,27 +38,6 @@ pub fn login_command(flatpak_id: Option<&str>, exe: &str) -> (String, Vec<String
     }
 }
 
-/// The Claude Code item inside a Flatpak, which can neither see nor run a
-/// `claude` installed outside the sandbox.
-pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpak)";
-
-/// The OpenCode items inside a Flatpak: the sandbox can't reach OpenCode's
-/// config folder, and OpenCode outside it couldn't run the Flatpak's omnimem
-/// for the hooks.
-pub const OPENCODE_IN_FLATPAK: &str = "Add to OpenCode (unavailable in the Flatpak)";
-pub const OPENCODE_HOOKS_IN_FLATPAK: &str = "Add hooks to OpenCode (unavailable in the Flatpak)";
-
-/// The Vibe items inside a Flatpak, for the same reasons as OpenCode's.
-pub const VIBE_IN_FLATPAK: &str = "Add to Mistral Vibe (unavailable in the Flatpak)";
-pub const VIBE_HOOKS_IN_FLATPAK: &str = "Add hooks to Mistral Vibe (unavailable in the Flatpak)";
-
-/// The Codex items inside a Flatpak, for the same reasons again.
-pub const CODEX_IN_FLATPAK: &str = "Add to Codex (unavailable in the Flatpak)";
-pub const CODEX_HOOKS_IN_FLATPAK: &str = "Add hooks to Codex (unavailable in the Flatpak)";
-/// The Kiro items inside a Flatpak, for the same reasons again.
-pub const KIRO_IN_FLATPAK: &str = "Add to Kiro (unavailable in the Flatpak)";
-pub const KIRO_HOOKS_IN_FLATPAK: &str = "Add hooks to Kiro (unavailable in the Flatpak)";
-
 /// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
@@ -113,12 +92,24 @@ pub fn client_item(
     }
 }
 
-/// Whether a client's item belongs in the menu. One whose settings already
-/// point here has nothing to do, so it's left out, unless this run just made
-/// the change: then it stays to say the client needs a restart (and, for
-/// Codex's hooks, trusting them).
+/// Whether a client's item belongs in the menu: only when the client is
+/// installed and still needs something doing (OmniMem added, its entry
+/// switched or its token updated, or settings that couldn't be read). One
+/// that isn't installed, or already points here, is left out, and so is
+/// every client until the services are running and its settings have been
+/// read. An item this run just changed stays, to say the client needs a
+/// restart (and, for Codex's hooks, trusting them).
 pub fn client_item_shown(presence: Option<&Presence>, busy: bool, changed: bool) -> bool {
-    busy || changed || !matches!(presence, Some(Presence::Here))
+    busy || changed
+        || matches!(
+            presence,
+            Some(
+                Presence::Absent
+                    | Presence::Elsewhere { .. }
+                    | Presence::OldToken { .. }
+                    | Presence::Unreadable(_)
+            )
+        )
 }
 
 /// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
@@ -228,26 +219,30 @@ mod tests {
     }
 
     #[test]
-    fn a_client_already_pointing_here_drops_out_of_the_menu() {
+    fn only_installed_clients_with_something_to_do_are_in_the_menu() {
         let here = Some(&Presence::Here);
         assert!(!client_item_shown(here, false, false));
         assert!(client_item_shown(here, false, true), "until it's restarted");
         assert!(client_item_shown(here, true, false));
+        for presence in [None, Some(Presence::NotInstalled)] {
+            assert!(
+                !client_item_shown(presence.as_ref(), false, false),
+                "{presence:?}"
+            );
+        }
         for presence in [
-            None,
-            Some(Presence::NotInstalled),
-            Some(Presence::Absent),
-            Some(Presence::Unreadable("bad".into())),
-            Some(Presence::Elsewhere {
+            Presence::Absent,
+            Presence::Unreadable("bad".into()),
+            Presence::Elsewhere {
                 name: "omnimem".into(),
                 target: "https://cloudai.example.net/mcp".into(),
-            }),
-            Some(Presence::OldToken {
+            },
+            Presence::OldToken {
                 name: "omnimem".into(),
-            }),
+            },
         ] {
             assert!(
-                client_item_shown(presence.as_ref(), false, false),
+                client_item_shown(Some(&presence), false, false),
                 "{presence:?}"
             );
         }

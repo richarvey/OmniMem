@@ -2,6 +2,15 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.1.7] - unreleased
+
+The tray menu lists only what's left to do, and the Flatpak's page in a software centre says more about what OmniMem is.
+
+### Changed
+- **The tray or menu bar menu lists only the clients that are installed and still need something doing.** A client that isn't installed used to sit in the menu as a greyed-out **… not found** item (its hooks item too), and every client was listed, greyed out, until the services had started. Now a client appears only once its settings have been read and OmniMem isn't in them yet (or points elsewhere, has an old token, or the settings couldn't be read); one added from the menu still stays, saying to restart it, until OmniMem next starts
+- **The Flatpak lists no clients it can't set up.** Its sandbox can't reach other apps' settings, so the menu used to show every client as **Add to … (unavailable in the Flatpak)**. Those items are gone; Copy MCP URL is how a Flatpak install connects an agent, as the guides already said
+- **A fuller about section on the Flatpak's software centre page.** The description now says what OmniMem is for and what it does (trust and validity, backups including 6.x stores), what the tray menu and the settings panel are for, and that inside the Flatpak you add OmniMem to your agent yourself with the copied address, where it used to suggest the tray did that. The page also links to the setup guides (help), the sponsors page (donate) and the source (contribute), lists the `omnimem` command, and says the app works with a mouse, keyboard or touch. The licence (MIT) and the five screenshots are unchanged
+
 ## [7.1.6] - unreleased
 
 Two packaging changes: the Flatpak tells a software centre what it is, and the macOS disk image shows where to drag the app.

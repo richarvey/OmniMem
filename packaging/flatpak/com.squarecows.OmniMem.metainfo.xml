@@ -19,28 +19,44 @@
   </developer>
   <description>
     <p>
-      OmniMem gives Claude and other MCP clients a memory that lasts between
-      sessions and projects: decisions, fixes, dead ends and the knowledge from
-      the feeds you read, searched by meaning and kept on your own machine.
+      OmniMem is a memory for your AI agents that you run yourself. Claude,
+      Codex, Mistral Vibe, Kiro, OpenCode and anything else that speaks MCP can
+      keep what they learn as they work and find it again in the next session,
+      the next project or a different tool altogether. Decisions, bug fixes,
+      gotchas, preferences and the approaches that didn't work all go into one
+      file on your own machine.
     </p>
     <p>
-      It sits in the tray and serves MCP on this computer, so Claude Code,
-      Claude Desktop, Codex, OpenCode, Mistral Vibe, Kiro and anything else
-      that speaks MCP can share one memory. Its Settings item opens the
-      settings panel in your browser, already signed in.
+      Memories are searched by meaning rather than by keyword, using a small
+      embedding model that runs locally. There's no account to make, and
+      nothing leaves your computer unless you add a Claude API key for the
+      optional extras.
     </p>
     <p>What it does:</p>
     <ul>
-      <li>Remembers decisions, bug fixes, gotchas and preferences, and recalls them by meaning rather than by keyword</li>
-      <li>Keeps a graveyard of approaches that were tried and abandoned, and warns an agent before it suggests one again</li>
+      <li>Recalls memories by meaning, so a question finds the answer even when it's worded differently</li>
+      <li>Keeps a graveyard of abandoned approaches, and warns an agent before it suggests one again</li>
       <li>Briefs an agent at the start of a session with what the project already knows</li>
-      <li>Reads your RSS feeds and keeps what it learns, with each article's licence</li>
-      <li>Compiles what a project has learnt into skills, which you accept before they are written</li>
-      <li>Runs the embedding model on your own machine, with no account and nothing sent anywhere unless you add a Claude API key</li>
+      <li>Tracks when each memory was true and whether you trust it, so stale or disputed ones don't crowd out the rest</li>
+      <li>Reads your RSS feeds into a knowledge store, keeping each article's licence</li>
+      <li>Compiles what a project has learnt into skills, written only once you accept them</li>
+      <li>Backs up and restores your memories, including stores from OmniMem 6</li>
     </ul>
     <p>
-      The tray icon needs a desktop that shows them. On GNOME that means the
-      AppIndicator extension; without it OmniMem opens the settings panel
+      OmniMem lives in the tray. Its menu shows whether the server is running,
+      copies the MCP address to give to your agent, and opens the settings
+      panel in your browser, already signed in. The panel is where you browse,
+      search and edit memories, settle contradictions, accept skills, look
+      after feeds and backups, and change settings.
+    </p>
+    <p>
+      The Flatpak's sandbox keeps OmniMem out of other apps' settings, so you
+      add it to your agent yourself with the copied address. The guides at
+      omnimem.org show how for each one.
+    </p>
+    <p>
+      The tray icon needs a desktop that shows tray icons. On GNOME that means
+      the AppIndicator extension; without it OmniMem opens the settings panel
       instead and says so.
     </p>
   </description>
@@ -48,6 +64,9 @@
   <url type="homepage">https://omnimem.org</url>
   <url type="bugtracker">https://github.com/richarvey/OmniMem/issues</url>
   <url type="vcs-browser">https://code.squarecows.com/ric/omnimem</url>
+  <url type="help">https://omnimem.org/guides/</url>
+  <url type="donation">https://omnimem.org/sponsors/</url>
+  <url type="contribute">https://code.squarecows.com/ric/omnimem</url>
   <branding>
     <color type="primary" scheme_preference="light">#bfe5cd</color>
     <color type="primary" scheme_preference="dark">#17512f</color>
@@ -74,6 +93,14 @@
       <image type="source" width="2560" height="1440">https://code.squarecows.com/ric/omnimem/raw/branch/v7.1.x/packaging/flatpak/screenshots/dashboard.png</image>
     </screenshot>
   </screenshots>
+  <provides>
+    <binary>omnimem</binary>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
   <content_rating type="oars-1.1" />
   <releases>
     <release version="7.0.12" date="2026-11-09">
