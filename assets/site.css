@@ -120,8 +120,7 @@ a:hover{color:#8fd6ab}
   .omm-footer-logo img{display:block}
   .omm-footer-logo:focus-visible{outline:2px solid #63bd85;outline-offset:2px}
   .omm-footer-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:40px}
-  .omm-footer-section-end{justify-self:end}
-  @media (min-width:768px){.omm-footer-section-end{margin-right:clamp(32px,6vw,96px)}}
+  @media (min-width:768px){.omm-footer-section-end{justify-self:end;margin-right:clamp(32px,6vw,96px)}}
   .omm-footer-heading{font-family:"Ubuntu Mono",monospace;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#e7e9ec;margin:0}
   .omm-footer-links{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:8px}
   .omm-footer-links a,.omm-footer-links a:hover{display:inline-flex;align-items:flex-start;gap:6px;font-family:"Ubuntu Mono",monospace;font-size:13px;padding:4px 0;transition:color .3s}
@@ -133,7 +132,7 @@ a:hover{color:#8fd6ab}
   .omm-footer[data-animate] .omm-reveal.is-visible{opacity:1;transform:none;filter:none;transition:opacity .8s ease,transform .8s ease,filter .8s ease;transition-delay:var(--delay,.1s)}
   @media (min-width:768px){
     .omm-footer{border-radius:48px 48px 0 0}
-    .omm-footer-sections{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .omm-footer-sections{grid-template-columns:repeat(3,minmax(0,1fr))}
   }
   @media (min-width:1024px){.omm-footer{padding:64px 24px}}
   @media (min-width:768px){
