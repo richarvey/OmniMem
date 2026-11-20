@@ -2,6 +2,10 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
+## [7.2.0] - unreleased
+
+The next feature line, branched from 7.1.7-dev.
+
 ## [7.1.7] - unreleased
 
 The tray menu lists only what's left to do, and the Flatpak's page in a software centre says more about what OmniMem is.
