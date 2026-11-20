@@ -1,6 +1,8 @@
 # OmniMem 7.2.x spec: daydream and the scrub gate
 
-Nov 20, 2026 · @Ric Harvey · Draft for review · Branched from v7.1.x (7.1.7-dev, c296558) as v7.2.x at 7.2.0-dev
+Nov 20, 2026 · @Ric Harvey · Decisions recorded 2026-11-20 (#43) · Branched from v7.1.x (7.1.7-dev, c296558) as v7.2.x at 7.2.0-dev
+
+The work is tracked in the [7.2.0 milestone](https://github.com/richarvey/OmniMem/milestone/6) (#43 to #60) and the [7.2.1 milestone](https://github.com/richarvey/OmniMem/milestone/7) (#61, #62).
 
 ## Summary and scope
 
@@ -12,7 +14,7 @@ In scope for 7.2.0:
 
 - **The scrub gate** (`omnimem-scrub`): a git-secrets-style scanner with no LLM. It runs before storage, embedding, any LLM call and any log line. It replaces today's `redact()` in `hook.rs`.
 - **Adapters for every guide client.** Clients that keep local transcripts are read from disk. Clients that only have an account export get an upload path. Clients with neither can submit through an MCP tool.
-- **Three ways to bring logs in**: the desktop app (tray and local discovery), the settings panel (browser upload, which also works for headless and hosted instances), and the CLI. Hooks and the MCP tool feed the same queue.
+- **Three ways to bring logs in**: the desktop app (tray and local discovery), the settings panel (browser upload, scanned in the browser by a WASM build of the gate before it leaves the machine, which also works for headless and hosted instances), and the CLI. Hooks and the MCP tool feed the same queue.
 - **Deterministic detectors** that turn sessions into signals, and a reinforcement gate that turns repeated signals into proposals.
 
 Out of scope: scheduled or background dreaming (decided 2026-11-20), an OTLP receiver, and LLM-written syntheses beyond rewording a proposal. A daydream runs when a person imports, when a hook fires, or when a person presses **Daydream now**. Nothing runs on a timer.
@@ -26,6 +28,7 @@ Ric decided (2026-11-20):
 - Secrets are caught by a **deterministic scan before any text reaches an LLM**, in the spirit of git-secrets.
 - Log uploads are allowed **through the client and through the web settings**.
 - No scheduled dreaming yet.
+- Thin slicing and model routing, once pencilled in as 7.2.0, move to **7.3.x**. Daydream's per-client tallies land first, and routing needs them.
 - The feature is called **daydream** everywhere: the panel, the tray, the docs, the settings (`DAYDREAM_*`) and the code (`daydream.rs`, `daydream_signals`). "Session logs" stays the name for the ingest side (the Logs page, `omnimem logs`), since that's what people handle.
 
 Interpretations taken here, to confirm:
@@ -75,7 +78,7 @@ Each scan writes a findings report: counts per rule, plus turn index and charact
 
 ### Dry run and reuse
 
-`omnimem logs scan <path>` and the panel's **Preview** run the gate and show the findings without importing anything. The same crate replaces `redact()` in `hook.rs`, so the existing SessionEnd record gets the full rule pack too. The crate is built to compile to WASM, so the settings panel can scan in the browser before a file leaves the machine (see open questions).
+`omnimem logs scan <path>` and the panel's **Preview** run the gate and show the findings without importing anything. The same crate replaces `redact()` in `hook.rs`, so the existing SessionEnd record gets the full rule pack too. The crate also builds for `wasm32-unknown-unknown`, and in 7.2.0 the settings panel scans an upload in the browser before the file leaves the machine. The server scans again on arrival, so the browser's scan is a courtesy to the person and never the thing the store relies on. Native and WASM builds must give byte-identical output on the same input.
 
 ## Client coverage on day one
 
@@ -85,7 +88,7 @@ All 13 clients in `guides/` get a route in 7.2.0. Seven keep transcripts on disk
 | --- | --- | --- | --- | --- |
 | Claude Code | `~/.claude/projects/<encoded-cwd>/<session>.jsonl`, plus `subagents/` ([ref](https://brycewatson.com/blog/28-claude-code-deletes-old-logs)) | JSONL | Disk + SessionEnd hook (exists) | Deleted at startup after `cleanupPeriodDays`, default 30 ([ref](https://www.theregister.com/a/5264673)). The hook gets them before cleanup does |
 | Codex CLI | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl` ([ref](https://pkg.go.dev/github.com/MoonCaves/rawclaw@v0.6.1/internal/source/codex)) | JSONL, `{type,timestamp,payload}` envelope | Disk | Not keyed by project: use `session_meta.cwd`. Some builds write `.jsonl.zst` ([ref](https://docs.rs/crate/codexusage/0.4.0/source/src/app/session_files.rs)). The documented and real formats differ ([ref](https://dev.to/milkoor/reverse-engineering-codex-cli-rollout-traces-3b9b)) |
-| Cursor | `~/.cursor/projects/<slug>/agent-transcripts/<conv>/<conv>.jsonl` ([ref](https://docs.rs/crate/agentdiff/latest/source/scripts/capture-cursor.py)) | JSONL, plus legacy `.txt` | Disk + `stop` hook (`transcript_path`) | The transcript is thinner than Claude Code's ([ref](https://forum.cursor.com/t/richer-agent-transcripts-lifecycle-data-for-observability-langfuse-stop-hooks/166592)) and holds tool inputs but not outputs ([ref](https://forum.cursor.com/t/accessing-the-full-agent-transcript-in-cursor/157311)). `stop` can fire before the last lines are flushed. The multi-GB `state.vscdb` is skipped in 7.2.0 |
+| Cursor | `~/.cursor/projects/<slug>/agent-transcripts/<conv>/<conv>.jsonl` ([ref](https://docs.rs/crate/agentdiff/latest/source/scripts/capture-cursor.py)) | JSONL, plus legacy `.txt` | Disk + `stop` hook (`transcript_path`) | The transcript is thinner than Claude Code's ([ref](https://forum.cursor.com/t/richer-agent-transcripts-lifecycle-data-for-observability-langfuse-stop-hooks/166592)) and holds tool inputs but not outputs ([ref](https://forum.cursor.com/t/accessing-the-full-agent-transcript-in-cursor/157311)). `stop` can fire before the last lines are flushed. The multi-GB `state.vscdb` is skipped in 7.2.0; an opt-in, read-only adapter for it follows in 7.2.1 (#62) |
 | GitHub Copilot (VS Code) | `<Code>/User/workspaceStorage/<hash>/chatSessions/<uuid>.json(l)`; `workspace.json` maps hash to folder ([ref](https://gist.github.com/cdeil/93ceacbdea17a7e744fb8c6ec95b3d9f)) | JSON before VS Code 1.109, JSONL mutation log after | Disk + upload of **Chat: Export Chat…** JSON ([ref](https://code.visualstudio.com/docs/agents/run/sessions/session-history)) | Read Stable and Insiders. Orphaned hashes are common, so match on `workspace.json`, not on the current hash |
 | Kiro | IDE: `<Kiro>/User/globalStorage/kiro.kiroagent/` ([ref](https://github.com/kirodotdev/Kiro/issues/5469)); CLI: `kiro-cli/data.sqlite3` ([ref](https://www.pkgstats.com/pkg:kiro-history)) | IDE `.chat` JSON; CLI SQLite | Disk + upload of **Export Chat** zip ([ref](https://kiro.dev/docs/chat/chat-export/)) | Folders grow to many GB, so read incrementally. Kiro's SessionEnd is skipped in `hook.rs` today |
 | Mistral Vibe | `~/.vibe/logs/session/` (or `session_logging.save_dir`, `VIBE_HOME`) ([ref](https://www.typingmind.com/skills/mistralai-vibe)) | To confirm on a real install | Disk | No session-end hook today (`hook.rs` skips it), so it's read from disk on import |
@@ -102,10 +105,10 @@ All 13 clients in `guides/` get a route in 7.2.0. Seven keep transcripts on disk
 Five routes, one queue. Each one hands bytes to the same adapter registry, then the gate, then the queue, so the rules apply the same way whichever route a log arrives by.
 
 1. **Desktop app (the client).** The tray's existing client detection (7.1.7's installed-clients menu) gains a **Session logs** submenu per detected client: *Import now*, *Import automatically after each session* (only where a hook exists) and *Stop*. Discovery reads the paths in the coverage table. The scan runs **on the user's machine**. When OmniMem's server is remote (a tailnet host, or OmniMem Cloud), only `CleanText` sessions are sent, never raw files.
-2. **Settings panel upload (the web settings).** A new **Logs** page takes `.jsonl`, `.json`, `.zip` and `.jsonl.zst` by multipart upload. It reuses the skill-bundle import's protections: declared-size reads against zip bombs, an entry allowlist, `MAX_UPLOAD_MB` (default 100) and per-entry caps. The adapter is detected from content, with a dropdown to override. **Preview** shows sessions found and findings per rule before **Import**. Raw upload bytes stay in memory and are dropped when the request ends.
+2. **Settings panel upload (the web settings).** A new **Logs** page takes `.jsonl`, `.json`, `.zip` and `.jsonl.zst` by multipart upload. The browser runs the WASM gate over the file first and shows the findings, then the server runs the gate again on what arrives. It reuses the skill-bundle import's protections: declared-size reads against zip bombs, an entry allowlist, `MAX_UPLOAD_MB` (default 100) and per-entry caps. The adapter is detected from content, with a dropdown to override. **Preview** shows sessions found and findings per rule before **Import**. Raw upload bytes stay in memory and are dropped when the request ends.
 3. **CLI.** `omnimem logs import <path>|--client <name>|--all`, `omnimem logs scan <path>` (dry run, findings only) and `omnimem logs sources` (what discovery finds and its state). `--db` works as it does for `install-hooks`.
 4. **Hooks.** Claude Code's SessionEnd already reads the transcript. It now enqueues the path, and the daydream reads it after the hook returns, which keeps the hook inside its 30-second budget. Cursor gets a `stop` hook through `install-hooks --cursor`. Its payload carries `transcript_path`, but Cursor can fire `stop` before the file is flushed, so the job waits for the file size to stop changing. The OpenCode plugin adds a `session.idle` handler. Vibe and Kiro stay import-only until they gain a session-end hook.
-5. **MCP: `submit_session_log`.** For clients with no files: claude.ai, Claude Desktop, Le Chat, Lumo, GitLab Duo and Open Design. The agent sends its own session as turns (role, text, tool name, outcome) at the end of a session or when asked. The server runs the gate on arrival. Records are marked `origin=agent_reported` and weigh half as much as disk transcripts in reinforcement, because the model chose what to report. This is the one new tool, taking the count from 49 to 50 (see open questions).
+5. **MCP: `submit_session_log`.** For clients with no files: claude.ai, Claude Desktop, Le Chat, Lumo, GitLab Duo and Open Design. The agent sends its own session as turns (role, text, tool name, outcome) at the end of a session or when asked. The server runs the gate on arrival. Records are marked `origin=agent_reported` and weigh half as much as disk transcripts in reinforcement, because the model chose what to report. This is the one new tool, taking the count from 49 to 50.
 
 Every route de-duplicates on SHA-256 of the source file plus the session id. Append-only JSONL sources resume from their last byte offset, so re-importing a busy Claude Code folder costs only the new lines.
 
@@ -126,7 +129,7 @@ Schema 7 (from 6) adds four tables:
 | `daydream_signals` | Detector, session, turn index, tool name, error class, a short `CleanText` excerpt | Raw text |
 | `scrub_rules` / `scrub_fingerprints` | Custom rules, allowlist entries, salted hashes and lengths of known secrets | Secret values |
 
-`TRANSCRIPT_RETENTION=scrubbed:<days>` (off by default) keeps scrubbed turns, so the detectors can be re-run after a rule or detector improves. Backups, `export`, `restore_from_file` and Litestream carry the new tables, with no retained text unless retention is on. Older readers stop at schema 7, as they do for schema 6 today.
+`TRANSCRIPT_RETENTION` is `none` by default on every kind of install, desktop and hosted alike. `scrubbed:<days>` is opt-in and keeps scrubbed turns, so the detectors can be re-run after a rule or detector improves. Backups, `export`, `restore_from_file` and Litestream carry the new tables, with no retained text unless retention is on. Older readers stop at schema 7, as they do for schema 6 today.
 
 ## Daydream: detectors and proposals
 
@@ -160,16 +163,18 @@ Proposals are written with `trust=candidate`, `provenance=concluded`, `origin=da
 
 ## Settings panel and desktop UX
 
-One new sidebar page, **Logs**, with four tabs. It follows the 7.1 panel rules: no inline scripts, `script-src 'self'` CSP, the `compact` number filter, and the WCAG 2.2 AA checks the panel already meets.
+One new sidebar page, **Logs**, with four tabs. It follows the 7.1 panel rules: no inline scripts, `script-src 'self'` CSP, the `compact` number filter, and the WCAG 2.2 AA checks the panel already meets. The one exception is that the Logs page's own CSP adds `'wasm-unsafe-eval'`, which the in-browser scan needs. No other page gets it.
 
 - **Sources.** One row per guide client: detected (yes/no), path, enabled toggle, last import, sessions, quarantined. Chat-only clients show "MCP submit" with a copy-able snippet for the agent's instructions, and a link to that client's export page.
-- **Upload.** File picker, adapter override, **Preview** (sessions found and findings per rule, never the values), then **Import**. The same flow backs the desktop app's *Import file…*.
+- **Upload.** File picker, adapter override, an in-browser scan by the WASM gate, **Preview** (sessions found and findings per rule, never the values), then **Import**. The server never persists raw upload bytes. The same flow backs the desktop app's *Import file…*.
 - **Scrub rules.** Built-in rules (read-only, hit counts over the last 30 days), custom rules (gitleaks TOML, with a test box that shows match or no match on pasted sample text that's never stored), allowlist, and known secrets (add a value or a file: shown only as label, length and date).
 - **History.** Imports newest first: date, route, client, sessions, findings, quarantines, proposals made. Quarantined sessions can be released or deleted from here.
 
 Proposals appear in the existing **Pending** list with an origin badge (client icon plus "from 3 sessions"). The dashboard gets one tile: "Daydreamed this week: N proposals waiting".
 
-On the desktop, the tray shows a **Session logs** submenu only for clients that are installed, matching 7.1.7's installed-only menu. The Flatpak build can't see other apps' folders. It shows *Import file…* (through the file-chooser portal) instead of discovery, and the Flatpak page explains the `--filesystem` overrides for people who want discovery (see open questions).
+On the desktop, the tray shows a **Session logs** submenu only for clients that are installed, matching 7.1.7's installed-only menu. The Flatpak asks for read-only access to each client's own folder and nothing wider: `~/.claude:ro`, `~/.codex:ro`, `~/.cursor:ro`, `~/.vibe:ro`, `xdg-data/opencode:ro`, `xdg-config/Code:ro` and `xdg-config/Kiro:ro`. It never asks for the home folder. Discovery then works inside the sandbox as it does outside, *Import file…* (through the file-chooser portal) covers anything kept elsewhere, and the Flatpak's software centre page says what the access is for.
+
+Claude Code deletes transcripts after `cleanupPeriodDays` (30 by default). When daydreaming for Claude Code is switched on, the tray offers once to raise it in `~/.claude/settings.json`, changing it only on a yes and after a backup, as `install-hooks` does. It never touches `~/.claude.json`. If the offer is declined, the Logs page says how much history Claude Code keeps.
 
 ## Configuration
 
@@ -207,25 +212,29 @@ All settings go through `omnimem_core::env`, so `omnimem.env`, the Configuration
 
 The gate lands first and can ship alone. It improves the existing SessionEnd record even before any daydream exists. After that, the adapters are independent of each other and can be built in parallel.
 
-1. **Branch.** Cut `v7.2.x` from `v7.1.x` at the current head and set `7.2.0-dev`. Open a GitHub milestone, one issue per step below.
-2. **`omnimem-scrub`.** Crate, `RawText` / `CleanText` types, built-in rule pack, gitleaks loader, fingerprints, findings report. Replace `redact()` in `hook.rs`. Property tests and fuzz target.
-3. **Schema 7.** The four tables, with backup, export and restore support, and the older-reader refusal.
-4. **`omnimem-transcripts` and the first adapter.** `Session` / `Turn`, the adapter trait, content-based detection. Claude Code first, built from the existing `read_transcript()`.
-5. **Remaining disk adapters**, in parallel: Codex, Cursor, Copilot, Kiro, Vibe, OpenCode. Gotcha: agent worktrees in this repo branch from `main`, not from the checked-out branch. Rebase each onto `v7.2.x` before merging.
-6. **Export adapters**: claude.ai and Le Chat, each built from a real export.
-7. **`submit_session_log`** MCP tool, with a snippet in each chat-client guide.
-8. **Routes**: CLI subcommands, queue, Cursor `install-hooks --cursor`, the OpenCode `session.idle` handler, the Logs page, the tray submenu, the Flatpak import-file fallback.
-9. **Daydream**: detectors, reinforcement gate, proposals into Pending, the dashboard tile.
-10. **Hardening and release**: security review by attack surface, canary test, docs for all 13 guides, CHANGELOG, then tag `v7.2.0`.
+1. **Branch.** Done: `v7.2.x` cut from `v7.1.x` at c296558 and set to `7.2.0-dev`, with the 7.2.0 milestone and an issue per step. This spec's decisions are #43.
+2. **`omnimem-scrub`** (#44). Crate, `RawText` / `CleanText` types, built-in rule pack, gitleaks loader, fingerprints, findings report. Replace `redact()` in `hook.rs`. Property tests, a fuzz target and the WASM build.
+3. **Schema 7** (#45). The four tables, with backup, export and restore support, and the older-reader refusal.
+4. **`omnimem-transcripts` and the first adapter** (#46). `Session` / `Turn`, the adapter trait, content-based detection. Claude Code first, built from the existing `read_transcript()`.
+5. **Remaining disk adapters**, in parallel: Codex (#47), Cursor (#48), Copilot (#49), Kiro (#50), Vibe (#51), OpenCode (#52). Gotcha: agent worktrees in this repo branch from `main`, not from the checked-out branch. Rebase each onto `v7.2.x` before merging.
+6. **Export adapters**: claude.ai (#53) and Le Chat (#54), each built from a real export.
+7. **`submit_session_log`** MCP tool (#55), with a snippet in each chat-client guide.
+8. **Routes**: CLI subcommands, queue, Cursor `install-hooks --cursor` and the OpenCode `session.idle` handler (#56); the Logs page with its in-browser scan (#57); the tray submenu, the Flatpak's read-only folder access and the Claude Code retention offer (#58).
+9. **Daydream** (#59): detectors, reinforcement gate, proposals into Pending, the dashboard tile.
+10. **Hardening and release** (#60): security review by attack surface, canary test, docs for all 13 guides, CHANGELOG, then tag `v7.2.0`.
 
-Patch releases after that (7.2.1 and on): the Open Design adapter, an optional read of Cursor's `state.vscdb`, the browser-side WASM scan, and fixes as client formats change.
+Patch releases after that (7.2.1 and on): the Open Design adapter (#61), the opt-in read of Cursor's `state.vscdb` (#62), and fixes as client formats change. Thin slicing and model routing follow as 7.3.x.
 
-## Open questions
+## Decisions on the open questions
 
-1. **Version clash.** Thin slicing / model routing was planned as 7.2.0. If daydream takes 7.2.x, does routing move to 7.3.x? Daydream's per-client tallies would then be in place before routing needs them, which argues for this order.
-2. **One new MCP tool, or a mode?** 7.0.6 kept `resolve` as a mode to hold the count at 48 (7.0.11's `end_validity` then made it 49). `submit_session_log` could be a mode of `remember_document`, but its input is structured turns, not a document. A separate tool is clearer.
-3. **Browser-side scanning.** Compiling `omnimem-scrub` to WASM lets the panel scan before upload, which matters most for OmniMem Cloud. It needs `'wasm-unsafe-eval'` added to the CSP. Worth it for 7.2.0, or a patch release?
-4. **Flatpak discovery.** Ask for `--filesystem` access to the clients' folders in the manifest, or stay import-only and document the overrides? This is the same choice the 7.0.5 TODO left open for config writing.
-5. **Retention default.** `none` is the safe default, but it means improving a detector can't re-run old sessions. Is `scrubbed:30` acceptable on a local desktop install, with `none` kept for hosted instances?
-6. **Cursor's `state.vscdb`.** It holds the full chat history the JSONL transcript lacks, but it can run to tens of GB and its schema changes between releases. Skip it for good, or add an opt-in read-only adapter in 7.2.x?
-7. **Claude Code retention.** Should the tray offer to raise `cleanupPeriodDays` when daydreaming for Claude Code is switched on? It would mean changing a Claude Code setting outside the hooks block that install-hooks already merges into settings.json.
+The first draft of this spec ended with seven open questions. Ric settled them on 2026-11-20, and the sections above now say what was decided.
+
+| Question | Decision |
+| --- | --- |
+| Version clash with model routing | Thin slicing and model routing move to **7.3.x**. Daydream's per-client tallies land first |
+| One new MCP tool, or a mode | A new tool, `submit_session_log`, taking the count from 49 to 50. Its input is structured turns, not a document, so a mode of `remember_document` would have been the wrong shape |
+| Browser-side scanning | **In 7.2.0.** `omnimem-scrub` builds for WASM and the Logs page scans before upload. `'wasm-unsafe-eval'` goes in the CSP of the Logs page only |
+| Flatpak discovery | Ask for filesystem access: read-only, one path per client, never broad home access |
+| Retention default | `TRANSCRIPT_RETENTION=none` everywhere. `scrubbed:<days>` stays opt-in |
+| Cursor's `state.vscdb` | An opt-in, read-only adapter in a 7.2.x patch (#62), off by default, with a size guard |
+| Claude Code retention | The tray offers once to raise `cleanupPeriodDays` when Claude Code daydreaming is switched on, with consent and a backup |

@@ -25,6 +25,15 @@ The Python tree was the reference implementation through phase 8 and has now bee
 | 9b. Installers and release | **Done in 7.0.3: every package built in CI, the DMG signed and notarised, the MSI unsigned** | `scripts/macos-package.sh` builds the Apple silicon `OmniMem.app` (`LSUIElement`, `com.squarecows.OmniMem`, minimum macOS 13.4) with its icon, in a DMG with an Applications link, plus a tarball of the bare binary, ad-hoc signed until a Developer ID is set up. `scripts/linux-package.sh` builds, per architecture, the server as a `.deb` and an `.rpm` (the `omnimem` systemd service, `/etc/omnimem/omnimem.env`, `/var/lib/omnimem`; the `.deb` is installed, run and removed on Debian 13 each build, and the `.rpm` was tried on Fedora), a server tarball with `install.sh`, and the tray app tarball. `scripts/flatpak-package.sh` builds the tray app as a Flatpak bundle on the GNOME 51 runtime, then installs it and runs the smoke test inside its sandbox. `scripts/windows-package.sh` cross-builds the Windows exe on Linux (cargo-xwin, the MSVC target) and wraps it in a per-user MSI with wixl. `scripts/docker-image.sh` puts the server `.deb` in a Debian 13 image per architecture and tests it the way the Docker guide runs it; a v7 tag pushes `richarvey/omnimem:<version>`. `.forgejo/workflows/checks.yml` adds line coverage (`cargo llvm-cov`, report-only, with a badge) and the security scans (`cargo audit`, gitleaks). Found on the way: no Intel macOS build (`ort` ships no prebuilt ONNX Runtime for `x86_64-apple-darwin`), a glibc 2.38 floor on Linux (ONNX Runtime's library calls the `__isoc23_*` functions), on Windows ONNX Runtime needs `DirectML.dll` beside the exe and the Visual C++ runtime, and the image's cold start showed the model download refusing every LFS file (it compared the CDN's Xet hash with the bytes' sha256) and the server packages missing their `ca-certificates` dependency. Left: Developer ID signing and notarisation, a Windows runner for a smoke test (and code signing), an offline Flatpak build if it goes to Flathub, and `release.yml` proper |
 | 10. Cut-over | **Done in 7.0.3** | `main` carries 7 from the 7.0.3 release. The Python tree, the four images and the 6.x installer live on `v6.7.x`, and `install.sh` on `main` hands the old one-line install over to it after saying 7 is out. |
 
+## After the port
+
+The port is done and 7.1 moves the settings panel onto HTTP. What follows it:
+
+| Line | What it is |
+|---|---|
+| 7.2.x | **Daydream**: learning from session logs across the 13 guide clients, behind a deterministic scrub gate. Spec: [`daydream-spec.md`](daydream-spec.md) |
+| 7.3.x | Thin slicing and model routing. It was pencilled in as 7.2.0 and moved on 2026-11-20, so that daydream's per-client tallies exist before routing needs them |
+
 ## Decisions
 
 Settled on 2026-09-15:
