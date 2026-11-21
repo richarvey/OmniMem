@@ -12,9 +12,7 @@ ignore = [
     # written to disk from an archive. Remove these with the move to zip 9,
     # once its releases have settled (9.0.0 to 9.0.5 came out 9 to 17
     # October 2026).
-    "RUSTSEC-2026-0367",
     "RUSTSEC-2026-0368",
-    "RUSTSEC-2026-0369",
     # glib 0.18's VariantStrIter passes an out-argument as &p rather than
     # &mut p, so an optimised build can read a null pointer (fixed in glib
     # 0.20). glib 0.18 comes in through gtk 0.18, which tao, wry, muda,
