@@ -11,6 +11,8 @@ use crate::pyfmt::take_chars;
 use crate::{Engine, Result};
 
 const MAX_DEDUP_KEYS: usize = 2000;
+/// The neighbours a duplicate check looks at, as in 6.x.
+pub(crate) const DUPLICATE_NEIGHBOURS: usize = 5;
 
 pub struct DuplicateMatch {
     pub key: String,
@@ -34,10 +36,27 @@ impl Engine {
         vector: &[f32],
         project_filter: Option<&str>,
     ) -> Result<Option<DuplicateMatch>> {
-        let hits = self
-            .store
-            .search(namespace, vector, 5, &SearchFilter::default(), None)?;
-        for hit in hits {
+        let hits = self.store.search(
+            namespace,
+            vector,
+            DUPLICATE_NEIGHBOURS,
+            &SearchFilter::default(),
+            None,
+        )?;
+        Ok(self.duplicate_among(&hits, project_filter))
+    }
+
+    /// [`Engine::check_duplicate`] over neighbours already found, nearest
+    /// first. Only the first [`DUPLICATE_NEIGHBOURS`] count, so a caller that
+    /// searched for more (`remember`, for the contradiction check too) gets
+    /// the answer a search of its own would have given: ties break by key, so
+    /// the nearest five of ten are the nearest five.
+    pub(crate) fn duplicate_among(
+        &self,
+        hits: &[omnimem_store::SearchHit],
+        project_filter: Option<&str>,
+    ) -> Option<DuplicateMatch> {
+        for hit in hits.iter().take(DUPLICATE_NEIGHBOURS) {
             let state = hit.fields.get("state").map_or("active", String::as_str);
             if matches!(state, "archived" | "deleted") {
                 continue;
@@ -49,14 +68,14 @@ impl Engine {
             }
             let similarity = 1.0 - f64::from(hit.distance);
             if similarity >= self.config.dedup_threshold {
-                return Ok(Some(DuplicateMatch {
-                    key: hit.key,
+                return Some(DuplicateMatch {
+                    key: hit.key.clone(),
                     content: hit.fields.get("content").cloned().unwrap_or_default(),
                     similarity,
-                }));
+                });
             }
         }
-        Ok(None)
+        None
     }
 
     /// Clusters of near-identical memories in a namespace, largest first.
@@ -67,37 +86,43 @@ impl Engine {
         project_filter: Option<&str>,
     ) -> Result<Vec<Value>> {
         let threshold = threshold.unwrap_or(self.config.dedup_threshold);
-        let mut keys = self.store.scan_prefix(&format!("mem:{namespace}:"))?;
-        if keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        if keys.len() > MAX_DEDUP_KEYS {
-            warn!(
-                cap = MAX_DEDUP_KEYS,
-                total = keys.len(),
-                "dedup scan capped"
-            );
-            keys.truncate(MAX_DEDUP_KEYS);
-        }
-        let rows = self.store.get_fields_multi(
-            &keys,
-            &["content", "state", "project", "project_name", "created_at"],
-        )?;
-        let entries: Vec<(String, omnimem_store::Fields)> = keys
+        let project_filter = project_filter.filter(|p| !p.is_empty());
+        // The project is cut in SQL on its indexes (read as `doc_project`
+        // reads it), and the cap applies to what is in scope, keeping the
+        // newest: capping the namespace's oldest keys first, as this did,
+        // meant a store past the cap never compared anything newer, and a
+        // project's memories could be capped away by other projects'.
+        let filter = omnimem_store::MemoryFilter {
+            project: project_filter.map(str::to_owned),
+            ..omnimem_store::MemoryFilter::default()
+        };
+        let mut entries: Vec<(String, omnimem_store::Fields)> = self
+            .store
+            .list_memories(
+                namespace,
+                &filter,
+                &["content", "state", "project", "project_name", "created_at"],
+            )?
             .into_iter()
-            .zip(rows)
-            .filter_map(|(key, row)| row.map(|r| (key, r)))
             .filter(|(_, r)| {
                 !matches!(
                     r.get("state").map(String::as_str),
                     Some("archived" | "deleted")
                 )
             })
-            .filter(|(_, r)| match project_filter.filter(|p| !p.is_empty()) {
+            .filter(|(_, r)| match project_filter {
                 Some(project) => doc_project(r) == Some(project),
                 None => true,
             })
             .collect();
+        if entries.len() > MAX_DEDUP_KEYS {
+            warn!(
+                cap = MAX_DEDUP_KEYS,
+                total = entries.len(),
+                "dedup scan capped to the newest memories"
+            );
+            entries.drain(..entries.len() - MAX_DEDUP_KEYS);
+        }
         if entries.len() < 2 {
             return Ok(Vec::new());
         }
@@ -177,7 +202,11 @@ impl Engine {
                     m.insert("key".into(), key.as_str().into());
                     m.insert(
                         "content".into(),
-                        take_chars(data.get("content").map_or("", String::as_str), 200).into(),
+                        take_chars(
+                            data.get("content").map_or("", String::as_str),
+                            crate::CLUSTER_PREVIEW_CHARS,
+                        )
+                        .into(),
                     );
                     m.insert(
                         "project".into(),

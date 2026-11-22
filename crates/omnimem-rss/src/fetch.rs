@@ -35,6 +35,43 @@ application/x-netcdf,application/xml;q=0.9,text/xml;q=0.2,*/*;q=0.1";
 /// server that drips a byte at a time. `BUDGET` is the wall-clock limit on a
 /// whole fetch, checked between chunks.
 const TIMEOUT: Duration = Duration::from_secs(30);
+/// An `ETag` or `Last-Modified` longer than this isn't kept: it is sent
+/// back as a header, and a server's own values are a few dozen characters.
+const MAX_VALIDATOR_CHARS: usize = 512;
+
+/// What a feed's server said about the copy it sent, to ask next time
+/// whether anything has changed since.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FeedValidators {
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
+impl FeedValidators {
+    pub fn is_empty(&self) -> bool {
+        self.etag.is_none() && self.last_modified.is_none()
+    }
+}
+
+/// A conditional feed fetch.
+pub enum FeedFetch {
+    /// The feed, and the validators to send next time.
+    Changed(Box<feed_rs::model::Feed>, FeedValidators),
+    /// A 304: nothing new since the validators sent.
+    Unchanged,
+}
+
+enum Fetched {
+    Body {
+        raw: Vec<u8>,
+        truncated: bool,
+        validators: FeedValidators,
+    },
+    NotModified,
+}
+/// A host that doesn't answer at all fails in this, not the whole timeout:
+/// feeds are fetched one after another, so a dead one held up the rest.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const BUDGET: Duration = Duration::from_mins(1);
 const MAX_REDIRECTS: usize = 5;
 const CHUNK: usize = 64 * 1024;
@@ -227,6 +264,7 @@ impl Fetcher {
         });
         let client = reqwest::blocking::Client::builder()
             .timeout(TIMEOUT)
+            .connect_timeout(CONNECT_TIMEOUT)
             .redirect(policy)
             .build()
             .map_err(|e| e.to_string())?;
@@ -242,6 +280,15 @@ impl Fetcher {
     /// The URL is checked first, and the read gives up once the whole fetch
     /// has run past the budget.
     fn get_capped(&self, url: &str, headers: &[(&str, &str)]) -> Result<(Vec<u8>, bool), String> {
+        match self.fetch_capped(url, headers)? {
+            Fetched::Body { raw, truncated, .. } => Ok((raw, truncated)),
+            Fetched::NotModified => Err("HTTP 304 Not Modified".to_owned()),
+        }
+    }
+
+    /// [`Fetcher::get_capped`], keeping a 304 and the validators a 200 came
+    /// with, for a conditional fetch.
+    fn fetch_capped(&self, url: &str, headers: &[(&str, &str)]) -> Result<Fetched, String> {
         let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
         check_url(&parsed, self.allow_private_hosts)?;
         let start = Instant::now();
@@ -251,9 +298,25 @@ impl Fetcher {
         }
         let mut response = request.send().map_err(|e| describe(&e))?;
         let status = response.status();
+        if status == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(Fetched::NotModified);
+        }
         if !status.is_success() {
             return Err(format!("HTTP {status}"));
         }
+        let header = |name: reqwest::header::HeaderName| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+                .filter(|v| !v.is_empty() && v.len() <= MAX_VALIDATOR_CHARS)
+                .map(str::to_owned)
+        };
+        let validators = FeedValidators {
+            etag: header(reqwest::header::ETAG),
+            last_modified: header(reqwest::header::LAST_MODIFIED),
+        };
         let mut raw = Vec::new();
         let mut buf = vec![0u8; CHUNK.min(self.max_bytes + 1)];
         loop {
@@ -275,14 +338,40 @@ impl Fetcher {
         }
         let truncated = raw.len() > self.max_bytes;
         raw.truncate(self.max_bytes);
-        Ok((raw, truncated))
+        Ok(Fetched::Body {
+            raw,
+            truncated,
+            validators,
+        })
     }
 
     pub fn fetch_feed(&self, url: &str) -> Result<feed_rs::model::Feed, String> {
-        let (raw, truncated) = self.get_capped(
-            url,
-            &[("User-Agent", FEED_USER_AGENT), ("Accept", FEED_ACCEPT)],
-        )?;
+        match self.fetch_feed_since(url, &FeedValidators::default())? {
+            FeedFetch::Changed(feed, _) => Ok(*feed),
+            FeedFetch::Unchanged => Err("HTTP 304 Not Modified".to_owned()),
+        }
+    }
+
+    /// The feed, unless the server says it hasn't changed since `prior`
+    /// (an `ETag` or `Last-Modified` it sent before): then nothing is
+    /// downloaded or parsed. A changed feed comes with the validators to
+    /// send next time.
+    pub fn fetch_feed_since(&self, url: &str, prior: &FeedValidators) -> Result<FeedFetch, String> {
+        let mut headers = vec![("User-Agent", FEED_USER_AGENT), ("Accept", FEED_ACCEPT)];
+        if let Some(etag) = &prior.etag {
+            headers.push(("If-None-Match", etag));
+        }
+        if let Some(modified) = &prior.last_modified {
+            headers.push(("If-Modified-Since", modified));
+        }
+        let (raw, truncated, validators) = match self.fetch_capped(url, &headers)? {
+            Fetched::NotModified => return Ok(FeedFetch::Unchanged),
+            Fetched::Body {
+                raw,
+                truncated,
+                validators,
+            } => (raw, truncated, validators),
+        };
         if truncated {
             warn!(
                 url,
@@ -290,7 +379,8 @@ impl Fetcher {
                 "feed exceeded the byte cap, truncating"
             );
         }
-        feed_rs::parser::parse(&raw[..]).map_err(|e| e.to_string())
+        let feed = feed_rs::parser::parse(&raw[..]).map_err(|e| e.to_string())?;
+        Ok(FeedFetch::Changed(Box::new(feed), validators))
     }
 
     /// An article page as plain text, or `None` for a non-HTTP URL, a

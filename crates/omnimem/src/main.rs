@@ -26,6 +26,10 @@ use omnimem_app::{data_dir, feeds_path, load_embedder, open_engine, run_services
 use omnimem_core::env::{install_overlay, parse_settings};
 use omnimem_core::{Namespace, TextEmbedder};
 use omnimem_rss::{Ingester, RssConfig};
+use omnimem_settings::{
+    PRINTED_CODE_LIFETIME, Panel, SettingsFileSecrets, StaticOverhead, mint_sign_in_code,
+    sign_in_url,
+};
 use omnimem_store::{SearchFilter, Store, read_backup, write_backup};
 use tokio_util::sync::CancellationToken;
 
@@ -105,7 +109,7 @@ enum Command {
     },
     /// Memories linked as contradicting each other: the pairs still in
     /// dispute and the resolutions waiting for a person. With `resolve`,
-    /// settle one; for a server with no settings window.
+    /// settle one, from a terminal.
     Contradictions {
         #[command(subcommand)]
         action: Option<ContradictionAction>,
@@ -115,7 +119,7 @@ enum Command {
     },
     /// Facts and preferences OmniMem concluded that nobody has confirmed
     /// yet: list them, confirm them, or reject a memory that is wrong. Only a
-    /// person can do this, here or in the settings window, never an agent.
+    /// person can do this, here or in the settings panel, never an agent.
     Trust {
         #[command(subcommand)]
         action: trust_cli::TrustCommand,
@@ -149,16 +153,25 @@ enum Command {
     },
     /// Embed text and print the vector's first components.
     Embed { text: String },
-    /// Run the desktop app: OmniMem behind a tray or menu bar icon with a
-    /// settings window. What `omnimem` does when given no command.
+    /// Print a link that signs a browser in to the settings panel at /admin.
+    /// It works once, within five minutes, so a server with no admin
+    /// password can still be configured: in Docker, run it with
+    /// `docker exec <container> omnimem admin-link`.
+    AdminLink,
+    /// Run the desktop app: OmniMem behind a tray or menu bar icon that opens
+    /// the settings panel in the browser. What `omnimem` does when given no
+    /// command.
     #[cfg(feature = "desktop")]
     Desktop {
-        /// Build the tray and window, check the settings page answers over
-        /// IPC, and exit, without starting the services.
+        /// Build the tray, sign in to the settings panel over HTTP on a spare
+        /// port, and exit, without starting the services.
         #[arg(long)]
         smoke_test: bool,
     },
-    /// Answer a Claude Code PreToolUse hook: read the tool call on stdin and,
+    /// Answer a Claude Code PreToolUse hook (or OmniMem's OpenCode plugin,
+    /// and Codex, which send the same JSON, with --agent vibe, Mistral
+    /// Vibe's pre_tool hook, or with --agent kiro, Kiro's PreToolUse hook,
+    /// refused by exiting 2): read the tool call on stdin and,
     /// if it proposes an approach this project already abandoned, deny it and
     /// explain what worked instead. Prints nothing when the call is fine, and
     /// stays quiet on any error, so work is never blocked by a sick store.
@@ -175,6 +188,9 @@ enum Command {
         /// directory name.
         #[arg(long)]
         project: Option<String>,
+        /// The agent calling, which decides how the answer is written.
+        #[arg(long, value_enum, default_value = "claude-code")]
+        agent: hook::Agent,
     },
     /// Add OmniMem's Claude Code hooks (session-start, the pre-tool-use guard
     /// and session-end) to ~/.claude/settings.json, leaving alone any event
@@ -188,6 +204,30 @@ enum Command {
         /// Show what would be added without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Write OmniMem's OpenCode plugin instead, which runs the same
+        /// dead-end guard and session-start briefing from inside OpenCode:
+        /// to ~/.config/opencode/plugins, or with --project to
+        /// .opencode/plugins here. See guides/opencode.md.
+        #[arg(long, conflicts_with_all = ["vibe", "codex", "kiro"])]
+        opencode: bool,
+        /// Put OmniMem's hooks in Mistral Vibe's hooks.toml instead: the
+        /// dead-end guard and, from Vibe 3.1.1, the session-start briefing,
+        /// in ~/.vibe (or $VIBE_HOME), or with --project in .vibe here. See
+        /// guides/vibe.md.
+        #[arg(long, conflicts_with_all = ["codex", "kiro"])]
+        vibe: bool,
+        /// Put OmniMem's hooks in OpenAI Codex's hooks.json instead: the
+        /// dead-end guard and the session-start briefing, in ~/.codex (or
+        /// $CODEX_HOME), or with --project in .codex here. Codex runs them
+        /// once you've trusted them. See guides/codex.md.
+        #[arg(long, conflicts_with = "kiro")]
+        codex: bool,
+        /// Put OmniMem's hooks in Kiro instead: the dead-end guard and the
+        /// session-start briefing, as ~/.kiro/hooks/omnimem.json, which
+        /// Kiro's CLI reads, or with --project as .kiro/hooks/omnimem.json
+        /// here, which its IDE reads too. See guides/kiro.md.
+        #[arg(long)]
+        kiro: bool,
     },
     /// Run one RSS ingestion cycle now and print the result. With
     /// --dry-run, fetch and parse the feeds and print what would be
@@ -201,7 +241,7 @@ enum Command {
 #[derive(Subcommand)]
 enum ContradictionAction {
     /// Record how a pair was settled. The decision is yours: this is the
-    /// command line's equivalent of a click in the settings window.
+    /// command line's equivalent of a click in the settings panel.
     Resolve {
         key_a: String,
         key_b: String,
@@ -256,6 +296,7 @@ fn main() -> Result<()> {
                 | Command::Stats
                 | Command::Search { .. }
                 | Command::Embed { .. }
+                | Command::AdminLink
                 | Command::Hook { .. }
                 | Command::InstallHooks { .. }
         )
@@ -287,14 +328,37 @@ fn main() -> Result<()> {
     if let Command::Desktop { smoke_test } = command {
         return desktop(db, smoke_test);
     }
-    if let Command::InstallHooks { project, dry_run } = command {
-        return install_hooks::run(db.as_deref(), project, dry_run);
+    if let Command::InstallHooks {
+        project,
+        dry_run,
+        opencode,
+        vibe,
+        codex,
+        kiro,
+    } = command
+    {
+        let target = if opencode {
+            install_hooks::Target::OpenCode
+        } else if vibe {
+            install_hooks::Target::Vibe
+        } else if codex {
+            install_hooks::Target::Codex
+        } else if kiro {
+            install_hooks::Target::Kiro
+        } else {
+            install_hooks::Target::ClaudeCode
+        };
+        return install_hooks::run(db.as_deref(), project, dry_run, target);
     }
     let db = resolve_db(db, &settings)?;
     // What a command writes is the command line's, unless it says otherwise.
     let _audit = omnimem_store::enter(omnimem_store::Actor::Cli, "");
     match command {
-        Command::Serve => serve(&db.path),
+        Command::Serve => serve(&db.path, &settings),
+        Command::AdminLink => {
+            db.must_exist(Some("start the server once first"))?;
+            admin_link(&db.path)
+        }
         Command::Import {
             file,
             no_embed,
@@ -328,14 +392,18 @@ fn main() -> Result<()> {
             db.must_exist(None)?;
             trust_cli::run(&db.path, action)
         }
-        Command::Hook { event, project } => {
+        Command::Hook {
+            event,
+            project,
+            agent,
+        } => {
             // A hook never fails the tool call or session it answers: say why
             // in the hook log and let the work carry on.
             if let Err(error) = db.must_exist(None) {
                 eprintln!("omnimem hook: {error:#}");
                 return Ok(());
             }
-            hook::run(&db.path, event, project.as_deref())
+            hook::run(&db.path, event, project.as_deref(), agent)
         }
         Command::Stats => {
             db.must_exist(None)?;
@@ -523,8 +591,66 @@ fn desktop(db: Option<PathBuf>, smoke_test: bool) -> Result<()> {
     })
 }
 
-fn serve(db: &Path) -> Result<()> {
-    run_services(db, CancellationToken::new(), true, &|_| {}, &|_| {})
+/// The MCP server, with the settings panel at `/admin`. Its Configuration
+/// page edits the settings file this run loaded, secrets and all, since a
+/// server has no keychain.
+fn serve(db: &Path, settings: &SettingsFile) -> Result<()> {
+    let panel = Panel::new();
+    panel.set_feeds_path(feeds_path(db));
+    if let SettingsFile::Loaded(path) = settings {
+        panel.set_settings_path(path.clone());
+        panel.set_secret_store(Arc::new(SettingsFileSecrets::new(path.clone())));
+    }
+    let overhead = omnimem_app::context_overhead();
+    panel.set_static_overhead(StaticOverhead {
+        instructions_chars: overhead.instructions_chars,
+        tool_count: overhead.tool_count,
+        tool_schemas_chars: overhead.tool_schemas_chars,
+        deferred_names_chars: overhead.deferred_names_chars,
+    });
+    run_services(
+        db,
+        CancellationToken::new(),
+        true,
+        Some(panel),
+        &|_| {},
+        &|_| {},
+    )
+}
+
+/// Mint a sign-in code in the store the server reads and print the link.
+fn admin_link(db: &Path) -> Result<()> {
+    if !omnimem_settings::admin_panel_enabled() {
+        bail!("the settings panel is off here (ADMIN_PANEL=false)");
+    }
+    let store = Store::open(db).with_context(|| format!("opening {}", db.display()))?;
+    let code = mint_sign_in_code(&store, PRINTED_CODE_LIFETIME).map_err(|e| anyhow!(e))?;
+    println!("{}", sign_in_url(&server_address(), &code));
+    eprintln!(
+        "Open it within {} minutes; it works once.",
+        PRINTED_CODE_LIFETIME.as_secs() / 60
+    );
+    Ok(())
+}
+
+/// Where a browser reaches this server: the first address `MCP_PUBLIC_URL`
+/// or `OAUTH_BASE_URL` lists, or this machine's port.
+fn server_address() -> String {
+    ["MCP_PUBLIC_URL", "OAUTH_BASE_URL"]
+        .iter()
+        .filter_map(|name| omnimem_core::env::var(name))
+        .flat_map(|urls| {
+            urls.split(',')
+                .map(|u| u.trim().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .find(|url| url.starts_with("http://") || url.starts_with("https://"))
+        .unwrap_or_else(|| {
+            let port = omnimem_core::env::var("MCP_PORT")
+                .and_then(|p| p.trim().parse::<u16>().ok())
+                .unwrap_or(8765);
+            format!("http://127.0.0.1:{port}")
+        })
 }
 
 /// One RSS cycle by hand, or a dry run of what one would ingest.

@@ -1,41 +1,44 @@
 {% extends "base.html" %}
 
-{% block title %}Create Memory — OmniMem{% endblock %}
+{% block title %}Create memory — OmniMem{% endblock %}
 
 {% block content %}
 <header class="page-header">
-  <h2>Create Memory</h2>
+  <div>
+    <h1>New memory</h1>
+    <p class="page-intro">Write something down for every agent to recall. It's embedded and checked for near-duplicates first.</p>
+  </div>
 </header>
 
 {% if error %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   {{ error }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
 {% if duplicate %}
-<div class="flash flash-warning" style="flex-direction:column;align-items:start">
+<div class="flash flash-warning" role="status" style="flex-direction:column;align-items:start">
   <div style="display:flex;justify-content:space-between;width:100%">
     <strong>Near-duplicate found ({{ duplicate.similarity }} similarity)</strong>
     <button class="flash-close" data-dismiss>&times;</button>
   </div>
-  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="/memory/{{ duplicate.key }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
+  <p style="margin:0.5rem 0;font-size:0.85rem">Existing: <a href="{{ admin }}/memory/{{ duplicate.key|urlsegment }}?back={{ here|urlquote }}" style="color:var(--accent)">{{ duplicate.key }}</a></p>
   <p style="margin:0;font-size:0.85rem;color:var(--text-dim)">{{ duplicate.content }}</p>
   <p style="margin:0.5rem 0 0;font-size:0.8rem">Check "Force save" below and submit again to store anyway.</p>
 </div>
 {% endif %}
 
-<form method="POST" action="/create" style="max-width:700px">
+<form method="POST" action="{{ admin }}/create" style="max-width:700px">
   <div class="form-group">
-    <label>Content</label>
-    <textarea name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>
+    <label for="content">Content</label>
+    <textarea id="content" name="content" class="form-textarea" rows="6" placeholder="What should be remembered?" autofocus>{{ values.content }}</textarea>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="form-group">
-      <label>Namespace</label>
-      <select name="namespace" class="form-select">
+      <label for="namespace">Namespace</label>
+      <select id="namespace" name="namespace" class="form-select">
         <option value="episodic"{% if values.namespace == 'episodic' %} selected{% endif %}>Episodic</option>
         <option value="project"{% if values.namespace == 'project' %} selected{% endif %}>Project</option>
         <option value="knowledge"{% if values.namespace == 'knowledge' %} selected{% endif %}>Knowledge</option>
@@ -44,14 +47,14 @@
     </div>
 
     <div class="form-group">
-      <label>Project</label>
-      <input type="text" name="project" class="form-input" placeholder="Optional" value="{{ values.project }}">
+      <label for="project">Project</label>
+      <input type="text" id="project" name="project" class="form-input" placeholder="Optional" value="{{ values.project }}">
     </div>
   </div>
 
   <div class="form-group">
-    <label>Tags (comma-separated)</label>
-    <input type="text" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
+    <label for="tags">Tags (comma-separated)</label>
+    <input type="text" id="tags" name="tags" class="form-input" placeholder="e.g. python, docker, deployment" value="{{ values.tags }}">
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -93,6 +96,6 @@
     <label for="force" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text)">Force save (skip duplicate check)</label>
   </div>
 
-  <button type="submit" class="btn btn-primary">Create Memory</button>
+  <button type="submit" class="btn btn-primary">Create memory</button>
 </form>
 {% endblock %}

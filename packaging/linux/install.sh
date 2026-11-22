@@ -21,7 +21,11 @@ if ! id omnimem >/dev/null 2>&1; then
         --shell /usr/sbin/nologin --comment "OmniMem" omnimem
 fi
 install -d -o omnimem -g omnimem -m 0750 /var/lib/omnimem
-install -d -m 0755 /etc/omnimem
+# The settings panel saves omnimem.env by renaming a new copy into place, so
+# the omnimem group needs to write the folder; nobody else needs to see it.
+install -d -o root -g omnimem -m 0770 /etc/omnimem
+chown root:omnimem /etc/omnimem
+chmod 0770 /etc/omnimem
 if [ -e /etc/omnimem/omnimem.env ]; then
     echo "Kept your /etc/omnimem/omnimem.env"
 else

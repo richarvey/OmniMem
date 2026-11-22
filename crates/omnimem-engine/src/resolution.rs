@@ -662,8 +662,8 @@ impl Engine {
             pending.push(json!({
                 "key_a": request.key_a,
                 "key_b": request.key_b,
-                "content_a": take_chars(&review.content_a, 150),
-                "content_b": take_chars(&review.content_b, 150),
+                "content_a": take_chars(&review.content_a, crate::PAIR_PREVIEW_CHARS),
+                "content_b": take_chars(&review.content_b, crate::PAIR_PREVIEW_CHARS),
                 "outcome": request.outcome.as_str(),
                 "winner": request.winner.unwrap_or_default(),
                 "reason": request.reason.unwrap_or_default(),
@@ -709,12 +709,20 @@ impl Engine {
 
     /// Every pair still in dispute, once, with both sides' content. A pair
     /// is out of the list once either row carries a settled link to the
-    /// other.
+    /// other. Every namespace a scan can link is read: 6.x's page read
+    /// episodic alone, so a pair found in knowledge or a preference was
+    /// never shown anywhere.
     pub fn open_contradictions(&self) -> Result<Vec<Value>> {
-        let keys = self.store.scan_prefix("mem:episodic:")?;
-        let rows = self
-            .store
-            .get_fields_multi(&keys, &["content", "contradictions"])?;
+        // Only the memories that carry links, then content for the linked
+        // ones: a store with no disputes costs nothing to list.
+        let mut keys = Vec::new();
+        for namespace in ["episodic", "knowledge", "preference", "project"] {
+            keys.extend(
+                self.store
+                    .keys_with_contradictions(&format!("mem:{namespace}:"))?,
+            );
+        }
+        let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;
         let sorted = |a: &str, b: &str| {
             let mut pair = [a.to_owned(), b.to_owned()];
             pair.sort();
@@ -738,7 +746,7 @@ impl Engine {
         // Each pair, by its sorted keys, to where it sits in `raw_pairs`.
         let mut seen: std::collections::BTreeMap<[String; 2], usize> = Default::default();
         let mut others: std::collections::BTreeSet<String> = Default::default();
-        let mut raw_pairs: Vec<(String, String, Map<String, Value>)> = Vec::new();
+        let mut raw_pairs: Vec<(String, Map<String, Value>)> = Vec::new();
         for (key, row) in keys.iter().zip(rows) {
             let Some(row) = row else { continue };
             for entry in parse_links(row.get("contradictions")) {
@@ -756,7 +764,7 @@ impl Engine {
                     // link made from one side), and which side comes first
                     // is down to key order, so take what the first sighting
                     // lacked.
-                    let listed = &mut raw_pairs[at].2;
+                    let listed = &mut raw_pairs[at].1;
                     for field in ["explanation", "similarity"] {
                         if is_blank(listed.get(field))
                             && let Some(value) = entry.get(field).filter(|v| !is_blank(Some(v)))
@@ -770,14 +778,11 @@ impl Engine {
                 if !other.is_empty() {
                     others.insert(other);
                 }
-                raw_pairs.push((
-                    key.clone(),
-                    row.get("content").cloned().unwrap_or_default(),
-                    entry.clone(),
-                ));
+                others.insert(key.clone());
+                raw_pairs.push((key.clone(), entry.clone()));
             }
         }
-        // One batched read for every other side.
+        // One batched read of content for both sides of every pair.
         let other_keys: Vec<String> = others.into_iter().collect();
         let other_content: std::collections::HashMap<String, String> = other_keys
             .iter()
@@ -793,7 +798,8 @@ impl Engine {
             .collect();
         Ok(raw_pairs
             .into_iter()
-            .map(|(key, content_a, entry)| {
+            .map(|(key, entry)| {
+                let content_a = other_content.get(&key).cloned().unwrap_or_default();
                 let other = entry.get("key").and_then(Value::as_str).unwrap_or("");
                 let content_b = other_content
                     .get(other)
@@ -808,9 +814,9 @@ impl Engine {
                     });
                 json!({
                     "key_a": key,
-                    "content_a": take_chars(&content_a, 150),
+                    "content_a": take_chars(&content_a, crate::PAIR_PREVIEW_CHARS),
                     "key_b": other,
-                    "content_b": take_chars(&content_b, 150),
+                    "content_b": take_chars(&content_b, crate::PAIR_PREVIEW_CHARS),
                     "explanation": entry.get("explanation").cloned().unwrap_or_else(|| json!("")),
                     "similarity": entry.get("similarity").cloned().unwrap_or(Value::Null),
                 })
@@ -824,7 +830,9 @@ impl Engine {
     /// its links, 6.x included, and nothing else would ever clear them.
     /// Returns how many links it settled.
     pub fn settle_dangling_links(&self) -> Result<usize> {
-        let keys = self.store.scan_prefix("mem:")?;
+        // Only memories carrying links can hold a dangling one: the linked
+        // index names them, rather than every memory being read.
+        let keys = self.store.keys_with_contradictions("mem:")?;
         let rows = self.store.get_fields_multi(&keys, &["contradictions"])?;
         let linked: Vec<(&String, Vec<String>)> = keys
             .iter()

@@ -1,6 +1,6 @@
 # The audit log
 
-Memories change. An agent archives one, a feed expires another, you retag a third from the settings window, and a week later you want to know who did that. Until 7.0.6 the answer was "nobody wrote it down": a change bumped `updated_at` and left a line in the process log, and once a memory was deleted there was nothing to look at.
+Memories change. An agent archives one, a feed expires another, you retag a third from the settings panel, and a week later you want to know who did that. Until 7.0.6 the answer was "nobody wrote it down": a change bumped `updated_at` and left a line in the process log, and once a memory was deleted there was nothing to look at.
 
 The audit log is a record of changes, held in the same database. Since 7.0.7 it's on by default at `lifecycle`: who deprioritised, archived, reinstated or forgot what, and why, with no memory text. 7.0.6 shipped it off; an install that set `AUDIT_LOG=off` keeps it off, and only an unset value changed.
 
@@ -45,7 +45,7 @@ One thing to know: a call that makes several writes records each as it goes. Dep
 
 ## Reading it
 
-**The settings window.** Audit Log in the sidebar lists the log newest first, with filters for key, actor, action and date (From and To take `2026-11-03` or `7d`). Each memory's page has a History section with its own rows.
+**The settings panel.** Audit Log in the sidebar lists the log newest first, with filters for key, actor, action and date (From and To take `2026-11-03` or `7d`). Each memory's page has a History section with its own rows.
 
 **The command line**, for a server with no window:
 

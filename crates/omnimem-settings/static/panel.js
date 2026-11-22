@@ -28,23 +28,41 @@
     apply(root.classList.contains('sidebar-collapsed'));
   })();
 
-  // Light and dark theme, remembered per browser.
+  // Light or dark, remembered per browser; theme.js picked it before paint
+  // and follows the system until the switch is used.
   (function () {
-    var KEY = 'omnimem-theme';
-    var btn = document.querySelector('[data-theme-toggle]');
-    if (!btn) return;
-    function label() {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      btn.textContent = next === 'light' ? 'Light theme' : 'Dark theme';
-      btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+    var theme = window.omnimemTheme;
+    var toggles = document.querySelectorAll('[data-theme-toggle]');
+    if (!theme) return;
+    function sync() {
+      var light = theme.current() === 'light';
+      toggles.forEach(function (btn) { btn.setAttribute('aria-checked', String(light)); });
     }
-    btn.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem(KEY, next); } catch (e) {}
-      label();
+    toggles.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        theme.set(theme.current() === 'light' ? 'dark' : 'light');
+        sync();
+      });
     });
-    label();
+    theme.watch(sync);
+    sync();
+  })();
+
+  // The sidebar scrolls on a short window: the current page's item is
+  // always in view.
+  var current = document.querySelector('.sidebar [aria-current="page"]');
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  if (current && current.scrollIntoView && !narrow) current.scrollIntoView({ block: 'nearest' });
+
+  // The menu is a <details>, open in the markup so it works without
+  // scripts. On a phone it folds behind its Menu toggle until asked for.
+  (function () {
+    var menu = document.querySelector('[data-nav-menu]');
+    if (!menu || !window.matchMedia) return;
+    var phone = window.matchMedia('(max-width: 768px)');
+    function fit() { menu.open = !phone.matches; }
+    fit();
+    if (phone.addEventListener) phone.addEventListener('change', fit);
   })();
 
   // Clicks: dismiss a flash, open or close a modal, proxy a click to a
@@ -64,12 +82,15 @@
     }
     if (el.hasAttribute('data-show')) {
       var shown = byId(el.getAttribute('data-show'));
-      if (shown) shown.style.display = 'flex';
+      // A <dialog> opens as a modal: focus moves in, Escape closes it.
+      if (shown && shown.showModal) shown.showModal();
+      else if (shown) shown.style.display = 'flex';
       return;
     }
     if (el.hasAttribute('data-hide')) {
       var hidden = byId(el.getAttribute('data-hide'));
-      if (hidden) hidden.style.display = 'none';
+      if (hidden && hidden.close) hidden.close();
+      else if (hidden) hidden.style.display = 'none';
       var cleared = byId(el.getAttribute('data-clear'));
       if (cleared) cleared.innerHTML = '';
       return;
@@ -93,10 +114,39 @@
     }
   });
 
-  // A file input that submits its form as soon as a file is chosen.
+  // A dialog closed any way (Escape included) forgets its last result.
+  document.querySelectorAll('dialog[data-dialog]').forEach(function (dialog) {
+    dialog.addEventListener('close', function () {
+      var cleared = byId(dialog.getAttribute('data-clear'));
+      if (cleared) cleared.innerHTML = '';
+    });
+  });
+
+  // An open row menu closes on Escape, or on a click anywhere else.
+  function closeRowMenus(except) {
+    document.querySelectorAll('details.row-menu[open]').forEach(function (menu) {
+      if (menu === except) return;
+      var hadFocus = menu.contains(document.activeElement);
+      menu.removeAttribute('open');
+      var summary = menu.querySelector('summary');
+      if (hadFocus && summary) summary.focus();
+    });
+  }
+  document.addEventListener('click', function (event) {
+    closeRowMenus(event.target.closest('details.row-menu'));
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeRowMenus(null);
+  });
+
+  // A file input that submits its form as soon as a file is chosen, and a
+  // filter form whose selects apply as soon as they change.
   document.addEventListener('change', function (event) {
     var input = event.target.closest('[data-submit-on-change]');
-    if (input && input.form) input.form.submit();
+    if (input && input.form) { input.form.submit(); return; }
+    var select = event.target.closest('select');
+    var auto = select && select.form && select.form.hasAttribute('data-auto-submit');
+    if (auto) select.form.submit();
   });
 
   // Destructive forms ask first. The question is plain text in an
@@ -105,7 +155,50 @@
     var form = event.target.closest('[data-confirm]');
     if (form && !window.confirm(form.getAttribute('data-confirm'))) {
       event.preventDefault();
+      return;
     }
+    // A slow GET (a duplicate scan) says it is working and can't be sent twice.
+    var busy = event.target.closest('[data-busy-on-submit]');
+    if (busy) {
+      var note = busy.querySelector('.busy-note');
+      if (note) note.textContent = 'Scanning…';
+      busy.querySelectorAll('button[type="submit"]').forEach(function (b) { b.disabled = true; });
+    }
+  });
+
+  // A duplicate cluster left with one member after an in-place archive is
+  // settled: say so instead of showing a cluster of one.
+  document.addEventListener('htmx:afterSwap', function (event) {
+    var cluster = event.target.closest ? event.target.closest('.cluster') : null;
+    document.querySelectorAll('.cluster').forEach(function (c) {
+      if (c.querySelectorAll('.cluster-row').length < 2) {
+        c.classList.add('cluster-settled');
+        c.innerHTML = '<p class="cluster-head" role="status">Settled: one copy left.</p>';
+      }
+    });
+    if (cluster) cluster = null;
+  });
+
+  // htmx doesn't swap an error response, so a refused action would look
+  // like nothing happened: say so in the flash area instead.
+  document.addEventListener('htmx:responseError', function (event) {
+    var area = byId('flash-area');
+    if (!area) return;
+    var note = document.createElement('div');
+    note.className = 'flash flash-error';
+    note.setAttribute('role', 'alert');
+    var status = event.detail && event.detail.xhr ? event.detail.xhr.status : 0;
+    note.textContent = status === 409
+      ? 'That could not be done: it may have changed since the page loaded. Reload and try again.'
+      : 'Something went wrong (' + status + '). Reload and try again.';
+    var close = document.createElement('button');
+    close.className = 'flash-close';
+    close.setAttribute('data-dismiss', '');
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '\u00d7';
+    note.appendChild(close);
+    area.appendChild(note);
+    note.scrollIntoView({ block: 'nearest' });
   });
 
   // The starting page polls until the services are up.

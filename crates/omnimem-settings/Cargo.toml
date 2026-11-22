@@ -1,6 +1,6 @@
 [package]
 name = "omnimem-settings"
-description = "OmniMem's settings panel: the web UI's pages, rendered in-process for the desktop app"
+description = "OmniMem's settings panel, served at /admin behind sign-in"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,8 +12,9 @@ publish.workspace = true
 [dependencies]
 # multipart: the skills page's bundle upload.
 axum = { workspace = true, features = ["multipart"] }
+base64.workspace = true
 chrono.workspace = true
-directories.workspace = true
+getrandom.workspace = true
 minijinja.workspace = true
 minijinja-contrib.workspace = true
 omnimem-core.workspace = true
@@ -21,6 +22,7 @@ omnimem-engine.workspace = true
 omnimem-store.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tracing.workspace = true

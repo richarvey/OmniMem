@@ -1,6 +1,6 @@
 [package]
 name = "omnimem-desktop"
-description = "OmniMem's desktop app: tray or menu bar icon and settings window"
+description = "OmniMem's desktop app: tray or menu bar icon, opening the settings panel in the browser"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+axum.workspace = true
 arboard.workspace = true
 auto-launch.workspace = true
 keyring.workspace = true
@@ -18,6 +19,7 @@ omnimem-app.workspace = true
 omnimem-core.workspace = true
 omnimem-engine.workspace = true
 omnimem-settings.workspace = true
+omnimem-store.workspace = true
 open.workspace = true
 serde_json.workspace = true
 url.workspace = true
@@ -26,7 +28,6 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tray-icon.workspace = true
-wry.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk.workspace = true

@@ -18,16 +18,12 @@ finish-args:
   - --share=network
   - --socket=wayland
   - --socket=fallback-x11
-  # WebKitGTK's GPU rendering for the settings window.
-  - --device=dri
   # The tray icon: the desktop's StatusNotifierItem host, and the
   # org.kde.StatusNotifierItem-* name libayatana registers under.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.kde.*
   # Secrets go to the desktop's keyring (the Secret Service).
   - --talk-name=org.freedesktop.secrets
-  # Exports and backups are saved to Downloads.
-  - --filesystem=xdg-download
   # Start at login: the menu's entry in ~/.config/autostart, which runs the
   # app through `flatpak run`.
   - --filesystem=xdg-config/autostart:create
@@ -56,6 +52,16 @@ modules:
             "/app/share/icons/hicolor/${size}x${size}/apps/com.squarecows.OmniMem.png"
         done
       - install -Dm644 -t /app/share/applications packaging/flatpak/com.squarecows.OmniMem.desktop
+      # A version the metainfo has no release for is a build between
+      # releases: it's added as a development one, so a software centre shows
+      # the version that's installed, not the last release. AppStream sorts
+      # 7.1.6~dev before 7.1.6, as dpkg and rpm do.
+      - |
+        metainfo=packaging/flatpak/com.squarecows.OmniMem.metainfo.xml
+        version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1 | tr - '~')"
+        if ! grep -q "<release version=\"$version\"" "$metainfo"; then
+          sed -i "s|<releases>|<releases>\n    <release version=\"$version\" type=\"development\" date=\"$(date -u +%F)\" />|" "$metainfo"
+        fi
       - install -Dm644 -t /app/share/metainfo packaging/flatpak/com.squarecows.OmniMem.metainfo.xml
     sources:
       - type: dir

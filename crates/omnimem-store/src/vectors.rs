@@ -38,14 +38,22 @@ impl VectorIndex {
             "SELECT v.key, m.namespace, v.data FROM vectors v JOIN memories m ON m.key = v.key ORDER BY v.key",
         )?;
         let mut rows = stmt.query([])?;
+        // One buffer for every row, decoded from the blob SQLite holds rather
+        // than a copy of it: at 50,000 memories that is 100,000 allocations
+        // fewer on every load.
+        let mut vector = Vec::with_capacity(dim);
         while let Some(row) = rows.next()? {
             let key: String = row.get(0)?;
-            let namespace: String = row.get(1)?;
-            let data: Vec<u8> = row.get(2)?;
-            let Ok(namespace) = namespace.parse::<Namespace>() else {
+            let Ok(namespace) = row
+                .get_ref(1)?
+                .as_str()
+                .map_err(conversion(1))?
+                .parse::<Namespace>()
+            else {
                 continue;
             };
-            if let Some(vector) = from_bytes(&data, dim) {
+            let data = row.get_ref(2)?.as_blob().map_err(conversion(2))?;
+            if decode_into(data, dim, &mut vector) {
                 index.insert(namespace, &key, &vector);
             } else {
                 warn!(
@@ -54,6 +62,13 @@ impl VectorIndex {
                     "skipping a stored vector of the wrong size"
                 );
             }
+        }
+        // Growing by doubling leaves up to half of each matrix spare; the
+        // server keeps it for its lifetime, so give it back.
+        for space in index.spaces.values_mut() {
+            space.data.shrink_to_fit();
+            space.norms.shrink_to_fit();
+            space.keys.shrink_to_fit();
         }
         Ok(index)
     }
@@ -134,25 +149,33 @@ impl VectorIndex {
         // move them. The filter runs before the dot product: a set lookup
         // on a short key is far cheaper than the 384 multiply-adds it can
         // skip, and an unselective filter costs about a hash per row.
-        let mut scored: Vec<(f32, usize)> = Vec::with_capacity(match allowed {
-            Some(set) => set.len().min(space.keys.len()),
-            None => space.keys.len(),
-        });
-        let rows = space
-            .data
-            .chunks_exact(dim)
-            .zip(&space.keys)
-            .zip(&space.norms);
-        for (row, ((v, key), &norm)) in rows.enumerate() {
-            if let Some(set) = allowed
-                && !set.contains(key.as_str())
-            {
-                continue;
-            }
-            let dot: f32 = v.iter().zip(query).map(|(a, b)| a * b).sum();
-            let denom = norm * query_norm;
+        let candidates: Vec<usize> = match allowed {
+            Some(set) => (0..space.keys.len())
+                .filter(|&row| set.contains(space.keys[row].as_str()))
+                .collect(),
+            None => (0..space.keys.len()).collect(),
+        };
+        let mut scored: Vec<(f32, usize)> = Vec::with_capacity(candidates.len());
+        let mut score = |row: usize, dot: f32| {
+            let denom = space.norms[row] * query_norm;
             let cosine = if denom > 0.0 { dot / denom } else { 0.0 };
             scored.push((1.0 - cosine, row));
+        };
+        // Four rows at a time, each with its own running sum. One sum is a
+        // chain of dependent adds, so the CPU waits on each before the next;
+        // four independent chains keep it busy, about twice as fast. Every
+        // row is still summed in the same order, so the distances are the
+        // same to the last bit.
+        let row_of = |row: usize| &space.data[row * dim..(row + 1) * dim];
+        let (quads, rest) = candidates.as_chunks::<4>();
+        for quad in quads {
+            let dots = dot4(quad.map(row_of), query);
+            for (&row, dot) in quad.iter().zip(dots) {
+                score(row, dot);
+            }
+        }
+        for &row in rest {
+            score(row, dot(row_of(row), query));
         }
         let order = |a: &(f32, usize), b: &(f32, usize)| {
             a.0.total_cmp(&b.0)
@@ -170,6 +193,46 @@ impl VectorIndex {
     }
 }
 
+/// A column that isn't the type `load` reads it as, as rusqlite reports it.
+fn conversion(column: usize) -> impl Fn(rusqlite::types::FromSqlError) -> rusqlite::Error {
+    move |e| {
+        rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Null, Box::new(e))
+    }
+}
+
+/// A row's dot product with the query, summed first to last.
+fn dot(row: &[f32], query: &[f32]) -> f32 {
+    row.iter().zip(query).map(|(a, b)| a * b).sum()
+}
+
+/// Four rows' dot products with the query, each summed first to last
+/// exactly as [`dot`] sums one.
+fn dot4(rows: [&[f32]; 4], query: &[f32]) -> [f32; 4] {
+    let [r0, r1, r2, r3] = rows;
+    // The same start `Iterator::sum` uses, so an all-zero row comes out with
+    // the same sign of zero as `dot` gives it.
+    let start = [0.0f32; 0].iter().sum::<f32>();
+    let mut acc = [start; 4];
+    for ((((a, b), c), d), q) in r0.iter().zip(r1).zip(r2).zip(r3).zip(query) {
+        acc[0] += a * q;
+        acc[1] += b * q;
+        acc[2] += c * q;
+        acc[3] += d * q;
+    }
+    acc
+}
+
+/// Decode a stored vector into `out`, if its length fits `dim`.
+fn decode_into(data: &[u8], dim: usize, out: &mut Vec<f32>) -> bool {
+    if data.len() != dim * 4 {
+        return false;
+    }
+    out.clear();
+    let (chunks, _) = data.as_chunks::<4>();
+    out.extend(chunks.iter().map(|c| f32::from_le_bytes(*c)));
+    true
+}
+
 pub(crate) fn to_bytes(vector: &[f32]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(vector.len() * 4);
     for x in vector {
@@ -178,6 +241,7 @@ pub(crate) fn to_bytes(vector: &[f32]) -> Vec<u8> {
     bytes
 }
 
+#[cfg(test)]
 pub(crate) fn from_bytes(data: &[u8], dim: usize) -> Option<Vec<f32>> {
     (data.len() == dim * 4).then(|| {
         let (chunks, _) = data.as_chunks::<4>();
@@ -256,6 +320,60 @@ mod tests {
         index.insert(Namespace::Episodic, "k", &[0.0, 1.0]);
         assert_eq!(index.len(Namespace::Episodic), 1);
         assert_eq!(index.get(Namespace::Episodic, "k").unwrap(), vec![0.0, 1.0]);
+    }
+
+    /// The four-row loop must give every row the distance the plain
+    /// one-row sum gives it, bit for bit, filtered or not, whatever the
+    /// count's remainder by four.
+    #[test]
+    fn four_row_scoring_matches_the_plain_sum_bit_for_bit() {
+        let dim = 384;
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 40) as f32 / (1u64 << 24) as f32 - 0.5
+        };
+        let mut index = VectorIndex::new(dim);
+        let mut plain = Vec::new();
+        for i in 0..203 {
+            let v: Vec<f32> = (0..dim).map(|_| next()).collect();
+            let key = format!("mem:episodic:{i:04}");
+            index.insert(Namespace::Episodic, &key, &v);
+            plain.push((key, v));
+        }
+        let query: Vec<f32> = (0..dim).map(|_| next()).collect();
+        let query_norm = query.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let expected = |keys: &dyn Fn(&str) -> bool| {
+            let mut all: Vec<(String, f32)> = plain
+                .iter()
+                .filter(|(k, _)| keys(k))
+                .map(|(k, v)| {
+                    let dot: f32 = v.iter().zip(&query).map(|(a, b)| a * b).sum();
+                    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    (k.clone(), 1.0 - dot / (norm * query_norm))
+                })
+                .collect();
+            all.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+            all
+        };
+        let bits = |hits: Vec<(String, f32)>| -> Vec<(String, u32)> {
+            hits.into_iter().map(|(k, d)| (k, d.to_bits())).collect()
+        };
+        let got = index.search(Namespace::Episodic, &query, 100, None);
+        let mut want = expected(&|_| true);
+        want.truncate(100);
+        assert_eq!(bits(got), bits(want));
+
+        let allowed: HashSet<String> = plain
+            .iter()
+            .map(|(k, _)| k.clone())
+            .filter(|k| k.ends_with(['1', '4', '7']))
+            .collect();
+        let got = index.search(Namespace::Episodic, &query, 100, Some(&allowed));
+        let want = expected(&|k| allowed.contains(k));
+        assert_eq!(bits(got), bits(want));
     }
 
     #[test]

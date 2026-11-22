@@ -1,11 +1,19 @@
 //! `omnimem install-hooks`: put the three Claude Code hooks from
 //! docs/claude-code-hook.md into a settings file, leaving alone any event
-//! that already has one.
+//! that already has one. With `--opencode`, write OmniMem's OpenCode plugin
+//! instead (guides/opencode.md), which runs the same hooks, and with
+//! `--vibe`, put them in Mistral Vibe's `hooks.toml` (guides/vibe.md), and
+//! with `--codex`, in Codex's `hooks.json` (guides/codex.md), and with
+//! `--kiro`, as Kiro's `hooks/omnimem.json` (guides/kiro.md).
 
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
+use omnimem_app::client_files::HooksState;
+use omnimem_app::codex;
+use omnimem_app::kiro;
+use omnimem_app::opencode::{self, PluginState, without_verbatim};
+use omnimem_app::vibe;
 use serde_json::{Map, Value, json};
 
 /// The hooks, as the guide gives them: event, matcher, `hook` argument and
@@ -25,12 +33,43 @@ enum Outcome {
     Present(String),
 }
 
-pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+/// Which agent the hooks are for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Target {
+    ClaudeCode,
+    OpenCode,
+    Vibe,
+    Codex,
+    Kiro,
+}
+
+pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool, target: Target) -> Result<()> {
     if std::env::var_os("FLATPAK_ID").is_some_and(|id| !id.is_empty()) {
-        bail!(
-            "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
-             see docs/claude-code-hook.md"
-        );
+        bail!(match target {
+            Target::OpenCode =>
+                "the Flatpak's sandbox can't reach OpenCode's config folder, and OpenCode outside \
+                 it can't run the Flatpak's omnimem. Install OmniMem's package to use the \
+                 OpenCode hooks",
+            Target::Vibe =>
+                "the Flatpak's sandbox can't reach Vibe's folder, and Vibe outside it can't run \
+                 the Flatpak's omnimem. Install OmniMem's package to use the Vibe hooks",
+            Target::Codex =>
+                "the Flatpak's sandbox can't reach Codex's folder, and Codex outside it can't \
+                 run the Flatpak's omnimem. Install OmniMem's package to use the Codex hooks",
+            Target::Kiro =>
+                "the Flatpak's sandbox can't reach Kiro's folder, and Kiro outside it can't run \
+                 the Flatpak's omnimem. Install OmniMem's package to use the Kiro hooks",
+            Target::ClaudeCode =>
+                "the Flatpak's sandbox can't reach Claude Code's settings. Add the hooks by hand: \
+                 see docs/claude-code-hook.md",
+        });
+    }
+    match target {
+        Target::OpenCode => return run_opencode(db, project, dry_run),
+        Target::Vibe => return run_vibe(db, project, dry_run),
+        Target::Codex => return run_codex(db, project, dry_run),
+        Target::Kiro => return run_kiro(db, project, dry_run),
+        Target::ClaudeCode => {}
     }
     let path = if project {
         std::env::current_dir()?
@@ -69,6 +108,150 @@ pub(crate) fn run(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()>
     Ok(())
 }
 
+/// Write the OpenCode plugin, globally or for the project in this folder.
+fn run_opencode(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = opencode::plugin_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find OpenCode's config in"))?;
+    let source = opencode::plugin_source(&opencode::hook_command(&opencode::this_program()?, db));
+    let state = opencode::plugin_state(&path, &source);
+    println!("{}", path.display());
+    let (verb, done) = match &state {
+        PluginState::Current => {
+            println!("The OmniMem plugin is already there; nothing changed.");
+            return Ok(());
+        }
+        PluginState::Foreign => bail!(
+            "{} isn't OmniMem's plugin, so it was left alone",
+            path.display()
+        ),
+        PluginState::Unreadable(why) => bail!("couldn't read {}: {why}", path.display()),
+        PluginState::Missing => ("add", "added"),
+        PluginState::Outdated => ("update", "updated"),
+    };
+    if dry_run {
+        println!("  would {verb} the OmniMem plugin\nNothing written (--dry-run).");
+        return Ok(());
+    }
+    opencode::write_plugin(&path, &source)?;
+    println!(
+        "  {done} the OmniMem plugin\nOpenCode loads it from its next start. See guides/opencode.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks in Vibe's hooks.toml, globally or for the project in
+/// this folder.
+fn run_vibe(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = vibe::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Vibe's in"))?;
+    let base = vibe::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let Some(verb) = verb_for(vibe::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
+    };
+    for hook in &vibe::HOOKS {
+        println!(
+            "  {verb:<12} {:<14} {}",
+            hook.kind,
+            vibe::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    vibe::write_hooks(&path, &base)?;
+    if project {
+        println!("Vibe reads them once this folder is trusted.");
+    }
+    println!(
+        "Vibe uses them from its next session (the briefing needs Vibe 3.1.1 or later). \
+         See guides/vibe.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks in Codex's hooks.json, globally or for the project in
+/// this folder.
+fn run_codex(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = codex::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Codex's in"))?;
+    let base = codex::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let Some(verb) = verb_for(codex::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
+    };
+    for hook in &codex::HOOKS {
+        println!(
+            "  {verb:<12} {:<13} {}",
+            hook.event,
+            codex::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    codex::write_hooks(&path, &base)?;
+    if project {
+        println!("Codex reads them once this project is trusted.");
+    }
+    println!(
+        "Codex asks you to review and trust them when it next starts (or under /hooks); \
+         they run once you have. See guides/codex.md."
+    );
+    Ok(())
+}
+
+/// Put OmniMem's hooks file in Kiro's hooks folder, globally or for the
+/// project in this folder.
+fn run_kiro(db: Option<&Path>, project: bool, dry_run: bool) -> Result<()> {
+    let here = std::env::current_dir()?;
+    let path = kiro::hooks_path(project.then_some(here.as_path()))
+        .ok_or_else(|| anyhow!("no home folder to find Kiro's in"))?;
+    let base = kiro::hook_base(&opencode::this_program()?, db);
+    println!("{}", path.display());
+    let Some(verb) = verb_for(kiro::hooks_state(&path, &base), &path, dry_run)? else {
+        return Ok(());
+    };
+    for hook in &kiro::HOOKS {
+        println!(
+            "  {verb:<12} {:<13} {}",
+            hook.trigger,
+            kiro::hook_command(&base, hook)
+        );
+    }
+    if dry_run {
+        println!("Nothing written (--dry-run).");
+        return Ok(());
+    }
+    kiro::write_hooks(&path, &base)?;
+    println!(
+        "Kiro uses them from its next session. Kiro's CLI reads ~/.kiro/hooks; its IDE reads a \
+         project's .kiro/hooks, which --project writes. See guides/kiro.md."
+    );
+    Ok(())
+}
+
+/// What installing does to hooks in this state, as the word each line starts
+/// with: `None`, having said so, when they're already as they'd be written.
+fn verb_for(state: HooksState, path: &Path, dry_run: bool) -> Result<Option<&'static str>> {
+    Ok(Some(match (state, dry_run) {
+        (HooksState::Current, _) => {
+            println!("OmniMem's hooks are already there; nothing changed.");
+            return Ok(None);
+        }
+        (HooksState::Unreadable(why), _) => bail!("couldn't use {}: {why}", path.display()),
+        (HooksState::Missing, true) => "would add",
+        (HooksState::Missing, false) => "added",
+        (HooksState::Outdated, true) => "would update",
+        (HooksState::Outdated, false) => "updated",
+    }))
+}
+
 /// How a hook runs this binary: `omnimem` when that's what the PATH finds,
 /// otherwise its full path (the macOS app's binary is inside its bundle,
 /// and a development build isn't on the PATH at all). With `--db`, the hooks
@@ -92,24 +275,6 @@ fn base_command(db: Option<&Path>) -> Result<String> {
         command.push_str(&quoted(&db.to_string_lossy()));
     }
     Ok(command)
-}
-
-/// A canonical path as a shell can run it. On Windows `canonicalize` returns
-/// the verbatim form, `\\?\C:\Users\...`, which no shell accepts as a command, so
-/// every hook `install-hooks` wrote there failed to start. The prefix comes
-/// off (`\\?\UNC\server\share` becomes `\\server\share`); a path without one is
-/// returned as it was, so this is a no-op elsewhere.
-fn without_verbatim(path: &Path) -> PathBuf {
-    let text = path.to_string_lossy();
-    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
-        return PathBuf::from(format!(r"\\{share}"));
-    }
-    match text.strip_prefix(r"\\?\") {
-        // Only a drive path: other verbatim forms (`\\?\Volume{...}`) have no
-        // plainer spelling, so they're left for the shell to refuse loudly.
-        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
-        _ => path.to_path_buf(),
-    }
 }
 
 /// Double-quoted for the shell Claude Code runs hooks in, when it needs to be.
@@ -191,24 +356,11 @@ fn read_settings(path: &Path) -> Result<Value> {
 /// Keep a copy of the file as it was, then write beside it and rename into
 /// place, so Claude Code never reads half a file.
 fn write_settings(path: &Path, settings: &Value) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    if path.exists() {
-        let backup = with_suffix(path, ".omnimem-backup");
-        std::fs::copy(path, &backup).with_context(|| format!("backing up {}", path.display()))?;
+    let text = serde_json::to_string_pretty(settings)? + "\n";
+    if let Some(backup) = omnimem_app::client_files::replace(path, &text, false)? {
         println!("The file as it was is in {}", backup.display());
     }
-    let partial = with_suffix(path, ".omnimem-partial");
-    std::fs::write(&partial, serde_json::to_string_pretty(settings)? + "\n")
-        .with_context(|| format!("writing {}", partial.display()))?;
-    std::fs::rename(&partial, path).with_context(|| format!("replacing {}", path.display()))
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
+    Ok(())
 }
 
 #[cfg(test)]

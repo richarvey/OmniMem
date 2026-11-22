@@ -24,7 +24,9 @@ impl Store {
             // between reading the table and replacing the matrix.
             let conn = self.conn();
             let index = VectorIndex::load(&conn, self.dimension())?;
+            let version = crate::store::data_version(&conn)?;
             *self.vectors_write() = index;
+            self.mark_loaded(version);
         }
         Ok(Namespace::ALL
             .iter()

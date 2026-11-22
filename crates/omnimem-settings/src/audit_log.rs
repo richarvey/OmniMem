@@ -8,7 +8,6 @@ use std::fmt::Write as _;
 use axum::extract::{Query, State};
 use axum::response::Response;
 use chrono::{Local, TimeZone};
-use minijinja::context;
 use omnimem_engine::{AuditLevel, change_summary, parse_when};
 use omnimem_store::{AuditQuery, AuditRow};
 use serde_json::{Value, json};

@@ -43,7 +43,6 @@ fn setup() -> (Panel, Arc<Engine>, PathBuf) {
     let panel = Panel::new();
     panel.set_engine(engine.clone());
     let dir = scratch("skills");
-    panel.set_downloads_dir(dir.join("Downloads"));
     panel.set_feeds_path(dir.join("feeds.yml"));
     (panel, engine, dir)
 }
@@ -91,7 +90,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn landed(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -165,7 +164,7 @@ async fn the_new_skill_modal_refuses_what_it_should() {
     );
     let exists = text(&post(&panel, "/skills/compile", "domain=rust").await);
     assert!(exists.contains("already exists"), "{exists}");
-    assert!(exists.contains(r#"<a href="/skills/mem:skill:gen:rust-local">rust-local</a>"#));
+    assert!(exists.contains(r#"<a href="/admin/skills/mem:skill:gen:rust-local">rust-local</a>"#));
 
     // An alias resolves first: golang is reported as go.
     let aliased = text(&post(&panel, "/skills/compile", "domain=golang").await);
@@ -196,14 +195,14 @@ async fn skills_list_show_and_delete() {
 
     let list = text(&get(&panel, "/skills").await);
     assert!(
-        list.contains(r#"<span class="badge" style="font-size:0.75rem">1</span>"#),
+        list.contains(r#"<span class="count-chip">1</span>"#),
         "{list}"
     );
     assert!(list.contains(&format!(
-        r#"<a href="/skills/{key}" class="project-name">rust-local</a>"#
+        r#"<a href="/admin/skills/{key}" class="project-name" title="rust-local">rust-local</a>"#
     )));
     assert!(list.contains("1 active"));
-    assert!(list.contains("class=\"nav-link active\">Compiled Skills"));
+    assert!(list.contains("aria-current=\"page\"><span class=\"nav-label\">Skills"));
 
     let detail = text(&get(&panel, &format!("/skills/{key}")).await);
     assert!(
@@ -211,11 +210,10 @@ async fn skills_list_show_and_delete() {
         "{detail}"
     );
     assert!(
-        detail.contains("(1 do · 0 watch · 0 don&#39;t)")
-            || detail.contains("(1 do · 0 watch · 0 don't)"),
+        detail.contains("1 do, 0 watch, 0 don&#39;t") || detail.contains("1 do, 0 watch, 0 don't"),
         "{detail}"
     );
-    assert!(detail.contains(&format!(r#"<a href="/memory/{source}""#)));
+    assert!(detail.contains(&format!(r#"<a href="/admin/memory/{}?back="#, source)));
     assert!(detail.contains("# Rust"));
     assert_eq!(
         get(&panel, "/skills/mem:skill:gen:nothing").await.status(),
@@ -242,28 +240,19 @@ async fn skills_list_show_and_delete() {
 }
 
 #[tokio::test]
-async fn a_bundle_exports_to_downloads_and_imports_after_confirming() {
+async fn a_bundle_downloads_and_imports_after_confirming() {
     let (panel, engine, dir) = setup();
     let (key, source) = compiled_skill(&engine);
 
-    let exported = landed(&get(&panel, &format!("/skills/export/{key}")).await);
+    let exported = get(&panel, &format!("/skills/export/{key}")).await;
+    assert_eq!(exported.status(), 200);
+    assert_eq!(exported.headers()["content-type"], "application/zip");
+    let disposition = exported.headers()["content-disposition"].to_str().unwrap();
     assert!(
-        exported.starts_with("/skills?message=Exported%20to%20"),
-        "{exported}"
+        disposition.starts_with("attachment; filename=\"") && disposition.ends_with(".zip\""),
+        "{disposition}"
     );
-    let downloads = dir.join("Downloads");
-    let files: Vec<PathBuf> = std::fs::read_dir(&downloads)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    assert_eq!(files.len(), 1, "{files:?}");
-    let bundle = std::fs::read(&files[0]).unwrap();
-    landed(&get(&panel, &format!("/skills/export/{key}")).await);
-    assert_eq!(
-        std::fs::read_dir(&downloads).unwrap().count(),
-        2,
-        "a second export doesn't overwrite"
-    );
+    let bundle = exported.body().clone();
     assert_eq!(
         get(&panel, "/skills/export/mem:skill:gen:nothing")
             .await
@@ -307,7 +296,7 @@ async fn a_bundle_exports_to_downloads_and_imports_after_confirming() {
         .await;
     assert_eq!(
         confirmed.headers()["HX-Redirect"],
-        "/skills?message=Skill%20imported%3B%201%20memory%20added."
+        "/admin/skills?message=Skill%20imported%3B%201%20memory%20added."
     );
     assert!(engine.store().get(&key).unwrap().is_some());
     assert!(engine.store().get(&source).unwrap().is_some());
@@ -327,7 +316,7 @@ async fn a_bundle_exports_to_downloads_and_imports_after_confirming() {
         .await,
     );
     assert!(shown.contains(
-        r#"<div class="flash flash-success"><span>Skill imported; 1 memory added.</span></div>"#
+        r#"<div class="flash flash-success" role="status"><span>Skill imported; 1 memory added.</span></div>"#
     ));
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -355,20 +344,25 @@ fn stash_proposal(engine: &Engine, based_on: &str) {
 async fn pending_proposals_list_with_their_draft_and_count() {
     let (panel, engine, dir) = setup();
     let none = text(&get(&panel, "/skills").await);
-    assert!(!none.contains("Pending proposals"), "{none}");
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(!none.contains(r#"id="pending-proposals""#), "{none}");
 
+    // Stashed straight into the store, as an agent's proposal is: the menu's
+    // count is cached for a short while, so it isn't read before this.
     stash_proposal(&engine, "");
     let list = text(&get(&panel, "/skills").await);
-    assert!(list.contains("Pending proposals"), "{list}");
+    assert!(list.contains(r#"id="pending-proposals""#), "{list}");
     assert!(list.contains("new skill"), "{list}");
     assert!(list.contains("# Rust"), "the draft is shown: {list}");
-    assert!(list.contains("Accept &amp; Write Skill"));
-    assert!(list.contains(r#"action="/skills/discard""#));
-    // The sidebar loads its count like the version marker.
-    assert!(list.contains(r#"hx-get="/skills/pending-badge""#));
-    let badge = text(&get(&panel, "/skills/pending-badge").await);
-    assert!(badge.contains(">1</span>"), "{badge}");
+    assert!(list.contains("Accept &amp; write skill"));
+    assert!(list.contains(r#"action="/admin/skills/discard""#));
+    // The sidebar loads every review count in one request, out of band.
+    assert!(list.contains(r#"hx-get="/admin/nav-counts""#));
+    let counts = text(&get(&panel, "/nav-counts").await);
+    assert!(
+        counts.contains(r#"id="nav-count-skills" hx-swap-oob="true"><span class="nav-count""#)
+            && counts.contains(">1</span>"),
+        "{counts}"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -380,7 +374,7 @@ async fn accepting_a_pending_proposal_commits_the_stash() {
     let accepted = post(&panel, "/skills/commit", "domain=rust").await;
     assert_eq!(
         accepted.headers()["HX-Redirect"],
-        "/skills/mem:skill:gen:rust-local"
+        "/admin/skills/mem:skill:gen:rust-local"
     );
     let stored = engine
         .store()
@@ -389,7 +383,11 @@ async fn accepting_a_pending_proposal_commits_the_stash() {
         .unwrap();
     assert_eq!(stored["body"], DRAFT, "byte for byte");
     assert!(engine.store().hash_get_all(PROPOSAL).unwrap().is_none());
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(
+        !text(&get(&panel, "/nav-counts").await)
+            .contains(r#"nav-count-skills" hx-swap-oob="true"><span"#),
+        "no proposal, no count"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -426,8 +424,12 @@ async fn a_stale_pending_proposal_cannot_be_accepted() {
 
     let list = text(&get(&panel, "/skills").await);
     assert!(list.contains("changed after this was proposed"), "{list}");
-    assert!(!list.contains("Accept &amp; Write Skill"), "{list}");
-    assert_eq!(text(&get(&panel, "/skills/pending-badge").await), "");
+    assert!(!list.contains("Accept &amp; write skill"), "{list}");
+    assert!(
+        !text(&get(&panel, "/nav-counts").await)
+            .contains(r#"nav-count-skills" hx-swap-oob="true"><span"#),
+        "no proposal, no count"
+    );
 
     let refused = text(&post(&panel, "/skills/commit", "domain=rust").await);
     assert!(refused.contains("stored skill changed"), "{refused}");
@@ -437,5 +439,210 @@ async fn a_stale_pending_proposal_cannot_be_accepted() {
         .unwrap()
         .unwrap();
     assert_ne!(stored["body"], DRAFT);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// A recent feed article stored with the skill's own vector, so the
+/// knowledge watch suggests it for that skill.
+fn suggested_article(engine: &Engine, key: &str, title: &str) {
+    let now = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let fields = Fields::from([
+        ("content".to_owned(), format!("{title}: what changed")),
+        ("title".to_owned(), title.to_owned()),
+        ("feed_name".to_owned(), "Rust Blog".to_owned()),
+        ("source_url".to_owned(), "javascript:alert(1)".to_owned()),
+        ("state".to_owned(), "active".to_owned()),
+        ("licence".to_owned(), "open".to_owned()),
+        ("provenance".to_owned(), "retrieved".to_owned()),
+        ("created_at".to_owned(), now.clone()),
+        ("updated_at".to_owned(), now),
+    ]);
+    let vector = engine.embed_texts(&["rust-local"]).unwrap().remove(0);
+    engine.store().upsert(key, &fields, Some(&vector)).unwrap();
+}
+
+#[tokio::test]
+async fn skill_suggestions_show_on_the_dashboard_and_skills_page_and_can_be_settled() {
+    let (panel, engine, dir) = setup();
+    compiled_skill(&engine);
+    suggested_article(&engine, "mem:knowledge:01DISMISS", "Clippy lints for async");
+    suggested_article(&engine, "mem:knowledge:01ACCEPT", "Faster cargo test runs");
+
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(dashboard.contains("skill suggestions"), "{dashboard}");
+    assert!(dashboard.contains(r#"href="/admin/skills#skill-suggestions""#));
+
+    let list = text(&get(&panel, "/skills").await);
+    assert!(list.contains("Suggested for your skills"), "{list}");
+    assert!(list.contains("Clippy lints for async"));
+    assert!(list.contains(r#"action="/admin/skills/suggestions/accept""#));
+    assert!(
+        !list.contains("javascript:"),
+        "a feed's link must be a web address"
+    );
+
+    let dismissed = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/dismiss",
+            "domain=rust&key=mem%3Aknowledge%3A01DISMISS",
+        )
+        .await,
+    );
+    assert!(dismissed.starts_with("/skills?message="), "{dismissed}");
+    let list = text(&get(&panel, "/skills").await);
+    assert!(!list.contains("Clippy lints for async"), "{list}");
+    assert!(list.contains("Faster cargo test runs"));
+
+    let accepted = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/accept",
+            "domain=rust&key=mem%3Aknowledge%3A01ACCEPT",
+        )
+        .await,
+    );
+    assert!(accepted.starts_with("/skills?message="), "{accepted}");
+    assert!(accepted.ends_with("#pending-proposals"), "{accepted}");
+    let article = engine
+        .store()
+        .get("mem:knowledge:01ACCEPT")
+        .unwrap()
+        .unwrap();
+    assert_eq!(article["skill_domains"], r#"["rust"]"#);
+    assert!(
+        engine.store().hash_get_all(PROPOSAL).unwrap().is_some(),
+        "the skill's new draft waits for a person"
+    );
+    let stored = engine
+        .store()
+        .get("mem:skill:gen:rust-local")
+        .unwrap()
+        .unwrap();
+    assert!(
+        !stored["body"].contains("Faster cargo"),
+        "the skill itself is unchanged until the draft is accepted"
+    );
+
+    let list = text(&get(&panel, "/skills").await);
+    assert!(!list.contains("Suggested for your skills"), "{list}");
+    assert!(list.contains(r#"id="pending-proposals""#));
+    let dashboard = text(&get(&panel, "/").await);
+    assert!(!dashboard.contains("skill suggestion"), "{dashboard}");
+
+    // Anything but a knowledge article is refused, and said.
+    let refused = landed(
+        &post(
+            &panel,
+            "/skills/suggestions/accept",
+            "domain=rust&key=mem%3Aepisodic%3A01X",
+        )
+        .await,
+    );
+    assert!(refused.starts_with("/skills?error="), "{refused}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// An episodic memory carrying a lesson, tagged with a domain.
+fn lesson(engine: &Engine, key: &str, domain: &str, project: &str, text: &str) {
+    let now = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let fields = Fields::from([
+        ("content".to_owned(), format!("work on {project}")),
+        ("tags".to_owned(), format!(r#"["{domain}"]"#)),
+        ("project".to_owned(), project.to_owned()),
+        ("outcome".to_owned(), "succeeded".to_owned()),
+        ("effort_score".to_owned(), "3".to_owned()),
+        ("lesson".to_owned(), text.to_owned()),
+        ("state".to_owned(), "active".to_owned()),
+        ("created_at".to_owned(), now.clone()),
+        ("updated_at".to_owned(), now),
+    ]);
+    let vector = engine.embed_texts(&[text]).unwrap().remove(0);
+    engine.store().upsert(key, &fields, Some(&vector)).unwrap();
+}
+
+#[tokio::test]
+async fn domains_that_could_become_skills_list_and_draft() {
+    let (panel, engine, dir) = setup();
+    let lazy = text(&get(&panel, "/skills").await);
+    assert!(lazy.contains("Could become skills"), "{lazy}");
+    assert!(lazy.contains(r#"hx-get="/admin/skills/candidates""#));
+    assert!(lazy.contains(r#"action="/admin/skills/scan""#));
+    let none = text(&get(&panel, "/skills/candidates").await);
+    assert!(
+        none.contains("No domain without a skill has a lesson yet"),
+        "{none}"
+    );
+
+    let queues = "always use boring queues for background work";
+    lesson(&engine, "mem:episodic:01A", "python", "alpha", queues);
+    lesson(&engine, "mem:episodic:01B", "python", "beta", queues);
+    lesson(
+        &engine,
+        "mem:episodic:01G",
+        "golang",
+        "alpha",
+        "keep goroutines bounded",
+    );
+    let listed = text(&get(&panel, "/skills/candidates").await);
+    assert!(listed.contains("<strong>python</strong>"), "{listed}");
+    assert!(listed.contains("1 more memory with a lesson"), "{listed}");
+    assert!(listed.contains("Draft it anyway"));
+    assert!(
+        listed.contains("keep goroutines bounded"),
+        "golang's lesson is held back"
+    );
+    assert!(listed.contains(r#"value="mem:episodic:01G""#));
+
+    // Nothing clears the scan's bar of three memories, and it says so.
+    let scanned = landed(&post(&panel, "/skills/scan", "").await);
+    assert!(scanned.contains("Nothing%20new"), "{scanned}");
+
+    let blessed = landed(&post(&panel, "/skills/bless", "key=mem%3Aepisodic%3A01G").await);
+    assert!(blessed.starts_with("/skills?message="), "{blessed}");
+    assert_eq!(
+        engine.store().get("mem:episodic:01G").unwrap().unwrap()["blessed"],
+        "1"
+    );
+    let refused = landed(&post(&panel, "/skills/bless", "key=mem%3Aknowledge%3A01K").await);
+    assert!(refused.starts_with("/skills?error="), "{refused}");
+
+    let drafted = landed(&post(&panel, "/skills/candidates/draft", "domain=python").await);
+    assert!(drafted.starts_with("/skills?message=Drafted"), "{drafted}");
+    assert!(
+        engine
+            .store()
+            .hash_get_all("meta:skill:proposal:python-local")
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        engine
+            .store()
+            .get("mem:skill:gen:python-local")
+            .unwrap()
+            .is_none(),
+        "only a draft: the skill waits for an accept"
+    );
+    let after = text(&get(&panel, "/skills/candidates").await);
+    assert!(
+        !after.contains("<strong>python</strong>"),
+        "a drafted domain leaves the list"
+    );
+
+    let nothing = landed(&post(&panel, "/skills/candidates/draft", "domain=ruby").await);
+    assert!(nothing.starts_with("/skills?error="), "{nothing}");
     std::fs::remove_dir_all(dir).unwrap();
 }

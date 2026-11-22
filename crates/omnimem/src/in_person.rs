@@ -1,7 +1,7 @@
 //! The terminal check on the CLI commands only a person should run (#37):
 //! `omnimem trust confirm`, `reject`, `restore` and `confirm-source`, and
 //! `omnimem contradictions resolve` and `accept`. Like a click in the
-//! settings window, these settle what an agent may only propose, so an agent
+//! settings panel, these settle what an agent may only propose, so an agent
 //! with a shell on the same machine shouldn't be able to run them as part of
 //! a script.
 //!
@@ -30,7 +30,7 @@ pub(crate) fn confirm(what: &str, key: &str) -> Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!(
             "{what} is a person's decision, so it runs only from a terminal, where you'll be \
-             asked to type the end of the key. Run it yourself, or use the settings window."
+             asked to type the end of the key. Run it yourself, or use the settings panel."
         );
     }
     let expected = tail(key);

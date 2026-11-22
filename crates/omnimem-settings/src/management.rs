@@ -5,9 +5,8 @@ use std::collections::HashMap;
 
 use axum::Form;
 use axum::extract::{Query, State};
-use axum::response::Response;
+use axum::response::{Html, IntoResponse, Response};
 use chrono::{TimeZone, Utc};
-use minijinja::context;
 use omnimem_engine::{Engine, EngineError, ResolveRequest, Retire};
 use serde_json::{Value, json};
 use tracing::warn;
@@ -60,27 +59,239 @@ fn last_maintenance(engine: &Engine) -> omnimem_engine::Result<Option<Value>> {
     Ok(latest.map(|(_, note)| note))
 }
 
-pub(crate) async fn duplicates(State(state): State<PanelState>) -> Response {
+fn scan_namespace(query: &HashMap<String, String>) -> String {
+    query
+        .get("namespace")
+        .filter(|n| NAMESPACES.contains(&n.as_str()))
+        .cloned()
+        .unwrap_or_else(|| "episodic".to_owned())
+}
+
+/// One namespace's clusters, from the stored vectors.
+fn scan(engine: &Engine, namespace: &str, project: &str) -> omnimem_engine::Result<Value> {
+    match engine.find_duplicates(namespace, None, Some(project)) {
+        Ok(result) => Ok(result["clusters"].clone()),
+        Err(EngineError::Invalid(problem)) => {
+            warn!(problem, "duplicate scan refused");
+            Ok(json!([]))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// GET `/duplicates`: the form, and with `scan=1` its results, so a scan has
+/// an address: an Archive, or a memory's Back link, comes back to the same
+/// clusters rather than an empty form.
+pub(crate) async fn duplicates(
+    State(state): State<PanelState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    match blocking(move || last_maintenance(&engine)).await {
-        Ok(last) => page(
-            state.templates(),
-            "duplicates.html",
-            context! {
-                current_page => "duplicates",
-                clusters => (),
-                namespace => "episodic",
-                scanned => false,
-                last_maintenance => last,
-            },
-        ),
+    let namespace = scan_namespace(&query);
+    // Only a usable project name narrows a scan, so a made-up one can't start
+    // (and cache) a scan of its own.
+    let project = query
+        .get("project")
+        .filter(|p| crate::projects::check_project_name(p).is_ok())
+        .cloned()
+        .unwrap_or_default();
+    let scanned = query.get("scan").is_some_and(|s| s == "1");
+    let fresh = query.get("fresh").is_some_and(|f| f == "1");
+    let wanted = namespace.clone();
+    let slot = (namespace.clone(), project.clone());
+    // A scan compares every vector, so the page an Archive returns to reuses
+    // the last one, minus what has been archived since. It keeps its own
+    // age: archiving doesn't make an old scan new.
+    let cached = state
+        .caches()
+        .duplicates
+        .get(&slot)
+        .filter(|(at, _)| at.elapsed() < SCAN_TTL && !fresh)
+        .map(|(at, clusters)| (*at, clusters.clone()));
+    let found = blocking(move || {
+        let (at, clusters) = match (scanned, cached) {
+            (false, _) => (std::time::Instant::now(), json!([])),
+            (true, Some((at, clusters))) => (at, prune(&engine, &clusters)?),
+            (true, None) => (std::time::Instant::now(), scan(&engine, &wanted, &project)?),
+        };
+        Ok((at, clusters, last_maintenance(&engine)?))
+    })
+    .await;
+    let (at, clusters, last) = match found {
+        Ok(found) => found,
+        Err(failure) => return failure,
+    };
+    if scanned {
+        let mut caches = state.caches();
+        // An expired scan is still the last word on its namespace, so the
+        // dashboard can say what it found and how long ago; only a stale
+        // one goes, so the map can't grow with every project scanned.
+        caches
+            .duplicates
+            .retain(|_, (when, _)| when.elapsed() < SCAN_MEMORY);
+        caches.duplicates.insert(slot, (at, clusters.clone()));
+    }
+    page(
+        state.templates(),
+        "duplicates.html",
+        context! {
+            current_page => "duplicates",
+            clusters,
+            namespace,
+            scanned,
+            scan_minutes => at.elapsed().as_secs() / 60,
+            last_maintenance => last,
+            message => query.get("message"),
+            error => query.get("error"),
+        },
+    )
+}
+
+/// POST `/duplicates/keep`: keep one member of a cluster and archive the
+/// rest (each `other`), then return to the scan.
+pub(crate) async fn keep_duplicate(
+    State(state): State<PanelState>,
+    Form(form): Form<Vec<(String, String)>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let value = |name: &str| form.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+    let keep = value("key").unwrap_or_default();
+    let target = value("next")
+        .and_then(|n| crate::pages::local_path(&n))
+        .unwrap_or_else(|| "/duplicates".to_owned());
+    // The others are the rest of the scanned cluster this memory is in, never
+    // whatever the form names: a form can't widen what gets archived.
+    let others: Option<Vec<String>> = state
+        .caches()
+        .duplicates
+        .values()
+        .filter(|(at, _)| at.elapsed() < SCAN_TTL)
+        .find_map(|(_, clusters)| {
+            clusters.as_array()?.iter().find_map(|cluster| {
+                let keys: Vec<String> = cluster["memories"]
+                    .as_array()?
+                    .iter()
+                    .filter_map(|m| m["key"].as_str().map(str::to_owned))
+                    .collect();
+                keys.contains(&keep)
+                    .then(|| keys.into_iter().filter(|k| *k != keep).collect())
+            })
+        });
+    let Some(others) = others else {
+        return see_other(&with_notice(
+            &target,
+            "error",
+            "That scan has expired. Scan again, then choose which copy to keep.",
+        ));
+    };
+    let done = blocking(move || {
+        let live = engine
+            .store()
+            .get_fields_multi(std::slice::from_ref(&keep), &["state"])?
+            .into_iter()
+            .next()
+            .flatten()
+            .is_some_and(|row| {
+                !matches!(
+                    row.get("state").map(String::as_str),
+                    Some("archived" | "deleted")
+                )
+            });
+        if !live {
+            return Ok(Err(
+                "The copy to keep is no longer active, so nothing was archived.".to_owned(),
+            ));
+        }
+        let reason = format!("Duplicate of {keep}, archived from the settings panel");
+        let (mut archived, mut failed) = (0usize, 0usize);
+        // A copy archived from its own row since the scan is already done.
+        let states = engine.store().get_fields_multi(&others, &["state"])?;
+        let others: Vec<&String> = others
+            .iter()
+            .zip(states)
+            .filter(|(_, row)| {
+                row.as_ref().is_some_and(|r| {
+                    !matches!(
+                        r.get("state").map(String::as_str),
+                        Some("archived" | "deleted")
+                    )
+                })
+            })
+            .map(|(key, _)| key)
+            .collect();
+        for key in others {
+            match engine.transition(key, omnimem_engine::MemoryState::Archived, Some(&reason)) {
+                Ok(_) => archived += 1,
+                Err(e) => {
+                    warn!(key, error = %e, "could not archive a duplicate");
+                    failed += 1;
+                }
+            }
+        }
+        Ok(if failed == 0 {
+            Ok(format!("Kept one, archived {archived}."))
+        } else {
+            Err(format!(
+                "Kept one, archived {archived}; {failed} could not be archived."
+            ))
+        })
+    })
+    .await;
+    state.invalidate_counts();
+    match done {
+        Ok(Ok(message)) => see_other(&with_notice(&target, "message", &message)),
+        Ok(Err(problem)) => see_other(&with_notice(&target, "error", &problem)),
         Err(failure) => failure,
     }
 }
 
-/// GET `/duplicates/scan`: the htmx scan, reusing stored vectors.
+/// `url` with a one-off notice added to its query.
+fn with_notice(url: &str, name: &str, text: &str) -> String {
+    let joiner = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{joiner}{name}={}", quote(text))
+}
+
+/// A cached scan as it stands now: members archived or deleted since are
+/// gone, and a cluster left with one member is settled.
+pub(crate) fn prune(engine: &Engine, clusters: &Value) -> omnimem_engine::Result<Value> {
+    let Some(list) = clusters.as_array() else {
+        return Ok(json!([]));
+    };
+    let mut kept = Vec::new();
+    for cluster in list {
+        let members = cluster["memories"].as_array().cloned().unwrap_or_default();
+        let keys: Vec<String> = members
+            .iter()
+            .filter_map(|m| m["key"].as_str().map(str::to_owned))
+            .collect();
+        let states = engine.store().get_fields_multi(&keys, &["state"])?;
+        let live: Vec<Value> = members
+            .into_iter()
+            .zip(states)
+            .filter(|(_, row)| {
+                row.as_ref().is_some_and(|r| {
+                    !matches!(
+                        r.get("state").map(String::as_str),
+                        Some("archived" | "deleted")
+                    )
+                })
+            })
+            .map(|(m, _)| m)
+            .collect();
+        if live.len() > 1 {
+            let mut cluster = cluster.clone();
+            cluster["memories"] = Value::Array(live);
+            kept.push(cluster);
+        }
+    }
+    Ok(Value::Array(kept))
+}
+
+/// GET `/duplicates/scan`: the htmx form of the same scan.
 pub(crate) async fn duplicates_scan(
     State(state): State<PanelState>,
     Query(query): Query<HashMap<String, String>>,
@@ -88,25 +299,10 @@ pub(crate) async fn duplicates_scan(
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let namespace = query
-        .get("namespace")
-        .filter(|n| NAMESPACES.contains(&n.as_str()))
-        .cloned()
-        .unwrap_or_else(|| "episodic".to_owned());
+    let namespace = scan_namespace(&query);
     let project = query.get("project").cloned().unwrap_or_default();
     let scanned = namespace.clone();
-    let found = blocking(
-        move || match engine.find_duplicates(&scanned, None, Some(&project)) {
-            Ok(result) => Ok(result["clusters"].clone()),
-            Err(EngineError::Invalid(problem)) => {
-                warn!(problem, "duplicate scan refused");
-                Ok(json!([]))
-            }
-            Err(e) => Err(e),
-        },
-    )
-    .await;
-    match found {
+    match blocking(move || scan(&engine, &scanned, &project)).await {
         Ok(clusters) => page(
             state.templates(),
             "partials/dup_results.html",
@@ -132,20 +328,249 @@ pub(crate) async fn contradictions(
     })
     .await;
     match found {
-        Ok((pairs, pending, last)) => page(
-            state.templates(),
-            "contradictions.html",
-            context! {
-                current_page => "contradictions",
-                pairs,
-                pending,
-                last_maintenance => last,
-                message => query.get("message"),
-                error => query.get("error"),
-            },
-        ),
+        Ok((pairs, pending, last)) => {
+            // Wording-only links come from the heuristic, which never disputes
+            // anything; they are most of the list and mostly noise, so they
+            // are shown apart from the ones a model confirmed.
+            let (wording, pairs): (Vec<Value>, Vec<Value>) =
+                pairs.into_iter().partition(is_wording_only);
+            page(
+                state.templates(),
+                "contradictions.html",
+                context! {
+                    current_page => "contradictions",
+                    pairs,
+                    wording,
+                    pending,
+                    last_maintenance => last,
+                    message => query.get("message"),
+                    error => query.get("error"),
+                },
+            )
+        }
         Err(failure) => failure,
     }
+}
+
+/// A pair only the heuristic linked: its explanation is one of the fixed
+/// heuristic sentences.
+fn is_wording_only(pair: &Value) -> bool {
+    let explanation = pair["explanation"].as_str().unwrap_or("").trim();
+    explanation == omnimem_store::HEURISTIC_LINK_EXPLANATION
+        || explanation == omnimem_store::HEURISTIC_EXPLANATION
+}
+
+/// What waits on a person in Contradictions, counted as the menu, the
+/// dashboard and the page all count it: pairs a model confirmed plus
+/// resolutions an agent proposed, and, apart, the wording-only pairs.
+pub(crate) fn contradiction_counts(engine: &Engine) -> omnimem_engine::Result<(usize, usize)> {
+    let open = engine.open_contradictions()?;
+    let wording = open.iter().filter(|p| is_wording_only(p)).count();
+    Ok((
+        open.len() - wording + engine.pending_resolutions()?.len(),
+        wording,
+    ))
+}
+
+/// POST `/contradictions/dismiss-wording`: settle every wording-only pair as
+/// not a contradiction, in one click. The click is the person's say-so, as
+/// for a single pair; a pair a model confirmed is never touched.
+pub(crate) async fn dismiss_wording(
+    State(state): State<PanelState>,
+    Form(form): Form<Vec<(String, String)>>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    // Only the pairs the page listed, so one linked after it was shown is
+    // never dismissed unseen.
+    let shown: std::collections::BTreeSet<(String, String)> = form
+        .iter()
+        .filter(|(k, _)| k == "pair")
+        .filter_map(|(_, v)| v.split_once('|'))
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+        .collect();
+    let done = blocking(move || {
+        let (mut settled, mut skipped) = (0usize, 0usize);
+        let open = engine.open_contradictions()?;
+        for pair in &open {
+            let (Some(a), Some(b)) = (pair["key_a"].as_str(), pair["key_b"].as_str()) else {
+                continue;
+            };
+            if !shown.contains(&(a.to_owned(), b.to_owned())) {
+                continue;
+            }
+            if !is_wording_only(pair) {
+                skipped += 1;
+                continue;
+            }
+            let request = ResolveRequest::new(
+                a,
+                b,
+                "false_positive",
+                None,
+                Some("Wording only: dismissed from the settings panel"),
+                Retire::No,
+            )?;
+            match engine.resolve_contradiction(&request, "panel") {
+                Ok(_) => settled += 1,
+                Err(EngineError::Invalid(problem)) => {
+                    warn!(problem, a, b, "could not dismiss a pair");
+                    skipped += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        let gone = shown.len().saturating_sub(settled + skipped);
+        let plural = |n: usize| if n == 1 { "" } else { "s" };
+        let mut message = format!("Dismissed {settled} wording-only pair{}.", plural(settled));
+        if gone > 0 {
+            message.push_str(&format!(" {gone} had already been settled."));
+        }
+        if skipped > 0 {
+            message.push_str(&format!(
+                " {skipped} changed since the page was shown and were left alone."
+            ));
+        }
+        Ok(Ok(message))
+    })
+    .await;
+    state.invalidate_counts();
+    done.map_or_else(|failure| failure, contradictions_notice)
+}
+
+/// How long the menu's counts and a duplicate scan are reused, and how long
+/// a scan's result is remembered for the dashboard after that.
+const NAV_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const SCAN_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+pub(crate) const SCAN_MEMORY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// What the last duplicate scans found and is still unsettled: clusters,
+/// the namespaces scanned, and the newest scan's age in minutes. One scan
+/// per namespace: a project-scoped scan's clusters are a subset of the whole
+/// namespace's, so the unscoped scan speaks for it where there is one, else
+/// the newest. That is also the scan the dashboard tile opens. A scan older
+/// than the cache keeps it is ignored here as it would be there.
+pub(crate) fn cached_duplicates(caches: &crate::Caches) -> CachedDuplicates {
+    let mut by_namespace: HashMap<(&str, &str), (bool, &std::time::Instant, &Value)> =
+        HashMap::new();
+    for ((ns, project), (at, clusters)) in &caches.duplicates {
+        if at.elapsed() >= SCAN_MEMORY {
+            continue;
+        }
+        let unscoped = project.is_empty();
+        let current = by_namespace
+            .iter()
+            .find(|((n, _), _)| *n == ns.as_str())
+            .map(|(slot, pick)| (*slot, *pick));
+        let wins = current.is_none_or(|(_, (best_unscoped, best_at, _))| {
+            (unscoped, at) > (best_unscoped, best_at)
+        });
+        if wins {
+            if let Some((slot, _)) = current {
+                by_namespace.remove(&slot);
+            }
+            by_namespace.insert((ns, project), (unscoped, at, clusters));
+        }
+    }
+    let mut found = 0usize;
+    let mut scans: Vec<(String, String)> = Vec::new();
+    let mut newest: Option<std::time::Instant> = None;
+    for ((ns, project), (_, at, clusters)) in by_namespace {
+        let n = clusters.as_array().map_or(0, Vec::len);
+        if n > 0 {
+            found += n;
+            scans.push((ns.to_owned(), project.to_owned()));
+            newest = Some(newest.map_or(*at, |best| best.max(*at)));
+        }
+    }
+    scans.sort();
+    let age = newest.map_or(0, |at| at.elapsed().as_secs() / 60);
+    (found, scans, age)
+}
+
+/// Clusters still waiting, the `(namespace, project)` of each scan counted
+/// (the project empty for a whole-namespace scan), and the newest scan's
+/// age in minutes.
+pub(crate) type CachedDuplicates = (usize, Vec<(String, String)>, u64);
+
+fn nav_badge(id: &str, n: usize, one: &str, many: &str) -> String {
+    let inner = if n > 0 {
+        let count = crate::render::thousands(&minijinja::Value::from(n));
+        let what = if n == 1 { one } else { many };
+        format!(r#"<span class="nav-count" title="{count} {what}">{count}</span>"#)
+    } else {
+        String::new()
+    };
+    format!(r#"<span class="nav-badge" id="{id}" hx-swap-oob="true">{inner}</span>"#)
+}
+
+/// GET `/nav-counts`: every review count the menu shows, in one request
+/// and reused for a short while, swapped into the menu out of band.
+pub(crate) async fn nav_counts(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return Html("").into_response();
+    };
+    let cached = state
+        .caches()
+        .nav_counts
+        .clone()
+        .filter(|(at, _)| at.elapsed() < NAV_TTL);
+    let counts = if let Some((_, counts)) = cached {
+        counts
+    } else {
+        let counted = blocking(move || {
+            let (model, _) = contradiction_counts(&engine)?;
+            Ok(json!({
+                "unconfirmed": engine.store().count_unconfirmed()?,
+                "contradictions": model,
+                "proposals": engine
+                    .pending_skill_proposals()?
+                    .iter()
+                    .filter(|p| !p.stale)
+                    .count(),
+            }))
+        })
+        .await;
+        match counted {
+            Ok(counts) => {
+                state.caches().nav_counts = Some((std::time::Instant::now(), counts.clone()));
+                counts
+            }
+            Err(_) => return Html("").into_response(),
+        }
+    };
+    let n = |name: &str| usize::try_from(counts[name].as_u64().unwrap_or(0)).unwrap_or(0);
+    // The scan cache is in memory, so this one is never stale.
+    let duplicates = cached_duplicates(&state.caches());
+    Html(format!(
+        "{}{}{}{}",
+        nav_badge(
+            "nav-count-unconfirmed",
+            n("unconfirmed"),
+            "unconfirmed fact",
+            "unconfirmed facts"
+        ),
+        nav_badge(
+            "nav-count-contradictions",
+            n("contradictions"),
+            "contradiction to settle",
+            "contradictions to settle"
+        ),
+        nav_badge(
+            "nav-count-skills",
+            n("proposals"),
+            "skill proposal waiting",
+            "skill proposals waiting"
+        ),
+        nav_badge(
+            "nav-count-duplicates",
+            duplicates.0,
+            "duplicate cluster from your last scan",
+            "duplicate clusters from your last scan"
+        ),
+    ))
+    .into_response()
 }
 
 fn form_value(form: &HashMap<String, String>, name: &str) -> String {
@@ -212,6 +637,7 @@ pub(crate) async fn resolve_contradiction(
         })())
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 
@@ -235,6 +661,7 @@ pub(crate) async fn accept_resolution(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 
@@ -261,6 +688,7 @@ pub(crate) async fn discard_resolution(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, contradictions_notice)
 }
 

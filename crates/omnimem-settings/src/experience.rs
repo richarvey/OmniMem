@@ -8,10 +8,10 @@ use std::fmt::Write as _;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
-use minijinja::context;
+use omnimem_core::Namespace;
 use omnimem_engine::Engine;
 use omnimem_engine::pyfmt::round_to;
-use omnimem_store::Fields;
+use omnimem_store::{Fields, MemoryFilter};
 use serde_json::{Value, json};
 
 use crate::PanelState;
@@ -28,18 +28,24 @@ fn effort(raw: Option<&String>) -> Option<i64> {
         .map(|e| e.trunc() as i64)
 }
 
-/// Episodic memories, optionally for one project.
-fn episodic(engine: &Engine, project: &str) -> omnimem_engine::Result<Vec<(String, Fields)>> {
-    let keys = engine.store().scan_prefix("mem:episodic:")?;
-    let rows = engine.store().get_multi(&keys)?;
-    Ok(keys
-        .into_iter()
-        .zip(rows)
-        .filter_map(|(key, row)| row.map(|r| (key, r)))
-        .filter(|(_, row)| {
-            project.is_empty() || row.get("project").map(String::as_str) == Some(project)
-        })
-        .collect())
+/// Episodic memories that carry `present` (optionally for one project, on
+/// the `project` field alone), with `fields`. Both are cut in SQL, as the
+/// engine's `experience_summary` does, so the page reads the memories it
+/// shows rather than every episodic memory in full.
+fn episodic(
+    engine: &Engine,
+    project: &str,
+    present: &str,
+    fields: &[&str],
+) -> omnimem_engine::Result<Vec<(String, Fields)>> {
+    let filter = MemoryFilter {
+        project_field: (!project.is_empty()).then(|| project.to_owned()),
+        present_any: vec![present.to_owned()],
+        ..MemoryFilter::default()
+    };
+    Ok(engine
+        .store()
+        .list_memories(Namespace::Episodic, &filter, fields)?)
 }
 
 fn abandoned_approaches(row: &Fields) -> Vec<Value> {
@@ -73,7 +79,16 @@ pub(crate) async fn summary(
         .max(1) as usize;
 
     let scan_project = project.clone();
-    let rows = match blocking(move || episodic(&engine, &scan_project)).await {
+    let rows = match blocking(move || {
+        episodic(
+            &engine,
+            &scan_project,
+            "effort_score",
+            &["effort_score", "outcome", "content", "breakthrough"],
+        )
+    })
+    .await
+    {
         Ok(rows) => rows,
         Err(failure) => return failure,
     };
@@ -98,7 +113,7 @@ pub(crate) async fn summary(
         }
         let content: String = row
             .get("content")
-            .map(|c| c.chars().take(100).collect())
+            .map(|c| crate::render::clip(c, crate::render::preview::EFFORTFUL))
             .unwrap_or_default();
         effortful.push(json!({
             "key": key, "content": content, "effort_score": effort, "outcome": outcome,
@@ -173,8 +188,21 @@ pub(crate) async fn graveyard(
         return starting(&state);
     };
     let project = query.get("project").cloned().unwrap_or_default();
+    let q = query
+        .get("q")
+        .map(|q| q.trim().to_lowercase())
+        .unwrap_or_default();
     let scan_project = project.clone();
-    let rows = match blocking(move || episodic(&engine, &scan_project)).await {
+    let rows = match blocking(move || {
+        episodic(
+            &engine,
+            &scan_project,
+            "abandoned_approaches",
+            &["abandoned_approaches", "effort_score"],
+        )
+    })
+    .await
+    {
         Ok(rows) => rows,
         Err(failure) => return failure,
     };
@@ -214,7 +242,16 @@ pub(crate) async fn graveyard(
             }
         }
     }
-    let mut abandoned: Vec<Value> = unique.into_iter().map(|(_, item)| item).collect();
+    let mut abandoned: Vec<Value> = unique
+        .into_iter()
+        .map(|(_, item)| item)
+        .filter(|item| {
+            q.is_empty()
+                || ["name", "type", "reason"]
+                    .iter()
+                    .any(|f| item[f].as_str().unwrap_or("").to_lowercase().contains(&q))
+        })
+        .collect();
     abandoned.sort_by(|a, b| {
         b["effort_score"]
             .as_i64()
@@ -224,7 +261,7 @@ pub(crate) async fn graveyard(
     page(
         state.templates(),
         "experience/graveyard.html",
-        context! { current_page => "graveyard", abandoned, project },
+        context! { current_page => "graveyard", abandoned, project, q },
     )
 }
 

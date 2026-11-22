@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use tracing::warn;
 
-pub use fetch::{Fetcher, is_public_host, page_text};
+pub use fetch::{FeedFetch, FeedValidators, Fetcher, is_public_host, page_text};
 pub use ingest::{FeedStats, Ingester, format_item, strip_html, url_hash};
 pub use summariser::{DigestItem, extract_items, fallback_summary, is_refusal, summarise};
 

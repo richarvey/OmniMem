@@ -17,9 +17,9 @@ default-members = [
 ]
 
 [workspace.package]
-version = "7.0.12"
+version = "7.1.7"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.92"
 license = "MIT"
 repository = "https://code.squarecows.com/ric/omnimem"
 authors = ["Ric Harvey <ric@squarecows.com>"]
@@ -51,9 +51,10 @@ omnimem-mcp = { path = "crates/omnimem-mcp" }
 rmcp = { version = "3.9", features = ["transport-streamable-http-server", "elicitation"] }
 axum = "0.8"
 tokio-util = "0.7"
+toml_edit = "0.25"
 # OAuth: tokens from the OS random source, PKCE's base64url, redirect URLs.
-getrandom = "0.3"
-base64 = "0.22"
+getrandom = "0.4"
+base64 = "0.23"
 url = "2.5"
 
 # Errors and logging
@@ -74,7 +75,7 @@ tokio = { version = "1.53", features = ["full"] }
 
 # Embeddings: ONNX Runtime plus the same Rust tokeniser the Python engine
 # wraps. fancy-regex instead of onig keeps the binary free of a C regex lib.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-24"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-24"] }
 tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 
 # Identity and hashing (v7 schema)
@@ -88,16 +89,13 @@ similar = "3.2"
 sha1 = "0.11"
 
 # RSS: feed parsing (RSS 0.9x/1.0/2.0, Atom, JSON Feed) and feeds.yml.
-feed-rs = "2.4"
+feed-rs = "3.0"
 serde_yaml_ng = "0.10"
 
 # Desktop: per-platform data folders, and (omnimem-desktop only) the event
-# loop, settings webview, tray and menu, clipboard and start at login.
+# loop, tray and menu, clipboard and start at login.
 directories = "6.0"
 tao = "0.37"
-# linux-body: WebKitGTK 2.40+ hands POST bodies to the custom scheme, which
-# the panel's forms need; without it every POST arrives empty.
-wry = { version = "0.57", features = ["linux-body"] }
 # Without muda-libxdo: libxdo only fakes key presses for the predefined Copy,
 # Paste and Select All menu items, which the tray menu doesn't use, and it
 # isn't in the GNOME runtime the Flatpak builds on.
@@ -118,8 +116,8 @@ png = "0.18"
 
 # The settings panel: templates rendered in-process, and axum routes called
 # without a socket.
-minijinja = { version = "2.24", features = ["preserve_order"] }
-minijinja-contrib = { version = "2.24", features = ["pycompat"] }
+minijinja = { version = "3.1", features = ["preserve_order", "serde"] }
+minijinja-contrib = { version = "3.1", features = ["pycompat"] }
 tower = { version = "0.5", features = ["util"] }
 zip = { version = "9.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 

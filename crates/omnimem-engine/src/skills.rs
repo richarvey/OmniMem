@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
 use chrono::DateTime;
+use omnimem_core::Namespace;
 use omnimem_store::Fields;
 use regex::Regex;
 use serde_json::{Map, Value, json};
@@ -356,18 +357,61 @@ pub(crate) fn parse_reference_rules(raw: Option<&String>) -> Vec<ReferenceRule> 
         .unwrap_or_default()
 }
 
+/// What [`active_or_unset`] reads, for a pass that decides membership
+/// before anything heavier is fetched.
+const LIVE_FIELDS: [&str; 4] = ["state", "trust", "enriched_from", "valid_to"];
+
+/// The store's cut for [`active_or_unset`]: active (or no state) and
+/// accepted, on the indexed columns. A superset, since `valid_to` is
+/// checked in Rust.
+fn live_filter() -> omnimem_store::MemoryFilter {
+    omnimem_store::MemoryFilter {
+        states: vec!["active".to_owned()],
+        trusts: vec![crate::trust::ACCEPTED.to_owned()],
+        ..omnimem_store::MemoryFilter::default()
+    }
+}
+
 impl Engine {
-    fn scan_capped(&self, prefix: &str, what: &str) -> Result<Vec<String>> {
-        let mut keys = self.store.scan_prefix(prefix)?;
+    /// The live memories of `namespace` that `belongs` accepts, in key
+    /// order, with `fields`. Membership is decided on `light` fields (plus
+    /// [`LIVE_FIELDS`]), and only the members are read in full: most of a
+    /// store belongs to no domain, and reading every memory's content to
+    /// find that out was why the pools were capped. Past the cap the newest
+    /// members are kept; the cap once counted the namespace's oldest keys,
+    /// so a store past it never learnt from anything newer.
+    fn pool_members(
+        &self,
+        namespace: Namespace,
+        filter: &omnimem_store::MemoryFilter,
+        light: &[&str],
+        fields: &[&str],
+        belongs: impl Fn(&Fields) -> bool,
+        what: &str,
+    ) -> Result<Vec<(String, Fields)>> {
+        let mut light_fields: Vec<&str> = LIVE_FIELDS.to_vec();
+        light_fields.extend(light.iter().filter(|f| !LIVE_FIELDS.contains(f)));
+        let mut keys: Vec<String> = self
+            .store
+            .list_memories(namespace, filter, &light_fields)?
+            .into_iter()
+            .filter(|(_, row)| active_or_unset(row) && belongs(row))
+            .map(|(key, _)| key)
+            .collect();
         if keys.len() > MAX_POOL_KEYS {
             warn!(
                 cap = MAX_POOL_KEYS,
                 total = keys.len(),
-                "{what} scan capped"
+                "{what} capped to the newest memories"
             );
-            keys.truncate(MAX_POOL_KEYS);
+            keys.drain(..keys.len() - MAX_POOL_KEYS);
         }
-        Ok(keys)
+        let rows = self.store.get_fields_multi(&keys, fields)?;
+        Ok(keys
+            .into_iter()
+            .zip(rows)
+            .filter_map(|(key, row)| row.map(|r| (key, r)))
+            .collect())
     }
 
     /// Active episodic memories tagged with each domain, in one scan.
@@ -380,10 +424,20 @@ impl Engine {
         if pools.is_empty() {
             return Ok(pools);
         }
-        let keys = self.scan_capped("mem:episodic:", "skill pool")?;
-        let rows = self.store.get_fields_multi(&keys, &POOL_FIELDS)?;
-        for (key, row) in keys.into_iter().zip(rows) {
-            let Some(row) = row else { continue };
+        let tagged = |row: &Fields| {
+            parse_tags(row.get("tags").map(String::as_str))
+                .iter()
+                .any(|t| pools.contains_key(&t.to_lowercase()))
+        };
+        let members = self.pool_members(
+            Namespace::Episodic,
+            &live_filter(),
+            &["tags"],
+            &POOL_FIELDS,
+            tagged,
+            "skill pool",
+        )?;
+        for (key, row) in members {
             if !active_or_unset(&row) {
                 continue;
             }
@@ -430,10 +484,24 @@ impl Engine {
         if pools.is_empty() {
             return Ok(pools);
         }
-        let keys = self.scan_capped("mem:knowledge:", "promoted-knowledge")?;
-        let rows = self.store.get_fields_multi(&keys, &KNOWLEDGE_POOL_FIELDS)?;
-        for (key, row) in keys.into_iter().zip(rows) {
-            let Some(row) = row else { continue };
+        let promoted = |row: &Fields| {
+            parse_skill_domains(row.get("skill_domains"))
+                .iter()
+                .any(|d| pools.contains_key(d))
+        };
+        let filter = omnimem_store::MemoryFilter {
+            present_any: vec!["skill_domains".to_owned()],
+            ..live_filter()
+        };
+        let members = self.pool_members(
+            Namespace::Knowledge,
+            &filter,
+            &["skill_domains"],
+            &KNOWLEDGE_POOL_FIELDS,
+            promoted,
+            "promoted-knowledge",
+        )?;
+        for (key, row) in members {
             if !active_or_unset(&row) {
                 continue;
             }
@@ -477,11 +545,27 @@ impl Engine {
         if domain_feeds.is_empty() || max_total <= 0 {
             return Ok(Vec::new());
         }
-        let keys = self.scan_capped("mem:knowledge:", "feed-knowledge")?;
-        let rows = self.store.get_fields_multi(&keys, &KNOWLEDGE_POOL_FIELDS)?;
+        let from_these_feeds = |row: &Fields| {
+            let feed_name = row.get("feed_name").map_or("", String::as_str);
+            domain_feeds.iter().any(|f| f.feed_name == feed_name)
+                && !parse_skill_domains(row.get("skill_domains"))
+                    .iter()
+                    .any(|d| d == domain)
+        };
+        let filter = omnimem_store::MemoryFilter {
+            feed_names: domain_feeds.iter().map(|f| f.feed_name.clone()).collect(),
+            ..live_filter()
+        };
+        let members = self.pool_members(
+            Namespace::Knowledge,
+            &filter,
+            &["feed_name", "skill_domains"],
+            &KNOWLEDGE_POOL_FIELDS,
+            from_these_feeds,
+            "feed-knowledge",
+        )?;
         let mut by_feed: HashMap<String, Vec<FeedArticle>> = HashMap::new();
-        for (key, row) in keys.into_iter().zip(rows) {
-            let Some(row) = row else { continue };
+        for (key, row) in members {
             if !active_or_unset(&row) {
                 continue;
             }
@@ -1302,13 +1386,14 @@ impl Engine {
                 counts.push((name, 1));
             }
         };
-        let mut keys = self.store.scan_prefix("mem:episodic:")?;
-        keys.truncate(MAX_POOL_KEYS);
-        for row in self
+        // Tags alone, from every live memory: no content is read, so the
+        // oldest-first cap this once had isn't needed, and newer memories'
+        // tags count as much as old ones.
+        let mut fields: Vec<&str> = LIVE_FIELDS.to_vec();
+        fields.push("tags");
+        for (_, row) in self
             .store
-            .get_fields_multi(&keys, &["tags", "state"])?
-            .into_iter()
-            .flatten()
+            .list_memories(Namespace::Episodic, &live_filter(), &fields)?
         {
             if !active_or_unset(&row) {
                 continue;

@@ -1,0 +1,54 @@
+{% if candidates %}
+{% for c in candidates %}
+<div class="pending-proposal">
+  <div class="pending-head">
+    <strong>{{ c.domain }}</strong>
+    {% if c.ready %}<span class="badge active">ready</span>{% endif %}
+    <span class="mono">{{ c.lessons }} of {{ c.memories }} memor{{ "y" if c.memories == 1 else "ies" }} with a lesson</span>
+    <span class="mono">{{ c.rules }} rule{{ "" if c.rules == 1 else "s" }} clear{{ "s" if c.rules == 1 else "" }} the bar{% if c.spans_projects %}, across projects{% endif %}</span>
+  </div>
+  {% if c.needs %}
+  <p class="section-note">Still needs {{ c.needs|join(", and ") }}.</p>
+  {% else %}
+  <p class="section-note">Clears every bar the automatic scan sets.</p>
+  {% endif %}
+  {% if c.held_back %}
+  <details>
+    <summary>Lessons seen only once ({{ c.held_back|length }})</summary>
+    <p class="section-note">A lesson needs to turn up in two memories to become a rule. Bless a memory and its lesson counts on its own.</p>
+    <ul class="suggestion-list">
+      {% for h in c.held_back %}
+      <li class="suggestion">
+        <div class="suggestion-text">
+          <span class="badge rule-{{ h.kind }}">{{ h.kind }}</span>
+          <span>{{ h.rule }}</span>
+        </div>
+        <div class="pending-actions suggestion-actions">
+          {% for source in h.sources %}
+          <a class="btn btn-secondary btn-sm" href="{{ admin }}/memory/{{ source }}">Memory{% if h.sources|length > 1 %} {{ loop.index }}{% endif %}</a>
+          <form method="POST" action="{{ admin }}/skills/bless" style="display:inline">
+            <input type="hidden" name="key" value="{{ source }}">
+            <button type="submit" class="btn btn-secondary btn-sm">Bless{% if h.sources|length > 1 %} {{ loop.index }}{% endif %}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  <div class="pending-actions">
+    {% if c.can_draft %}
+    <form method="POST" action="{{ admin }}/skills/candidates/draft" style="display:inline">
+      <input type="hidden" name="domain" value="{{ c.domain }}">
+      <button type="submit" class="btn {{ 'btn-primary' if c.ready else 'btn-secondary' }} btn-sm">{{ "Draft this skill" if c.ready else "Draft it anyway" }}</button>
+    </form>
+    {% else %}
+    <span class="section-note">Nothing to draft until a lesson recurs or one is blessed.</span>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="section-note">No domain without a skill has a lesson yet. Tag memories with a domain and record what you learned (<code>record_experience</code>), and candidates show here.</p>
+{% endif %}

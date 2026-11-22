@@ -1,22 +1,37 @@
 {% if clusters %}
-<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">Found {{ clusters|length }} cluster{{ 's' if clusters|length != 1 }} of duplicates</p>
+<p class="result-count" aria-live="polite">{{ clusters|length }} cluster{{ 's' if clusters|length != 1 }} of near-identical {{ namespace }} memories</p>
 
 {% for cluster in clusters %}
-<div style="margin-bottom:1.5rem;padding:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">
-  <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem">
-    Cluster — {{ cluster.memories|length }} memories{% if cluster.max_similarity is defined %}, similarity {{ cluster.max_similarity | round(3) }}{% endif %}
-  </div>
-  {% for mem in cluster.memories %}
-  <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid var(--border)">
-    <a href="/memory/{{ mem.key }}" class="mono" style="font-size:0.75rem;color:var(--accent);text-decoration:none;flex:1">{{ mem.key }}</a>
-    <span style="font-size:0.8rem;color:var(--text-dim)">{{ mem.content[:80] }}</span>
-    <form method="POST" action="/lifecycle/archive" style="display:inline;margin-left:auto">
-      <input type="hidden" name="key" value="{{ mem.key }}">
-      <button type="submit" class="btn btn-secondary btn-sm">Archive</button>
-    </form>
-  </div>
-  {% endfor %}
-</div>
+{% set stamps = cluster.memories|map(attribute='created_at')|select|list %}
+{% set newest = stamps|max if stamps else none %}
+{% set oldest = stamps|min if stamps else none %}
+<section class="cluster" aria-label="Cluster {{ loop.index }}">
+  <h2 class="cluster-head">{{ cluster.memories|length }} memories{% if newest == oldest %}<span class="text-dim">, all added the same day</span>{% endif %}{% if cluster.max_similarity is defined %}<span class="text-dim">, similarity {{ cluster.max_similarity | round(3) }}</span>{% endif %}</h2>
+  <ul class="cluster-list">
+    {% for mem in cluster.memories %}
+    <li class="cluster-row">
+      <div class="cluster-text">
+        <a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ here|urlquote }}" class="cluster-content">{{ mem.content|plain }}{% if mem.content|length >= cluster_preview_chars %}…{% endif %}</a>
+        <span class="cluster-meta">{% if newest != oldest and mem.created_at == newest %}<span class="age-tag">newest</span> {% elif newest != oldest and mem.created_at == oldest %}<span class="age-tag age-old">oldest</span> {% endif %}{% if mem.created_at %}<time>{{ mem.created_at|epoch_date }}</time>{% endif %}{% if mem.project %} &middot; {{ mem.project }}{% endif %}{% if mem.state != 'active' %} &middot; {{ mem.state }}{% endif %} &middot; <span class="mono">{{ mem.key }}</span></span>
+      </div>
+      <form method="POST" action="{{ admin }}/duplicates/keep" data-confirm="Keep this one and archive the other {{ cluster.memories|length - 1 }}?">
+        <input type="hidden" name="key" value="{{ mem.key }}">
+        {% for other in cluster.memories %}{% if other.key != mem.key %}<input type="hidden" name="other" value="{{ other.key }}">{% endif %}{% endfor %}
+        <input type="hidden" name="next" value="{{ here }}">
+        <button type="submit" class="btn btn-secondary btn-sm" aria-label="Keep {{ mem.key }} and archive the others">Keep this one</button>
+      </form>
+      {% if cluster.memories|length > 2 %}
+      <form method="POST" action="{{ admin }}/lifecycle/archive"
+            hx-post="{{ admin }}/lifecycle/archive" hx-target="closest .cluster-row" hx-swap="outerHTML">
+        <input type="hidden" name="key" value="{{ mem.key }}">
+        <input type="hidden" name="next" value="{{ here }}">
+        <button type="submit" class="btn btn-secondary btn-sm" aria-label="Archive {{ mem.key }}">Archive</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
 {% endfor %}
 {% else %}
 <p class="empty-state">No duplicates found in {{ namespace }}.</p>

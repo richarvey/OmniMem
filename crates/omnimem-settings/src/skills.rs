@@ -3,22 +3,18 @@
 //!
 //! Skills are build output, so there is no edit path: creating one runs the
 //! same propose-and-accept gate as `compile_skill`, and changing one means
-//! changing its memories and recompiling. Export writes a checksummed zip of
-//! the skill and its sources into the Downloads folder (the window can't hand
-//! a download to the person the same way on every platform). Import validates
+//! changing its memories and recompiling. Export downloads a checksummed zip
+//! of the skill and its sources. Import validates
 //! an uploaded bundle, previews exactly what it would add under a one-shot
 //! token, and writes only on confirm, never overwriting anything.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write as _;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use axum::Form;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use minijinja::context;
 use omnimem_engine::domains::{is_valid_domain, resolve_domain};
 use omnimem_engine::skills::{INVALID_DOMAIN, SKILL_KEY_PREFIX, generated_skill_key};
 use omnimem_engine::transfer::{ValidatedBundle, merge_feed_influences, validate_skill_import};
@@ -29,9 +25,9 @@ use tracing::{info, warn};
 
 use crate::PanelState;
 use crate::feeds_file;
-use crate::files::{read_upload, save_download};
+use crate::files::{attachment, read_upload};
 use crate::format::{minutes, timestamp};
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{blocking, is_web_url, quote, see_other, starting};
 use crate::render::page;
 
 const IMPORT_STASH_PREFIX: &str = "meta:skill:import:";
@@ -92,9 +88,11 @@ fn skill_not_found() -> Response {
         .into_response()
 }
 
-/// An htmx answer that sends the window to another page.
+/// An htmx answer that sends the window to another page: `location` is a
+/// panel path, which the browser reaches under `/admin`, as `see_other`'s.
 fn hx_redirect(location: &str) -> Response {
-    ([("HX-Redirect", location)], Html("")).into_response()
+    let target = format!("{}{location}", crate::ADMIN_ROOT);
+    ([("HX-Redirect", target)], Html("")).into_response()
 }
 
 pub(crate) async fn list(
@@ -140,10 +138,21 @@ pub(crate) async fn list(
             .iter()
             .map(proposal_row)
             .collect();
-        Ok((skills, states, proposals))
+        // Recent articles close to a skill, as the briefing lists them.
+        let mut suggestions = engine.knowledge_watch()?;
+        // A feed's link is only a link when it's a web address.
+        for article in suggestions
+            .iter_mut()
+            .filter_map(|w| w["articles"].as_array_mut())
+            .flatten()
+        {
+            let web = article["source_url"].as_str().is_some_and(is_web_url);
+            article["source_is_web"] = web.into();
+        }
+        Ok((skills, states, proposals, suggestions))
     })
     .await;
-    let (skills, states, proposals) = match gathered {
+    let (skills, states, proposals, suggestions) = match gathered {
         Ok(found) => found,
         Err(failure) => return failure,
     };
@@ -158,6 +167,7 @@ pub(crate) async fn list(
             skills,
             states,
             proposals,
+            suggestions,
         },
     )
 }
@@ -308,6 +318,8 @@ pub(crate) async fn commit(
         ))
     })
     .await;
+    // The menu's and the dashboard's proposal counts are cached.
+    state.invalidate_counts();
     match result {
         Ok(result) if result["status"] == "written" => hx_redirect(&format!(
             "/skills/{}",
@@ -339,6 +351,7 @@ pub(crate) async fn discard(
         Ok(found)
     })
     .await;
+    state.invalidate_counts();
     match discarded {
         Ok(true) => see_other(&format!("/skills?message={}", quote("Proposal discarded."))),
         Ok(false) => see_other(&format!(
@@ -349,28 +362,240 @@ pub(crate) async fn discard(
     }
 }
 
-/// GET `/skills/pending-badge`: the sidebar's count of proposals waiting for
-/// a person, or nothing. Loaded like the version marker, so a page never waits
-/// on it.
-pub(crate) async fn pending_badge(State(state): State<PanelState>) -> Response {
+/// The article a suggestion form names, if it is a knowledge memory.
+fn article_from(form: &FormData) -> Result<String, String> {
+    let key = form.get("key").map_or("", |k| k.trim());
+    if key.starts_with("mem:knowledge:") {
+        Ok(key.to_owned())
+    } else {
+        Err("That suggestion isn't a knowledge article.".to_owned())
+    }
+}
+
+/// What accepting a suggestion did, for the Skills page's message.
+fn accepted_message(domain: &str, proposed: &Value) -> Result<String, String> {
+    match proposed["status"].as_str() {
+        Some("proposal") => Ok(format!(
+            "Added to the {domain} skill's references. Its new draft is in Pending proposals: \
+             accept it to write the skill."
+        )),
+        Some("unchanged") => Ok(format!(
+            "Added to the {domain} skill's references. The skill already says the same, so \
+             there's nothing new to accept."
+        )),
+        _ => Err(format!(
+            "Added to the {domain} skill's references, but the skill couldn't be redrafted: {}",
+            proposed["note"]
+                .as_str()
+                .or_else(|| proposed["reason"].as_str())
+                .unwrap_or("the compiler gave no reason")
+        )),
+    }
+}
+
+/// POST `/skills/suggestions/accept`: promote a suggested article into a
+/// skill's domain and draft the skill with it. The draft waits in Pending
+/// proposals like any other, so the skill itself changes only when a person
+/// accepts that.
+pub(crate) async fn accept_suggestion(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
     let Some(engine) = state.engine() else {
-        return Html("").into_response();
+        return starting(&state);
     };
-    let waiting = blocking(move || {
-        Ok(engine
-            .pending_skill_proposals()?
-            .iter()
-            .filter(|p| !p.stale)
-            .count())
+    let (domain, key) =
+        match domain_from(&form, "Missing domain.").and_then(|d| Ok((d, article_from(&form)?))) {
+            Ok(found) => found,
+            Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+        };
+    let outcome = blocking(move || {
+        let promoted = engine.promote_knowledge(&key, Some(&domain), false, None)?;
+        if let Some(error) = promoted["error"].as_str() {
+            return Ok(Err(error.to_owned()));
+        }
+        info!(
+            domain,
+            article = key,
+            "promoted a suggested article from the settings panel"
+        );
+        let proposed = refusal(engine.compile_skill(
+            &domain,
+            "propose",
+            MIN_REINFORCEMENT,
+            INCLUDE_GRAVEYARD,
+            None,
+            None,
+        ))?;
+        Ok(accepted_message(&domain, &proposed))
     })
     .await;
-    match waiting {
-        Ok(n) if n > 0 => Html(format!(
-            r#"<span class="nav-count" title="{n} skill proposal{} awaiting your approval">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
-        ))
-        .into_response(),
-        _ => Html("").into_response(),
+    state.invalidate_counts();
+    match outcome {
+        Ok(Ok(message)) => see_other(&format!(
+            "/skills?message={}#pending-proposals",
+            quote(&message)
+        )),
+        Ok(Err(reason)) => see_other(&format!("/skills?error={}", quote(&reason))),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/suggestions/dismiss`: stop suggesting an article for a
+/// skill, here and in the briefing. The article is untouched.
+pub(crate) async fn dismiss_suggestion(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let (domain, key) =
+        match domain_from(&form, "Missing domain.").and_then(|d| Ok((d, article_from(&form)?))) {
+            Ok(found) => found,
+            Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+        };
+    let dismissed = blocking(move || engine.dismiss_knowledge_watch(&domain, &key)).await;
+    state.invalidate_counts();
+    match dismissed {
+        Ok(_) => see_other(&format!(
+            "/skills?message={}#skill-suggestions",
+            quote("Suggestion dismissed. It won't be suggested for that skill again.")
+        )),
+        Err(failure) => failure,
+    }
+}
+
+/// GET `/skills/candidates`: the domains that could become skills and what
+/// each still needs, as a partial the Skills page loads after itself, since
+/// working it out embeds every candidate's lessons.
+pub(crate) async fn candidates(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    match blocking(move || engine.skill_candidates()).await {
+        Ok(candidates) => page(
+            state.templates(),
+            "skills/_candidates.html",
+            context! { candidates },
+        ),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/scan`: run the automatic skill scan now. It only stashes
+/// proposals, which wait in Pending proposals for a person.
+pub(crate) async fn scan(State(state): State<PanelState>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let scanned = blocking(move || engine.scan_for_skills()).await;
+    state.invalidate_counts();
+    match scanned {
+        Ok(scan) => {
+            let domains: Vec<&str> = scan["proposals"]
+                .as_array()
+                .map(|p| p.iter().filter_map(|p| p["domain"].as_str()).collect())
+                .unwrap_or_default();
+            let message = match domains.as_slice() {
+                [] => "Nothing new is ready to be a skill yet. Could become skills says what \
+                       each domain still needs."
+                    .to_owned(),
+                [one] => format!("Drafted {one}. It's waiting in Pending proposals."),
+                many => format!(
+                    "Drafted {}. They're waiting in Pending proposals.",
+                    many.join(", ")
+                ),
+            };
+            see_other(&format!(
+                "/skills?message={}#pending-proposals",
+                quote(&message)
+            ))
+        }
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/candidates/draft`: propose a new skill for a candidate
+/// domain, short of what the scan asks for. The draft waits in Pending
+/// proposals; an existing skill is refused, as the New skill modal does.
+pub(crate) async fn draft_candidate(
+    State(state): State<PanelState>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let domain = match domain_from(&form, "Missing domain.") {
+        Ok(domain) => domain,
+        Err(reason) => return see_other(&format!("/skills?error={}", quote(&reason))),
+    };
+    let result = blocking(move || {
+        let skill_id = generated_skill_key(&domain, &engine.config().skill_user);
+        if engine.store().get(&skill_id)?.is_some() {
+            return Ok(Err(format!("There's already a skill for {domain}.")));
+        }
+        let proposed = refusal(engine.compile_skill(
+            &domain,
+            "propose",
+            MIN_REINFORCEMENT,
+            INCLUDE_GRAVEYARD,
+            None,
+            None,
+        ))?;
+        Ok(if proposed["status"] == "proposal" {
+            info!(
+                domain,
+                "drafted a skill for a candidate domain from the settings panel"
+            );
+            Ok(format!(
+                "Drafted {domain}. It's waiting in Pending proposals."
+            ))
+        } else {
+            Err(format!(
+                "{domain} couldn't be drafted: {}",
+                proposed["note"]
+                    .as_str()
+                    .or_else(|| proposed["reason"].as_str())
+                    .unwrap_or("the compiler gave no reason")
+            ))
+        })
+    })
+    .await;
+    state.invalidate_counts();
+    match result {
+        Ok(Ok(message)) => see_other(&format!(
+            "/skills?message={}#pending-proposals",
+            quote(&message)
+        )),
+        Ok(Err(reason)) => see_other(&format!("/skills?error={}", quote(&reason))),
+        Err(failure) => failure,
+    }
+}
+
+/// POST `/skills/bless`: mark an episodic memory skill-eligible, so its
+/// lesson clears the reinforcement gate on the next compile of its domains.
+pub(crate) async fn bless(State(state): State<PanelState>, Form(form): Form<FormData>) -> Response {
+    let Some(engine) = state.engine() else {
+        return starting(&state);
+    };
+    let key = form.get("key").map_or("", |k| k.trim()).to_owned();
+    if !key.starts_with("mem:episodic:") {
+        return see_other(&format!(
+            "/skills?error={}",
+            quote("Only an episodic memory can be blessed.")
+        ));
+    }
+    let blessed = blocking(move || engine.bless(&key)).await;
+    match blessed {
+        Ok(result) if result["status"] == "not_found" => {
+            see_other(&format!("/skills?error={}", quote("That memory has gone.")))
+        }
+        Ok(_) => see_other(&format!(
+            "/skills?message={}#skill-candidates",
+            quote("Blessed. Its lesson now counts towards a skill without being seen twice.")
+        )),
+        Err(failure) => failure,
     }
 }
 
@@ -401,51 +626,32 @@ pub(crate) async fn delete(
 }
 
 enum Exported {
-    Saved(PathBuf, usize, usize),
+    Bundle(String, Vec<u8>),
     NotExportable(String),
-    NotSaved(String),
 }
 
-/// GET `/skills/export/{key}`: save the bundle and say where it went.
+/// GET `/skills/export/{key}`: the bundle as a download.
 pub(crate) async fn export(State(state): State<PanelState>, Path(key): Path<String>) -> Response {
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
-    let downloads = state.downloads_dir();
-    let saved = blocking(move || {
-        let bundle = match engine.build_skill_export(&key)? {
-            Ok(bundle) => bundle,
-            Err(reason) => return Ok(Exported::NotExportable(reason)),
-        };
-        Ok(
-            match save_download(downloads, &bundle.filename, &bundle.data) {
-                Ok(path) => {
-                    info!(skill = key, path = %path.display(), memories = bundle.memory_count, "exported a skill bundle");
-                    Exported::Saved(path, bundle.memory_count, bundle.missing_sources.len())
-                }
-                Err(problem) => Exported::NotSaved(problem),
-            },
-        )
+    let built = blocking(move || {
+        Ok(match engine.build_skill_export(&key)? {
+            Ok(bundle) => {
+                info!(
+                    skill = key,
+                    memories = bundle.memory_count,
+                    missing = bundle.missing_sources.len(),
+                    "exported a skill bundle"
+                );
+                Exported::Bundle(bundle.filename, bundle.data)
+            }
+            Err(reason) => Exported::NotExportable(reason),
+        })
     })
     .await;
-    match saved {
-        Ok(Exported::NotSaved(problem)) => see_other(&format!("/skills?error={}", quote(&problem))),
-        Ok(Exported::Saved(path, memories, missing)) => {
-            let mut message = format!(
-                "Exported to {} with {memories} source memor{}.",
-                path.display(),
-                if memories == 1 { "y" } else { "ies" }
-            );
-            if missing > 0 {
-                // Writing into a String cannot fail.
-                let _ = write!(
-                    message,
-                    " {missing} source{} no longer stored here and left out.",
-                    if missing == 1 { " is" } else { "s are" }
-                );
-            }
-            see_other(&format!("/skills?message={}", quote(&message)))
-        }
+    match built {
+        Ok(Exported::Bundle(filename, data)) => attachment(&filename, "application/zip", data),
         Ok(Exported::NotExportable(reason)) => (
             StatusCode::NOT_FOUND,
             Html(format!(

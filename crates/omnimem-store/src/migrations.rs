@@ -19,7 +19,17 @@ use omnimem_core::content_hash;
 use serde::Serialize;
 use tracing::info;
 
-use crate::store::{Fields, memory_namespace, merge_memory, parse_fields};
+use crate::store::{Fields, memory_namespace, merge_memory};
+
+/// A projected field as the store keeps it: text, or a number as its text.
+fn text_of(value: rusqlite::types::ValueRef<'_>) -> Option<String> {
+    match value {
+        rusqlite::types::ValueRef::Text(t) => Some(String::from_utf8_lossy(t).into_owned()),
+        rusqlite::types::ValueRef::Integer(i) => Some(i.to_string()),
+        rusqlite::types::ValueRef::Real(r) => Some(r.to_string()),
+        rusqlite::types::ValueRef::Null | rusqlite::types::ValueRef::Blob(_) => None,
+    }
+}
 use crate::{Result, Store};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -295,21 +305,74 @@ pub(crate) fn identity(
     (touched, collisions)
 }
 
+/// Every field a migration reads, bar `content`.
+const MIGRATION_FIELDS: [&str; 14] = [
+    "state",
+    "project",
+    "project_name",
+    "feed_name",
+    "licence",
+    "imported_at",
+    "enriched_from",
+    "stack",
+    "goals",
+    "provenance",
+    "content_hash",
+    "epoch",
+    "origin_id",
+    "classification",
+];
+
 impl Store {
-    /// Run every migration over the whole store.
-    pub fn run_migrations(&self) -> Result<MigrationReport> {
+    /// Every memory with the fields the migrations read, in key order.
+    /// Content is only needed to hash it, so it is read only for a memory
+    /// with no `content_hash`: this runs on every start, and parsing every
+    /// memory in full held the whole store in memory a few times over.
+    fn migration_records(&self) -> Result<Records> {
+        let conn = self.conn();
+        let columns: Vec<String> = MIGRATION_FIELDS
+            .iter()
+            .map(|f| format!("json_extract(fields, '$.\"{f}\"')"))
+            .collect();
+        let sql = format!(
+            "SELECT key, {} FROM memories ORDER BY key",
+            columns.join(", ")
+        );
         let mut records: Records = BTreeMap::new();
-        {
-            let conn = self.conn();
-            let mut stmt = conn.prepare("SELECT key, fields FROM memories ORDER BY key")?;
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                let key: String = row.get(0)?;
-                let raw: String = row.get(1)?;
-                let fields = parse_fields(&key, &raw)?;
-                records.insert(key, fields);
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let key: String = row.get(0)?;
+            let mut fields = Fields::new();
+            for (i, name) in MIGRATION_FIELDS.iter().enumerate() {
+                if let Some(value) = text_of(row.get_ref(i + 1)?) {
+                    fields.insert((*name).to_owned(), value);
+                }
+            }
+            records.insert(key, fields);
+        }
+        drop(rows);
+        drop(stmt);
+        let mut stmt = conn.prepare(
+            "SELECT key, json_extract(fields, '$.content') FROM memories
+              WHERE COALESCE(json_extract(fields, '$.content_hash'), '') = ''
+                AND COALESCE(json_extract(fields, '$.content'), '') <> ''",
+        )?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let key: String = row.get(0)?;
+            if let (Some(fields), Some(content)) = (records.get_mut(&key), text_of(row.get_ref(1)?))
+            {
+                fields.insert("content".to_owned(), content);
             }
         }
+        Ok(records)
+    }
+
+    /// Run every migration over the whole store.
+    pub fn run_migrations(&self) -> Result<MigrationReport> {
+        let records = self.migration_records()?;
+        let mut records = records;
 
         let mut changed: BTreeMap<String, Fields> = BTreeMap::new();
         let mut report = MigrationReport {

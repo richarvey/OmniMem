@@ -550,13 +550,17 @@ impl Engine {
             if scoped && entry.elsewhere(projects).is_some() {
                 continue;
             }
+            // The name test first: it compares two short strings, where the
+            // suppression test searches the memory's whole text once per
+            // suppressed topic, and almost every entry fails the name.
+            let name = &entry.name_lower;
+            if !cross_mentions(&query, name) {
+                continue;
+            }
             if suppressed.iter().any(|t| mentions(&entry.haystack, t)) {
                 continue;
             }
-            let name = &entry.name_lower;
-            if cross_mentions(&query, name)
-                && seen.insert((entry.memory_key.as_str(), name.as_str()))
-            {
+            if seen.insert((entry.memory_key.as_str(), name.as_str())) {
                 matches.push(entry.clone());
             }
         }
@@ -1068,9 +1072,8 @@ impl Engine {
         ]);
         let outcome = self
             .store
-            .hash_set(&log_key, &fields)
-            .and_then(|()| self.store.expire(&log_key, RECALL_LOG_TTL))
-            .and_then(|_| self.store.bump_recall_counts(&keys, &timestamp));
+            .hash_set_expiring(&log_key, &fields, RECALL_LOG_TTL)
+            .and_then(|()| self.store.bump_recall_counts(&keys, &timestamp));
         if let Err(e) = outcome {
             tracing::warn!(error = %e, "failed to log recall event");
         }

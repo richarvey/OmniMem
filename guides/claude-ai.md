@@ -23,7 +23,7 @@ OAUTH_ADMIN_USER=admin
 OAUTH_ADMIN_PASSWORD=a-strong-password-here
 ```
 
-On the desktop app, the same four settings live in the **OAuth** section of the settings window's Configuration page. The password goes into your OS keychain.
+On the desktop app, the same four settings live in the **OAuth** section of the settings panel's Configuration page. The password goes into your OS keychain.
 
 | Setting | What it's for |
 |----------|-------------|

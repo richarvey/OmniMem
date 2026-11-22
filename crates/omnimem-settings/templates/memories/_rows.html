@@ -2,27 +2,27 @@
 <table class="data-table memories-table">
   <thead>
     <tr>
-      <th>Namespace</th>
-      <th>Content</th>
-      <th>State</th>
+      <th scope="col">Namespace</th>
+      <th scope="col">Content</th>
+      <th scope="col">State</th>
       {# Articles all share one project label — the feed they came from is
          the meaningful grouping #}
-      <th>{{ "Feed" if source == "rss" else "Project" }}</th>
-      <th>{{ "Added" if source == "rss" else "Updated" }}</th>
-      <th>Actions</th>
+      <th scope="col">{{ "Feed" if source == "rss" else "Project" }}</th>
+      <th scope="col">{{ "Added" if source == "rss" else "Updated" }}</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>
     {% for mem in memories %}
-    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}">
-      <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span></td>
-      <td class="content-cell"><a href="/memory/{{ mem.key }}">{{ mem.content }}</a></td>
+    <tr class="{% if mem.heat %}heat-{{ mem.heat }}{% endif %}{% if mem.state == 'deprioritised' %} row-deprioritised{% endif %}"{% if mem.heat == 'hot' %} title="Recalled in the last week"{% elif mem.heat == 'warm' %} title="Recalled in the last month"{% elif mem.heat == 'cool' %} title="Recalled in the last three months"{% endif %}>
+      <td><span class="badge ns-{{ mem.namespace }}">{{ mem.namespace }}</span>{% if mem.heat == 'hot' %}<span class="visually-hidden">, recalled this week</span>{% elif mem.heat == 'warm' %}<span class="visually-hidden">, recalled this month</span>{% elif mem.heat == 'cool' %}<span class="visually-hidden">, recalled in the last three months</span>{% endif %}</td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ mem.key|urlsegment }}?back={{ back_url|urlquote }}">{{ mem.content|plain }}</a></td>
       <td>
         <span class="badge {{ mem.state }}">{{ mem.state }}</span>
         {# Only the unclassified case gets a pill: it is the one that asks
            for action. The class itself is on the detail page. #}
         {% if mem.licence == 'unknown' %}
-        <span class="badge licence-unknown" title="Redistribution rights not yet classified">unclassified</span>
+        <span class="badge licence-unknown" title="Nobody has said whether this may be shared outside this instance">licence unknown</span>
         {% endif %}
       </td>
       <td class="content-cell">{{ (mem.feed_name if source == "rss" else mem.project) or "—" }}</td>
@@ -31,25 +31,45 @@
         <span class="date-time">{{ mem.updated_time }}</span>
       </td>
       <td class="actions-cell">
-        {% if mem.state == 'active' %}
-        <form method="POST" action="/lifecycle/deprioritise">
-          <input type="hidden" name="key" value="{{ mem.key }}">
-          <input type="hidden" name="next" value="{{ back_url }}">
-          <button type="submit" class="btn btn-secondary btn-sm" title="Deprioritise — stops surfacing in recall (0.2x)">Depri</button>
-        </form>
-        {% endif %}
-        <form method="POST" action="/lifecycle/delete" data-confirm="Permanently delete this memory? This cannot be undone.">
-          <input type="hidden" name="key" value="{{ mem.key }}">
-          <input type="hidden" name="next" value="{{ back_url }}">
-          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-        </form>
+        <details class="row-menu">
+          <summary class="btn btn-secondary btn-sm" aria-label="Actions: {{ mem.content[:40] }}">&middot;&middot;&middot;</summary>
+          <div class="row-menu-body">
+            {% if mem.state == 'active' %}
+            <form method="POST" action="{{ admin }}/lifecycle/deprioritise">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Deprioritise</button>
+            </form>
+            {% endif %}
+            {% if mem.state != 'archived' %}
+            <form method="POST" action="{{ admin }}/lifecycle/archive">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Archive</button>
+            </form>
+            {% endif %}
+            {% if mem.state != 'active' %}
+            <form method="POST" action="{{ admin }}/lifecycle/reinstate">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item">Reinstate</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ admin }}/lifecycle/delete" data-confirm="Permanently delete this memory? This cannot be undone.">
+              <input type="hidden" name="key" value="{{ mem.key }}">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="row-menu-item row-menu-danger">Delete</button>
+            </form>
+          </div>
+        </details>
       </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+<p class="table-legend"><span class="legend-item"><span class="legend-edge legend-hot"></span> recalled this week</span> <span class="legend-item"><span class="legend-edge legend-warm"></span> this month</span> <span class="legend-item"><span class="legend-edge legend-cool"></span> in three months</span></p>
 
 {% include "partials/pagination.html" %}
 {% else %}
-<p class="empty-state">No memories match the current filters — <a href="/memories">clear the filters</a> to see everything.</p>
+<p class="empty-state">No memories match the current filters. <a href="{{ admin }}/memories">Clear the filters</a> to see everything.</p>
 {% endif %}

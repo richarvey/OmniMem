@@ -4,14 +4,17 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Topic Suppressions</h2>
+  <div>
+    <h1>Suppressions</h1>
+    <p class="page-intro">Topics recall keeps quiet about, so they stop surfacing when they shouldn't.</p>
+  </div>
 </header>
 
 <div style="margin-bottom:1.5rem">
-  <form hx-post="/suppressions/add" hx-target="body" style="display:flex;gap:0.5rem;align-items:end">
+  <form hx-post="{{ admin }}/suppressions/add" hx-target="body" style="display:flex;gap:0.5rem;align-items:end">
     <div class="form-group" style="flex:1;max-width:400px;margin:0">
-      <label>Suppress a topic</label>
-      <input type="text" name="topic" class="form-input" placeholder="Topic to suppress..." required>
+      <label for="suppress-topic">Suppress a topic</label>
+      <input type="text" id="suppress-topic" name="topic" class="form-input" placeholder="Topic to suppress..." required>
     </div>
     <button type="submit" class="btn btn-primary btn-sm">Suppress</button>
   </form>
@@ -21,9 +24,9 @@
 <table class="data-table">
   <thead>
     <tr>
-      <th>Topic</th>
-      <th>Reason</th>
-      <th style="width:100px">Actions</th>
+      <th scope="col">Topic</th>
+      <th scope="col">Reason</th>
+      <th scope="col" style="width:100px">Actions</th>
     </tr>
   </thead>
   <tbody>
@@ -32,7 +35,7 @@
       <td style="font-weight:600">{{ topic }}</td>
       <td style="color:var(--text-dim)">{{ reasons[topic] if reasons and reasons[topic] else "" }}</td>
       <td>
-        <form hx-post="/suppressions/remove" hx-target="body" style="display:inline">
+        <form hx-post="{{ admin }}/suppressions/remove" hx-target="body" style="display:inline">
           <input type="hidden" name="topic" value="{{ topic }}">
           <button type="submit" class="btn btn-danger btn-sm">Remove</button>
         </form>

@@ -1,38 +1,14 @@
-//! The parts of the desktop app with no GUI in them: what the tray says,
-//! which addresses belong to the panel, and what the window reports back.
+//! The parts of the desktop app with no GUI in them: what the tray says and
+//! where the settings panel is.
 
 use omnimem_app::ServiceState;
-use serde_json::Value;
 
 use crate::clients::{Client, Presence, host_of};
 
-/// The scheme the settings panel is served on. Nothing is served over a
-/// network: the webview asks the process for each page.
-pub const SCHEME: &str = "omnimem";
-
-/// Where the webview starts. Windows' WebView2 reaches custom schemes
-/// through `http://<scheme>.localhost`; everywhere else the scheme is used
-/// directly.
-pub fn start_url() -> String {
-    if cfg!(windows) {
-        format!("http://{SCHEME}.localhost/")
-    } else {
-        format!("{SCHEME}://localhost/")
-    }
-}
-
-/// True for the panel's own pages. Anything else (a footer link, a source
-/// URL on an article) opens in the system browser instead.
-pub fn is_panel_url(url: &str) -> bool {
-    let origins = [
-        format!("{SCHEME}://localhost"),
-        format!("http://{SCHEME}.localhost"),
-    ];
-    url == "about:blank"
-        || origins.iter().any(|origin| {
-            url.strip_prefix(origin.as_str())
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
-        })
+/// The server's address, which the settings panel sits under at `/admin`,
+/// from the MCP URL the services report.
+pub fn server_base(mcp_url: &str) -> &str {
+    mcp_url.strip_suffix("/mcp").unwrap_or(mcp_url)
 }
 
 /// Where the tray icon's file goes inside a Flatpak: the one part of the
@@ -62,16 +38,12 @@ pub fn login_command(flatpak_id: Option<&str>, exe: &str) -> (String, Vec<String
     }
 }
 
-/// The Claude Code item inside a Flatpak, which can neither see nor run a
-/// `claude` installed outside the sandbox.
-pub const CODE_IN_FLATPAK: &str = "Add to Claude Code (unavailable in the Flatpak)";
-
-/// What the window says when nothing on the desktop shows tray icons.
+/// What the panel says when nothing on the desktop shows tray icons.
 pub const NO_TRAY: &str = "Nothing on this desktop shows tray icons, so OmniMem's \
     menu has nowhere to go. On GNOME, install the \"AppIndicator and \
     KStatusNotifierItem Support\" extension (gnome-shell-extension-appindicator) and \
-    restart OmniMem. Until then this window is OmniMem: closing it leaves OmniMem \
-    running, and opening OmniMem again brings it back.";
+    restart OmniMem. Until then OmniMem keeps running without an icon, and opening \
+    OmniMem again brings this panel back.";
 
 /// A client's menu item, its text and whether it can be clicked, from what
 /// the client's settings hold (`None` until the services are running),
@@ -85,6 +57,19 @@ pub fn client_item(
     error: Option<&str>,
 ) -> (String, bool) {
     let name = client.name();
+    if matches!(
+        client,
+        Client::OpenCodeHooks | Client::VibeHooks | Client::CodexHooks | Client::KiroHooks
+    ) {
+        // Codex runs a new hook only once it's been trusted, which it asks
+        // about when it starts.
+        let then = if client == Client::CodexHooks {
+            "restart it and trust them"
+        } else {
+            "restart it to load them"
+        };
+        return hooks_item(name, then, presence, busy, changed, error);
+    }
     if busy {
         return (format!("Adding OmniMem to {name}…"), false);
     }
@@ -99,6 +84,58 @@ pub fn client_item(
             format!("Switch {name} here (now {})", host_of(target)),
             true,
         ),
+        Some(Presence::OldToken { .. }) => (format!("Update the token in {name}"), true),
+    };
+    match error {
+        Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
+        _ => (text, enabled),
+    }
+}
+
+/// Whether a client's item belongs in the menu: only when the client is
+/// installed and still needs something doing (OmniMem added, its entry
+/// switched or its token updated, or settings that couldn't be read). One
+/// that isn't installed, or already points here, is left out, and so is
+/// every client until the services are running and its settings have been
+/// read. An item this run just changed stays, to say the client needs a
+/// restart (and, for Codex's hooks, trusting them).
+pub fn client_item_shown(presence: Option<&Presence>, busy: bool, changed: bool) -> bool {
+    busy || changed
+        || matches!(
+            presence,
+            Some(
+                Presence::Absent
+                    | Presence::Elsewhere { .. }
+                    | Presence::OldToken { .. }
+                    | Presence::Unreadable(_)
+            )
+        )
+}
+
+/// The item for OmniMem's hooks in a client (OpenCode's plugin, Vibe's
+/// hooks.toml, Codex's hooks.json). It sits under the client's own item,
+/// which already says when the client isn't here, so this one just stays
+/// greyed out then. `then` is what's left to do once they've been written.
+fn hooks_item(
+    name: &str,
+    then: &str,
+    presence: Option<&Presence>,
+    busy: bool,
+    changed: bool,
+    error: Option<&str>,
+) -> (String, bool) {
+    if busy {
+        return (format!("Adding OmniMem's hooks to {name}…"), false);
+    }
+    let (text, enabled) = match presence {
+        None | Some(Presence::NotInstalled) => (format!("Add hooks to {name}"), false),
+        Some(Presence::Unreadable(why)) => (format!("{name} hooks: {}", clip(why, 50)), false),
+        Some(Presence::Absent) => (format!("Add hooks to {name}"), true),
+        Some(Presence::Here) if changed => (format!("✓ Hooks in {name} ({then})"), false),
+        Some(Presence::Here) => (format!("✓ Hooks in {name}"), false),
+        Some(Presence::Elsewhere { .. } | Presence::OldToken { .. }) => {
+            (format!("Update hooks in {name}"), true)
+        }
     };
     match error {
         Some(error) if enabled => (format!("{text} (failed: {})", clip(error, 60)), true),
@@ -113,12 +150,6 @@ fn clip(text: &str, max: usize) -> String {
     }
     let cut: String = text.chars().take(max).collect();
     format!("{}…", cut.trim_end())
-}
-
-/// True for the smoke test's own pages (`/_panel/…`), where its check
-/// mustn't start again.
-pub fn is_smoke_page(url: &str) -> bool {
-    url.contains("/_panel/")
 }
 
 /// The tray's status line.
@@ -155,69 +186,6 @@ pub fn mcp_url(state: &ServiceState) -> Option<&str> {
     }
 }
 
-/// The smoke test's check, run in the loaded panel: a fetch POST through the
-/// scheme (what htmx does) and the stylesheet, then a real form submission
-/// (what the lifecycle and edit forms do). The panel's redirect after the
-/// form lands on a page that reports everything over IPC, so a redirect the
-/// webview won't follow fails the test by never reporting. (A plain 303 is
-/// one: WebKitGTK ignores redirects from a custom scheme.)
-///
-/// A failure is reported three seconds late. The starting page reloads
-/// itself every two seconds, and a reload that lands mid-check fails its
-/// fetches with "Load failed"; the reload takes the pending report with it
-/// and the next page load runs the check again. A failure no reload explains
-/// still arrives.
-pub const SMOKE_SCRIPT: &str = r#"
-Promise.all([
-  fetch('/_panel/echo', { method: 'POST', body: 'panel-post-ok' }).then(r => r.text()),
-  fetch('/static/style.css').then(r => r.ok ? r.text().then(t => t.length) : 0),
-]).then(([echo, css]) => {
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/_panel/redirect';
-  for (const [name, value] of Object.entries({ echo, css, title: document.title })) {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
-}).catch(e => setTimeout(() => window.ipc.postMessage(JSON.stringify({ cmd: 'smoke', echo: 'error: ' + e, css: 0, title: document.title })), 3000));
-"#;
-
-/// What the smoke script found, or why it failed.
-pub fn smoke_verdict(body: &str) -> Result<String, String> {
-    let report: Value =
-        serde_json::from_str(body).map_err(|e| format!("unreadable report: {e}"))?;
-    if report["cmd"] != "smoke" {
-        return Err(format!("unexpected message: {body}"));
-    }
-    let echo = report["echo"].as_str().unwrap_or("");
-    // A number from the fetch, or a string once it has been through the form.
-    let css = report["css"]
-        .as_u64()
-        .or_else(|| report["css"].as_str().and_then(|c| c.parse().ok()))
-        .unwrap_or(0);
-    let title = report["title"].as_str().unwrap_or("");
-    if echo != "panel-post-ok" {
-        return Err(format!("POST through the scheme came back as {echo:?}"));
-    }
-    if report["landed"] != "/_panel/landed" {
-        return Err("the form POST's redirect was not followed".to_owned());
-    }
-    if css < 1000 {
-        return Err(format!("the stylesheet came back with {css} bytes"));
-    }
-    if !title.contains("OmniMem") {
-        return Err(format!("the panel page's title was {title:?}"));
-    }
-    Ok(format!(
-        "page {title:?}, POST echoed, stylesheet {css} bytes, form redirect followed"
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,16 +210,42 @@ mod tests {
     }
 
     #[test]
-    fn only_panel_addresses_stay_in_the_window() {
-        assert!(is_panel_url("omnimem://localhost/memories"));
-        assert!(is_panel_url("http://omnimem.localhost/skills"));
-        assert!(!is_panel_url("https://omnimem.org"));
-        assert!(
-            !is_panel_url("http://omnimem.localhost.evil.example"),
-            "a lookalike host"
+    fn the_panel_sits_beside_the_mcp_endpoint() {
+        assert_eq!(
+            server_base("http://127.0.0.1:8765/mcp"),
+            "http://127.0.0.1:8765"
         );
-        assert!(!is_panel_url("omnimem://localhost.evil.example/"));
-        assert!(!is_panel_url("about:srcdoc"));
+        assert_eq!(server_base("http://[::1]:9000/mcp"), "http://[::1]:9000");
+    }
+
+    #[test]
+    fn only_installed_clients_with_something_to_do_are_in_the_menu() {
+        let here = Some(&Presence::Here);
+        assert!(!client_item_shown(here, false, false));
+        assert!(client_item_shown(here, false, true), "until it's restarted");
+        assert!(client_item_shown(here, true, false));
+        for presence in [None, Some(Presence::NotInstalled)] {
+            assert!(
+                !client_item_shown(presence.as_ref(), false, false),
+                "{presence:?}"
+            );
+        }
+        for presence in [
+            Presence::Absent,
+            Presence::Unreadable("bad".into()),
+            Presence::Elsewhere {
+                name: "omnimem".into(),
+                target: "https://cloudai.example.net/mcp".into(),
+            },
+            Presence::OldToken {
+                name: "omnimem".into(),
+            },
+        ] {
+            assert!(
+                client_item_shown(Some(&presence), false, false),
+                "{presence:?}"
+            );
+        }
     }
 
     #[test]
@@ -283,6 +277,12 @@ mod tests {
             )
         );
         assert_eq!(
+            item(Some(Presence::OldToken {
+                name: "omnimem".into()
+            })),
+            ("Update the token in Claude Desktop".into(), true)
+        );
+        assert_eq!(
             client_item(Client::Code, Some(&Presence::Here), false, true, None),
             ("✓ In Claude Code (restart it to connect)".into(), false)
         );
@@ -300,6 +300,136 @@ mod tests {
         );
         assert!(enabled, "a failed add can be tried again");
         assert!(failed.starts_with("Add to Claude Code (failed: xxx") && failed.ends_with("…)"));
+    }
+
+    #[test]
+    fn opencode_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        assert_eq!(
+            client_item(
+                Client::OpenCode,
+                Some(&Presence::Absent),
+                false,
+                false,
+                None
+            ),
+            ("Add to OpenCode".into(), true)
+        );
+        assert_eq!(
+            client_item(
+                Client::OpenCode,
+                Some(&Presence::NotInstalled),
+                false,
+                false,
+                None
+            ),
+            ("OpenCode not found".into(), false)
+        );
+        let hooks = |presence: Presence, changed: bool| {
+            client_item(Client::OpenCodeHooks, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            hooks(Presence::NotInstalled, false),
+            ("Add hooks to OpenCode".into(), false)
+        );
+        assert_eq!(
+            hooks(Presence::Absent, false),
+            ("Add hooks to OpenCode".into(), true)
+        );
+        assert_eq!(
+            hooks(Presence::Here, true),
+            (
+                "✓ Hooks in OpenCode (restart it to load them)".into(),
+                false
+            )
+        );
+        assert_eq!(
+            hooks(Presence::Here, false),
+            ("✓ Hooks in OpenCode".into(), false)
+        );
+        assert_eq!(
+            hooks(
+                Presence::Elsewhere {
+                    name: "omnimem".into(),
+                    target: "an older plugin".into()
+                },
+                false
+            ),
+            ("Update hooks in OpenCode".into(), true)
+        );
+        assert_eq!(
+            hooks(
+                Presence::Unreadable("omnimem.js isn't OmniMem's".into()),
+                false
+            ),
+            ("OpenCode hooks: omnimem.js isn't OmniMem's".into(), false)
+        );
+        assert_eq!(
+            client_item(
+                Client::OpenCodeHooks,
+                Some(&Presence::Absent),
+                true,
+                false,
+                None
+            ),
+            ("Adding OmniMem's hooks to OpenCode…".into(), false)
+        );
+    }
+
+    #[test]
+    fn codex_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        let item = |client, presence: Presence, changed| {
+            client_item(client, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            item(Client::Codex, Presence::Absent, false),
+            ("Add to Codex".into(), true)
+        );
+        assert_eq!(
+            item(Client::CodexHooks, Presence::Absent, false),
+            ("Add hooks to Codex".into(), true)
+        );
+        assert_eq!(
+            item(Client::CodexHooks, Presence::Here, true),
+            ("✓ Hooks in Codex (restart it and trust them)".into(), false)
+        );
+    }
+
+    #[test]
+    fn vibe_gets_an_item_for_omnimem_and_one_for_its_hooks() {
+        let item = |client, presence: Presence, changed| {
+            client_item(client, Some(&presence), false, changed, None)
+        };
+        assert_eq!(
+            item(Client::Vibe, Presence::Absent, false),
+            ("Add to Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(Client::Vibe, Presence::NotInstalled, false),
+            ("Mistral Vibe not found".into(), false)
+        );
+        assert_eq!(
+            item(Client::Vibe, Presence::Here, true),
+            ("✓ In Mistral Vibe (restart it to connect)".into(), false)
+        );
+        assert_eq!(
+            item(Client::VibeHooks, Presence::Absent, false),
+            ("Add hooks to Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(
+                Client::VibeHooks,
+                Presence::Elsewhere {
+                    name: "omnimem".into(),
+                    target: "older hooks".into()
+                },
+                false
+            ),
+            ("Update hooks in Mistral Vibe".into(), true)
+        );
+        assert_eq!(
+            item(Client::VibeHooks, Presence::Here, false),
+            ("✓ Hooks in Mistral Vibe".into(), false)
+        );
     }
 
     #[test]
@@ -338,26 +468,5 @@ mod tests {
                 ("/usr/bin/omnimem".to_owned(), vec!["desktop".to_owned()])
             );
         }
-    }
-
-    #[test]
-    fn the_smoke_check_restarts_on_every_page_but_its_own() {
-        assert!(!is_smoke_page("omnimem://localhost/"));
-        assert!(!is_smoke_page("http://omnimem.localhost/memories"));
-        assert!(is_smoke_page("omnimem://localhost/_panel/redirect"));
-        assert!(is_smoke_page(
-            "omnimem://localhost/_panel/landed?echo=panel-post-ok"
-        ));
-    }
-
-    #[test]
-    fn the_smoke_report_is_checked() {
-        let good = r#"{"echo":"panel-post-ok","css":"42265","title":"Starting — OmniMem","cmd":"smoke","landed":"/_panel/landed"}"#;
-        assert!(smoke_verdict(good).is_ok());
-        let bad = r#"{"cmd":"smoke","echo":"","css":42265,"title":"Starting — OmniMem"}"#;
-        assert!(smoke_verdict(bad).unwrap_err().contains("POST"));
-        let stuck =
-            r#"{"cmd":"smoke","echo":"panel-post-ok","css":42265,"title":"Starting — OmniMem"}"#;
-        assert!(smoke_verdict(stuck).unwrap_err().contains("redirect"));
     }
 }

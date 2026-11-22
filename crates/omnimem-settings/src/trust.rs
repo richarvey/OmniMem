@@ -9,13 +9,12 @@ use std::collections::HashMap;
 use axum::Form;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Response};
-use minijinja::context;
 use omnimem_engine::EngineError;
 use omnimem_engine::trust::TrustAction;
 use serde_json::{Value, json};
 
 use crate::PanelState;
-use crate::pages::{blocking, quote, see_other, starting};
+use crate::pages::{back_of, blocking, memory_url, quote, see_other, starting};
 use crate::render::page;
 
 type FormData = HashMap<String, String>;
@@ -24,14 +23,6 @@ type FormData = HashMap<String, String>;
 const PAGE_SIZE: usize = 50;
 /// A candidate's text is cut to this many characters in the list.
 const CLIP: usize = 240;
-
-fn clip(text: &str, max: usize) -> String {
-    let mut out: String = text.chars().take(max).collect();
-    if text.chars().count() > max {
-        out.push('…');
-    }
-    out.replace('\n', " ")
-}
 
 fn field(form: &FormData, name: &str) -> String {
     form.get(name).map_or("", |v| v.trim()).to_owned()
@@ -65,9 +56,12 @@ pub(crate) async fn list(
     let requested = param("page").parse::<usize>().unwrap_or(1).max(1);
     let filter = source.clone();
     let found = blocking(move || {
-        let all = engine.unconfirmed_from(
+        // The whole queue without its text, to count and page it; content
+        // is read for the page's rows below.
+        let all = engine.unconfirmed_with(
             Some(&filter).filter(|s| !s.is_empty()).map(String::as_str),
             usize::MAX,
+            &["enriched_from", "state", "created_at"],
         )?;
         let total = all.len();
         // How many each source has in all, for "Confirm all (n)".
@@ -79,10 +73,21 @@ pub(crate) async fn list(
         }
         let pages = total.div_ceil(PAGE_SIZE).max(1);
         let current = requested.min(pages);
-        let shown: Vec<_> = all
+        let shown_keys: Vec<String> = all
             .into_iter()
             .skip((current - 1) * PAGE_SIZE)
             .take(PAGE_SIZE)
+            .map(|(key, _)| key)
+            .collect();
+        let shown: Vec<(String, omnimem_store::Fields)> = engine
+            .store()
+            .get_fields_multi(
+                &shown_keys,
+                &["content", "enriched_from", "project", "created_at", "state"],
+            )?
+            .into_iter()
+            .zip(shown_keys)
+            .map(|(row, key)| (key, row.unwrap_or_default()))
             .collect();
         // What each source on this page says, to name it.
         let mut sources: Vec<String> = Vec::new();
@@ -102,7 +107,9 @@ pub(crate) async fn list(
                 .get("feed_name")
                 .filter(|t| !t.is_empty())
                 .or_else(|| row.get("content"))
-                .map_or_else(String::new, |t| clip(t, 100));
+                .map_or_else(String::new, |t| {
+                    crate::render::clip(t, crate::render::preview::UNCONFIRMED_GROUP)
+                });
             groups.push(json!({
                 "source": from,
                 "title": title,
@@ -118,7 +125,7 @@ pub(crate) async fn list(
             let item = json!({
                 "key": key,
                 "namespace": key.split(':').nth(1).unwrap_or("unknown"),
-                "content": clip(&get("content"), CLIP),
+                "content": crate::render::clip(&get("content"), CLIP),
                 "project": get("project"),
                 "state": get("state"),
             });
@@ -185,7 +192,12 @@ fn reason_of(form: &FormData) -> Option<String> {
 
 /// POST `/unconfirmed/act`: confirm or reject one candidate. A click is the
 /// person's say-so, so it writes at once.
-pub(crate) async fn act(State(state): State<PanelState>, Form(form): Form<FormData>) -> Response {
+pub(crate) async fn act(
+    State(state): State<PanelState>,
+    headers: axum::http::HeaderMap,
+    Form(form): Form<FormData>,
+) -> Response {
+    let htmx = headers.contains_key("hx-request");
     let Some(engine) = state.engine() else {
         return starting(&state);
     };
@@ -206,6 +218,19 @@ pub(crate) async fn act(State(state): State<PanelState>, Form(form): Form<FormDa
         })())
     })
     .await;
+    state.invalidate_counts();
+    // An htmx click swaps its own row: nothing on success, the problem if refused.
+    if htmx {
+        return match done {
+            Ok(Ok(_)) => Html("").into_response(),
+            Ok(Err(problem)) => Html(format!(
+                r#"<p class="form-error" role="alert">{}</p>"#,
+                problem.replace('&', "&amp;").replace('<', "&lt;")
+            ))
+            .into_response(),
+            Err(failure) => failure,
+        };
+    }
     done.map_or_else(|failure| failure, |notice| back(&form, notice))
 }
 
@@ -231,6 +256,7 @@ pub(crate) async fn confirm_source(
         )
     })
     .await;
+    state.invalidate_counts();
     done.map_or_else(|failure| failure, |notice| back(&form, notice))
 }
 
@@ -245,6 +271,7 @@ pub(crate) async fn memory_trust(
     };
     let action = field(&form, "action");
     let reason = reason_of(&form);
+    let back = back_of(&form);
     let target = key.clone();
     let done = blocking(move || {
         shown((|| {
@@ -256,26 +283,11 @@ pub(crate) async fn memory_trust(
         })())
     })
     .await;
+    let here = memory_url(&key, back.as_deref());
+    let joiner = if here.contains('?') { '&' } else { '?' };
     match done {
-        Ok(Ok(())) => see_other(&format!("/memory/{key}")),
-        Ok(Err(problem)) => see_other(&format!("/memory/{key}?trust_error={}", quote(&problem))),
+        Ok(Ok(())) => see_other(&here),
+        Ok(Err(problem)) => see_other(&format!("{here}{joiner}trust_error={}", quote(&problem))),
         Err(failure) => failure,
-    }
-}
-
-/// GET `/unconfirmed/badge`: the sidebar's count of candidates, or nothing.
-/// Loaded after the page, so a page never waits on the count.
-pub(crate) async fn badge(State(state): State<PanelState>) -> Response {
-    let Some(engine) = state.engine() else {
-        return Html("").into_response();
-    };
-    let waiting = blocking(move || Ok(engine.unconfirmed_from(None, usize::MAX)?.len())).await;
-    match waiting {
-        Ok(n) if n > 0 => Html(format!(
-            r#"<span class="nav-count" title="{n} unconfirmed fact{}">{n}</span>"#,
-            if n == 1 { "" } else { "s" }
-        ))
-        .into_response(),
-        _ => Html("").into_response(),
     }
 }

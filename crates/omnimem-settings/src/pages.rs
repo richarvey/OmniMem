@@ -1,11 +1,10 @@
-//! The starting page, pages not ported yet, and the window's POST check.
+//! The starting page, pages not ported yet, and redirects.
 
 use std::fmt::Write as _;
 
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri, header};
-use axum::response::{Html, IntoResponse, Response};
-use minijinja::context;
+use axum::response::{IntoResponse, Response};
 
 use crate::PanelState;
 use crate::render::{failure, page};
@@ -100,109 +99,59 @@ pub(crate) async fn pending(State(state): State<PanelState>, method: Method, uri
     )
 }
 
-/// Echoes a POST body: the desktop smoke test uses it to prove request
-/// bodies cross the window's custom scheme, which every htmx form relies on.
-pub(crate) async fn echo(body: String) -> String {
-    body
-}
-
-/// The header carrying where [`see_other`] sends the window.
+/// The header carrying where [`see_other`] sends the browser, as a panel
+/// path without [`crate::ADMIN_ROOT`], for tests.
 pub const REDIRECT_HEADER: &str = "x-omnimem-redirect";
 
-/// Send the window to a panel page after a form acts.
-///
-/// A plain 303 would be right on the web, but WebKitGTK doesn't follow
-/// redirects from a custom scheme: the form's POST would complete and the
-/// window would stay where it was. So the answer is a page that replaces
-/// itself with the target, which also keeps the POST out of the history.
-/// The target travels in [`REDIRECT_HEADER`] too, for tests.
-///
-/// The target can carry form data (`next`, a key, a name), so it is written
-/// as a JavaScript string literal with every character that could end the
-/// script or the attribute escaped: `<` alone would let `</script>` in a
-/// target start writing HTML.
+/// Send the browser to a panel page after a form acts: a 303, so the POST
+/// stays out of the history. `location` is a panel path ("/memories"); the
+/// `Location` header puts it under [`crate::ADMIN_ROOT`], where the panel is
+/// served. Every caller builds `location` from a fixed path or a checked
+/// `next`, so it can't name another site.
 pub(crate) fn see_other(location: &str) -> Response {
-    let script_target = js_string_literal(location);
-    let attribute_target = location
-        .replace('&', "&amp;")
-        .replace('"', "&#34;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;");
-    let body = format!(
-        "<!doctype html><meta http-equiv=\"refresh\" content=\"0;url={attribute_target}\">\
-         <script>location.replace({script_target})</script>"
-    );
-    (
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            (header::CACHE_CONTROL, "no-store"),
-        ],
-        [(REDIRECT_HEADER, location)],
-        body,
-    )
-        .into_response()
-}
-
-/// A JavaScript string literal for `text`, safe inside an HTML `<script>`:
-/// JSON escaping, then `<`, `>` and `&` as `\uXXXX` so no HTML tag or entity
-/// can form, and U+2028 and U+2029, which JSON allows raw but which end a
-/// JavaScript line.
-fn js_string_literal(text: &str) -> String {
-    let json = serde_json::to_string(text).unwrap_or_else(|_| "\"/\"".to_owned());
-    let mut out = String::with_capacity(json.len());
-    for c in json.chars() {
-        match c {
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c => out.push(c),
+    let target = format!("{}{location}", crate::ADMIN_ROOT);
+    let mut response =
+        (StatusCode::SEE_OTHER, [(header::CACHE_CONTROL, "no-store")]).into_response();
+    let headers = response.headers_mut();
+    for (name, value) in [
+        (header::LOCATION, target.as_str()),
+        (header::HeaderName::from_static(REDIRECT_HEADER), location),
+    ] {
+        match header::HeaderValue::from_str(value) {
+            Ok(value) => {
+                headers.insert(name, value);
+            }
+            // A control character can't reach a header; the dashboard can.
+            Err(_) => {
+                headers.insert(name, header::HeaderValue::from_static("/admin/"));
+            }
         }
     }
-    out
-}
-
-/// The smoke test's form target: redirects to `/_panel/landed` carrying the
-/// submitted fields, proving a form body arrived and the 303 was followed.
-/// Routed only by [`crate::Panel::with_smoke_routes`].
-pub(crate) async fn redirect(body: String) -> Response {
-    see_other(&format!("/_panel/landed?{body}"))
-}
-
-pub(crate) async fn landed() -> Html<&'static str> {
-    Html(
-        "<!doctype html><title>Landed</title><script>\
-         const report = Object.fromEntries(new URLSearchParams(location.search));\
-         window.ipc.postMessage(JSON.stringify({ ...report, cmd: 'smoke', landed: location.pathname }));\
-         </script>",
-    )
+    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn a_redirect_target_cannot_break_out_of_the_script() {
-        let response = see_other("/memory/</script><img src=x onerror=alert(1)>&x=\u{2028}");
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(!body.contains("</script><img"), "{body}");
-        assert!(
-            body.contains(
-                r#"location.replace("/memory/\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e\u0026x=\u2028")"#
-            ),
-            "{body}"
+    #[test]
+    fn a_redirect_lands_under_the_admin_root() {
+        let response = see_other("/memory/mem:episodic:01ABC?message=Saved");
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response.headers()[header::LOCATION],
+            "/admin/memory/mem:episodic:01ABC?message=Saved"
         );
-        assert!(
-            body.contains("url=/memory/&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;&amp;x="),
-            "{body}"
+        assert_eq!(
+            response.headers()[REDIRECT_HEADER],
+            "/memory/mem:episodic:01ABC?message=Saved"
         );
-        assert_eq!(js_string_literal("plain/path?a=1"), r#""plain/path?a=1""#);
+    }
+
+    #[test]
+    fn a_target_no_header_can_carry_goes_to_the_dashboard() {
+        let response = see_other("/memory/a\r\nSet-Cookie: x=1");
+        assert_eq!(response.headers()[header::LOCATION], "/admin/");
     }
 
     #[test]
@@ -224,5 +173,170 @@ mod tests {
         assert!(!is_web_url("https://"));
         assert!(!is_web_url("http://example.com/\n"));
         assert!(!is_web_url("example.com"));
+    }
+}
+
+// ---------------------------------------------------------------- return paths
+
+/// The longest return path a link or form may carry.
+const MAX_BACK_LEN: usize = 512;
+
+/// `path` when it is somewhere inside the panel a link or form may send the
+/// browser back to, written as a panel path (`/memories?page=2`), else
+/// `None`. A single leading `/` and nothing that could read as another
+/// site: `//` is scheme-relative, and a browser reads `/\` the same way.
+/// Control characters have no place in a path. A path that already starts
+/// with the panel's root would be prefixed twice by [`see_other`], and the
+/// sign-in, sign-out and lifecycle routes are actions, not places to return
+/// to, so those are refused too.
+pub(crate) fn local_path(path: &str) -> Option<String> {
+    if path.len() > MAX_BACK_LEN {
+        return None;
+    }
+    let mut chars = path.chars();
+    if chars.next() != Some('/') {
+        return None;
+    }
+    if matches!(chars.next(), Some('/' | '\\')) || path.chars().any(|c| c == '\\' || c.is_control())
+    {
+        return None;
+    }
+    let route = path.split(['?', '#']).next().unwrap_or(path);
+    let under = |prefix: &str| route == prefix || route.starts_with(&format!("{prefix}/"));
+    if under(crate::ADMIN_ROOT) || under("/lifecycle") || under("/login") || under("/logout") {
+        return None;
+    }
+    Some(path.to_owned())
+}
+
+/// The `back` a link or form carried, when it is a usable return path.
+pub(crate) fn back_of(values: &std::collections::HashMap<String, String>) -> Option<String> {
+    values.get("back").and_then(|b| local_path(b.trim()))
+}
+
+/// A memory's page, remembering where the person came from.
+pub(crate) fn memory_url(key: &str, back: Option<&str>) -> String {
+    match back {
+        Some(back) => format!("/memory/{}?back={}", quote_segment(key), quote(back)),
+        None => format!("/memory/{}", quote_segment(key)),
+    }
+}
+
+tokio::task_local! {
+    /// The panel path (with its query) of the page being rendered, so every
+    /// template can link onwards with `?back={{ here|urlquote }}`.
+    static HERE: String;
+}
+
+/// Middleware: remember where this request is, for [`here`]. An htmx
+/// request names the page it came from in `HX-Current-URL`, which is the
+/// place a person would come back to, not the fragment's own route.
+pub(crate) async fn remember_here(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let own = request.uri().path_and_query().map_or_else(
+        || request.uri().path().to_owned(),
+        |pq| pq.as_str().to_owned(),
+    );
+    let from_htmx = request
+        .headers()
+        .get("hx-current-url")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|url| url.parse::<Uri>().ok())
+        .and_then(|uri| {
+            let pq = uri.path_and_query()?.as_str().to_owned();
+            pq.strip_prefix(crate::ADMIN_ROOT).map(|rest| {
+                if rest.is_empty() || rest.starts_with('?') {
+                    format!("/{rest}")
+                } else {
+                    rest.to_owned()
+                }
+            })
+        });
+    let here = from_htmx
+        .or(Some(own))
+        .map(|p| without_notices(&p))
+        .and_then(|p| local_path(&p))
+        .unwrap_or_else(|| "/".to_owned());
+    HERE.scope(here, next.run(request)).await
+}
+
+/// A path without the one-off notices a redirect added (`message`, `error`,
+/// `tag_error` and the like), so a link back doesn't show them again.
+fn without_notices(path: &str) -> String {
+    let Some((route, query)) = path.split_once('?') else {
+        return path.to_owned();
+    };
+    let kept: Vec<&str> = query
+        .split('&')
+        .filter(|pair| {
+            let name = pair.split('=').next().unwrap_or("");
+            !(name == "message" || name == "error" || name.ends_with("_error"))
+        })
+        .collect();
+    if kept.is_empty() {
+        route.to_owned()
+    } else {
+        format!("{route}?{}", kept.join("&"))
+    }
+}
+
+/// The page being rendered, as a panel path: `/` outside a request.
+pub(crate) fn here() -> String {
+    HERE.try_with(Clone::clone)
+        .unwrap_or_else(|_| "/".to_owned())
+}
+
+#[cfg(test)]
+mod return_path_tests {
+    use super::*;
+
+    #[test]
+    fn only_panel_paths_are_return_paths() {
+        assert_eq!(
+            local_path("/memories?page=2").as_deref(),
+            Some("/memories?page=2")
+        );
+        assert_eq!(local_path("/").as_deref(), Some("/"));
+        assert!(local_path("//evil.example").is_none());
+        assert!(local_path("/\\evil.example").is_none());
+        assert!(local_path("https://evil.example").is_none());
+        assert!(local_path("/memories\r\nX: y").is_none());
+        assert!(local_path("").is_none());
+        assert!(local_path("/admin/memories").is_none());
+        assert!(local_path("/admin").is_none());
+        assert!(local_path("/lifecycle/archive").is_none());
+        assert!(local_path("/logout").is_none());
+        assert!(local_path(&format!("/{}", "a".repeat(600))).is_none());
+        assert_eq!(
+            local_path("/administrators").as_deref(),
+            Some("/administrators")
+        );
+    }
+
+    #[test]
+    fn notices_are_not_part_of_where_a_page_is() {
+        assert_eq!(
+            without_notices("/memory/k?back=/x&tag_error=bad"),
+            "/memory/k?back=/x"
+        );
+        assert_eq!(
+            without_notices("/contradictions?message=Resolved."),
+            "/contradictions"
+        );
+        assert_eq!(without_notices("/memories?page=2"), "/memories?page=2");
+    }
+
+    #[test]
+    fn memory_links_carry_their_return_path() {
+        assert_eq!(memory_url("mem:episodic:1", None), "/memory/mem:episodic:1");
+        assert_eq!(
+            memory_url(
+                "mem:episodic:1",
+                Some("/duplicates?namespace=knowledge&scan=1")
+            ),
+            "/memory/mem:episodic:1?back=/duplicates%3Fnamespace%3Dknowledge%26scan%3D1"
+        );
     }
 }

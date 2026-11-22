@@ -255,6 +255,13 @@ impl Store {
         hash_merge(&self.conn(), key, fields)
     }
 
+    /// HSET then EXPIRE, in one write: what a recall's log entry needs, and
+    /// one commit instead of two on every recall.
+    pub fn hash_set_expiring(&self, key: &str, fields: &Fields, ttl: Duration) -> Result<()> {
+        validate_key(key)?;
+        hash_merge_expiring(&self.conn(), key, fields, Some(now() + ttl.as_secs_f64()))
+    }
+
     /// HINCRBY: add `by` to an integer field, creating it at zero.
     pub fn hash_incr(&self, key: &str, field: &str, by: i64) -> Result<i64> {
         validate_key(key)?;
@@ -282,6 +289,39 @@ impl Store {
         fields.insert(field.to_owned(), next.to_string());
         hash_merge(&conn, key, &fields)?;
         Ok(next)
+    }
+
+    /// Several HINCRBYs and an HSET on one hash in one write, for a counter
+    /// bumped on every call. A field that holds something other than an
+    /// integer is left alone, as `hash_incr` refusing it would have left it,
+    /// and the rest still apply.
+    pub fn hash_incr_many(
+        &self,
+        key: &str,
+        increments: &[(&str, i64)],
+        set: &Fields,
+    ) -> Result<()> {
+        validate_key(key)?;
+        let conn = self.conn();
+        let mut fields = match load(&conn, key)? {
+            Some(entry) => {
+                expect(key, &entry, Kind::Hash)?;
+                hash_from(&entry.value)
+            }
+            None => Fields::new(),
+        };
+        for (field, by) in increments {
+            let current = match fields.get(*field) {
+                None => 0,
+                Some(raw) => match raw.trim().parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                },
+            };
+            fields.insert((*field).to_owned(), current.saturating_add(*by).to_string());
+        }
+        fields.extend(set.iter().map(|(k, v)| (k.clone(), v.clone())));
+        hash_merge(&conn, key, &fields)
     }
 
     pub fn hash_delete_fields(&self, key: &str, fields: &[&str]) -> Result<usize> {

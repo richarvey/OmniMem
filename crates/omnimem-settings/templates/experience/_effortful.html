@@ -1,10 +1,11 @@
 {% if effortful %}
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table effortful-table">
   <thead>
     <tr>
-      <th>Effort</th>
-      <th>Outcome</th>
-      <th>Content</th>
+      <th scope="col">Effort</th>
+      <th scope="col">Outcome</th>
+      <th scope="col">Content</th>
     </tr>
   </thead>
   <tbody>
@@ -12,11 +13,12 @@
     <tr>
       <td><span class="score">{{ m.effort_score }}/5</span></td>
       <td><span class="badge {{ 'active' if m.outcome == 'succeeded' else 'deprioritised' if m.outcome == 'pivoted' else 'abandoned' }}">{{ m.outcome }}</span></td>
-      <td class="content-cell"><a href="/memory/{{ m.key }}">{{ m.content }}</a></td>
+      <td class="content-cell"><a href="{{ admin }}/memory/{{ m.key|urlsegment }}?back={{ here|urlquote }}">{{ m.content|plain }}</a></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% include "partials/pagination.html" %}
 {% else %}
 <p class="empty-state">No {{ outcome_filter or "experience" }} memories recorded yet.</p>

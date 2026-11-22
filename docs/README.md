@@ -34,6 +34,6 @@ These pages describe OmniMem 7, the single Rust binary, first released as 7.0.3.
 
 ## Connection and deployment guides
 
-Per-agent setup lives in [../guides/](../guides/): claude.ai, Claude Code, Claude Desktop, Cursor, GitHub Copilot, GitLab Duo, AWS Kiro, OpenCode, OpenAI Codex CLI and Open Design.
+Per-agent setup lives in [../guides/](../guides/): claude.ai, Claude Code, Claude Desktop, Cursor, GitHub Copilot, GitLab Duo, AWS Kiro, OpenCode, Mistral Vibe, OpenAI Codex CLI and Open Design.
 
 Deployment guides live there too: [Docker](../guides/docker.md), [macOS](../guides/omnimem-setup-macos.md), [Raspberry Pi](../guides/omnimem-setup-raspberry-pi.md), [AWS (Linux)](../guides/omnimem-setup-aws-linux.md), [GCP (Linux)](../guides/omnimem-setup-gcp-linux.md) and [Linux with Tailscale Funnel](../guides/omnimem-setup-linux-tailscale.md).

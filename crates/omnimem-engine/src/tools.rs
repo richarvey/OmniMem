@@ -55,6 +55,21 @@ struct QueryTarget {
     content: String,
 }
 
+/// When query mode matched nothing, the closest memory and its raw
+/// similarity, so an agent can confirm it is the one meant and retry by key
+/// in one step rather than lowering a bar that protects against acting on
+/// the wrong memory.
+fn nearest_miss(hits: &[RecallResult]) -> Option<Value> {
+    let hit = hits.iter().find(|r| !r.reinstate_candidate)?;
+    Some(json!({
+        "key": hit.key,
+        "content": take_chars(&hit.content, 80),
+        "similarity": (hit.score * 1000.0).round() / 1000.0,
+        "needed": QUERY_TARGET_MIN_SCORE,
+        "hint": "Nothing was close enough to act on by query. If this is the memory you mean, call again with its key.",
+    }))
+}
+
 fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x3040..=0x30FF   // hiragana, katakana
@@ -481,7 +496,20 @@ impl Engine {
         let now = now_str();
         let vector = self.embed(content)?;
 
-        if !force && let Some(dup) = self.check_duplicate(ns, &vector, project)? {
+        // One search serves both checks: the duplicate check reads the
+        // nearest five of the heuristic's ten.
+        let neighbours = if force {
+            Vec::new()
+        } else {
+            self.store.search(
+                ns,
+                &vector,
+                crate::contradiction::CONTRADICTION_NEIGHBOURS,
+                &omnimem_store::SearchFilter::default(),
+                None,
+            )?
+        };
+        if !force && let Some(dup) = self.duplicate_among(&neighbours, project) {
             info!(similarity = dup.similarity, existing = %dup.key, "duplicate detected");
             return Ok(json!({
                 "status": "duplicate_found",
@@ -493,7 +521,7 @@ impl Engine {
         let contradiction = if force {
             None
         } else {
-            self.check_contradiction_heuristic(ns, &vector, content, project)?
+            self.contradiction_among(&neighbours, content, project)
         };
 
         let mut fields = Fields::from([
@@ -1064,9 +1092,14 @@ impl Engine {
     /// memory the query repeats: every memory containing one as a whole
     /// token is a target too, ignoring case. So "alice@acme.io" reaches
     /// "Customer ALICE@ACME.IO subscribed" but not "alice@acme.io.uk".
-    fn query_targets(&self, query: &str) -> Result<Vec<QueryTarget>> {
-        let mut targets: Vec<QueryTarget> = self
-            .query_hits(query)?
+    ///
+    /// Also returns the nearest miss from the same recall, for the reply to
+    /// give when nothing is acted on, so that reply doesn't run (and log) a
+    /// second recall of the same query.
+    fn query_targets(&self, query: &str) -> Result<(Vec<QueryTarget>, Option<Value>)> {
+        let hits = self.query_hits(query)?;
+        let nearest = nearest_miss(&hits);
+        let mut targets: Vec<QueryTarget> = hits
             .into_iter()
             .filter(|r| !r.reinstate_candidate && r.score > QUERY_TARGET_MIN_SCORE)
             .map(|r| QueryTarget {
@@ -1102,7 +1135,7 @@ impl Engine {
                 });
             }
         }
-        Ok(targets)
+        Ok((targets, nearest))
     }
 
     /// The top recall hits for a query with abandoned warnings removed: they
@@ -1115,31 +1148,12 @@ impl Engine {
             .collect())
     }
 
-    /// When query mode matched nothing, the closest memory and its raw
-    /// similarity, so an agent can confirm it is the one meant and retry by
-    /// key in one step rather than lowering a bar that protects against
-    /// acting on the wrong memory.
-    fn nearest_miss(&self, query: &str) -> Option<Value> {
-        let hit = self
-            .query_hits(query)
-            .ok()?
-            .into_iter()
-            .find(|r| !r.reinstate_candidate)?;
-        Some(json!({
-            "key": hit.key,
-            "content": take_chars(&hit.content, 80),
-            "similarity": (hit.score * 1000.0).round() / 1000.0,
-            "needed": QUERY_TARGET_MIN_SCORE,
-            "hint": "Nothing was close enough to act on by query. If this is the memory you mean, call again with its key.",
-        }))
-    }
-
-    /// `{"affected": [...]}`, with the nearest miss when a query matched nothing.
-    fn affected_reply(&self, key_or_query: &str, affected: Vec<Value>) -> Value {
+    /// `{"affected": [...]}`, with the nearest miss when a query matched
+    /// nothing (`nearest` is `None` for a key).
+    fn affected_reply(affected: Vec<Value>, nearest: Option<Value>) -> Value {
         let mut reply = json!({"affected": affected});
         if reply["affected"].as_array().is_some_and(Vec::is_empty)
-            && !key_or_query.starts_with("mem:")
-            && let Some(nearest) = self.nearest_miss(key_or_query)
+            && let Some(nearest) = nearest
         {
             reply["nearest"] = nearest;
         }
@@ -1158,6 +1172,7 @@ impl Engine {
             .map(validate_reinstate_hints)
             .transpose()?;
         let mut affected = Vec::new();
+        let mut nearest = None;
         if key_or_query.starts_with("mem:") {
             validate_writable_key(key_or_query, "deprioritise")?;
             affected.push(Value::Object(self.transition(
@@ -1169,7 +1184,9 @@ impl Engine {
                 self.add_reinstate_hints(key_or_query, hints)?;
             }
         } else {
-            for r in self.query_targets(key_or_query)? {
+            let (targets, miss) = self.query_targets(key_or_query)?;
+            nearest = miss;
+            for r in targets {
                 if r.state == "active" {
                     // A fact whose source matched first has already gone
                     // with it, so its own transition is refused.
@@ -1187,7 +1204,7 @@ impl Engine {
                 }
             }
         }
-        Ok(self.affected_reply(key_or_query, affected))
+        Ok(Self::affected_reply(affected, nearest))
     }
 
     pub fn archive(&self, key_or_query: &str, reason: Option<&str>) -> Result<Value> {
@@ -1195,6 +1212,7 @@ impl Engine {
             validate_text("reason", reason, MAX_SHORT_TEXT)?;
         }
         let mut affected = Vec::new();
+        let mut nearest = None;
         if key_or_query.starts_with("mem:") {
             validate_writable_key(key_or_query, "archive")?;
             affected.push(Value::Object(self.transition(
@@ -1203,7 +1221,9 @@ impl Engine {
                 reason,
             )?));
         } else {
-            for r in self.query_targets(key_or_query)? {
+            let (targets, miss) = self.query_targets(key_or_query)?;
+            nearest = miss;
+            for r in targets {
                 match self.transition(&r.key, MemoryState::Archived, reason) {
                     Ok(t) => affected.push(Value::Object(t)),
                     Err(EngineError::Invalid(e)) => {
@@ -1213,7 +1233,7 @@ impl Engine {
                 }
             }
         }
-        Ok(self.affected_reply(key_or_query, affected))
+        Ok(Self::affected_reply(affected, nearest))
     }
 
     fn clear_deprioritisation(&self, key: &str) -> Result<()> {
@@ -1256,6 +1276,7 @@ impl Engine {
 
     pub fn forget(&self, key_or_query: &str, confirm: bool) -> Result<Value> {
         let mut targets: Vec<(String, String)> = Vec::new();
+        let mut nearest = None;
         if key_or_query.starts_with("mem:") {
             validate_writable_key(key_or_query, "forget")?;
             if let Some(data) = self.store.get(key_or_query)?.filter(|d| !d.is_empty()) {
@@ -1263,15 +1284,15 @@ impl Engine {
                 targets.push((key_or_query.to_owned(), take_chars(content, 80)));
             }
         } else {
-            for r in self.query_targets(key_or_query)? {
+            let (found, miss) = self.query_targets(key_or_query)?;
+            nearest = miss;
+            for r in found {
                 targets.push((r.key.clone(), take_chars(&r.content, 80)));
             }
         }
         if targets.is_empty() {
             let mut reply = json!({"status": "not_found"});
-            if !key_or_query.starts_with("mem:")
-                && let Some(nearest) = self.nearest_miss(key_or_query)
-            {
+            if let Some(nearest) = nearest {
                 reply["nearest"] = nearest;
             }
             return Ok(reply);

@@ -23,7 +23,7 @@
 # links its C++ runtime in (CXXSTDLIB=static=stdc++), so glibc is all it
 # needs, and it's run in an Ubuntu 24.04 container before it's packaged, to
 # prove it; the .deb is installed and removed in a Debian 13 one. The tray app
-# also needs GTK 3, WebKitGTK 4.1 (2.40 or newer) and libayatana-appindicator3.
+# also needs GTK 3 and libayatana-appindicator3.
 # The builds use desktop-check.sh's cache folder ($OMNIMEM_DESKTOP_CACHE,
 # default ~/.cache/omnimem-desktop), the headless one in a target directory
 # of its own.
@@ -199,6 +199,11 @@ docker run --rm --volume "$dist/$deb:/tmp/omnimem.deb:ro" debian:13-slim sh -euc
     test -s /etc/ssl/certs/ca-certificates.crt
     id omnimem >/dev/null
     test "$(stat -c %a:%U:%G /etc/omnimem/omnimem.env)" = 640:root:omnimem
+    test "$(stat -c %a:%U:%G /etc/omnimem)" = 770:root:omnimem
+    # The settings panel saves the file the way configuration.rs does: a new
+    # copy beside it, renamed into place, as the service'"'"'s user.
+    su -s /bin/sh omnimem -c "cp /etc/omnimem/omnimem.env /etc/omnimem/omnimem.env.partial && mv /etc/omnimem/omnimem.env.partial /etc/omnimem/omnimem.env"
+    grep -q "^ReadWritePaths=.*/etc/omnimem" /usr/lib/systemd/system/omnimem.service
     test "$(stat -c %U /var/lib/omnimem)" = omnimem
     su -s /bin/sh omnimem -c "omnimem --help" >/dev/null
     # Commands read the settings file and find the service'"'"'s database

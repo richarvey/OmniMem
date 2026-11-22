@@ -96,7 +96,7 @@ impl AuditLevel {
 pub enum Actor {
     /// An MCP client (an agent), named in the row's `client`.
     Mcp,
-    /// The settings window.
+    /// The settings panel.
     Panel,
     /// A Claude Code hook.
     Hook,

@@ -240,6 +240,10 @@ pub fn discovery_text(name: &str, description: &str, domain: &str) -> String {
     format!("{name}. {description} Domain: {domain}.")
 }
 
+/// `seen_version` before a lazy store has loaded its matrix. SQLite's
+/// `data_version` counts up from 1, so it never reports this.
+const NOT_LOADED: i64 = i64::MIN;
+
 pub struct Store {
     pub(crate) conn: Mutex<Connection>,
     pub(crate) vectors: RwLock<VectorIndex>,
@@ -256,35 +260,57 @@ pub struct Store {
 impl Store {
     /// Open (creating if needed) the database file.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
+        Self::init(Self::connect(path.as_ref())?, VECTOR_DIM, true)
+    }
+
+    /// Open the database file without loading the vector matrix, which is
+    /// read in on the first search instead. For short-lived processes that
+    /// mostly never search: a Claude Code hook runs once per tool call, and
+    /// loading every vector (about 75 MB at 50,000 memories) would be most of
+    /// its cost. Writes before that first search are safe: they go into the
+    /// empty matrix, which the load then replaces with what the table holds.
+    pub fn open_lazy(path: impl AsRef<Path>) -> Result<Self> {
+        Self::init(Self::connect(path.as_ref())?, VECTOR_DIM, false)
+    }
+
+    fn connect(path: &Path) -> Result<Connection> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|source| StoreError::Io {
                 path: parent.display().to_string(),
                 source,
             })?;
         }
-        Self::init(Connection::open(path)?, VECTOR_DIM)
+        Ok(Connection::open(path)?)
     }
 
     /// A private in-memory database, for tests.
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, VECTOR_DIM)
+        Self::init(Connection::open_in_memory()?, VECTOR_DIM, true)
     }
 
     /// In-memory with a different vector size, for small hand-written tests.
     pub fn open_in_memory_with_dim(dim: usize) -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, dim)
+        Self::init(Connection::open_in_memory()?, dim, true)
     }
 
-    fn init(conn: Connection, dim: usize) -> Result<Self> {
+    fn init(conn: Connection, dim: usize, preload: bool) -> Result<Self> {
+        // rusqlite keeps 16 prepared statements by default; the store
+        // prepares more than that on its hot paths, so some were being
+        // parsed again each time.
+        conn.set_prepared_statement_cache_capacity(64);
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;",
         )?;
         schema::migrate(&conn)?;
         let origin_id = schema::origin_id(&conn)?;
-        let vectors = VectorIndex::load(&conn, dim)?;
-        let version = data_version(&conn)?;
+        // A lazy store starts with an empty matrix and a version no database
+        // reports, so the first `sync_external_writes` loads it.
+        let (vectors, version) = if preload {
+            (VectorIndex::load(&conn, dim)?, data_version(&conn)?)
+        } else {
+            (VectorIndex::new(dim), NOT_LOADED)
+        };
         Ok(Self {
             conn: Mutex::new(conn),
             vectors: RwLock::new(vectors),
@@ -320,6 +346,11 @@ impl Store {
         if let Err(e) = result {
             tracing::warn!(error = %e, "could not check the database for outside changes");
         }
+    }
+
+    /// Record that the matrix now matches the database at `version`.
+    pub(crate) fn mark_loaded(&self, version: i64) {
+        self.seen_version.store(version, Ordering::Release);
     }
 
     pub fn dimension(&self) -> usize {
@@ -579,18 +610,18 @@ impl Store {
             sql.push(')');
         }
         if !filter.present_any.is_empty() {
-            let Some(present) = json_paths_owned(&filter.present_any) else {
+            // Written into the SQL rather than bound: SQLite only uses a
+            // partial index (`memories_abandoned`) when the query spells its
+            // condition, and a bound path can't.
+            let conditions: Option<Vec<String>> = filter
+                .present_any
+                .iter()
+                .map(|f| schema::present_condition(f))
+                .collect();
+            let Some(conditions) = conditions else {
                 return Err(StoreError::InvalidField(filter.present_any.join(", ")));
             };
-            sql.push_str(" AND (");
-            for (i, path) in present.into_iter().enumerate() {
-                if i > 0 {
-                    sql.push_str(" OR ");
-                }
-                sql.push_str("json_extract(fields, ?) IS NOT NULL");
-                args.push(SqlValue::Text(path));
-            }
-            sql.push(')');
+            let _ = write!(sql, " AND ({})", conditions.join(" OR "));
         }
         if let Some(min) = filter.created_at_min {
             // `created_at` is `CAST(... AS REAL)`, which reads `inf`, `nan`
@@ -714,13 +745,13 @@ impl Store {
         let (memory_keys, other_keys) = split_keys(keys);
         let mut removed_memories: Vec<String> = Vec::new();
         let mut audit = self.recorder();
+        scrub_recall_log(&tx, &memory_keys)?;
         for chunk in memory_keys.chunks(IN_CHUNK) {
             // Before the delete's own row is written, so it can say how many
             // earlier rows lost their text.
             audit
                 .scrubbed
                 .extend(crate::audit::scrub_forgotten(&tx, chunk)?);
-            scrub_recall_log(&tx, chunk)?;
             // The fields come back with the key when the log is on, which is
             // all it needs to say what was deleted.
             let columns = if audit.enabled() {
@@ -766,6 +797,21 @@ impl Store {
             }
         }
         Ok(deleted)
+    }
+
+    /// The memory keys under `prefix` that carry contradiction links, in key
+    /// order, from the partial index (`memories_linked`): a store with no
+    /// disputes answers at once.
+    pub fn keys_with_contradictions(&self, prefix: &str) -> Result<Vec<String>> {
+        let upper = format!("{prefix}\u{10FFFF}");
+        let conn = self.conn();
+        let sql = format!(
+            "SELECT key FROM memories WHERE key >= ?1 AND key < ?2 AND {} ORDER BY key",
+            crate::schema::LINKED_CONDITION
+        );
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let rows = stmt.query_map(params![prefix, upper], |r| r.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Every live key starting with `prefix`, memories and others, sorted.
@@ -827,6 +873,257 @@ impl Store {
             }
         }
         Ok(counts)
+    }
+
+    /// How many facts wait for a person: candidate trust, active or
+    /// deprioritised, in any namespace but skills (the Unconfirmed page's set).
+    pub fn count_unconfirmed(&self) -> Result<usize> {
+        let n: i64 = self.conn().query_row(
+            // The namespaces are named rather than `!= 'skill'`, which no
+            // index can seek on: the count is then a walk of the candidates.
+            "SELECT COUNT(*) FROM memories
+             WHERE namespace IN ('episodic', 'project', 'knowledge', 'preference')
+               AND trust = 'candidate'
+               AND COALESCE(NULLIF(state, ''), 'active') IN ('active', 'deprioritised')",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(n as usize)
+    }
+
+    /// One project's memories: `(namespace, state, count)` and the keys of
+    /// the `limit` most recently updated, leaving out its context entry.
+    pub fn project_memories(
+        &self,
+        project: &str,
+        limit: usize,
+    ) -> Result<(Vec<StateCount>, Vec<String>)> {
+        let conn = self.conn();
+        let filter = "(project = ?1 OR project_name = ?1) AND key != 'mem:project:' || ?1";
+        let mut counts = Vec::new();
+        {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT namespace, COALESCE(NULLIF(state, ''), 'active'), COUNT(*) FROM memories WHERE {filter} GROUP BY 1, 2"
+            ))?;
+            let rows = stmt.query_map(params![project], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                counts.push(row?);
+            }
+        }
+        let mut stmt = conn.prepare(&format!(
+            "SELECT key FROM memories WHERE {filter} AND COALESCE(state, '') != 'archived'
+             ORDER BY updated_at DESC LIMIT ?2"
+        ))?;
+        let keys = stmt
+            .query_map(params![project, limit as i64], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok((counts, keys))
+    }
+
+    /// How many memories name each project, in any namespace, leaving out a
+    /// project's own context entry and articles (which carry their feed's
+    /// label as a project).
+    pub fn memory_counts_by_project(&self) -> Result<HashMap<String, u64>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT p, COUNT(*) FROM (
+                 SELECT key, COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p
+                 FROM memories
+                 WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL)
+             ) WHERE p IS NOT NULL AND key != 'mem:project:' || p GROUP BY p",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// The aggregates the settings panel's dashboard draws, each one query
+    /// over the generated columns, so the whole set costs a few
+    /// milliseconds on thousands of memories. `now` is in epoch seconds;
+    /// the growth chart counts `weeks` whole weeks back from it, project
+    /// activity counts updates in the last `recent_days`, and the article
+    /// intake counts the last 30 days.
+    pub fn dashboard_counts(
+        &self,
+        now: f64,
+        weeks: i64,
+        recent_days: i64,
+    ) -> Result<DashboardCounts> {
+        const WEEK: f64 = 604_800.0;
+        const DAY: f64 = 86_400.0;
+        let conn = self.conn();
+        let pairs = |sql: &str, args: &[&dyn rusqlite::ToSql]| -> Result<Vec<(String, u64)>> {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map(args, |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    r.get::<_, i64>(1)? as u64,
+                ))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        };
+        let buckets = |sql: &str, args: &[&dyn rusqlite::ToSql]| -> Result<Vec<(i64, u64)>> {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map(args, |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? as u64))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        };
+
+        let mut by_namespace_state = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT namespace, COALESCE(NULLIF(state, ''), 'active'), COUNT(*)
+                 FROM memories GROUP BY 1, 2",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                by_namespace_state.push(row?);
+            }
+        }
+
+        let start = now - weeks as f64 * WEEK;
+        let mut created_weekly = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT namespace, CAST((created_at - ?1) / ?2 AS INTEGER), COUNT(*)
+                 FROM memories WHERE created_at >= ?1 AND created_at < ?3 GROUP BY 1, 2",
+            )?;
+            let rows = stmt.query_map(params![start, WEEK, now], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })?;
+            for row in rows {
+                created_weekly.push(row?);
+            }
+        }
+
+        let recent = now - recent_days as f64 * DAY;
+        let mut projects = Vec::new();
+        {
+            // Articles carry their feed's label as a project; they aren't one.
+            let mut stmt = conn.prepare(
+                "SELECT p, COUNT(*), SUM(updated_at >= ?1) FROM (
+                     SELECT key, COALESCE(NULLIF(project, ''), NULLIF(project_name, '')) AS p, updated_at
+                     FROM memories
+                     WHERE namespace != 'skill' AND NOT (namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL)
+                 ) WHERE p IS NOT NULL AND key != 'mem:project:' || p GROUP BY p ORDER BY 3 DESC, 2 DESC, p LIMIT 8",
+            )?;
+            let rows = stmt.query_map(params![recent], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)? as u64,
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0) as u64,
+                ))
+            })?;
+            for row in rows {
+                projects.push(row?);
+            }
+        }
+
+        let outcomes = pairs(
+            "SELECT json_extract(fields, '$.outcome'), COUNT(*) FROM memories
+             WHERE namespace = 'episodic' AND json_extract(fields, '$.outcome') IS NOT NULL GROUP BY 1",
+            &[],
+        )?;
+        let efforts = buckets(
+            "SELECT e, COUNT(*) FROM (
+                 SELECT CAST(json_extract(fields, '$.effort_score') AS INTEGER) AS e
+                 FROM memories WHERE namespace = 'episodic'
+             ) WHERE e BETWEEN 1 AND 5 GROUP BY e",
+            &[],
+        )?;
+        let month = now - 30.0 * DAY;
+        let articles_daily = buckets(
+            "SELECT CAST((created_at - ?1) / ?2 AS INTEGER), COUNT(*) FROM memories
+             WHERE namespace = 'knowledge' AND NULLIF(feed_name, '') IS NOT NULL AND created_at >= ?1 AND created_at < ?3
+             GROUP BY 1",
+            &[&month, &DAY, &now],
+        )?;
+        let trust = pairs("SELECT trust, COUNT(*) FROM memories GROUP BY 1", &[])?;
+        // A project is a context entry: one with goals or a stack, whatever
+        // its key, as the projects page decides.
+        let project_contexts = pairs(
+            "SELECT COALESCE(NULLIF(state, ''), 'active'), COUNT(*) FROM memories
+             WHERE namespace = 'project'
+               AND (COALESCE(json_extract(fields, '$.goals'), '') != ''
+                    OR COALESCE(json_extract(fields, '$.stack'), '') != '')
+             GROUP BY 1",
+            &[],
+        )?;
+        let recent = {
+            let mut stmt =
+                conn.prepare("SELECT key FROM memories ORDER BY updated_at DESC LIMIT 10")?;
+            stmt.query_map([], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        Ok(DashboardCounts {
+            by_namespace_state,
+            created_weekly,
+            projects,
+            outcomes,
+            efforts,
+            articles_daily,
+            trust,
+            project_contexts,
+            recent,
+        })
+    }
+
+    /// Which of `keys` are stored memories, in chunked `IN` queries: one
+    /// round of the connection for a whole feed's entries rather than a full
+    /// record read for each.
+    pub fn existing_keys(&self, keys: &[String]) -> Result<HashSet<String>> {
+        let conn = self.conn();
+        let mut found = HashSet::new();
+        for chunk in keys.chunks(IN_CHUNK) {
+            let sql = format!(
+                "SELECT key FROM memories WHERE key IN ({})",
+                placeholders(chunk.len())
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(chunk), |r| r.get::<_, String>(0))?;
+            for key in rows {
+                found.insert(key?);
+            }
+        }
+        Ok(found)
+    }
+
+    /// Each memory's content length in characters, by key, counted by
+    /// SQLite (`length` counts characters, as `chars().count()` does) so no
+    /// text is copied out. A memory with no content is absent.
+    pub fn content_chars(&self, namespace: Namespace) -> Result<HashMap<String, usize>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT key, length(json_extract(fields, '$.content')) FROM memories
+              WHERE namespace = ?1 AND json_extract(fields, '$.content') IS NOT NULL",
+        )?;
+        let rows = stmt.query_map(params![namespace.as_str()], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        let mut lengths = HashMap::new();
+        for row in rows {
+            let (key, chars) = row?;
+            lengths.insert(key, usize::try_from(chars).unwrap_or(0));
+        }
+        Ok(lengths)
     }
 
     /// How many memories in a namespace have a vector.
@@ -1026,11 +1323,6 @@ fn json_paths(fields: &[&str]) -> Option<Vec<String>> {
         .collect()
 }
 
-fn json_paths_owned(fields: &[String]) -> Option<Vec<String>> {
-    let refs: Vec<&str> = fields.iter().map(String::as_str).collect();
-    json_paths(&refs)
-}
-
 /// The requested fields of a row whose columns after the key are their
 /// `json_extract` values, or `None` when it has none of them. Every stored
 /// value is a string; a number met in a hand-edited row is kept as its text
@@ -1227,7 +1519,7 @@ pub(crate) fn write_vector(conn: &Connection, key: &str, vector: &[f32]) -> Resu
     Ok(())
 }
 
-fn data_version(conn: &Connection) -> Result<i64> {
+pub(crate) fn data_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA data_version", [], |row| row.get(0))?)
 }
 
@@ -1236,18 +1528,80 @@ fn data_version(conn: &Connection) -> Result<i64> {
 /// text someone searched for that memory with and would otherwise survive
 /// in exports and backups for the log's 30 days. Runs inside the delete's
 /// transaction, so it rolls back with it.
+///
+/// The log is read once and matched in memory, not scanned once per key:
+/// deleting a project of 2,000 memories against 5,000 log entries was ten
+/// seconds of full scans with the connection held.
 fn scrub_recall_log(tx: &rusqlite::Transaction<'_>, keys: &[&str]) -> Result<usize> {
+    if keys.is_empty() {
+        return Ok(0);
+    }
+    let forgotten: HashSet<&str> = keys.iter().copied().collect();
+    let mut doomed: Vec<String> = Vec::new();
+    {
+        let mut stmt = tx.prepare_cached(
+            "SELECT key, json_extract(value, '$.result_keys') FROM kv
+              WHERE key >= 'log:recall:' AND key < 'log:recall;'",
+        )?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rusqlite::types::ValueRef::Text(text) = row.get_ref(1)? else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(text);
+            if names_a_forgotten_key(&text, &forgotten) {
+                doomed.push(row.get(0)?);
+            }
+        }
+    }
     let mut removed = 0;
-    let mut stmt = tx.prepare_cached(
-        "DELETE FROM kv WHERE key >= 'log:recall:' AND key < 'log:recall;'
-           AND instr(coalesce(json_extract(value, '$.result_keys'), ''), ?1) > 0",
-    )?;
-    for key in keys {
-        // result_keys is a JSON array held as a string; match the quoted key
-        // so one key can't match another it is a prefix of.
-        removed += stmt.execute(params![format!("\"{key}\"")])?;
+    for chunk in doomed.chunks(IN_CHUNK) {
+        let sql = format!(
+            "DELETE FROM kv WHERE key IN ({})",
+            placeholders(chunk.len())
+        );
+        removed += tx.execute(&sql, params_from_iter(chunk))?;
     }
     Ok(removed)
+}
+
+/// Whether a log entry's `result_keys` (a JSON array held as a string)
+/// names one of `forgotten`. A value that isn't such an array is searched
+/// for each key in quotes, so one key can't match another it is a prefix
+/// of, which is how the log was matched before it was parsed.
+fn names_a_forgotten_key(result_keys: &str, forgotten: &HashSet<&str>) -> bool {
+    match serde_json::from_str::<Vec<String>>(result_keys) {
+        Ok(list) => list.iter().any(|k| forgotten.contains(k.as_str())),
+        Err(_) => forgotten
+            .iter()
+            .any(|k| result_keys.contains(&format!("\"{k}\""))),
+    }
+}
+
+/// `(namespace, state, count)`.
+pub type StateCount = (String, String, u64);
+
+/// What [`Store::dashboard_counts`] returns.
+#[derive(Debug, Default, Clone)]
+pub struct DashboardCounts {
+    /// `(namespace, state, count)`, an unset state counted as active.
+    pub by_namespace_state: Vec<(String, String, u64)>,
+    /// `(namespace, week, count)` of memories created, week 0 the oldest.
+    pub created_weekly: Vec<(String, i64, u64)>,
+    /// `(project, memories, updated recently)`, the eight busiest.
+    pub projects: Vec<(String, u64, u64)>,
+    /// Episodic `(outcome, count)`.
+    pub outcomes: Vec<(String, u64)>,
+    /// Episodic `(effort score 1 to 5, count)`.
+    pub efforts: Vec<(i64, u64)>,
+    /// `(day, articles)` over the last 30 days, day 0 the oldest.
+    pub articles_daily: Vec<(i64, u64)>,
+    /// `(trust, count)` across every namespace.
+    pub trust: Vec<(String, u64)>,
+    /// Project contexts `(state, count)`.
+    pub project_contexts: Vec<(String, u64)>,
+    /// The ten most recently updated keys, newest first.
+    pub recent: Vec<String>,
 }
 
 #[cfg(test)]
@@ -1287,6 +1641,141 @@ mod tests {
         let just_fits = format!("mem:episodic:{}", "a".repeat(MAX_KEY_BYTES - 13));
         assert_eq!(just_fits.len(), MAX_KEY_BYTES);
         assert!(validate_key(&just_fits).is_ok());
+    }
+
+    #[test]
+    fn keys_with_contradictions_finds_only_linked_rows() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let put = |key: &str, links: Option<&str>| {
+            let mut fields = Fields::from([("content".to_owned(), key.to_owned())]);
+            if let Some(links) = links {
+                fields.insert("contradictions".to_owned(), links.to_owned());
+            }
+            store.upsert(key, &fields, None).unwrap();
+        };
+        put("mem:episodic:01A", Some(r#"[{"key": "mem:episodic:01B"}]"#));
+        put("mem:episodic:01B", Some(r#"[{"key": "mem:episodic:01A"}]"#));
+        put("mem:episodic:01C", Some(""));
+        put("mem:episodic:01D", None);
+        put(
+            "mem:knowledge:01E",
+            Some(r#"[{"key": "mem:episodic:01A"}]"#),
+        );
+        assert_eq!(
+            store.keys_with_contradictions("mem:episodic:").unwrap(),
+            ["mem:episodic:01A", "mem:episodic:01B"]
+        );
+        assert_eq!(
+            store.keys_with_contradictions("mem:knowledge:").unwrap(),
+            ["mem:knowledge:01E"]
+        );
+        // It walks the partial index.
+        let plan: Vec<String> = {
+            let conn = store.conn();
+            let sql = format!(
+                "EXPLAIN QUERY PLAN SELECT key FROM memories WHERE key >= 'mem:' AND key < 'mem:\u{10FFFF}' AND {} ORDER BY key",
+                crate::schema::LINKED_CONDITION
+            );
+            let mut stmt = conn.prepare(&sql).unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap()
+        };
+        assert!(
+            plan.iter().any(|p| p.contains("memories_linked")),
+            "{plan:?}"
+        );
+    }
+
+    #[test]
+    fn the_dashboard_counts_namespaces_growth_projects_and_outcomes() {
+        let store = Store::open_in_memory_with_dim(2).unwrap();
+        let now = 10_000_000.0;
+        let put = |key: &str, extra: &[(&str, &str)], created: f64| {
+            let mut fields = Fields::from([
+                ("content".to_owned(), key.to_owned()),
+                ("created_at".to_owned(), created.to_string()),
+                ("updated_at".to_owned(), created.to_string()),
+            ]);
+            for (k, v) in extra {
+                fields.insert((*k).to_owned(), (*v).to_owned());
+            }
+            store.upsert(key, &fields, None).unwrap();
+        };
+        put(
+            "mem:episodic:1",
+            &[
+                ("project", "omnimem"),
+                ("outcome", "succeeded"),
+                ("effort_score", "3"),
+            ],
+            now - 3600.0,
+        );
+        put(
+            "mem:episodic:2",
+            &[
+                ("project", "omnimem"),
+                ("state", "archived"),
+                ("outcome", "abandoned"),
+                ("effort_score", "5"),
+            ],
+            now - 8.0 * 86_400.0,
+        );
+        put(
+            "mem:episodic:3",
+            &[("project", "other")],
+            now - 400.0 * 86_400.0,
+        );
+        put(
+            "mem:project:omnimem",
+            &[("project_name", "omnimem"), ("goals", "x")],
+            now - 60.0,
+        );
+        put(
+            "mem:knowledge:a",
+            &[("feed_name", "Rust Blog"), ("project", "RSS")],
+            now - 2.0 * 86_400.0,
+        );
+
+        let counts = store.dashboard_counts(now, 26, 30).unwrap();
+        let count = |ns: &str, state: &str| {
+            counts
+                .by_namespace_state
+                .iter()
+                .find(|(n, s, _)| n == ns && s == state)
+                .map_or(0, |r| r.2)
+        };
+        assert_eq!(count("episodic", "active"), 2);
+        assert_eq!(count("episodic", "archived"), 1);
+        assert_eq!(count("knowledge", "active"), 1);
+        // The 400-day-old memory is outside the 26 weeks.
+        let weekly: u64 = counts
+            .created_weekly
+            .iter()
+            .filter(|(ns, _, _)| ns == "episodic")
+            .map(|r| r.2)
+            .sum();
+        assert_eq!(weekly, 2);
+        assert!(
+            counts
+                .created_weekly
+                .iter()
+                .all(|(_, week, _)| (0..26).contains(week))
+        );
+        // Articles aren't a project, and a project's context row is the
+        // project, not one of its memories (as `memory_counts_by_project`
+        // counts), so the dashboard and the Projects page agree.
+        assert_eq!(counts.projects[0], ("omnimem".to_owned(), 2, 2));
+        assert!(counts.projects.iter().all(|(p, _, _)| p != "RSS"));
+        assert_eq!(
+            counts.projects.iter().find(|p| p.0 == "other").unwrap().2,
+            0
+        );
+        assert!(counts.outcomes.contains(&("succeeded".to_owned(), 1)));
+        assert!(counts.outcomes.contains(&("abandoned".to_owned(), 1)));
+        assert_eq!(counts.efforts, vec![(3, 1), (5, 1)]);
+        assert_eq!(counts.articles_daily, vec![(28, 1)]);
     }
 
     #[test]

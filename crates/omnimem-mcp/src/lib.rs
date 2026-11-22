@@ -16,7 +16,7 @@ mod oauth;
 
 pub use approval::{APPROVAL_TIMEOUT, Answer, ask_human, can_ask};
 pub use handler::OmniMemServer;
-pub use http::{ServerConfig, ServerError, bind_address, router, serve};
+pub use http::{ServerConfig, ServerError, bind_address, router, router_with, serve, serve_with};
 pub use oauth::{OAuthConfig, OAuthSetup};
 
 /// Sent to every client on connect: the agent's operating instructions.

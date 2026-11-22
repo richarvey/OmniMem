@@ -2,12 +2,15 @@
 
 use std::sync::LazyLock;
 
-use omnimem_core::Namespace;
-use omnimem_store::SearchFilter;
-use regex::Regex;
+use regex::{Regex, RegexSet};
 
+use crate::Engine;
 use crate::pyfmt::take_chars;
-use crate::{Engine, Result};
+
+/// The neighbours the heuristic looks at, as in 6.x. `remember` searches
+/// this many once and hands the nearest to the duplicate check too.
+pub(crate) const CONTRADICTION_NEIGHBOURS: usize = 10;
+const _: () = assert!(CONTRADICTION_NEIGHBOURS >= crate::dedup::DUPLICATE_NEIGHBOURS);
 
 const NEGATION_PATTERNS: [(&str, &str); 17] = [
     (r"\bdon't\b", r"\bdo\b"),
@@ -29,17 +32,13 @@ const NEGATION_PATTERNS: [(&str, &str); 17] = [
     (r"\bdoesn't work\b", r"\bworks\b"),
 ];
 
-static COMPILED: LazyLock<Vec<(Regex, Regex)>> = LazyLock::new(|| {
-    NEGATION_PATTERNS
-        .iter()
-        .map(|(neg, pos)| {
-            (
-                Regex::new(neg).expect("valid"),
-                Regex::new(pos).expect("valid"),
-            )
-        })
-        .collect()
-});
+/// Each side of the pairs as one set, so a text is searched once per side
+/// for all seventeen rather than once per pattern. Index `i` of each set is
+/// pair `i`.
+static NEGATIONS: LazyLock<RegexSet> =
+    LazyLock::new(|| RegexSet::new(NEGATION_PATTERNS.iter().map(|(neg, _)| neg)).expect("valid"));
+static POSITIVES: LazyLock<RegexSet> =
+    LazyLock::new(|| RegexSet::new(NEGATION_PATTERNS.iter().map(|(_, pos)| pos)).expect("valid"));
 
 /// Words that say a statement replaces an earlier one: a change of value
 /// rather than a negation. "Lives in Berlin" and "moved to Lisbon" share no
@@ -59,23 +58,39 @@ static STATE_CHANGE: LazyLock<Regex> =
 /// One of two different statements says it changes or corrects something.
 /// Only meaningful between memories already found similar: the caller
 /// gates on similarity, as it does for a negation pair.
+#[cfg(test)]
 pub(crate) fn has_state_change(a: &str, b: &str) -> bool {
-    let (a, b) = (a.trim().to_lowercase(), b.trim().to_lowercase());
-    a != b && (STATE_CHANGE.is_match(&a) || STATE_CHANGE.is_match(&b))
+    state_change_lower(&a.to_lowercase(), &b.to_lowercase())
+}
+
+/// [`has_state_change`] on text already lowercased. Trimming after
+/// lowercasing is the same as before: no character lowercases to or from
+/// whitespace.
+fn state_change_lower(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim(), b.trim());
+    a != b && (STATE_CHANGE.is_match(a) || STATE_CHANGE.is_match(b))
 }
 
 /// What the keyless heuristic links between two similar memories: a
 /// negation pair, or a statement of change. Skills use the narrower
 /// [`has_negation_pair`], since a skill saying "now" changes nothing.
+/// Each text is lowercased once for both tests; the maintenance pass calls
+/// this for every similar pair it finds.
 pub(crate) fn signals_conflict(a: &str, b: &str) -> bool {
-    has_negation_pair(a, b) || has_state_change(a, b)
+    let (a, b) = (a.to_lowercase(), b.to_lowercase());
+    negation_pair_lower(&a, &b) || state_change_lower(&a, &b)
 }
 
 pub(crate) fn has_negation_pair(a: &str, b: &str) -> bool {
-    let (a, b) = (a.to_lowercase(), b.to_lowercase());
-    COMPILED.iter().any(|(neg, pos)| {
-        (neg.is_match(&a) && pos.is_match(&b)) || (neg.is_match(&b) && pos.is_match(&a))
-    })
+    negation_pair_lower(&a.to_lowercase(), &b.to_lowercase())
+}
+
+/// Some pair has its negation in one text and its positive in the other.
+fn negation_pair_lower(a: &str, b: &str) -> bool {
+    let (neg_a, pos_a) = (NEGATIONS.matches(a), POSITIVES.matches(a));
+    let (neg_b, pos_b) = (NEGATIONS.matches(b), POSITIVES.matches(b));
+    (0..NEGATION_PATTERNS.len())
+        .any(|i| (neg_a.matched(i) && pos_b.matched(i)) || (neg_b.matched(i) && pos_a.matched(i)))
 }
 
 pub(crate) struct ContradictionMatch {
@@ -97,17 +112,16 @@ pub(crate) fn states_a_change(text: &str) -> bool {
 pub(crate) use omnimem_store::HEURISTIC_EXPLANATION;
 
 impl Engine {
-    pub(crate) fn check_contradiction_heuristic(
+    /// The heuristic over neighbours already found, nearest first: the first
+    /// [`CONTRADICTION_NEIGHBOURS`] of them, as a search of its own would
+    /// return them.
+    pub(crate) fn contradiction_among(
         &self,
-        namespace: Namespace,
-        vector: &[f32],
+        hits: &[omnimem_store::SearchHit],
         content: &str,
         project_filter: Option<&str>,
-    ) -> Result<Option<ContradictionMatch>> {
-        let hits = self
-            .store
-            .search(namespace, vector, 10, &SearchFilter::default(), None)?;
-        for hit in hits {
+    ) -> Option<ContradictionMatch> {
+        for hit in hits.iter().take(CONTRADICTION_NEIGHBOURS) {
             let state = hit.fields.get("state").map_or("active", String::as_str);
             if matches!(state, "archived" | "deleted") {
                 continue;
@@ -132,17 +146,17 @@ impl Engine {
                     omnimem_store::trust_of(&hit.fields),
                     crate::trust::ACCEPTED | crate::trust::CANDIDATE | crate::trust::DISPUTED
                 );
-                return Ok(Some(ContradictionMatch {
+                return Some(ContradictionMatch {
                     may_supersede: believed
                         && states_a_change(content)
                         && content.trim().to_lowercase() != existing.trim().to_lowercase(),
-                    existing_key: hit.key,
+                    existing_key: hit.key.clone(),
                     existing_content: take_chars(existing, 200),
                     similarity,
-                }));
+                });
             }
         }
-        Ok(None)
+        None
     }
 }
 

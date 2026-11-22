@@ -131,6 +131,29 @@ fn write(e: &Engine, domain: &str) -> Value {
 
 const QUEUES: &str = "always use boring queues for python background work";
 
+/// A lesson recorded after the store's first 5,000 episodic memories still
+/// reaches the skill. The pools once read only the namespace's oldest 5,000
+/// keys, so a store past that never learnt from anything newer.
+#[test]
+fn a_lesson_past_the_first_five_thousand_memories_reaches_the_skill() {
+    let e = engine();
+    for i in 0..5000 {
+        put(
+            &e,
+            &format!("mem:episodic:0{i:05}"),
+            "untagged chatter",
+            &[],
+        );
+    }
+    lesson(&e, "mem:episodic:1A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:1B", "python", "beta", QUEUES);
+    let proposal = propose(&e, "python");
+    assert_eq!(proposal["status"], "proposal", "{proposal}");
+    assert_eq!(proposal["rules"], json!({"do": 1}));
+    let draft = proposal["draft"].as_str().unwrap();
+    assert!(draft.contains("[mem:episodic:1B]"), "{draft}");
+}
+
 #[test]
 fn propose_write_then_unchanged() {
     let dir = std::env::temp_dir().join(format!("omnimem-skill-export-{}", std::process::id()));
@@ -567,6 +590,161 @@ fn briefing_surfaces_suggestions_updates_and_the_knowledge_watch() {
     let watch = &briefing["skill_knowledge_watch"][0];
     assert_eq!(watch["articles"][0]["key"], "mem:knowledge:01K");
     assert_eq!(watch["articles"][0]["possible_contradiction"], true);
+}
+
+#[test]
+fn a_knowledge_watch_suggestion_goes_once_dismissed_or_promoted() {
+    let e = engine();
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    e.compile_skill(
+        "python",
+        "propose",
+        2,
+        true,
+        None,
+        Some("python background work queues"),
+    )
+    .unwrap();
+    write(&e, "python");
+    for key in ["mem:knowledge:01K", "mem:knowledge:01L"] {
+        put(
+            &e,
+            key,
+            "python background work queues for long jobs",
+            &[("feed_name", "news")],
+        );
+    }
+    let suggested = |e: &Engine| -> Vec<String> {
+        e.knowledge_watch()
+            .unwrap()
+            .iter()
+            .flat_map(|w| w["articles"].as_array().cloned().unwrap_or_default())
+            .map(|a| a["key"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(suggested(&e), ["mem:knowledge:01K", "mem:knowledge:01L"]);
+
+    assert!(
+        e.dismiss_knowledge_watch("python", "mem:knowledge:01K")
+            .unwrap()
+    );
+    assert!(
+        !e.dismiss_knowledge_watch("python", "mem:knowledge:01K")
+            .unwrap(),
+        "already dismissed"
+    );
+    assert_eq!(suggested(&e), ["mem:knowledge:01L"]);
+    assert!(
+        e.briefing(Some("alpha"), true).unwrap()["skill_knowledge_watch"][0]["articles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|a| a["key"] != "mem:knowledge:01K"),
+        "the briefing skips it too"
+    );
+
+    e.promote_knowledge("mem:knowledge:01L", Some("python"), false, None)
+        .unwrap();
+    assert!(suggested(&e).is_empty());
+
+    assert!(
+        e.dismiss_knowledge_watch("python", "mem:episodic:01A")
+            .is_err()
+    );
+    assert!(
+        e.dismiss_knowledge_watch("Not Valid!", "mem:knowledge:01K")
+            .is_err()
+    );
+}
+
+#[test]
+fn skill_candidates_say_what_each_domain_still_needs() {
+    let e = engine();
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    lesson(
+        &e,
+        "mem:episodic:01G",
+        "golang",
+        "alpha",
+        "keep goroutines bounded",
+    );
+
+    let candidates = e.skill_candidates().unwrap();
+    let of = |domain: &str| {
+        candidates
+            .iter()
+            .find(|c| c["domain"] == domain)
+            .cloned()
+            .unwrap_or_else(|| panic!("{domain} in {candidates:?}"))
+    };
+    let python = of("python");
+    assert_eq!(python["lessons"], 2);
+    assert_eq!(python["rules"], 1);
+    assert_eq!(python["spans_projects"], true);
+    assert_eq!(python["can_draft"], true);
+    assert_eq!(python["ready"], false, "the scan wants three memories");
+    assert_eq!(python["needs"], json!(["1 more memory with a lesson"]));
+
+    let golang = of("golang");
+    assert_eq!(golang["can_draft"], false);
+    assert_eq!(
+        golang["held_back"][0]["sources"],
+        json!(["mem:episodic:01G"])
+    );
+    e.bless("mem:episodic:01G").unwrap();
+    let blessed = e.skill_candidates().unwrap();
+    let golang = blessed.iter().find(|c| c["domain"] == "golang").unwrap();
+    assert_eq!(
+        golang["can_draft"], true,
+        "a blessed lesson clears the gate"
+    );
+
+    // A domain with a draft waiting is no longer a candidate.
+    propose(&e, "python");
+    assert!(
+        e.skill_candidates()
+            .unwrap()
+            .iter()
+            .all(|c| c["domain"] != "python")
+    );
+}
+
+#[test]
+fn a_scan_asked_for_runs_whatever_the_time_gate_says() {
+    let e = engine_with(EngineConfig {
+        skill_scan_interval_hours: 24.0,
+        skill_scan_min_pool: 2,
+        ..config()
+    });
+    lesson(&e, "mem:episodic:01A", "python", "alpha", QUEUES);
+    lesson(&e, "mem:episodic:01B", "python", "beta", QUEUES);
+    assert!(
+        e.briefing(Some("alpha"), false).unwrap()["auto_proposed_skills"].is_object(),
+        "the briefing's scan ran and drafted"
+    );
+    e.discard_skill_proposal("python").unwrap();
+    lesson(
+        &e,
+        "mem:episodic:01C",
+        "python",
+        "gamma",
+        "prefer small functions",
+    );
+    lesson(
+        &e,
+        "mem:episodic:01D",
+        "python",
+        "delta",
+        "prefer small functions",
+    );
+
+    // The briefing's gate is shut for a day; a person's scan isn't.
+    assert!(e.briefing(Some("alpha"), false).unwrap()["auto_proposed_skills"].is_null());
+    let scan = e.scan_for_skills().unwrap();
+    assert_eq!(scan["proposals"][0]["domain"], "python", "{scan}");
+    assert_eq!(scan["proposals"][0]["new_skill"], true);
 }
 
 #[test]

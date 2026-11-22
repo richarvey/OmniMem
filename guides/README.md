@@ -12,12 +12,13 @@ OmniMem speaks MCP over Streamable HTTP at `/mcp`, so anything that can use a re
 | [Cursor](cursor.md) | Native HTTP, Agent mode |
 | [GitHub Copilot](github-copilot.md) | Native HTTP in VS Code, Agent mode |
 | [GitLab Duo](gitlab-duo.md) | Native HTTP, no custom headers |
-| [Kiro](kiro.md) | Native HTTP, access token as a header |
+| [Kiro](kiro.md) | Native HTTP, access token as a header, plus hooks for the dead-end guard and briefing |
 | [Lumo](lumo.md) | OAuth 2.1 over HTTPS, with a trailing slash on `/mcp/` |
 | [OpenCode](opencode.md) | Remote server, access token or OAuth |
-| [OpenAI Codex CLI](codex.md) | Native HTTP, token from an environment variable |
+| [OpenAI Codex CLI](codex.md) | Native HTTP, plus hooks for the dead-end guard and briefing |
 | [Open Design](open-design.md) | OAuth 2.1 as a public client |
 | [Mistral](mistral.md) | OAuth 2.1, needs a public HTTPS address that isn't Tailscale Funnel |
+| [Mistral Vibe](vibe.md) | Native HTTP, plus hooks for the dead-end guard and briefing |
 
 ## Running OmniMem somewhere
 

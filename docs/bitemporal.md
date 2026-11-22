@@ -32,7 +32,7 @@ You don't have to do anything for most memories. Nearly everything is true from 
 - **Resolving a contradiction** with `supersedes` ends the loser's validity when the winner says it began (its `valid_from`), or now if it doesn't say, and retires the loser. A loser that already had an earlier end keeps it. In the example, settling "moved to Lisbon" over "lives in Berlin" closes Berlin at 1 April.
 - **`both_wrong`** retires both memories but ends neither's validity: they were never true, so there's nothing to end.
 - **`reopened`** undoes the resolution it reopens. A memory that resolution superseded or rejected goes back to `disputed`, its `retired_at` is cleared, and the end of validity it wrote is taken back. The resolution's `history` keeps what was decided before.
-- **A person rejecting a memory** (in the settings window or with `omnimem trust reject`) retires it, and restoring it un-retires it. `retired_at` follows trust wherever trust moves.
+- **A person rejecting a memory** (in the settings panel or with `omnimem trust reject`) retires it, and restoring it un-retires it. `retired_at` follows trust wherever trust moves.
 - **Extracted facts** take their dates from the text when it gives them ("since April"), and otherwise their source's `valid_from`, `valid_to` and `retired_at`. A fact that took its source's end loses it again if the source's is cleared, but one with an end of its own keeps it.
 
 Every change to an interval is in the audit log at `lifecycle`, with the old and new values.
@@ -70,7 +70,7 @@ The briefing and the skill compiler only use memories that are still true, the s
 
 None of this moves anything for a memory with no `valid_to`. That covers every memory from 6.x and from 7.x before 7.0.11, so an upgrade changes no scores until something has an end.
 
-## In the settings window and the CLI
+## In the settings panel and the CLI
 
 Each memory's page has a **When it was true** section: when it became true and stopped, when OmniMem recorded it and, if it has, when it stopped believing it. Two date fields set or clear either end of validity (an empty field means "from when it was recorded" or "still true"), with an optional reason. The change is audited as the panel's, and the facts extracted from the memory follow it. The Search page has **True on** and **Known on** date fields, which are `valid_at` and `known_at`, and a result that has stopped being true says since when.
 

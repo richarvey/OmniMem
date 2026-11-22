@@ -249,8 +249,13 @@ jobs:
     name: Windows x64 (cross-built)
     # There's no Windows runner, so the exe and the MSI are cross-built on
     # Linux (cargo-xwin and wixl, in the ci/windows container). Nothing here
-    # can run them, so this job has no smoke test.
-    runs-on: [linux, arm64]
+    # can run them, so this job has no smoke test. Nothing in it depends on
+    # the host's architecture (the container is built for whichever runner
+    # it lands on, and the target is always x86_64-pc-windows-msvc), so it
+    # takes whichever Linux runner is free, amd64 or arm64. Each keeps its own
+    # cache (~/.cache/omnimem-windows), so a runner's first build here fetches
+    # Microsoft's CRT and SDK and builds from cold.
+    runs-on: linux
     timeout-minutes: 120
     env:
       NODE_OPTIONS: --dns-result-order=ipv4first

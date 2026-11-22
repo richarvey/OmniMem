@@ -113,13 +113,38 @@ async fn duplicates_scan_and_maintenance_is_noted() {
 
     let page = text(&get(&panel, "/duplicates").await);
     assert!(page.contains("04 Sep 2025 15:33 UTC"), "{page}");
-    assert!(page.contains("(project: omnimem, 2 duplicates archived)"));
-    assert!(page.contains("class=\"nav-link active\">Duplicates"));
+    assert!(
+        page.contains("project omnimem,\n  2 duplicates archived"),
+        "{page}"
+    );
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Duplicates"));
 
     let scan = text(&get(&panel, "/duplicates/scan?namespace=episodic").await);
-    assert!(scan.contains("Found 1 cluster of duplicates"), "{scan}");
+    assert!(
+        scan.contains("1 cluster of near-identical episodic memories"),
+        "{scan}"
+    );
     assert!(scan.contains(&first) && scan.contains(&second));
     assert!(scan.contains("similarity 1.0"), "{scan}");
+
+    // A scan has an address, and its Archive and memory links come back to it.
+    let here = "/duplicates?namespace=episodic&scan=1";
+    let page = text(&get(&panel, here).await);
+    assert!(
+        page.contains("1 cluster of near-identical episodic memories"),
+        "{page}"
+    );
+    assert!(
+        page.contains(&format!(
+            r#"name="next" value="{}""#,
+            here.replace('&', "&amp;")
+        )),
+        "{page}"
+    );
+    assert!(
+        page.contains("?back=/duplicates%3Fnamespace%3Depisodic%26scan%3D1"),
+        "{page}"
+    );
     assert!(
         text(&get(&panel, "/duplicates/scan?namespace=knowledge").await)
             .contains("No duplicates found in knowledge.")
@@ -146,11 +171,14 @@ async fn contradictions_list_each_pair_once() {
         .unwrap();
 
     let page = text(&get(&panel, "/contradictions").await);
-    assert!(page.contains("1 contradiction pair"), "{page}");
+    assert!(
+        page.contains(r#"Confirmed by the model <span class="count-chip">1</span>"#),
+        "{page}"
+    );
     assert!(!page.contains("pairs"));
     assert!(page.contains("They disagree"));
     assert!(page.contains("Always squash merge") && page.contains("Never squash merge"));
-    assert!(page.contains("1 contradiction found)"));
+    assert!(page.contains("1 pair found in that run"));
 }
 
 #[tokio::test]
@@ -183,7 +211,10 @@ async fn a_pair_shows_its_explanation_whichever_side_recorded_it() {
             .unwrap();
 
         let page = text(&get(&panel, "/contradictions").await);
-        assert!(page.contains("1 contradiction pair"), "{page}");
+        assert!(
+            page.contains(r#"Confirmed by the model <span class="count-chip">1</span>"#),
+            "{page}"
+        );
         assert!(
             page.contains("Opposite advice"),
             "explanation on the {} side lost: {page}",
@@ -242,7 +273,7 @@ async fn the_page_offers_resolve_actions_in_place_of_the_archive_buttons() {
     ] {
         assert!(page.contains(label), "{label} missing: {page}");
     }
-    assert!(page.contains("action=\"/contradictions/resolve\""));
+    assert!(page.contains("action=\"/admin/contradictions/resolve\""));
     assert!(page.contains("name=\"reason\""));
     assert!(page.contains("name=\"retire_loser\""));
     assert!(!page.contains("Archive A") && !page.contains("/lifecycle/archive"));
@@ -322,11 +353,11 @@ async fn pending_resolutions_are_listed_to_accept_or_discard() {
 
     let page = text(&get(&panel, "/contradictions").await);
     assert!(
-        page.contains("Pending") && page.contains("agent says so"),
+        page.contains("Proposed by an agent") && page.contains("agent says so"),
         "{page}"
     );
-    assert!(page.contains("action=\"/contradictions/accept\""));
-    assert!(page.contains("action=\"/contradictions/discard\""));
+    assert!(page.contains("action=\"/admin/contradictions/accept\""));
+    assert!(page.contains("action=\"/admin/contradictions/discard\""));
 
     // Discard writes nothing.
     let response = post(&panel, "/contradictions/discard", &form_keys(&a, &b)).await;
@@ -412,19 +443,44 @@ async fn telemetry_ranks_recalls_and_finds_what_went_cold() {
         .store()
         .bump_recall_counts(std::slice::from_ref(&cold), "1000.0")
         .unwrap();
+    // A compiled skill is recalled too: listed, but not a memory in the
+    // total, as Token overhead counts.
+    let skill = "mem:skill:gen:rust-local";
+    engine
+        .store()
+        .upsert(
+            skill,
+            &Fields::from([
+                ("name".to_owned(), "rust-local".to_owned()),
+                ("state".to_owned(), "active".to_owned()),
+                ("body".to_owned(), "# Rust".to_owned()),
+            ]),
+            None,
+        )
+        .unwrap();
+    engine
+        .store()
+        .bump_recall_counts(std::slice::from_ref(&skill.to_owned()), &now)
+        .unwrap();
 
     let page = text(&get(&panel, "/telemetry").await);
     assert!(
         page.contains(r#"<div class="stat-total">3</div>"#),
         "{page}"
     );
-    let most = page.find("Most Recalled").unwrap();
-    let gone = page.find("Gone Cold").unwrap();
-    let never = page.find("Never Recalled <span").unwrap();
+    assert!(page.contains("rust-local"), "the skill is listed: {page}");
+    // Its recall is listed but not in the total: three memories, three recalls.
+    assert!(
+        page.matches(r#"<div class="stat-total">3</div>"#).count() >= 2,
+        "memories and recalls both leave the skill out: {page}"
+    );
+    let most = page.find("Most recalled").unwrap();
+    let gone = page.find("Gone cold").unwrap();
+    let never = page.find("Never recalled <span").unwrap();
     assert!(page[most..gone].find("Recalled often") < page[most..gone].find("Recalled long ago"));
     assert!(page[gone..never].contains("Recalled long ago"));
     assert!(page[never..].contains("Never recalled at all"));
-    assert!(page.contains("class=\"nav-link active\">Telemetry"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Telemetry"));
 
     let filtered = text(&get(&panel, "/telemetry/refresh?project=other").await);
     assert!(!filtered.contains("<html"));
@@ -460,7 +516,7 @@ async fn token_overhead_measures_and_resets() {
     assert!(page.contains(r#"<td class="mono">recall</td>"#));
     assert!(page.contains("33.3ms"), "{page}");
     assert!(page.contains("~83"), "average tokens");
-    assert!(page.contains("class=\"nav-link active\">Telemetry"));
+    assert!(page.contains("aria-current=\"page\"><span class=\"nav-label\">Telemetry"));
 
     let reset = post(&panel, "/token-overhead/reset", "").await;
     assert_eq!(reset.headers()["x-omnimem-redirect"], "/token-overhead");
@@ -484,4 +540,154 @@ async fn the_apps_notice_tops_every_page() {
             "{path}: {page}"
         );
     }
+}
+
+fn link(engine: &Engine, a: &str, b: &str, explanation: &str) {
+    engine
+        .store()
+        .set_field(
+            a,
+            "contradictions",
+            &format!(r#"[{{"key": "{b}", "explanation": "{explanation}"}}]"#),
+        )
+        .unwrap();
+    engine
+        .store()
+        .set_field(b, "contradictions", &format!(r#"[{{"key": "{a}"}}]"#))
+        .unwrap();
+}
+
+fn encode(text: &str) -> String {
+    text.replace(':', "%3A").replace('|', "%7C")
+}
+
+#[tokio::test]
+async fn wording_only_pairs_are_counted_apart_and_dismissed_only_as_shown() {
+    let (panel, engine) = setup();
+    let (a, b) = (
+        remember(&engine, "Always rebase", "omnimem"),
+        remember(&engine, "Never rebase", "omnimem"),
+    );
+    let (c, d) = (
+        remember(&engine, "Always tag releases", "omnimem"),
+        remember(&engine, "Never tag releases", "omnimem"),
+    );
+    let (e, f) = (
+        remember(&engine, "Ship on Fridays", "omnimem"),
+        remember(&engine, "Don't ship on Fridays", "omnimem"),
+    );
+    link(&engine, &a, &b, omnimem_store::HEURISTIC_LINK_EXPLANATION);
+    link(&engine, &c, &d, omnimem_store::HEURISTIC_LINK_EXPLANATION);
+    link(&engine, &e, &f, "A model read both: they disagree");
+
+    // The menu counts what needs a decision, not wording-only pairs.
+    let counts = text(&get(&panel, "/nav-counts").await);
+    assert!(
+        counts.contains(r#"id="nav-count-contradictions" hx-swap-oob="true"><span class="nav-count" title="1 contradiction to settle">1</span>"#),
+        "{counts}"
+    );
+    let page = text(&get(&panel, "/contradictions").await);
+    assert!(
+        page.contains(r#"Contradictions <span class="count-chip">1</span>"#),
+        "{page}"
+    );
+    assert!(page.contains("and 2 wording only"), "{page}");
+
+    // Dismissing posts the pairs the page showed. One that wasn't posted,
+    // and the model-confirmed one even if posted, stay open.
+    let (lo, hi) = if a < b { (&a, &b) } else { (&b, &a) };
+    let (mlo, mhi) = if e < f { (&e, &f) } else { (&f, &e) };
+    let form = format!(
+        "pair={}&pair={}",
+        encode(&format!("{lo}|{hi}")),
+        encode(&format!("{mlo}|{mhi}"))
+    );
+    let done = post(&panel, "/contradictions/dismiss-wording", &form).await;
+    let location = done.headers()["location"].to_str().unwrap().to_owned();
+    assert!(
+        location.contains("Dismissed%201%20wording-only%20pair"),
+        "{location}"
+    );
+    let open = engine.open_contradictions().unwrap();
+    assert_eq!(open.len(), 2, "{open:?}");
+    let still = |x: &str| open.iter().any(|p| p["key_a"] == x || p["key_b"] == x);
+    assert!(!still(&a) && still(&c) && still(&e));
+}
+
+#[tokio::test]
+async fn keeping_a_duplicate_archives_only_its_scanned_cluster() {
+    let (panel, engine) = setup();
+    let first = remember(&engine, "Twins share a length: one", "omnimem");
+    let second = remember(&engine, "Twins share a length: two", "omnimem");
+    let bystander = remember(
+        &engine,
+        "Something else entirely, a different length",
+        "omnimem",
+    );
+
+    // Without a scan behind it, nothing is archived.
+    let refused = post(
+        &panel,
+        "/duplicates/keep",
+        &format!(
+            "key={}&other={}&next=%2Fduplicates",
+            encode(&first),
+            encode(&bystander)
+        ),
+    )
+    .await;
+    assert!(
+        refused.headers()["location"]
+            .to_str()
+            .unwrap()
+            .contains("error=")
+    );
+
+    // After a scan, the form's `other` is ignored: the cluster decides.
+    let scan = text(&get(&panel, "/duplicates?namespace=episodic&scan=1").await);
+    assert!(scan.contains("Keep this one"), "{scan}");
+    // The dashboard reports the scan, with its age, until its clusters are settled.
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(
+        dashboard.contains("duplicate cluster</span>")
+            && dashboard.contains("scan of episodic just now"),
+        "{dashboard}"
+    );
+    let kept = post(
+        &panel,
+        "/duplicates/keep",
+        &format!(
+            "key={}&other={}&next=%2Fduplicates%3Fnamespace%3Depisodic%26scan%3D1",
+            encode(&first),
+            encode(&bystander)
+        ),
+    )
+    .await;
+    let location = kept.headers()["location"].to_str().unwrap().to_owned();
+    assert!(
+        location.contains("Kept%20one%2C%20archived%201."),
+        "{location}"
+    );
+    let state = |key: &str| {
+        engine
+            .store()
+            .get(key)
+            .unwrap()
+            .unwrap()
+            .get("state")
+            .cloned()
+    };
+    assert_eq!(state(&second).as_deref(), Some("archived"));
+    assert_ne!(state(&bystander).as_deref(), Some("archived"));
+    assert_ne!(state(&first).as_deref(), Some("archived"));
+
+    // Back on the scan, the cluster is settled without a rescan.
+    let again = text(&get(&panel, "/duplicates?namespace=episodic&scan=1").await);
+    assert!(
+        again.contains("No duplicates found in episodic."),
+        "{again}"
+    );
+    // Settled from anywhere, the cluster leaves the dashboard too.
+    let dashboard = text(&get(&panel, "/?refresh=1").await);
+    assert!(!dashboard.contains("duplicate cluster"), "{dashboard}");
 }

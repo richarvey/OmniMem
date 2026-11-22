@@ -222,10 +222,20 @@ impl Engine {
             return Ok(0);
         }
         let mut derived = Vec::new();
-        for ns in ["knowledge", "preference"] {
-            let keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
-            let rows = self.store.get_fields_multi(
-                &keys,
+        // Only rows derived from something can be derived from this one, and
+        // most knowledge (every RSS article) has neither field, so the store
+        // skips them rather than handing every row over to be checked.
+        let derived_only = omnimem_store::MemoryFilter {
+            present_any: vec!["enriched_from".to_owned(), "source_doc_id".to_owned()],
+            ..omnimem_store::MemoryFilter::default()
+        };
+        for ns in [
+            omnimem_core::Namespace::Knowledge,
+            omnimem_core::Namespace::Preference,
+        ] {
+            let rows = self.store.list_memories(
+                ns,
+                &derived_only,
                 &[
                     "enriched_from",
                     "source_doc_id",
@@ -236,8 +246,7 @@ impl Engine {
                     "retired_state",
                 ],
             )?;
-            for (fact, row) in keys.into_iter().zip(rows) {
-                let Some(row) = row else { continue };
+            for (fact, row) in rows {
                 let from_source = |field: &str| row.get(field).is_some_and(|v| v == key);
                 if fact != key && (from_source("enriched_from") || from_source("source_doc_id")) {
                     derived.push((fact, row));

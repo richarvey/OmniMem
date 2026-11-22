@@ -4,18 +4,18 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Backups</h2>
+  <h1>Backups</h1>
   <div style="display:flex;gap:0.5rem;align-items:center">
-    <form method="POST" action="/backups/create" style="display:inline-flex;align-items:center;gap:0.5rem">
+    <form method="POST" action="{{ admin }}/backups/create" class="inline-form">
       <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.85rem;color:var(--text-dim)" title="Add the RSS reading list (feeds.yml) to the backup">
         <input type="checkbox" name="feeds" value="1"> Include RSS feeds
       </label>
       <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.85rem;color:var(--text-dim)" title="Add the audit log to the backup. At AUDIT_LOG=full it holds memory text.">
         <input type="checkbox" name="audit" value="1"> Include audit log
       </label>
-      <button type="submit" class="btn btn-primary btn-sm">Create Backup</button>
+      <button type="submit" class="btn btn-primary btn-sm">Create backup</button>
     </form>
-    <form method="POST" action="/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
+    <form method="POST" action="{{ admin }}/backups/upload" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:0.5rem">
       <input type="file" name="file" accept=".json" required style="display:none" id="backup-file-input" data-submit-on-change>
       <button type="button" class="btn btn-secondary btn-sm" data-click-target="backup-file-input">Upload</button>
     </form>
@@ -23,14 +23,14 @@
 </header>
 
 {% if message %}
-<div class="flash flash-success">
+<div class="flash flash-success" role="status">
   {{ message }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
 {% endif %}
 
 {% if error %}
-<div class="flash flash-error">
+<div class="flash flash-error" role="alert">
   {{ error }}
   <button class="flash-close" data-dismiss>&times;</button>
 </div>
@@ -38,7 +38,7 @@
 
 {% if preview is defined and preview %}
 <div style="margin-bottom:1.5rem;padding:1.25rem;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--radius)">
-  <h3 style="font-size:0.95rem;color:var(--text-bright);margin-bottom:0.75rem">Restore Preview: {{ preview.filename }}</h3>
+  <h2 style="font-size:0.95rem;color:var(--text-bright);margin-bottom:0.75rem">Restore preview: {{ preview.filename }}</h2>
   <div class="meta-grid">
     <div class="meta-item">
       <div class="meta-label">Total Keys</div>
@@ -76,10 +76,10 @@
     {% endif %}
   </div>
   <div style="display:flex;gap:0.5rem;margin-top:1rem">
-    <form method="POST" action="/backups/{{ preview.filename }}/restore" style="display:inline">
-      <button type="submit" class="btn btn-primary btn-sm">Confirm Restore</button>
+    <form method="POST" action="{{ admin }}/backups/{{ preview.filename }}/restore" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">Confirm restore</button>
     </form>
-    <a href="/backups" class="btn btn-secondary btn-sm">Cancel</a>
+    <a href="{{ admin }}/backups" class="btn btn-secondary btn-sm">Cancel</a>
   </div>
 </div>
 {% endif %}
@@ -88,10 +88,10 @@
 <table class="data-table backups-table">
   <thead>
     <tr>
-      <th>Filename</th>
-      <th>Size</th>
-      <th>Modified</th>
-      <th>Actions</th>
+      <th scope="col">Filename</th>
+      <th scope="col">Size</th>
+      <th scope="col">Modified</th>
+      <th scope="col">Actions</th>
     </tr>
   </thead>
   <tbody>
@@ -102,14 +102,14 @@
       <td class="mono">{{ b.modified }}</td>
       <td>
         <div style="display:flex;gap:0.35rem;align-items:center">
-          <a href="/backups/{{ b.filename }}/preview" class="btn btn-secondary btn-sm" title="Preview restore" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+          <a href="{{ admin }}/backups/{{ b.filename }}/preview" class="btn btn-secondary btn-sm" title="Preview restore" aria-label="Preview restore" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </a>
-          <a href="/backups/{{ b.filename }}/download" class="btn btn-secondary btn-sm" title="Download backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+          <a href="{{ admin }}/backups/{{ b.filename }}/download" class="btn btn-secondary btn-sm" title="Download backup" aria-label="Download backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </a>
-          <form method="POST" action="/backups/{{ b.filename }}/delete" style="display:inline-flex" data-confirm="Delete backup &quot;{{ b.filename }}&quot;? This cannot be undone.">
-            <button type="submit" class="btn btn-danger btn-sm" title="Delete backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
+          <form method="POST" action="{{ admin }}/backups/{{ b.filename }}/delete" style="display:inline-flex" data-confirm="Delete backup &quot;{{ b.filename }}&quot;? This cannot be undone.">
+            <button type="submit" class="btn btn-danger btn-sm" title="Delete backup" aria-label="Delete backup" style="display:inline-flex;align-items:center;justify-content:center;height:1.75rem;width:1.75rem;padding:0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
             </button>
           </form>

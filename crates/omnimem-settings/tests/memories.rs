@@ -82,7 +82,7 @@ fn text(response: &Response<Vec<u8>>) -> String {
 }
 
 fn location(response: &Response<Vec<u8>>) -> String {
-    assert_eq!(response.status(), 200, "{}", text(response));
+    assert_eq!(response.status(), 303, "{}", text(response));
     response.headers()["x-omnimem-redirect"]
         .to_str()
         .unwrap()
@@ -117,11 +117,11 @@ async fn the_list_filters_pages_and_answers_htmx_with_rows() {
 
     let all = text(&get(&panel, "/memories").await);
     assert!(
-        all.contains(r#"<span class="badge" style="font-size:0.75rem">31</span>"#),
+        all.contains(r#"<span class="count-chip">31</span>"#),
         "{all}"
     );
     assert!(all.contains("page=2"), "31 memories need a second page");
-    assert!(all.contains("class=\"nav-link active\">Memories"));
+    assert!(all.contains("aria-current=\"page\"><span class=\"nav-label\">Memories"));
     assert!(all.contains(r#"<option value="omnimem">omnimem</option>"#));
 
     let queue = text(&get(&panel, "/memories?namespace=knowledge&licence=unknown").await);
@@ -129,9 +129,9 @@ async fn the_list_filters_pages_and_answers_htmx_with_rows() {
         queue.contains("An article nobody has classified"),
         "{queue}"
     );
-    assert!(queue.contains("unclassified"));
+    assert!(queue.contains("licence unknown"));
     assert!(!queue.contains("episodic note number"));
-    assert!(queue.contains("class=\"nav-link active\">Articles"));
+    assert!(queue.contains("aria-current=\"page\"><span class=\"nav-label\">Articles"));
     assert!(
         queue.contains("&amp;namespace=knowledge&amp;licence=unknown") || !queue.contains("page=2"),
         "pagination keeps the filters"
@@ -312,7 +312,7 @@ async fn lifecycle_actions_move_state_and_land_where_asked() {
 #[tokio::test]
 async fn create_stores_or_shows_the_duplicate() {
     let (panel, engine) = setup();
-    assert!(text(&get(&panel, "/create").await).contains("class=\"nav-link active\">Create"));
+    assert!(text(&get(&panel, "/create").await).contains("aria-current=\"page\">+ New memory"));
     assert!(
         text(&post(&panel, "/create", "content=++").await).contains("Content cannot be empty.")
     );
@@ -370,7 +370,7 @@ async fn create_stores_or_shows_the_duplicate() {
 async fn search_shows_results_with_weak_matches_marked() {
     let (panel, engine) = setup();
     remember(&engine, "Searchable memory", "episodic", None);
-    assert!(text(&get(&panel, "/search").await).contains("Semantic Search"));
+    assert!(text(&get(&panel, "/search").await).contains("Search by meaning"));
     assert!(text(&get(&panel, "/search/results?query=+").await).contains("Enter a search query."));
     let found = text(&get(&panel, "/search/results?query=searchable+memor&top_k=5").await);
     assert!(found.contains("Searchable memory"), "{found}");
@@ -385,7 +385,7 @@ async fn the_detail_page_shows_why_a_memory_was_archived() {
     let (panel, engine) = setup();
     let key = remember(&engine, "A memory that was put away", "episodic", None);
     assert!(
-        !text(&get(&panel, &format!("/memory/{key}")).await).contains("Archived Reason"),
+        !text(&get(&panel, &format!("/memory/{key}")).await).contains("Why it was archived"),
         "nothing to show before it is archived"
     );
 
@@ -393,7 +393,7 @@ async fn the_detail_page_shows_why_a_memory_was_archived() {
         .archive(&key, Some("replaced by the 7.0 design"))
         .unwrap();
     let page = text(&get(&panel, &format!("/memory/{key}")).await);
-    assert!(page.contains("Archived Reason"), "{page}");
+    assert!(page.contains("Why it was archived"), "{page}");
     assert!(page.contains("replaced by the 7.0 design"), "{page}");
 }
 

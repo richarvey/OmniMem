@@ -1,5 +1,5 @@
 {% if results %}
-<p style="margin-bottom:1rem;color:var(--text-dim);font-size:0.8rem">{{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"</p>
+<p class="result-count" aria-live="polite">{{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"</p>
 
 {% for r in results %}
 <div class="search-result{% if r.result_type == 'abandoned_warning' %}" style="border-color:var(--orange){% endif %}">
@@ -11,7 +11,7 @@
     <span class="badge" style="background:rgba(251,146,60,0.15);color:var(--orange)">abandoned</span>
     {% endif %}
     {% if r.reinstate_candidate %}
-    <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent)">reinstate candidate</span>
+    <span class="badge reinstate">reinstate candidate</span>
     {% endif %}
     {% if r.expired %}
     <span class="badge" title="Its valid-to date has passed">no longer true since {{ r.valid_to[:10] }}</span>
@@ -27,7 +27,7 @@
     {% endif %}
   </div>
   <div class="search-result-content">
-    <a href="/memory/{{ r.key }}" style="color:var(--text);text-decoration:none">{{ r.content }}</a>
+    <a href="{{ admin }}/memory/{{ r.key|urlsegment }}?back={{ here|urlquote }}" style="color:var(--text);text-decoration:none">{{ r.content|plain }}</a>
   </div>
   {% if r.tags %}
   <div style="margin-top:0.5rem">
@@ -37,7 +37,7 @@
   </div>
   {% endif %}
   {% if r.breakthrough %}
-  <div style="margin-top:0.35rem;font-size:0.8rem;color:var(--green)">Breakthrough: {{ r.breakthrough }}</div>
+  <div class="search-breakthrough">Breakthrough: {{ r.breakthrough }}</div>
   {% endif %}
 </div>
 {% endfor %}

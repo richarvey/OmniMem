@@ -69,8 +69,9 @@ impl Engine {
         key_b: &str,
         explanation: &str,
         verified: bool,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let now = now_str();
+        let mut linked = false;
         for (src, other) in [(key_a, key_b), (key_b, key_a)] {
             let Some(data) = self.store.get(src)? else {
                 continue;
@@ -90,14 +91,17 @@ impl Engine {
                 link["verified"] = true.into();
             }
             existing.push(link);
-            let mut updates = Fields::from([
-                (
-                    "contradictions".to_owned(),
-                    py_json(&Value::Array(existing)),
-                ),
-                ("updated_at".to_owned(), now.clone()),
-            ]);
+            let mut updates = Fields::from([(
+                "contradictions".to_owned(),
+                py_json(&Value::Array(existing)),
+            )]);
+            // A confirmed link changes what the memory is worth, so it is an
+            // update. A heuristic one is a note in the margin: it leaves
+            // `updated_at` alone, as a trust change does, so the maintenance
+            // pass can't push a memory up Recent activity or make a skill's
+            // sources look changed by linking it.
             if verified {
+                updates.insert("updated_at".to_owned(), now.clone());
                 crate::trust::dispute(&data, &mut updates);
             }
             // The explanation is model output that may quote either memory,
@@ -108,9 +112,12 @@ impl Engine {
             }
             let _audit = audit_op(Op::new("contradiction_link").detail(detail));
             self.store.set_fields(src, &updates)?;
+            linked = true;
         }
-        info!(key_a, key_b, "linked contradiction");
-        Ok(())
+        if linked {
+            info!(key_a, key_b, "linked contradiction");
+        }
+        Ok(linked)
     }
 
     /// Tier 1 heuristic scan, similarity-gated. With `use_api`, tier 2 asks
@@ -149,11 +156,16 @@ impl Engine {
             // Keys come back in ULID (creation) order. Filter by scope first,
             // then keep the newest SCAN_CAP: a new memory is the one most
             // likely to contradict something, and capping before the project
-            // filter would compare only the store's oldest slice.
-            let mut keys = self.store.scan_prefix(&format!("mem:{ns}:"))?;
-            keys.reverse();
-            let rows = self.store.get_fields_multi(
-                &keys,
+            // filter would compare only the store's oldest slice. The project,
+            // when there is one, is cut in SQL on its indexes, which reads
+            // the project as `doc_project` does; `in_scope` still decides.
+            let filter = omnimem_store::MemoryFilter {
+                project: project_filter.map(str::to_owned),
+                ..omnimem_store::MemoryFilter::default()
+            };
+            let mut rows = self.store.list_memories(
+                ns,
+                &filter,
                 &[
                     "state",
                     "project",
@@ -162,9 +174,8 @@ impl Engine {
                     "contradictions",
                 ],
             )?;
-            keys.into_iter()
-                .zip(rows)
-                .filter_map(|(k, r)| r.map(|r| (k, r)))
+            rows.reverse();
+            rows.into_iter()
                 .filter(|(_, r)| in_scope(r))
                 .take(SCAN_CAP)
                 .collect()
@@ -335,10 +346,17 @@ impl Engine {
         let mut contradictions = Vec::new();
         let mut scan = || -> Result<()> {
             // Newest first, so a busy project's latest memories are compared.
-            let mut keys = self.store.scan_prefix("mem:episodic:")?;
-            keys.reverse();
-            let rows = self.store.get_fields_multi(
-                &keys,
+            // State and project are cut in SQL on their indexes rather than
+            // by reading every episodic memory's content; the store's cut is a
+            // superset (a missing state passes), so the test below decides.
+            let filter = omnimem_store::MemoryFilter {
+                states: vec!["active".to_owned()],
+                project: Some(project.to_owned()),
+                ..omnimem_store::MemoryFilter::default()
+            };
+            let mut rows = self.store.list_memories(
+                Namespace::Episodic,
+                &filter,
                 &[
                     "state",
                     "project",
@@ -347,10 +365,9 @@ impl Engine {
                     "contradictions",
                 ],
             )?;
-            let entries: Vec<(String, Fields)> = keys
+            rows.reverse();
+            let entries: Vec<(String, Fields)> = rows
                 .into_iter()
-                .zip(rows)
-                .filter_map(|(k, r)| r.map(|r| (k, r)))
                 .filter(|(_, r)| {
                     r.get("state").map(String::as_str) == Some("active")
                         && doc_project(r) == Some(project)
@@ -379,6 +396,20 @@ impl Engine {
                     let a = entries[i].1.get("content").map_or("", String::as_str);
                     let b = entries[j].1.get("content").map_or("", String::as_str);
                     if signals_conflict(a, b) {
+                        // Linked as the tool's heuristic tier links them, so
+                        // the pair the summary counts is one the panel lists
+                        // and a person can settle; 6.x only counted it, and
+                        // found it again on every pass.
+                        // Found means new: a pair linked on an earlier pass
+                        // is still listed, but not counted again.
+                        if !self.link_contradiction(
+                            &entries[i].0,
+                            &entries[j].0,
+                            omnimem_store::HEURISTIC_LINK_EXPLANATION,
+                            false,
+                        )? {
+                            continue;
+                        }
                         contradictions.push(json!({
                             "key_a": entries[i].0,
                             "key_b": entries[j].0,

@@ -85,7 +85,8 @@ async fn send(app: &Router, request: Request<Body>) -> Reply {
     Reply {
         status,
         headers,
-        body: String::from_utf8(body.to_vec()).unwrap(),
+        // Lossy, since the favicon is binary; every other body is text.
+        body: String::from_utf8_lossy(&body).into_owned(),
     }
 }
 
@@ -542,8 +543,27 @@ async fn the_http_surface_matches_6x() {
         StatusCode::OK
     );
 
-    // The icon, and the login page's refusal.
-    assert_as_6x(&send(&app, get("/favicon.ico")).await, "icon");
+    // The icons, which 7.1 changed from 6.x's indigo drawing to the
+    // OmniMem mark (the golden case keeps what 6.x sent: only the headers
+    // still match it, and only on the SVG paths).
+    for path in ["/icon.svg", "/favicon.svg", "/oauth/icon.svg"] {
+        let svg = send(&app, get(path)).await;
+        assert_eq!(svg.status, StatusCode::OK, "{path}");
+        for name in ["content-type", "cache-control"] {
+            assert_eq!(
+                svg.header(name),
+                golden["icon"]["headers"][name].as_str(),
+                "{path}: {name}"
+            );
+        }
+        assert!(svg.body.starts_with("<svg") && svg.body.contains("data:image/png;base64,"));
+    }
+    let ico = send(&app, get("/favicon.ico")).await;
+    assert_eq!(ico.status, StatusCode::OK);
+    assert_eq!(ico.header("content-type"), Some("image/x-icon"));
+    assert_eq!(ico.header("cache-control"), Some("public, max-age=86400"));
+
+    // The login page's refusal.
     let refused = send(&app, get("/oauth/login?session=bogus")).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
     assert_eq!(

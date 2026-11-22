@@ -15,7 +15,7 @@
 //!
 //! Who moves it: a confirmed contradiction disputes both sides and its
 //! resolution moves them on; only a person confirms a candidate or rejects a
-//! memory, through the settings window or the CLI ([`Engine::set_trust`]),
+//! memory, through the settings panel or the CLI ([`Engine::set_trust`]),
 //! never an MCP call, the same rule as the skill gate.
 
 use omnimem_core::Namespace;
@@ -141,7 +141,7 @@ impl TrustAction {
 }
 
 impl Engine {
-    /// A person changes a memory's trust. The settings window and the CLI
+    /// A person changes a memory's trust. The settings panel and the CLI
     /// call this; no MCP tool does, so an agent can't confirm its own
     /// conclusions. Recorded in the audit log at `lifecycle` with the
     /// reason, and `updated_at` is left alone (the skill compiler reads a
@@ -199,7 +199,7 @@ impl Engine {
     /// window's "confirm all from this memory". Returns how many moved.
     pub fn confirm_from_source(&self, source: &str, reason: Option<&str>) -> Result<usize> {
         let mut confirmed = 0;
-        for (key, _) in self.unconfirmed_from(Some(source), usize::MAX)? {
+        for (key, _) in self.unconfirmed_with(Some(source), usize::MAX, &["state"])? {
             self.set_trust(&key, TrustAction::Confirm, reason)?;
             confirmed += 1;
         }
@@ -213,6 +213,26 @@ impl Engine {
         source: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, Fields)>> {
+        self.unconfirmed_with(
+            source,
+            limit,
+            &["content", "enriched_from", "project", "created_at", "state"],
+        )
+    }
+
+    /// [`Engine::unconfirmed_from`] reading only `fields` (plus
+    /// `enriched_from`, which the source filter needs), for a caller that
+    /// counts or pages the whole queue and reads content for one page.
+    pub fn unconfirmed_with(
+        &self,
+        source: Option<&str>,
+        limit: usize,
+        fields: &[&str],
+    ) -> Result<Vec<(String, Fields)>> {
+        let mut fields: Vec<&str> = fields.to_vec();
+        if !fields.contains(&"enriched_from") {
+            fields.push("enriched_from");
+        }
         let mut out = Vec::new();
         // Every namespace a fact can be filed in: project context gets
         // extracted facts too. Skills are compiled output and never are.
@@ -225,11 +245,7 @@ impl Engine {
                 states: vec!["active".to_owned(), "deprioritised".to_owned()],
                 ..MemoryFilter::default()
             };
-            for (key, row) in self.store.list_memories(
-                namespace,
-                &filter,
-                &["content", "enriched_from", "project", "created_at", "state"],
-            )? {
+            for (key, row) in self.store.list_memories(namespace, &filter, &fields)? {
                 if source.is_none_or(|s| row.get("enriched_from").map(String::as_str) == Some(s)) {
                     out.push((key, row));
                 }

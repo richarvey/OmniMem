@@ -1,37 +1,39 @@
+{% from "partials/macros.html" import num %}
 <p class="section-note">Token cost of running OmniMem. Static overhead is always in the LLM context; tool usage is measured from actual calls{% if metrics_since %} since the last reset{% endif %}. Tokens estimated at ~4 chars/token.</p>
 
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-ns">Static Overhead</div>
-    <div class="stat-total">{{ (static_total_tokens)|thousands }}</div>
+    <div class="stat-ns">Static overhead</div>
+    <div class="stat-total">{{ num(static_total_tokens) }}</div>
     <div class="stat-label">tokens/session</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Total Tool Calls</div>
-    <div class="stat-total">{{ (total_tool_calls)|thousands }}</div>
+    <div class="stat-ns">Tool calls</div>
+    <div class="stat-total">{{ num(total_tool_calls) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card stat-card-highlight">
-    <div class="stat-ns">Total Tool Tokens</div>
-    <div class="stat-total">~{{ (total_tool_tokens)|thousands }}</div>
+    <div class="stat-ns">Tool tokens</div>
+    <div class="stat-total">~{{ num(total_tool_tokens) }}</div>
     <div class="stat-label">{% if metrics_since %}since {{ metrics_since }}{% else %}all time{% endif %}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-ns">Stored Memories</div>
-    <div class="stat-total">{{ (total_memories)|thousands }}</div>
+    <div class="stat-ns">Stored memories</div>
+    <div class="stat-total">{{ num(total_memories) }}</div>
     <div class="stat-label">active</div>
   </div>
 </div>
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Static Overhead Breakdown</h3>
+  <h2>Static overhead breakdown</h2>
   <p class="section-note">Always loaded into the LLM context when OmniMem is configured.</p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table overhead-table">
     <thead>
       <tr>
-        <th>Component</th>
-        <th>Characters</th>
-        <th>Tokens</th>
+        <th scope="col">Component</th>
+        <th scope="col">Characters</th>
+        <th scope="col">Tokens</th>
       </tr>
     </thead>
     <tbody>
@@ -57,22 +59,24 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>
 
 {% if tool_metrics %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage</h3>
+  <h2>Tool usage</h2>
   <p class="section-note">Measured from actual MCP tool calls{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} (all time){% endif %}.</p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table tool-metrics-table">
     <thead>
       <tr>
-        <th>Tool</th>
-        <th>Calls</th>
-        <th>Avg Duration</th>
-        <th>Avg Tokens</th>
-        <th>Total Tokens</th>
-        <th>Errors</th>
-        <th>Last Called</th>
+        <th scope="col">Tool</th>
+        <th scope="col">Calls</th>
+        <th scope="col">Avg Duration</th>
+        <th scope="col">Avg Tokens</th>
+        <th scope="col">Total Tokens</th>
+        <th scope="col">Errors</th>
+        <th scope="col">Last Called</th>
       </tr>
     </thead>
     <tbody>
@@ -98,22 +102,24 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>
 {% else %}
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Tool Usage</h3>
+  <h2>Tool usage</h2>
   <p class="empty-state">No tool calls recorded{% if metrics_since %} since the counters were reset on {{ metrics_since }}{% else %} yet{% endif %}. Metrics will appear here once the MCP server processes requests.</p>
 </div>
 {% endif %}
 
 <div class="recent-section" style="margin-top:2rem">
-  <h3>Memory Store</h3>
+  <h2>Memory store</h2>
   <p class="section-note">Data held in OmniMem's store.</p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
   <table class="data-table overhead-table">
     <thead>
       <tr>
-        <th>Metric</th>
-        <th>Value</th>
+        <th scope="col">Metric</th>
+        <th scope="col">Value</th>
       </tr>
     </thead>
     <tbody>
@@ -134,6 +140,10 @@
         <td class="mono">{{ (namespace_counts.knowledge)|thousands }}</td>
       </tr>
       <tr>
+        <td>Preference</td>
+        <td class="mono">{{ (namespace_counts.preference)|thousands }}</td>
+      </tr>
+      <tr>
         <td>Total recall operations (all time)</td>
         <td class="mono">{{ (total_recalls)|thousands }}</td>
       </tr>
@@ -147,4 +157,5 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </div>

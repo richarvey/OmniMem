@@ -4,15 +4,18 @@
 
 {% block content %}
 <header class="page-header">
-  <h2>Compiled Skills <span class="badge" style="font-size:0.75rem">{{ total }}</span></h2>
+  <div>
+    <h1>Skills <span class="count-chip">{{ total }}</span></h1>
+    <p class="page-intro">Procedures compiled from experience for a kind of work. A person accepts every one before it is written.</p>
+  </div>
   <div style="display:flex;gap:0.75rem;align-items:center">
     <div class="health-indicators">
       <span class="indicator ok">{{ states.active }} active</span>
       {% if states.deprioritised %}<span class="indicator warn">{{ states.deprioritised }} deprioritised</span>{% endif %}
       {% if states.archived %}<span class="indicator warn">{{ states.archived }} archived</span>{% endif %}
     </div>
-    <button class="btn btn-secondary btn-sm" data-show="import-modal">Import Skill</button>
-    <button class="btn btn-primary btn-sm" data-show="compile-modal">New Skill</button>
+    <button class="btn btn-secondary btn-sm" data-show="import-modal">Import skill</button>
+    <button class="btn btn-primary btn-sm" data-show="compile-modal">New skill</button>
   </div>
 </header>
 
@@ -25,23 +28,24 @@
 </p>
 
 {% if message %}
-<div class="flash flash-success"><span>{{ message }}</span></div>
+<div class="flash flash-success" role="status"><span>{{ message }}</span></div>
 {% endif %}
 {% if error %}
-<div class="flash flash-error"><span>{{ error }}</span></div>
+<div class="flash flash-error" role="alert"><span>{{ error }}</span></div>
 {% endif %}
 
-<div id="compile-modal" class="modal-backdrop" style="display:none">
+<dialog id="compile-modal" class="modal-backdrop" data-dialog data-clear="compile-result" aria-labelledby="compile-modal-h">
   <div class="modal modal-wide">
-    <h3>Compile a New Skill</h3>
+    <h2 id="compile-modal-h">Compile a new skill</h2>
     <p>
       Distils lessons from episodic memories tagged with a domain into a
       SKILL.md. You review the draft here first — nothing is written until you
       accept it.
     </p>
-    <form hx-post="/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
-      <input type="text" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
-      <button type="submit" class="btn btn-primary btn-sm">Compile Draft</button>
+    <form hx-post="{{ admin }}/skills/compile" hx-target="#compile-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+      <label class="visually-hidden" for="compile-domain">Domain</label>
+      <input type="text" id="compile-domain" name="domain" class="form-input" placeholder="Domain, e.g. python" required style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Compile draft</button>
     </form>
     <div id="compile-result"></div>
     <div class="modal-actions">
@@ -49,20 +53,21 @@
               data-hide="compile-modal" data-clear="compile-result">Close</button>
     </div>
   </div>
-</div>
+</dialog>
 
-<div id="import-modal" class="modal-backdrop" style="display:none">
+<dialog id="import-modal" class="modal-backdrop" data-dialog data-clear="import-result" aria-labelledby="import-modal-h">
   <div class="modal modal-wide">
-    <h3>Import a Skill Bundle</h3>
+    <h2 id="import-modal-h">Import a skill bundle</h2>
     <p>
       Upload a <code>.zip</code> exported from another OmniMem instance's
       skills page. The bundle is validated first, then you review exactly
       what would be added — existing skills and memories are never
       overwritten.
     </p>
-    <form hx-post="/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
-      <input type="file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
-      <button type="submit" class="btn btn-primary btn-sm">Validate Bundle</button>
+    <form hx-post="{{ admin }}/skills/import" hx-encoding="multipart/form-data" hx-target="#import-result" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+      <label class="visually-hidden" for="import-file">Skill bundle (.zip)</label>
+      <input type="file" id="import-file" name="file" accept=".zip,application/zip" required class="form-input" style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Validate bundle</button>
     </form>
     <div id="import-result"></div>
     <div class="modal-actions">
@@ -70,11 +75,11 @@
               data-hide="import-modal" data-clear="import-result">Close</button>
     </div>
   </div>
-</div>
+</dialog>
 
 {% if proposals %}
 <section class="pending-proposals" id="pending-proposals">
-  <h3>Pending proposals <span class="badge" style="font-size:0.75rem">{{ proposals|length }}</span></h3>
+  <h2 class="section-heading">Pending proposals <span class="count-chip">{{ proposals|length }}</span></h2>
   <p class="section-note">
     Drafts waiting for a person, including any an agent proposed over MCP.
     Nothing here is written until you accept it, and each one expires on its
@@ -95,20 +100,20 @@
       <pre class="skill-draft">{{ p.shown }}</pre>
     </details>
     {% if p.stale %}
-    <div class="flash flash-warning">
+    <div class="flash flash-warning" role="status">
       <span>The stored skill changed after this was proposed, so it can't be accepted. Discard it and propose again.</span>
     </div>
     {% endif %}
     <div id="pending-result-{{ loop.index }}"></div>
     <div class="pending-actions">
-      <form method="POST" action="/skills/discard" style="display:inline">
+      <form method="POST" action="{{ admin }}/skills/discard" style="display:inline">
         <input type="hidden" name="domain" value="{{ p.domain }}">
         <button type="submit" class="btn btn-secondary btn-sm">Discard</button>
       </form>
       {% if not p.stale %}
-      <form hx-post="/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
+      <form hx-post="{{ admin }}/skills/commit" hx-target="#pending-result-{{ loop.index }}" style="display:inline">
         <input type="hidden" name="domain" value="{{ p.domain }}">
-        <button type="submit" class="btn btn-primary btn-sm">Accept &amp; Write Skill</button>
+        <button type="submit" class="btn btn-primary btn-sm">Accept &amp; write skill</button>
       </form>
       {% endif %}
     </div>
@@ -117,25 +122,92 @@
 </section>
 {% endif %}
 
+{% if suggestions %}
+<section class="pending-proposals" id="skill-suggestions" aria-labelledby="skill-suggestions-h">
+  <h2 id="skill-suggestions-h" class="section-heading">Suggested for your skills <span class="count-chip">{% set ns = namespace(n=0) %}{% for w in suggestions %}{% set ns.n = ns.n + w.articles|length %}{% endfor %}{{ ns.n }}</span></h2>
+  <p class="section-note">
+    Recent articles close to one of your skills. Add one and it becomes
+    reference material for that skill, and a new draft of the skill waits in
+    Pending proposals for you to accept. Dismiss one and it isn't suggested
+    for that skill again.
+  </p>
+  {% for w in suggestions %}
+  <div class="pending-proposal">
+    <div class="pending-head">
+      <strong><a href="{{ admin }}/skills/{{ w.skill_id }}">{{ w.name or w.domain }}</a></strong>
+      <span class="badge ns-skill">{{ w.domain }}</span>
+    </div>
+    <ul class="suggestion-list">
+      {% for a in w.articles %}
+      <li class="suggestion">
+        <div class="suggestion-text">
+          <a href="{{ admin }}/memory/{{ a.key }}">{{ a.gist }}</a>
+          <span class="mono">{% if a.feed_name %}{{ a.feed_name }}, {% endif %}similarity {{ a.similarity }}</span>
+          {% if a.source_is_web %}<a class="mono" href="{{ a.source_url }}" rel="noopener noreferrer" target="_blank">source<span class="visually-hidden"> (opens in a new tab)</span></a>{% endif %}
+          {% if a.possible_contradiction %}
+          <span class="badge rule-watch">may contradict a rule</span>
+          {% if a.conflicts_with_rules %}<span class="section-note">Rule: {{ a.conflicts_with_rules|join('; ') }}</span>{% endif %}
+          {% endif %}
+        </div>
+        <div class="pending-actions suggestion-actions">
+          <form method="POST" action="{{ admin }}/skills/suggestions/dismiss" style="display:inline">
+            <input type="hidden" name="domain" value="{{ w.domain }}">
+            <input type="hidden" name="key" value="{{ a.key }}">
+            <button type="submit" class="btn btn-secondary btn-sm">Dismiss</button>
+          </form>
+          <form method="POST" action="{{ admin }}/skills/suggestions/accept" style="display:inline">
+            <input type="hidden" name="domain" value="{{ w.domain }}">
+            <input type="hidden" name="key" value="{{ a.key }}">
+            <button type="submit" class="btn btn-primary btn-sm">Add to skill</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="pending-proposals" id="skill-candidates" aria-labelledby="skill-candidates-h">
+  <div class="pending-head">
+    <h2 id="skill-candidates-h" class="section-heading">Could become skills</h2>
+    <form method="POST" action="{{ admin }}/skills/scan" style="margin-left:auto">
+      <button type="submit" class="btn btn-secondary btn-sm">Look for new skills</button>
+    </form>
+  </div>
+  <p class="section-note">
+    Domains your memories are tagged with that have no skill yet, and how close
+    each is. OmniMem drafts the ready ones itself about once a day, when an
+    agent opens a session; Look for new skills does it now. Draft one that
+    isn't ready if you're happy with what it has. Either way the draft waits in
+    Pending proposals for you to accept.
+  </p>
+  <div id="skill-candidates-body" hx-get="{{ admin }}/skills/candidates" hx-trigger="load" aria-live="polite">
+    <p class="section-note">Working out which domains are close…</p>
+  </div>
+</section>
+
 {% if skills %}
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table, scrolls sideways">
 <table class="data-table skills-table">
   <thead>
     <tr>
-      <th>Name</th>
-      <th>Domain</th>
-      <th>Description</th>
-      <th>State</th>
-      <th>Compiled</th>
-      <th>Loads</th>
-      <th></th>
+      <th scope="col">Name</th>
+      <th scope="col">Domain</th>
+      <th scope="col">Description</th>
+      <th scope="col">State</th>
+      <th scope="col">Compiled</th>
+      <th scope="col">Loads</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>
     {% for s in skills %}
     <tr>
       <td class="name-cell">
-        <a href="/skills/{{ s.key }}" class="project-name">{{ s.name }}</a>
-        {% if s.generated %}<span class="badge generated" title="Compiler output — never hand-edited">gen</span>{% endif %}
+        <a href="{{ admin }}/skills/{{ s.key }}" class="project-name" title="{{ s.name }}">{{ s.name }}</a>
+        {% if s.generated %}<span class="badge generated" title="Compiler output, never hand-edited">gen</span>{% endif %}
       </td>
       <td><span class="badge ns-skill">{{ s.domain or "—" }}</span></td>
       <td class="content-cell" title="{{ s.description }}">{{ s.description }}</td>
@@ -143,8 +215,8 @@
       <td class="mono">{{ s.compiled_at }}</td>
       <td><span class="recall-badge">{{ s.recall_count }}</span></td>
       <td class="skill-actions">
-        <a href="/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
-        <form method="POST" action="/skills/delete" style="display:inline" data-confirm="Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.">
+        <a href="{{ admin }}/skills/export/{{ s.key }}" class="btn btn-secondary btn-sm" title="Download this skill and its source memories as a portable zip bundle">Export</a>
+        <form method="POST" action="{{ admin }}/skills/delete" style="display:inline" data-confirm="Delete skill &quot;{{ s.name }}&quot;? The source memories stay — recompiling the {{ s.domain }} domain can recreate it — but the skill itself is removed permanently.">
           <input type="hidden" name="key" value="{{ s.key }}">
           <button type="submit" class="btn btn-danger btn-sm">Delete</button>
         </form>
@@ -153,10 +225,11 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty-state">
   No skills compiled yet. Tag episodic memories with a domain, then use the
-  New Skill button (or compile_skill via MCP) to distil them into a SKILL.md.
+  New skill button (or compile_skill via MCP) to distil them into a SKILL.md.
 </p>
 {% endif %}
 {% endblock %}

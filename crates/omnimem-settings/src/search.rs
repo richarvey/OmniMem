@@ -12,7 +12,6 @@ use std::collections::HashMap;
 
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Response};
-use minijinja::context;
 use omnimem_engine::pyfmt::round_to;
 use serde_json::json;
 
@@ -20,18 +19,34 @@ use crate::PanelState;
 use crate::pages::{blocking, starting};
 use crate::render::page;
 
-pub(crate) async fn form(State(state): State<PanelState>) -> Response {
+/// The form, filled in from the address: a search has a URL (the form pushes
+/// one), so a reload, a bookmark or a shared link runs it again.
+pub(crate) async fn form(
+    State(state): State<PanelState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let text = |name: &str| {
+        params
+            .get(name)
+            .map(|v| v.trim().to_owned())
+            .unwrap_or_default()
+    };
+    let top_k = params
+        .get("top_k")
+        .and_then(|k| k.trim().parse::<i64>().ok())
+        .unwrap_or(10)
+        .clamp(1, 50);
     page(
         state.templates(),
         "search.html",
         context! {
             results => (),
-            query => "",
-            namespace => "",
-            project => "",
-            top_k => 10,
-            valid_at => "",
-            known_at => "",
+            query => text("query"),
+            namespace => text("namespace"),
+            project => text("project"),
+            top_k => top_k,
+            valid_at => text("valid_at"),
+            known_at => text("known_at"),
             current_page => "search",
         },
     )
@@ -94,7 +109,7 @@ pub(crate) async fn results(
                     "key": r.key,
                     "namespace": r.namespace,
                     "weak_match": r.weak_match || r.score < floor,
-                    "content": r.content.chars().take(300).collect::<String>(),
+                    "content": crate::render::clip(&r.content, crate::render::preview::SEARCH),
                     "score": round_to(r.adjusted_score, 4),
                     "state": r.state,
                     "project": r.project.unwrap_or_default(),

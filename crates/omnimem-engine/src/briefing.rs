@@ -106,7 +106,9 @@ impl Engine {
                     continue;
                 }
             }
-            let content = take_chars(data.get("content").map_or("", String::as_str), 80);
+            // Built only for a row that makes a list: most rows make none,
+            // and only the first few of each list are kept.
+            let content = || take_chars(data.get("content").map_or("", String::as_str), 80);
             let believed = omnimem_store::trust_of(data) == crate::trust::ACCEPTED;
             match data.get("state").map(String::as_str) {
                 Some("active") => {
@@ -115,14 +117,7 @@ impl Engine {
                         .and_then(|u| u.parse::<f64>().ok())
                         .unwrap_or(0.0);
                     if believed && updated < cutoff && !skill_sources.contains(key) {
-                        stale.push((
-                            ((now - updated) / 86_400.0) as i64,
-                            json!({
-                                "key": key,
-                                "content": content,
-                                "days_stale": ((now - updated) / 86_400.0) as i64,
-                            }),
-                        ));
+                        stale.push((((now - updated) / 86_400.0) as i64, key, data));
                     }
                     // A pair a person has settled no longer warns.
                     let links: Vec<Value> = data
@@ -132,14 +127,14 @@ impl Engine {
                         .into_iter()
                         .filter(|l| !crate::resolution::link_is_resolved(l))
                         .collect();
-                    if !links.is_empty() {
+                    if !links.is_empty() && contradictions.len() < 5 {
                         let contradicts: Vec<&str> = links
                             .iter()
                             .filter(|c| c.is_object())
                             .map(|c| c.get("key").and_then(Value::as_str).unwrap_or(""))
                             .collect();
                         contradictions.push(
-                            json!({"key": key, "content": content, "contradicts": contradicts}),
+                            json!({"key": key, "content": content(), "contradicts": contradicts}),
                         );
                     }
                 }
@@ -148,10 +143,10 @@ impl Engine {
                         .get("reinstate_hints")
                         .and_then(|h| serde_json::from_str(h).ok())
                         .unwrap_or_default();
-                    if believed && !hints.is_empty() {
+                    if believed && !hints.is_empty() && reinstate.len() < 5 {
                         reinstate.push(json!({
                             "key": key,
-                            "content": content,
+                            "content": content(),
                             "reason": data.get("deprioritised_reason").map_or("", String::as_str),
                             "reinstate_hints": hints,
                         }));
@@ -160,12 +155,20 @@ impl Engine {
                 _ => {}
             }
         }
+        // A stable sort, so memories equally stale keep their key order.
         stale.sort_by_key(|s| std::cmp::Reverse(s.0));
-        Ok((
-            stale.into_iter().take(10).map(|s| s.1).collect(),
-            reinstate.into_iter().take(5).collect(),
-            contradictions.into_iter().take(5).collect(),
-        ))
+        let stale = stale
+            .into_iter()
+            .take(10)
+            .map(|(days, key, data)| {
+                json!({
+                    "key": key,
+                    "content": take_chars(data.get("content").map_or("", String::as_str), 80),
+                    "days_stale": days,
+                })
+            })
+            .collect();
+        Ok((stale, reinstate, contradictions))
     }
 
     fn new_knowledge(&self, since_days: i64) -> Result<Vec<Value>> {

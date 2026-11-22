@@ -4,24 +4,12 @@
 
 [advisories]
 ignore = [
-    # zip's ZipArchive::extract() and ZipStreamReader::extract() follow
-    # symlinks out of the destination and keep setuid bits (fixed in zip 9).
-    # OmniMem never calls extract(): skill bundles are read entry by entry,
-    # into memory, against each entry's declared size, with entry names
-    # allowlisted (crates/omnimem-engine/src/transfer.rs), and nothing is
-    # written to disk from an archive. Remove these with the move to zip 9,
-    # once its releases have settled (9.0.0 to 9.0.5 came out 9 to 17
-    # October 2026).
-    "RUSTSEC-2026-0367",
-    "RUSTSEC-2026-0368",
-    "RUSTSEC-2026-0369",
     # glib 0.18's VariantStrIter passes an out-argument as &p rather than
     # &mut p, so an optimised build can read a null pointer (fixed in glib
-    # 0.20). glib 0.18 comes in through gtk 0.18, which tao, wry, muda,
-    # tray-icon and webkit2gtk all still require, so 0.20 can't be reached.
-    # VariantStrIter is only built by Variant::array_iter_str(), which
-    # nothing in the tree calls: none of those crates, and the desktop's one
-    # D-Bus call reads its reply as a (bool,). Remove this when the tray and
-    # webview crates move past gtk 0.18.
+    # 0.20). glib 0.18 comes in through gtk 0.18, which tao and tray-icon
+    # still require, so 0.20 can't be reached. VariantStrIter is only built
+    # by Variant::array_iter_str(), which nothing in the tree calls: neither
+    # of those crates, and the desktop's one D-Bus call reads its reply as a
+    # (bool,). Remove this when tao and tray-icon move past gtk 0.18.
     "RUSTSEC-2024-0429",
 ]

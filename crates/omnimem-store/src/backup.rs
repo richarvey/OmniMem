@@ -86,6 +86,30 @@ pub struct ImportReport {
     pub migrations: MigrationReport,
 }
 
+/// A backup as it is written: borrowed, in the order the file has always
+/// had (`metadata`, `data`, then `feeds` and `audit` when present), so the
+/// bytes are what serialising the whole thing as one `Value` gave.
+#[derive(Serialize)]
+struct BackupOut<'a> {
+    metadata: &'a Value,
+    data: &'a Map<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    feeds: Option<&'a Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audit: Option<&'a Vec<Value>>,
+}
+
+impl<'a> From<&'a BackupFile> for BackupOut<'a> {
+    fn from(backup: &'a BackupFile) -> Self {
+        Self {
+            metadata: &backup.metadata,
+            data: &backup.data,
+            feeds: backup.feeds.as_ref(),
+            audit: backup.audit.as_ref(),
+        }
+    }
+}
+
 pub fn read_backup(path: &Path) -> Result<BackupFile> {
     let raw = fs::read_to_string(path).map_err(|source| StoreError::Io {
         path: path.display().to_string(),
@@ -106,17 +130,7 @@ static PARTIAL_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// one) cannot replace the copy already on disk. The partial file has a
 /// unique name and is created exclusively, so two writers never share one.
 pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
-    let mut top = json!({
-        "metadata": backup.metadata,
-        "data": backup.data,
-    });
-    if let Some(feeds) = &backup.feeds {
-        top["feeds"] = Value::Array(feeds.clone());
-    }
-    if let Some(audit) = &backup.audit {
-        top["audit"] = Value::Array(audit.clone());
-    }
-    let body = serde_json::to_string_pretty(&top).map_err(|e| StoreError::Backup(e.to_string()))?;
+    let body = BackupOut::from(backup);
     let io = |source| StoreError::Io {
         path: path.display().to_string(),
         source,
@@ -137,9 +151,13 @@ pub fn write_backup(path: &Path, backup: &BackupFile) -> Result<()> {
         .write(true)
         .create_new(true)
         .open(&partial)
-        .and_then(|mut file| {
-            file.write_all(body.as_bytes())
-                .and_then(|()| file.sync_all())
+        .and_then(|file| {
+            // Written as it is serialised: building the whole JSON first
+            // copied the store's every memory twice over in memory.
+            let mut out = std::io::BufWriter::new(file);
+            serde_json::to_writer_pretty(&mut out, &body).map_err(std::io::Error::other)?;
+            out.flush()?;
+            out.into_inner().map_err(|e| e.into_error())?.sync_all()
         });
     if let Err(source) = written {
         let _ = fs::remove_file(&partial);
@@ -404,7 +422,9 @@ impl Store {
         embedder: &dyn TextEmbedder,
         progress: &mut dyn FnMut(usize, usize),
     ) -> Result<(usize, usize)> {
-        let rows = self.get_multi(keys)?;
+        // Only what is embedded, not every field of every restored row; the
+        // batches below are unchanged, so the vectors are too.
+        let rows = self.get_fields_multi(keys, &["content", "name", "description", "domain"])?;
         let mut work: Vec<(String, String)> = Vec::new();
         let mut no_text = 0;
         for (key, row) in keys.iter().zip(rows) {
@@ -559,6 +579,43 @@ mod tests {
 
     fn backup(data: &Value) -> BackupFile {
         BackupFile::from_value(json!({"metadata": {}, "data": data})).unwrap()
+    }
+
+    /// The file a backup writes is byte for byte what serialising it as
+    /// one `Value` gave, before it was written from a borrowed view.
+    #[test]
+    fn a_written_backup_is_the_bytes_it_always_was() {
+        let dir = std::env::temp_dir().join(format!("omnimem-backup-bytes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        for (feeds, audit) in [
+            (None, None),
+            (
+                Some(vec![json!({"url": "u"})]),
+                Some(vec![json!({"id": 1})]),
+            ),
+        ] {
+            let mut file = BackupFile::from_value(json!({
+                "metadata": {"exported_at": "x", "namespaces": {"episodic": 1}},
+                "data": {"mem:episodic:1": {"content": "é \"quoted\"", "tags": "[\"a\"]"}, "meta:x": {"n": "1"}},
+            }))
+            .unwrap();
+            file.feeds = feeds.clone();
+            file.audit = audit.clone();
+            let mut whole = json!({"metadata": file.metadata, "data": file.data});
+            if let Some(feeds) = &feeds {
+                whole["feeds"] = Value::Array(feeds.clone());
+            }
+            if let Some(audit) = &audit {
+                whole["audit"] = Value::Array(audit.clone());
+            }
+            let path = dir.join(format!("b-{}.json", feeds.is_some()));
+            write_backup(&path, &file).unwrap();
+            assert_eq!(
+                fs::read_to_string(&path).unwrap(),
+                serde_json::to_string_pretty(&whole).unwrap()
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
