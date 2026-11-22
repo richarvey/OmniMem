@@ -103,6 +103,12 @@
   </supports>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="7.1.7" date="2026-11-22">
+      <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.1.7</url>
+      <description>
+        <p>The settings panel moves out of the app's window and into your browser, at /admin on the MCP address, so a server gets it too. OmniMem's dead-end guard and session briefing come to OpenCode, Mistral Vibe, Codex and Kiro, and the tray menu lists only the clients that still need setting up.</p>
+      </description>
+    </release>
     <release version="7.0.12" date="2026-11-09">
       <url type="details">https://code.squarecows.com/ric/omnimem/releases/tag/v7.0.12</url>
       <description>

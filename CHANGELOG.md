@@ -2,16 +2,20 @@
 All notable changes to omnimem are documented here.
 Format: [version] - date - description
 
-## [7.1.7] - unreleased
+## [7.1.7] - 2026-11-22
 
-The tray menu lists only what's left to do, and the Flatpak's page in a software centre says more about what OmniMem is.
+The first 7.1 release, so it carries everything from 7.1.0 to 7.1.6 below as well: the settings panel on HTTP at `/admin`, hooks and menu items for OpenCode, Mistral Vibe, Codex and Kiro, skill suggestions in the panel, and the packaging work. In 7.1.7 itself, the tray menu lists only what's left to do, and the Flatpak's page in a software centre says more about what OmniMem is.
+
+**Before upgrading** from 7.0.10 or older, make a backup: the store moves to schema version 6 on first start (7.0.12 already did this), and an older build can't open it afterwards. And read the note under 7.1.0 if your OmniMem is reachable from other machines, since `/admin` is on by default.
 
 ### Changed
 - **The tray or menu bar menu lists only the clients that are installed and still need something doing.** A client that isn't installed used to sit in the menu as a greyed-out **… not found** item (its hooks item too), and every client was listed, greyed out, until the services had started. Now a client appears only once its settings have been read and OmniMem isn't in them yet (or points elsewhere, has an old token, or the settings couldn't be read); one added from the menu still stays, saying to restart it, until OmniMem next starts
 - **The Flatpak lists no clients it can't set up.** Its sandbox can't reach other apps' settings, so the menu used to show every client as **Add to … (unavailable in the Flatpak)**. Those items are gone; Copy MCP URL is how a Flatpak install connects an agent, as the guides already said
 - **A fuller about section on the Flatpak's software centre page.** The description now says what OmniMem is for and what it does (trust and validity, backups including 6.x stores), what the tray menu and the settings panel are for, and that inside the Flatpak you add OmniMem to your agent yourself with the copied address, where it used to suggest the tray did that. The page also links to the setup guides (help), the sponsors page (donate) and the source (contribute), lists the `omnimem` command, and says the app works with a mouse, keyboard or touch. The licence (MIT) and the five screenshots are unchanged
 
-## [7.1.6] - unreleased
+## [7.1.6] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 Two packaging changes: the Flatpak tells a software centre what it is, and the macOS disk image shows where to drag the app.
 
@@ -20,7 +24,9 @@ Two packaging changes: the Flatpak tells a software centre what it is, and the m
 - **The macOS disk image shows what to do with it.** Opening the DMG gave a plain Finder window with the app and an Applications link wherever Finder put them. It now opens at a fixed size with no toolbar or sidebar, the app on the left, Applications on the right and an arrow between them under "Drag OmniMem to Applications", with a line saying it lives in the menu bar, since there's no Dock icon to look for after. The mounted volume has OmniMem's icon too. The background is a mid green so Finder's labels read in both light and dark mode
 - The Flatpak build checks its metainfo and desktop file (`appstreamcli validate`, `desktop-file-validate`) before building, since a mistake in either doesn't fail anything: the page just shows less. The desktop file lists one main category, Development, where two could put it in the menu twice
 
-## [7.1.5] - unreleased
+## [7.1.5] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 OmniMem's dead-end guard and session briefing come to Kiro, the desktop app adds both OmniMem and its hooks to Kiro from its menu, and that menu now lists only the clients that still need something doing.
 
@@ -36,7 +42,9 @@ OmniMem's dead-end guard and session briefing come to Kiro, the desktop app adds
 - A client set up before `MCP_AUTH_TOKEN` was set, or before it changed, counted as already having OmniMem because it reached the right address, so with the shorter menu it vanished from it while every call it made was refused with a 401. The tray now checks the token as well: an entry that doesn't send the current one (Claude Desktop's `mcp-remote` header, Claude Code's, OpenCode's and Kiro's `headers`, Vibe's `auth` and Codex's `http_headers`) is listed as **Update the token in …**, which rewrites it. An entry with no token still counts when OAuth is on, since it can sign in instead, and one whose token comes from an environment variable or a helper is taken on trust
 - Accepting a skill proposal on the Skills page, or confirming a skill bundle import, sent the browser to `/skills/...` rather than `/admin/skills/...`, outside the settings panel. The htmx redirect behind both now carries the `/admin` prefix, as every other redirect in the panel does
 
-## [7.1.4] - unreleased
+## [7.1.4] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 OmniMem's dead-end guard and session briefing come to OpenAI's Codex CLI, and the desktop app adds both OmniMem and its hooks to Codex from its menu.
 
@@ -53,7 +61,9 @@ OmniMem's dead-end guard and session briefing come to OpenAI's Codex CLI, and th
 ### Fixed
 - `install-hooks --codex` no longer drops an event from `hooks.json` that was an empty list before it ran
 
-## [7.1.3] - unreleased
+## [7.1.3] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 OmniMem comes to Mistral's Vibe CLI, hooks and all: the dead-end guard and the session briefing run from Vibe's `hooks.toml`, and the desktop app adds both OmniMem and its hooks to Vibe from its menu.
 
@@ -62,7 +72,9 @@ OmniMem comes to Mistral's Vibe CLI, hooks and all: the dead-end guard and the s
 - **`omnimem install-hooks --vibe`** writes them into `~/.vibe/hooks.toml` (or `$VIBE_HOME`), or with `--project` into `.vibe/hooks.toml`, running this binary by its full path (and `--db`, when given). Only hooks named `omnimem-*` are touched; the file's other hooks and comments stay, and a copy of it is kept as `hooks.toml.omnimem-backup`
 - **Add to Mistral Vibe and Add hooks to Mistral Vibe in the tray and menu bar menu**, once Vibe is installed (its `vibe` command, or its `~/.vibe` folder). The first adds an `omnimem` `[[mcp_servers]]` entry over streamable HTTP to Vibe's `config.toml`, with the access token as a header if one is set, or switches an `omnimem` entry that points at another server; the second writes the hooks, and says Update when the hooks on disk are older ones. Both edit the TOML in place, keeping comments and layout, after a backup. Both are unavailable in the Flatpak
 
-## [7.1.2] - unreleased
+## [7.1.2] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 The settings panel shows the skill suggestions the briefing makes, with a way to accept or dismiss each, and which domains could become skills next.
 
@@ -70,7 +82,9 @@ The settings panel shows the skill suggestions the briefing makes, with a way to
 - **Skill suggestions in the settings panel.** The briefing's knowledge watch (recent articles close to one of your skills, flagged when one looks like it disagrees with a rule) now shows on the dashboard under Requires your attention and on the Skills page under Suggested for your skills. **Add to skill** promotes the article to the skill's domain and drafts the skill with it, which then waits in Pending proposals for your accept, as every skill change does. **Dismiss** turns a suggestion down for good, kept in `meta:skill:watch_dismissed`, so the briefing stops listing it too
 - **Could become skills on the Skills page.** The domains with no skill yet that have a lesson, with how close each is to one: memories with a lesson, rules clearing the gate, and what's still missing before the automatic scan would draft it. **Look for new skills** runs that scan now instead of waiting for an agent's next briefing; **Draft it anyway** proposes a skill for a domain short of the scan's bar; **Bless** carries a lesson seen only once over the gate. Drafts wait in Pending proposals, as always
 
-## [7.1.1] - unreleased
+## [7.1.1] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 OmniMem's dead-end guard and session briefing come to OpenCode, and the desktop app adds OmniMem to OpenCode from its menu ([#42](https://github.com/richarvey/OmniMem/issues/42)).
 
@@ -80,7 +94,9 @@ OmniMem's dead-end guard and session briefing come to OpenCode, and the desktop 
 - **`omnimem hook` reads OpenCode's tool calls**: its tool names (`shell`, `edit`, `write` and `patch` in 2.x; `bash`, `multiedit` and `apply_patch` in 1.x) and camelCase arguments. Like an Edit's `old_string`, the lines a patch takes out aren't read, so removing a dead end is never blocked
 - **Add to OpenCode and Add hooks to OpenCode in the tray and menu bar menu**, once OpenCode is installed (its `opencode` command, its config folder, or on macOS its app). The first writes the `omnimem` remote entry, with the access token if one is set, into OpenCode's config file after a backup, or switches an `omnimem` entry that points at another server; the second writes the plugin, and says Update when the plugin on disk is an older one. A config file in OpenCode 2's own form gets the entry under `mcp.servers`, any other under `mcp`, which both versions read; `config.json` is never written, since 2.x doesn't read it. An `opencode.jsonc` with comments is reported rather than rewritten. Both are unavailable in the Flatpak
 
-## [7.1.0] - unreleased
+## [7.1.0] - not released on its own
+
+Its changes ship in 7.1.7, the first 7.1 release.
 
 The settings panel moves out of the desktop app's window and onto HTTP, at `/admin` on the MCP address, so a server and a Docker container get it too. The desktop app's **Settings…** now opens it in your browser, already signed in. The pages are redesigned in the OmniMem design system.
 
