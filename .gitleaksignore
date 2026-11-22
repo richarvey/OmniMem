@@ -12,4 +12,4 @@
 
 # A unit test's made-up string, in a variable called `secret`, that a report
 # must not quote back. Never a credential; the variable has since been renamed.
-8fea75299ca4a28d12e79c82e219f8b0f6d3aa2f:crates/omnimem-transcripts/src/report.rs:generic-api-key:250
+188492a84b841e56e16db162d6ca019b7b922a1c:crates/omnimem-transcripts/src/report.rs:generic-api-key:250
