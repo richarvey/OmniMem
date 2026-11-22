@@ -7,3 +7,10 @@ regexes = [
   # Placeholder tokens in the deployment guides
   '''your-mcp-token''',
 ]
+# The scrub gate's own test material: made-up secrets in every format it has
+# a rule for, and gitleaks' own test cases. None was ever a live credential.
+paths = [
+  '''^crates/omnimem-scrub/tests/''',
+  '''^crates/omnimem-scrub-wasm/tests/''',
+  '''^crates/omnimem-transcripts/tests/fixtures/''',
+]

@@ -9,3 +9,7 @@
 # A 6.x recall test: "valkey" contains "key", so the generic-api-key rule
 # read the query string after it as a key.
 1ff439d2374caefdd6645de6d46eb9c0883d9f1b:mcp_server/tests/test_memory_coverage2.py:generic-api-key:69
+
+# A unit test's made-up string, in a variable called `secret`, that a report
+# must not quote back. Never a credential; the variable has since been renamed.
+8fea75299ca4a28d12e79c82e219f8b0f6d3aa2f:crates/omnimem-transcripts/src/report.rs:generic-api-key:250
