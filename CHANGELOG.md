@@ -13,6 +13,9 @@ The first 7.1 release, so it carries everything from 7.1.0 to 7.1.6 below as wel
 - **The Flatpak lists no clients it can't set up.** Its sandbox can't reach other apps' settings, so the menu used to show every client as **Add to … (unavailable in the Flatpak)**. Those items are gone; Copy MCP URL is how a Flatpak install connects an agent, as the guides already said
 - **A fuller about section on the Flatpak's software centre page.** The description now says what OmniMem is for and what it does (trust and validity, backups including 6.x stores), what the tray menu and the settings panel are for, and that inside the Flatpak you add OmniMem to your agent yourself with the copied address, where it used to suggest the tray did that. The page also links to the setup guides (help), the sponsors page (donate) and the source (contribute), lists the `omnimem` command, and says the app works with a mouse, keyboard or touch. The licence (MIT) and the five screenshots are unchanged
 
+### Security
+- Dependencies, for advisories published after 7.0.12: url 2.5.9 (RUSTSEC-2026-0592, a stack overflow in `Url::origin()` on deeply nested `blob:` URLs), and quinn-proto 0.11.19 and quinn-udp 0.5.16 for three advisories in the QUIC code reqwest brings in
+
 ## [7.1.6] - not released on its own
 
 Its changes ship in 7.1.7, the first 7.1 release.
